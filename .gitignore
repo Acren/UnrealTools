@@ -348,3 +348,9 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+
+# Google client secret
+google_client_secret.json
+
+# Rider generated files
+.idea

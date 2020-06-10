@@ -1,0 +1,22 @@
+﻿<Window x:Class="UnrealLauncher.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:UnrealLauncher"
+        mc:Ignorable="d"
+        Title="Unreal Launcher" Height="450" Width="800">
+    <Grid>
+        <DataGrid Name="ProjectGrid" ItemsSource="{Binding}" AutoGenerateColumns="False" >
+            <DataGrid.Resources>
+                <Style TargetType="{x:Type DataGridCell}">
+                    <EventSetter Event="MouseDoubleClick" Handler="DataGridCell_MouseDoubleClick"/>
+                </Style>
+            </DataGrid.Resources>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Name" IsReadOnly="True" Binding="{Binding Name}"/>
+                <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UProjectPath}" Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</Window>
