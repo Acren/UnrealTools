@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using UnrealAutomationCommon;
 
 namespace MarketplaceDeployConsole
 {
@@ -31,7 +32,7 @@ namespace MarketplaceDeployConsole
 
             Console.WriteLine("Identified " + Path.GetFileName(UProjectPath) + " as host project definition");
 
-            ProjectDefinition ProjectDef = JsonConvert.DeserializeObject<ProjectDefinition>(File.ReadAllText(UProjectPath));
+            ProjectDefinition ProjectDef = ProjectDefinition.Load(UProjectPath);
 
             // Trim patch version
             if (PluginDef.EngineVersion != null)

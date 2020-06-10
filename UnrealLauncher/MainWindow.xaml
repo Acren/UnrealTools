@@ -7,7 +7,7 @@
         mc:Ignorable="d"
         Title="Unreal Launcher" Height="450" Width="800">
     <Grid>
-        <DataGrid Name="ProjectGrid" ItemsSource="{Binding}" AutoGenerateColumns="False" >
+        <DataGrid Name="ProjectGrid" ItemsSource="{Binding}" AutoGenerateColumns="False" CanUserAddRows="True" >
             <DataGrid.Resources>
                 <Style TargetType="{x:Type DataGridCell}">
                     <EventSetter Event="MouseDoubleClick" Handler="DataGridCell_MouseDoubleClick"/>
@@ -16,6 +16,7 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Name" IsReadOnly="True" Binding="{Binding Name}"/>
                 <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UProjectPath}" Width="*"/>
+                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding ProjectDefinition.EngineAssociation}"/>
             </DataGrid.Columns>
         </DataGrid>
     </Grid>

@@ -14,11 +14,6 @@ namespace MarketplaceDeployConsole
         public string EngineVersion { get; set; }
     }
 
-    public class ProjectDefinition
-    {
-        public string EngineAssociation { get; set; }
-    }
-
     class Program
     {
         [STAThread]

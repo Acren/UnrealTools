@@ -96,5 +96,11 @@
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\UnrealAutomationCommon\UnrealAutomationCommon.csproj">
+      <Project>{12DFB058-1A69-4848-B7AE-78C6CEE0A7C2}</Project>
+      <Name>UnrealAutomationCommon</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

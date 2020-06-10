@@ -1,7 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Text;
+﻿using System.Collections.ObjectModel;
+using UnrealAutomationCommon;
 
 namespace UnrealLauncher
 {
@@ -14,9 +12,9 @@ namespace UnrealLauncher
 
         }
 
-        public static Project AddProject()
+        public static Project AddProject(string Path)
         {
-            Project NewProject = new Project();
+            Project NewProject = new Project(Path);
             Projects.Add(NewProject);
             return NewProject;
         }

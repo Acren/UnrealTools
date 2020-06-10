@@ -1,25 +1,28 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Text;
+using UnrealAutomationCommon;
 
 namespace UnrealLauncher
 {
     public class Project : INotifyPropertyChanged
-    {
+    { 
+        private string uProjectPath;
         public event PropertyChangedEventHandler PropertyChanged;
 
-        public string Name
+        public Project()
         {
-            get
+        }
+
+        public Project(string Path)
+        {
+            UProjectPath = Path;
+            if(ProjectDefinition.IsProjectFile(UProjectPath))
             {
-                return Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+                Initialize();
             }
         }
 
-        private string uProjectPath;
         public string UProjectPath
         {
             get { return uProjectPath; }
@@ -31,9 +34,24 @@ namespace UnrealLauncher
             }
         }
 
+        public ProjectDefinition ProjectDefinition { get; set; }
+
+        public string Name
+        {
+            get
+            {
+                return Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+            }
+        }
+
         protected void OnPropertyChanged([CallerMemberName] string name = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+
+        public void Initialize()
+        {
+            ProjectDefinition = ProjectDefinition.Load(UProjectPath);
         }
     }
 }

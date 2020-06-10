@@ -1,18 +1,10 @@
 ﻿using Microsoft.Win32;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using UnrealAutomationCommon;
 
 namespace UnrealLauncher
 {
@@ -39,14 +31,19 @@ namespace UnrealLauncher
                 if (OpenFileDialog.ShowDialog() == true)
                 {
                     string SelectedPath = OpenFileDialog.FileName;
-                    if (System.IO.Path.GetExtension(SelectedPath).Equals(".uproject", StringComparison.InvariantCultureIgnoreCase))
+                    if (ProjectDefinition.IsProjectFile(SelectedPath))
                     {
                         if (ProjectGrid.SelectedItem.GetType() != typeof(Project))
                         {
-                            ProjectGrid.SelectedItem = ProjectSource.AddProject();
+                            // Create new project
+                            ProjectGrid.SelectedItem = ProjectSource.AddProject(SelectedPath);
                         }
-                        Project SelectedProject = (Project)ProjectGrid.SelectedItem;
-                        SelectedProject.UProjectPath = SelectedPath;
+                        else
+                        {
+                            // Update existing
+                            Project SelectedProject = (Project)ProjectGrid.SelectedItem;
+                            SelectedProject.UProjectPath = SelectedPath;
+                        }
                     }
 
                 }
