@@ -16,5 +16,10 @@ namespace UnrealAutomationCommon
         {
             return JsonConvert.DeserializeObject<ProjectDefinition>(File.ReadAllText(uProjectPath));
         }
+
+        public string GetEngineInstallDirectory()
+        {
+            return ProjectUtils.GetEngineInstallDirectory(EngineAssociation);
+        }
     }
 }

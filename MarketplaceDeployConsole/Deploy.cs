@@ -61,9 +61,7 @@ namespace MarketplaceDeployConsole
 
             // Get engine path
 
-            RegistryKey BaseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-            RegistryKey Key = BaseKey.OpenSubKey(@"Software\EpicGames\Unreal Engine\" + ProjectDef.EngineAssociation);
-            string EnginePath = (string)Key.GetValue("InstalledDirectory");
+            string EnginePath = ProjectDef.GetEngineInstallDirectory();
 
             string EnginePluginsMarketplacePath = Path.Combine(EnginePath, @"Engine\Plugins\Marketplace");
             string EnginePluginsMarketplacePluginPath = Path.Combine(EnginePluginsMarketplacePath, Path.GetFileName(PluginPath));

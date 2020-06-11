@@ -30,7 +30,7 @@ namespace UnrealLauncher
             {
                 uProjectPath = value;
                 OnPropertyChanged();
-                OnPropertyChanged("Name");
+                OnPropertyChanged(nameof(Name));
             }
         }
 
