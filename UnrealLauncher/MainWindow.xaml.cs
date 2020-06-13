@@ -24,8 +24,8 @@ namespace UnrealLauncher
         public MainWindow()
         {
             InitializeComponent();
-            ProjectSource.LoadProjects();
-            ProjectGrid.ItemsSource = ProjectSource.Projects;
+            PersistentData.Load();
+            ProjectGrid.ItemsSource = PersistentData.Get().Projects;
             DataContext = this;
             OperationParameters = new OperationParameters();
             OperationType = OperationType.OpenEditor;
@@ -131,7 +131,7 @@ namespace UnrealLauncher
                         if (ProjectGrid.SelectedItem.GetType() != typeof(Project))
                         {
                             // Create new project
-                            ProjectGrid.SelectedItem = ProjectSource.AddProject(SelectedPath);
+                            ProjectGrid.SelectedItem = PersistentData.Get().AddProject(SelectedPath);
                         }
                         else
                         {
