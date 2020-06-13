@@ -21,5 +21,10 @@ namespace UnrealAutomationCommon
         {
             return ProjectUtils.GetEngineInstallDirectory(EngineAssociation);
         }
+
+        public string GetRunUAT()
+        {
+            return Path.Combine(GetEngineInstallDirectory(), "Engine", "Build", "BatchFiles", "RunUAT.bat");
+        }
     }
 }

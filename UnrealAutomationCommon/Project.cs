@@ -3,7 +3,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using UnrealAutomationCommon;
 
-namespace UnrealLauncher
+namespace UnrealAutomationCommon
 {
     public class Project : INotifyPropertyChanged
     { 

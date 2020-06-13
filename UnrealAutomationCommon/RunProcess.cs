@@ -19,6 +19,11 @@ namespace UnrealAutomationCommon
             return Process;
         }
 
+        public static Process Run(Command command)
+        {
+            return Run(command.File, command.Arguments);
+        }
+
         public static Process RunAndWait(string File, string Args)
         {
             Process Process = Run(File, Args);

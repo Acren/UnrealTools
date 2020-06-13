@@ -3,48 +3,19 @@ using System.Runtime.CompilerServices;
 
 namespace UnrealAutomationCommon
 {
-    public class UnrealArguments : INotifyPropertyChanged
+    public class UnrealArguments
     {
-        private bool useInsights = false;
-        public bool UseInsights
+        public static string ToString(OperationParameters operationParameters)
         {
-            get
+            Arguments arguments = new Arguments();
+            if(operationParameters.UseInsights)
             {
-                return useInsights;
+                arguments.AddValue("trace", "cpu,frame,bookmark");
+                arguments.AddFlag("statnamedevents");
+                arguments.AddValue("tracehost", "127.0.0.1");
             }
-            set
-            {
-                useInsights = value;
-                OnPropertyChanged();
-            }
+            return arguments.ToString();
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        public override string ToString()
-        {
-            string Arguments = string.Empty;
-            if(UseInsights)
-            {
-                Combine(ref Arguments, "-trace=cpu,frame,bookmark");
-                Combine(ref Arguments, "-statnamedevents");
-                Combine(ref Arguments, "-tracehost=127.0.0.1");
-            }
-            return Arguments;
-        }
-
-        public static void Combine(ref string Original, string NewArg)
-        {
-            if(!string.IsNullOrEmpty(Original))
-            {
-                Original += " ";
-            }
-            Original += NewArg;
-        }
-
-        protected void OnPropertyChanged([CallerMemberName] string name = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
     }
 }

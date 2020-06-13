@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using UnrealAutomationCommon;
+using UnrealAutomationCommon.Operations;
 
 namespace UnrealLauncher
 {
@@ -14,6 +15,10 @@ namespace UnrealLauncher
     /// </summary>
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
+        private OperationType operationType;
+        private Operation operation;
+        private OperationParameters operationParameters;
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         public MainWindow()
@@ -22,24 +27,46 @@ namespace UnrealLauncher
             ProjectSource.LoadProjects();
             ProjectGrid.ItemsSource = ProjectSource.Projects;
             DataContext = this;
-            Arguments = new UnrealArguments();
+            OperationParameters = new OperationParameters();
+            OperationType = OperationType.OpenEditor;
         }
 
-        private UnrealArguments arguments;
-        public UnrealArguments Arguments
+        public OperationType OperationType
         {
-            get { return arguments; }
+            get { return operationType; }
             set
             {
-                if(arguments != value)
+                operationType = value;
+                Operation = Operation.CreateOperation(OperationType);
+                OnPropertyChanged();
+            }
+        }
+
+        public Operation Operation
+        {
+            get { return operation; }
+            set
+            {
+                operation = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(VisibleCommand));
+            }
+        }
+
+        public OperationParameters OperationParameters
+        {
+            get { return operationParameters; }
+            set
+            {
+                if(operationParameters != value)
                 {
-                    if (arguments != null)
-                        arguments.PropertyChanged -= ArgumentsChanged;
-                    arguments = value;
-                    if (arguments != null)
-                        arguments.PropertyChanged += ArgumentsChanged;
+                    if (operationParameters != null)
+                        operationParameters.PropertyChanged -= OperationParametersChanged;
+                    operationParameters = value;
+                    if (operationParameters != null)
+                        operationParameters.PropertyChanged += OperationParametersChanged;
                 }
-                void ArgumentsChanged(object sender, PropertyChangedEventArgs args)
+                void OperationParametersChanged(object sender, PropertyChangedEventArgs args)
                 {
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(VisibleCommand));
@@ -75,7 +102,7 @@ namespace UnrealLauncher
                 {
                     return null;
                 }
-                return CommandUtils.FormatCommand(OpenEditor.GetFileString(GetSelectedProject().ProjectDefinition.GetEngineInstallDirectory()), OpenEditor.GetArgsString(GetSelectedProject().UProjectPath, Arguments));
+                return Operation.GetCommand(OperationParameters).ToString();
             }
         }
 
@@ -120,6 +147,7 @@ namespace UnrealLauncher
 
         private void ProjectGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            OperationParameters.Project = IsProjectSelected ? GetSelectedProject() : null;
             OnPropertyChanged(nameof(Status));
             OnPropertyChanged(nameof(IsProjectSelected));
             OnPropertyChanged(nameof(VisibleCommand));
@@ -130,14 +158,13 @@ namespace UnrealLauncher
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
 
-        private void LaunchEditor_Executed(object sender, RoutedEventArgs e)
+        private void Execute(object sender, RoutedEventArgs e)
         {
             if (!IsProjectSelected)
             {
                 return;
             }
-            Project SelectedProject = GetSelectedProject();
-            OpenEditor.Open(SelectedProject.ProjectDefinition.GetEngineInstallDirectory(), SelectedProject.UProjectPath, Arguments);
+            operation.Execute(OperationParameters);
         }
     }
 }

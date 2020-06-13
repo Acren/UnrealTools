@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:UnrealLauncher"
+        xmlns:common="clr-namespace:UnrealAutomationCommon;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
         Title="Unreal Launcher" Height="450" Width="800">
     <Grid>
@@ -27,19 +28,42 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
+                <RowDefinition Height="Auto"></RowDefinition>
+                <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="*"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
             </Grid.RowDefinitions>
             <TextBlock Text="{Binding Status}" Grid.Row="0" Margin="0,5"/>
-            <GroupBox Header="Insights" Grid.Row="1" Margin="0,5" Padding="10">
-                <CheckBox IsChecked="{Binding Arguments.UseInsights, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
+            <GroupBox Header="Operation" Grid.Row="1" Margin="0,5" Padding="10">
+                <StackPanel>
+                    <StackPanel.Resources>
+                        <local:ComparisonConverter x:Key="ComparisonConverter" />
+                    </StackPanel.Resources>
+                    <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:OperationType.BuildEditor}}">Build Editor</RadioButton>
+                    <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:OperationType.OpenEditor}}">Launch Editor</RadioButton>
+                </StackPanel>
+            </GroupBox>
+            <GroupBox Header="Configuration" Grid.Row="2" Margin="0,5" Padding="10">
+                <StackPanel>
+                    <StackPanel.Resources>
+                        <local:ComparisonConverter x:Key="ComparisonConverter" />
+                    </StackPanel.Resources>
+                    <RadioButton IsChecked="{Binding Path=OperationParameters.Configuration, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:BuildConfiguration.DebugGame}}">DebugGame</RadioButton>
+                    <RadioButton IsChecked="{Binding Path=OperationParameters.Configuration, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:BuildConfiguration.Development}}">Development</RadioButton>
+                    <RadioButton IsChecked="{Binding Path=OperationParameters.Configuration, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:BuildConfiguration.Shipping}}">Shipping</RadioButton>
+                </StackPanel>
+            </GroupBox>
+            <GroupBox Header="Insights" Grid.Row="3" Margin="0,5" Padding="10">
+                <CheckBox IsChecked="{Binding OperationParameters.UseInsights, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
                     <TextBlock Text="Run with Insights" VerticalAlignment="Center" />
                 </CheckBox>
             </GroupBox>
-            <GroupBox Header="Command" Grid.Row="2" Margin="0,5" Padding="10" >
+            <GroupBox Header="Command" Grid.Row="4" Margin="0,5" Padding="10" >
                 <TextBox IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
             </GroupBox>
-            <Button Click="LaunchEditor_Executed" IsEnabled="{Binding IsProjectSelected}"  Grid.Row="3" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">Launch Editor</Button>
+            <Button Click="Execute" IsEnabled="{Binding IsProjectSelected}"  Grid.Row="5" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                <Run Text="{Binding Operation.OperationName, Mode=OneWay}" />
+            </Button>
         </Grid>
     </Grid>
 </Window>
