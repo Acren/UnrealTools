@@ -40,6 +40,7 @@
                         </StackPanel.Resources>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:OperationType.BuildEditor}}">Build Editor</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:OperationType.OpenEditor}}">Launch Editor</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:OperationType.PackageProject}}">Package Project</RadioButton>
                     </StackPanel>
                 </GroupBox>
                 <GroupBox Header="Configuration" Grid.Row="2" Margin="0,5" Padding="10">

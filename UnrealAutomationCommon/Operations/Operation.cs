@@ -1,4 +1,6 @@
-﻿namespace UnrealAutomationCommon.Operations
+﻿using System;
+
+namespace UnrealAutomationCommon.Operations
 {
     public abstract class Operation
     {
@@ -10,14 +12,14 @@
                     return new BuildEditor();
                 case OperationType.OpenEditor:
                     return new OpenEditor();
+                case OperationType.PackageProject:
+                    return new PackageProject();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(operationType), operationType, null);
             }
-            return null;
         }
 
-        public string OperationName
-        {
-            get { return GetOperationName(); }
-        }
+        public string OperationName => GetOperationName();
 
         public void Execute(OperationParameters operationParameters )
         {
@@ -26,7 +28,7 @@
 
         public abstract Command GetCommand(OperationParameters operationParameters );
 
-        public virtual string GetOperationName()
+        protected virtual string GetOperationName()
         {
             return "Execute";
         }

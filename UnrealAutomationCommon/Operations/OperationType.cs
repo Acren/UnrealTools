@@ -3,6 +3,7 @@
     public enum OperationType
     {
         BuildEditor,
-        OpenEditor
+        OpenEditor,
+        PackageProject
     }
 }

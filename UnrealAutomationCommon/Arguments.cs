@@ -4,7 +4,7 @@ using System.Text;
 
 namespace UnrealAutomationCommon
 {
-    class Arguments
+    public class Arguments
     {
         string argString;
 

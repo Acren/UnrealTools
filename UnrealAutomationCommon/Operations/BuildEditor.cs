@@ -9,10 +9,10 @@ namespace UnrealAutomationCommon
     {
         public override Command GetCommand(OperationParameters operationParameters)
         {
-            return new Command(operationParameters.Project.ProjectDefinition.GetRunUAT(), UATArguments.ToString(operationParameters) );
+            return new Command(operationParameters.Project.ProjectDefinition.GetRunUAT(), UATArguments.MakeArguments(operationParameters) );
         }
 
-        public override string GetOperationName()
+        protected override string GetOperationName()
         {
             return "Build Editor";
         }

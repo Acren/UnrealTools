@@ -1,30 +1,29 @@
 ﻿using System.IO;
-using UnrealAutomationCommon.Operations;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Operations
 {
     public class OpenEditor : Operation
     {
-        public static string GetArgsString(string UProjectPath, OperationParameters operationParameters)
-        {
-            string ArgsString = "\"" + UProjectPath + "\"";
-            CommandUtils.CombineArgs(ref ArgsString, UnrealArguments.ToString(operationParameters));
-            return ArgsString;
-        }
-
-        public static string GetFileString(string EnginePath, OperationParameters operationParameters)
-        {
-            return Path.Combine(EnginePath, "Engine", "Binaries", "Win64", operationParameters.Configuration == BuildConfiguration.DebugGame ? "UE4Editor-Win64-DebugGame.exe" : "UE4Editor.exe");
-        }
-
         public override Command GetCommand(OperationParameters operationParameters)
         {
             return new Command(GetFileString(operationParameters.Project.ProjectDefinition.GetEngineInstallDirectory(), operationParameters), GetArgsString(operationParameters.Project.UProjectPath, operationParameters));
         }
 
-        public override string GetOperationName()
+        protected override string GetOperationName()
         {
             return "Launch Editor";
+        }
+
+        private static string GetArgsString(string uProjectPath, OperationParameters operationParameters)
+        {
+            string ArgsString = "\"" + uProjectPath + "\"";
+            CommandUtils.CombineArgs(ref ArgsString, UnrealArguments.MakeArguments(operationParameters).ToString());
+            return ArgsString;
+        }
+
+        private static string GetFileString(string enginePath, OperationParameters operationParameters)
+        {
+            return Path.Combine(enginePath, "Engine", "Binaries", "Win64", operationParameters.Configuration == BuildConfiguration.DebugGame ? "UE4Editor-Win64-DebugGame.exe" : "UE4Editor.exe");
         }
     }
 }
