@@ -13,8 +13,8 @@ namespace UnrealAutomationCommon.Operations
             Arguments.AddFlag("cook");
             Arguments.AddFlag("stage");
             Arguments.AddFlag("pak");
-            Arguments.AddFlag("archive");
-            Arguments.AddPath("archivedirectory", Path.Combine("C:/",operationParameters.Project.Name));
+            //Arguments.AddFlag("archive");
+            //Arguments.AddPath("archivedirectory", Path.Combine("C:/",operationParameters.Project.Name));
             //Arguments = "BuildCookRun -project=\"" + ExampleProjectBuildUProjectPath + "\" -noP4 -platform=Win64 -clientconfig=Development -serverconfig=Development -cook -allmaps -build -stage " + DeployUtils.GetPakString(Params.Pak) + "-archive -archivedirectory=\"" + InstalledPluginTestBuildArchivePath + "\"",
             return new Command(operationParameters.Project.ProjectDefinition.GetRunUAT(), Arguments);
         }
