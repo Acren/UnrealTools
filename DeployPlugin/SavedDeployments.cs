@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace MarketplaceDeployConsole
+namespace PluginDeploy
 {
     [System.Configuration.SettingsSerializeAsAttribute(System.Configuration.SettingsSerializeAs.Xml)]
     public class SavedDeployments

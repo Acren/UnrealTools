@@ -2,7 +2,7 @@
 using System.IO;
 using System.IO.Compression;
 
-namespace MarketplaceDeployConsole
+namespace PluginDeploy
 {
     class FileUtils
     {

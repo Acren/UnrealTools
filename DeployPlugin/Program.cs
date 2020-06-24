@@ -1,11 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.ExceptionServices;
 using System.Windows.Forms;
 
-namespace MarketplaceDeployConsole
+namespace PluginDeploy
 {
     public class PluginDefinition
     {

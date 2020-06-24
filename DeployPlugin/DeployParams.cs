@@ -1,4 +1,4 @@
-﻿namespace MarketplaceDeployConsole
+﻿namespace PluginDeploy
 {
     public class DeployParams
     {

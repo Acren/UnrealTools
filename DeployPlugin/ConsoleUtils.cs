@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace MarketplaceDeployConsole
+namespace PluginDeploy
 {
     class ConsoleUtils
     {

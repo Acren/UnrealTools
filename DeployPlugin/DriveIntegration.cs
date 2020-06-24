@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
-namespace MarketplaceDeployConsole
+namespace PluginDeploy
 {
     class DriveIntegration
     {
