@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace PluginDeploy
+namespace DeployPlugin
 {
     [System.Configuration.SettingsSerializeAsAttribute(System.Configuration.SettingsSerializeAs.Xml)]
     public class SavedDeployments

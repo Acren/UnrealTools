@@ -37,9 +37,9 @@ namespace DeployPlugin.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        public global::MarketplaceDeployConsole.SavedDeployments SavedDeployments {
+        public global::DeployPlugin.SavedDeployments SavedDeployments {
             get {
-                return ((global::MarketplaceDeployConsole.SavedDeployments)(this["SavedDeployments"]));
+                return ((global::DeployPlugin.SavedDeployments)(this["SavedDeployments"]));
             }
             set {
                 this["SavedDeployments"] = value;

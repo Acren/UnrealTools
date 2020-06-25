@@ -1,4 +1,4 @@
-﻿namespace PluginDeploy
+﻿namespace DeployPlugin
 {
     public class DeployParams
     {

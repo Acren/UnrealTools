@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace PluginDeploy
+namespace DeployPlugin
 {
     class ConsoleUtils
     {
