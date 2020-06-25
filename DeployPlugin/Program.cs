@@ -5,13 +5,6 @@ using System.Windows.Forms;
 
 namespace DeployPlugin
 {
-    public class PluginDefinition
-    {
-        public string VersionName { get; set; }
-        public string FriendlyName { get; set; }
-        public string EngineVersion { get; set; }
-    }
-
     class Program
     {
         [STAThread]

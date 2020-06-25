@@ -25,14 +25,14 @@ namespace DeployPlugin
             string PluginName = DeployUtils.FindPluginName(PluginPath);
 
             // Deserialize uplugin
-            PluginDefinition PluginDef = JsonConvert.DeserializeObject<PluginDefinition>(File.ReadAllText(UPluginPath));
+            PluginDescriptor PluginDef = JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(UPluginPath));
 
             string ProjectPath = DeployUtils.FindHostProjectPath(PluginPath);
             string UProjectPath = DeployUtils.FindHostUProjectPath(PluginPath);
 
             Console.WriteLine("Identified " + Path.GetFileName(UProjectPath) + " as host project definition");
 
-            ProjectDefinition ProjectDef = ProjectDefinition.Load(UProjectPath);
+            ProjectDescriptor ProjectDef = ProjectDescriptor.Load(UProjectPath);
 
             // Trim patch version
             if (PluginDef.EngineVersion != null)

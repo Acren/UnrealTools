@@ -1,9 +1,10 @@
-﻿namespace UnrealAutomationCommon
+﻿namespace UnrealAutomationCommon.Operations
 {
     public enum OperationType
     {
         BuildEditor,
         OpenEditor,
-        PackageProject
+        PackageProject,
+        BuildPlugin
     }
 }

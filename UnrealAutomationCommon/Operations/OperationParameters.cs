@@ -1,13 +1,14 @@
 ﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Operations
 {
     public class OperationParameters : INotifyPropertyChanged
     {
-        private Project project;
-        private BuildConfiguration configuration;
-        private bool useInsights = false;
+        private Project _project;
+        private Plugin _plugin;
+        private BuildConfiguration _configuration;
+        private bool _useInsights = false;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -17,19 +18,19 @@ namespace UnrealAutomationCommon
 
         public Project Project
         {
-            get { return project; }
+            get => _project;
             set
             {
-                if(project != value)
+                if(_project != value)
                 {
-                    if(project != null)
+                    if(_project != null)
                     {
-                        project.PropertyChanged -= ProjectChanged;
+                        _project.PropertyChanged -= ProjectChanged;
                     }
-                    project = value;
-                    if (project != null)
+                    _project = value;
+                    if (_project != null)
                     {
-                        project.PropertyChanged += ProjectChanged;
+                        _project.PropertyChanged += ProjectChanged;
                     }
                 }
                 void ProjectChanged(object sender, PropertyChangedEventArgs args)
@@ -39,30 +40,55 @@ namespace UnrealAutomationCommon
             }
         }
 
-        public BuildConfiguration Configuration
+        public Plugin Plugin
         {
-            get { return configuration; }
+            get => _plugin;
             set
             {
-                configuration = value;
+                if (_plugin != value)
+                {
+                    if (_plugin != null)
+                    {
+                        _plugin.PropertyChanged -= PluginChanged;
+                    }
+                    _plugin = value;
+                    if (_plugin != null)
+                    {
+                        _plugin.PropertyChanged += PluginChanged;
+                    }
+                }
+                void PluginChanged(object sender, PropertyChangedEventArgs args)
+                {
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public BuildConfiguration Configuration
+        {
+            get => _configuration;
+            set
+            {
+                _configuration = value;
                 OnPropertyChanged();
             }
         }
 
         public bool UseInsights
         {
-            get
-            {
-                return useInsights;
-            }
+            get => _useInsights;
             set
             {
-                useInsights = value;
+                _useInsights = value;
                 OnPropertyChanged();
             }
         }
 
-        protected void OnPropertyChanged([CallerMemberName] string name = null)
+        public string OutputPathRoot { get; set; }
+        public bool UseOutputPathProjectSubfolder { get; set; }
+        public bool UseOutputPathOperationSubfolder { get; set; }
+
+        private void OnPropertyChanged([CallerMemberName] string name = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }

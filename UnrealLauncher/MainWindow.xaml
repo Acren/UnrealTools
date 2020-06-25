@@ -5,26 +5,40 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:UnrealLauncher"
         xmlns:common="clr-namespace:UnrealAutomationCommon;assembly=UnrealAutomationCommon"
+        xmlns:operations="clr-namespace:UnrealAutomationCommon.Operations;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
         Title="Unreal Launcher" Height="450" Width="800">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"></RowDefinition>
+            <RowDefinition Height="Auto"></RowDefinition>
             <RowDefinition Height="*"></RowDefinition>
         </Grid.RowDefinitions>
-        <DataGrid Name="ProjectGrid" ItemsSource="{Binding}" AutoGenerateColumns="False" CanUserAddRows="True" SelectionChanged="ProjectGrid_SelectionChanged" Grid.Row="0" >
+        <DataGrid Name="ProjectGrid" AutoGenerateColumns="False" CanUserAddRows="True" SelectionChanged="ProjectGrid_SelectionChanged" Grid.Row="0" HorizontalScrollBarVisibility="Hidden">
             <DataGrid.Resources>
                 <Style TargetType="{x:Type DataGridCell}">
-                    <EventSetter Event="MouseDoubleClick" Handler="DataGridCell_MouseDoubleClick"/>
+                    <EventSetter Event="MouseDoubleClick" Handler="ProjectDoubleClick"/>
                 </Style>
             </DataGrid.Resources>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Name" IsReadOnly="True" Binding="{Binding Name}"/>
+                <DataGridTextColumn Header="Project" IsReadOnly="True" Binding="{Binding Name}"/>
                 <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UProjectPath}" Width="*"/>
-                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding ProjectDefinition.EngineAssociation}"/>
+                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding ProjectDescriptor.EngineAssociation}"/>
             </DataGrid.Columns>
         </DataGrid>
-        <Grid Margin="10" VerticalAlignment="Stretch" Grid.Row="1">
+        <DataGrid Name="PluginGrid" AutoGenerateColumns="False" CanUserAddRows="True" SelectionChanged="PluginGrid_SelectionChanged" Grid.Row="1" HorizontalScrollBarVisibility="Hidden">
+            <DataGrid.Resources>
+                <Style TargetType="{x:Type DataGridCell}">
+                    <EventSetter Event="MouseDoubleClick" Handler="PluginDoubleClick"/>
+                </Style>
+            </DataGrid.Resources>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Plugin" IsReadOnly="True" Binding="{Binding Name}"/>
+                <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UPluginPath}" Width="*"/>
+                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding PluginDescriptor.EngineVersion}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+        <Grid Margin="10" VerticalAlignment="Stretch" Grid.Row="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
@@ -38,9 +52,10 @@
                         <StackPanel.Resources>
                             <local:ComparisonConverter x:Key="ComparisonConverter" />
                         </StackPanel.Resources>
-                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:OperationType.BuildEditor}}">Build Editor</RadioButton>
-                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:OperationType.OpenEditor}}">Launch Editor</RadioButton>
-                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:OperationType.PackageProject}}">Package Project</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.BuildEditor}}">Build Editor</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.OpenEditor}}">Launch Editor</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.PackageProject}}">Package Project</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.BuildPlugin}}">Build Plugin</RadioButton>
                     </StackPanel>
                 </GroupBox>
                 <GroupBox Header="Configuration" Grid.Row="2" Margin="0,5" Padding="10">
@@ -62,7 +77,7 @@
             <GroupBox Header="Command" Grid.Row="2" Margin="0,5" Padding="10" >
                 <TextBox IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
             </GroupBox>
-            <Button Click="Execute" IsEnabled="{Binding IsProjectSelected}"  Grid.Row="3" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+            <Button Click="Execute" IsEnabled="{Binding CanExecute}"  Grid.Row="3" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                 <Run Text="{Binding Operation.OperationName, Mode=OneWay}" />
             </Button>
         </Grid>

@@ -1,12 +1,12 @@
 ﻿using System.IO;
 
-namespace UnrealAutomationCommon.Operations
+namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class OpenEditor : Operation
     {
-        public override Command GetCommand(OperationParameters operationParameters)
+        protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            return new Command(GetFileString(operationParameters.Project.ProjectDefinition.GetEngineInstallDirectory(), operationParameters), GetArgsString(operationParameters.Project.UProjectPath, operationParameters));
+            return new Command(GetFileString(operationParameters.Project.ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), GetArgsString(operationParameters.Project.UProjectPath, operationParameters));
         }
 
         protected override string GetOperationName()
@@ -16,9 +16,9 @@ namespace UnrealAutomationCommon.Operations
 
         private static string GetArgsString(string uProjectPath, OperationParameters operationParameters)
         {
-            string ArgsString = "\"" + uProjectPath + "\"";
-            CommandUtils.CombineArgs(ref ArgsString, UnrealArguments.MakeArguments(operationParameters).ToString());
-            return ArgsString;
+            string argsString = "\"" + uProjectPath + "\"";
+            CommandUtils.CombineArgs(ref argsString, UnrealArguments.MakeArguments(operationParameters).ToString());
+            return argsString;
         }
 
         private static string GetFileString(string enginePath, OperationParameters operationParameters)

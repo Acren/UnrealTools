@@ -4,38 +4,38 @@ using System.Runtime.CompilerServices;
 
 namespace UnrealAutomationCommon
 {
-    public class Project : INotifyPropertyChanged
-    { 
-        private string _uProjectPath;
+    public class Plugin : INotifyPropertyChanged
+    {
+        private string _uPluginPath;
         public event PropertyChangedEventHandler PropertyChanged;
 
-        public Project()
+        public Plugin()
         {
         }
 
-        public Project(string Path)
+        public Plugin(string Path)
         {
-            UProjectPath = Path;
-            if(ProjectUtils.IsProjectFile(UProjectPath))
+            UPluginPath = Path;
+            if (PluginUtils.IsPluginFile(UPluginPath))
             {
                 LoadDescriptor();
             }
         }
 
-        public string UProjectPath
+        public string UPluginPath
         {
-            get => _uProjectPath;
+            get => _uPluginPath;
             set
             {
-                _uProjectPath = value;
+                _uPluginPath = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(Name));
             }
         }
 
-        public ProjectDescriptor ProjectDescriptor { get; private set; }
+        public PluginDescriptor PluginDescriptor { get; private set; }
 
-        public string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+        public string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
 
         private void OnPropertyChanged([CallerMemberName] string name = null)
         {
@@ -44,7 +44,7 @@ namespace UnrealAutomationCommon
 
         public void LoadDescriptor()
         {
-            ProjectDescriptor = ProjectDescriptor.Load(UProjectPath);
+            PluginDescriptor = PluginDescriptor.Load(UPluginPath);
         }
     }
 }

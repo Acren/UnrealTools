@@ -13,5 +13,10 @@ namespace UnrealAutomationCommon
             string EnginePath = (string)Key.GetValue("InstalledDirectory");
             return EnginePath;
         }
+
+        public static bool IsProjectFile(string FilePath)
+        {
+            return Path.GetExtension(FilePath).Equals(".uproject", System.StringComparison.InvariantCultureIgnoreCase);
+        }
     }
 }
