@@ -8,12 +8,12 @@ namespace UnrealLauncher
 {
     class PersistentData
     {
-        private static string dataFilePath = "data.json";
+        private static readonly string dataFilePath = "data.json";
 
-        private static PersistentData instance;
+        private static PersistentData _instance;
 
-        public ObservableCollection<Project> Projects { get; set; }
-        public ObservableCollection<Plugin> Plugins { get; set; }
+        public ObservableCollection<Project> Projects { get; private set; }
+        public ObservableCollection<Plugin> Plugins { get; private set; }
 
         public PersistentData()
         {
@@ -21,82 +21,86 @@ namespace UnrealLauncher
             Plugins = new ObservableCollection<Plugin>();
         }
 
-        public static PersistentData Get() { return instance; }
+        public static PersistentData Get() { return _instance; }
 
         public static void Load()
         {
             if(File.Exists(dataFilePath))
             {
-                using (StreamReader sr = new StreamReader(dataFilePath))
-                {
-                    using (JsonReader reader = new JsonTextReader(sr))
-                    {
-                        JsonSerializer serializer = new JsonSerializer();
-                        instance = serializer.Deserialize<PersistentData>(reader);
-                    }
-                }
+                using StreamReader sr = new StreamReader(dataFilePath);
+                using JsonReader reader = new JsonTextReader(sr);
+                JsonSerializer serializer = new JsonSerializer();
+                _instance = serializer.Deserialize<PersistentData>(reader);
             }
             else
             {
-                instance = new PersistentData();
+                _instance = new PersistentData();
             }
-            foreach(Project Project in instance.Projects)
+            foreach(Project project in _instance.Projects)
             {
-                Project.LoadDescriptor();
+                project.LoadDescriptor();
             }
 
-            foreach (Plugin Plugin in instance.Plugins)
+            foreach (Plugin plugin in _instance.Plugins)
             {
-                Plugin.LoadDescriptor();
+                plugin.LoadDescriptor();
             }
         }
 
-        public static void Save()
+        private static void Save()
         {
-            using (StreamWriter sw = new StreamWriter(dataFilePath))
-            {
-                using (JsonWriter writer = new JsonTextWriter(sw))
-                {
-                    JsonSerializer serializer = new JsonSerializer();
-                    serializer.Serialize(writer, instance);
-                }
-            }
+            using StreamWriter sw = new StreamWriter(dataFilePath);
+            using JsonWriter writer = new JsonTextWriter(sw);
+            JsonSerializer serializer = new JsonSerializer();
+            serializer.Serialize(writer, _instance);
         }
 
-        public Project AddProject(string Path)
+        public Project AddProject(string path)
         {
-            if (GetProject(Path) != null)
+            if (GetProject(path) != null)
             {
                 return null;
             }
 
-            Project NewProject = new Project(Path);
-            Projects.Add(NewProject);
+            Project newProject = new Project(path);
+            Projects.Add(newProject);
             Save();
-            return NewProject;
+            return newProject;
         }
 
-        public Plugin AddPlugin(string Path)
+        public Plugin AddPlugin(string path)
         {
-            if (GetPlugin(Path) != null)
+            if (GetPlugin(path) != null)
             {
                 return null;
             }
 
-            Plugin NewPlugin = new Plugin(Path);
-            Plugins.Add(NewPlugin);
+            Plugin newPlugin = new Plugin(path);
+            Plugins.Add(newPlugin);
             Save();
-            return NewPlugin;
+            return newPlugin;
         }
 
-        public Project GetProject(string Path)
+        public void RemoveProject(Project project)
         {
-            return Projects.FirstOrDefault(p => p.UProjectPath == Path);
+            Projects.Remove(project);
+            Save();
         }
 
-        public Plugin GetPlugin(string Path)
+        public void RemovePlugin(Plugin plugin)
         {
-            return Plugins.FirstOrDefault(p => p.UPluginPath == Path);
+            Plugins.Remove(plugin);
+            Save();
+        }
+
+        public Project GetProject(string path)
+        {
+            return Projects.FirstOrDefault(p => p.UProjectPath == path);
+        }
+
+        public Plugin GetPlugin(string path)
+        {
+            return Plugins.FirstOrDefault(p => p.UPluginPath == path);
         }
     }
 }

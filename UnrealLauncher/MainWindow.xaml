@@ -15,6 +15,11 @@
             <RowDefinition Height="*"></RowDefinition>
         </Grid.RowDefinitions>
         <DataGrid Name="ProjectGrid" AutoGenerateColumns="False" CanUserAddRows="True" SelectionChanged="ProjectGrid_SelectionChanged" Grid.Row="0" HorizontalScrollBarVisibility="Hidden">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Remove" Click="ProjectRemoveClick" />
+                </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.Resources>
                 <Style TargetType="{x:Type DataGridCell}">
                     <EventSetter Event="MouseDoubleClick" Handler="ProjectDoubleClick"/>
@@ -27,6 +32,11 @@
             </DataGrid.Columns>
         </DataGrid>
         <DataGrid Name="PluginGrid" AutoGenerateColumns="False" CanUserAddRows="True" SelectionChanged="PluginGrid_SelectionChanged" Grid.Row="1" HorizontalScrollBarVisibility="Hidden">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Remove" Click="PluginRemoveClick" />
+                </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.Resources>
                 <Style TargetType="{x:Type DataGridCell}">
                     <EventSetter Event="MouseDoubleClick" Handler="PluginDoubleClick"/>

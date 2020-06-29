@@ -233,5 +233,15 @@ namespace UnrealLauncher
                 Operation.Execute(OperationParameters);
             }
         }
+
+        private void ProjectRemoveClick(object sender, RoutedEventArgs e)
+        {
+            PersistentData.Get().RemoveProject(GetSelectedProject());
+        }
+
+        private void PluginRemoveClick(object sender, RoutedEventArgs e)
+        {
+            PersistentData.Get().RemovePlugin(GetSelectedPlugin());
+        }
     }
 }
