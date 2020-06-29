@@ -21,7 +21,7 @@
         {
             return
                 "Pak: " + Pak + "\n" +
-                "Remmove Source: " + RemoveSource + "\n" +
+                "Remove Source: " + RemoveSource + "\n" +
                 "Upload: " + Upload + "\n" +
                 "Archive: " + Archive;
         }
