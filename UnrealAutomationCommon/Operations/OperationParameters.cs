@@ -9,6 +9,7 @@ namespace UnrealAutomationCommon.Operations
         private Plugin _plugin;
         private BuildConfiguration _configuration;
         private bool _useInsights = false;
+        private bool _stompMalloc = false;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -80,6 +81,16 @@ namespace UnrealAutomationCommon.Operations
             set
             {
                 _useInsights = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool StompMalloc
+        {
+            get => _stompMalloc;
+            set
+            {
+                _stompMalloc = value;
                 OnPropertyChanged();
             }
         }

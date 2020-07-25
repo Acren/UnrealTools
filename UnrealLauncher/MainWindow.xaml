@@ -83,6 +83,11 @@
                         <TextBlock Text="Run with Insights" VerticalAlignment="Center" />
                     </CheckBox>
                 </GroupBox>
+                <GroupBox Header="Flags" Grid.Row="4" Margin="0,5" Padding="10">
+                    <CheckBox IsChecked="{Binding OperationParameters.StompMalloc, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
+                        <TextBlock Text="Stomp Malloc" VerticalAlignment="Center" />
+                    </CheckBox>
+                </GroupBox>
             </WrapPanel>
             <GroupBox Header="Command" Grid.Row="2" Margin="0,5" Padding="10" >
                 <TextBox IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
