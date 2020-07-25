@@ -1,5 +1,7 @@
-﻿using Microsoft.Win32;
+﻿using System;
+using Microsoft.Win32;
 using System.IO;
+using System.Linq;
 
 namespace UnrealAutomationCommon
 {
@@ -9,6 +11,17 @@ namespace UnrealAutomationCommon
         public static string GetEngineInstallDirectory(string EngineAssociation)
         {
             RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+
+            if (EngineAssociation.Contains("."))
+            {
+                // It's a launcher version
+                if (EngineAssociation.Count(c => c == '.') > 1)
+                {
+                    // Trim patch from version number
+                    EngineAssociation = EngineAssociation.Remove(EngineAssociation.LastIndexOf('.'));
+                }
+            }
+
             RegistryKey localMachineEngineVersion = localMachine.OpenSubKey(@"Software\EpicGames\Unreal Engine\" + EngineAssociation);
             if (localMachineEngineVersion != null)
             {
@@ -16,7 +29,12 @@ namespace UnrealAutomationCommon
             }
             RegistryKey currentUser = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
             RegistryKey currentUserBuilds = currentUser.OpenSubKey(@"SOFTWARE\Epic Games\Unreal Engine\Builds");
-            return (string)currentUserBuilds.GetValue(EngineAssociation);
+            string userBuildValue = (string)currentUserBuilds.GetValue(EngineAssociation);
+            if (userBuildValue != null)
+            {
+                return userBuildValue;
+            }
+            throw new Exception("Could not find Engine directory based on EngineAssociation: " + EngineAssociation);
         }
 
         public static bool IsProjectFile(string FilePath)

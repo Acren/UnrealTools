@@ -110,7 +110,7 @@ namespace UnrealLauncher
             get
             {
                 Command command = Operation.GetCommand(OperationParameters);
-                return command?.ToString();
+                return command != null ? command.ToString() : "No command";
             }
         }
 
