@@ -7,7 +7,7 @@
         xmlns:common="clr-namespace:UnrealAutomationCommon;assembly=UnrealAutomationCommon"
         xmlns:operations="clr-namespace:UnrealAutomationCommon.Operations;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
-        Title="Unreal Launcher" Height="450" Width="800">
+        Title="Unreal Launcher" Height="800" Width="1200">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"></RowDefinition>
@@ -54,6 +54,7 @@
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="*"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
+                <RowDefinition Height="Auto"></RowDefinition>
             </Grid.RowDefinitions>
             <TextBlock Text="{Binding Status}" Grid.Row="0" Margin="0,5"/>
             <WrapPanel Grid.Row="1">
@@ -89,10 +90,13 @@
                     </CheckBox>
                 </GroupBox>
             </WrapPanel>
-            <GroupBox Header="Command" Grid.Row="2" Margin="0,5" Padding="10" >
+            <GroupBox Header="Output" Grid.Row="2" Margin="0,5" Padding="10" >
+                <TextBox IsReadOnly="True" Text="{Binding Output, Mode=OneWay}"  TextWrapping="Wrap" Background="#202020" Foreground="#EEEEEE" FontFamily="Consolas"></TextBox>
+            </GroupBox>
+            <GroupBox Header="Command" Grid.Row="3" Margin="0,5" Padding="10" >
                 <TextBox IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
             </GroupBox>
-            <Button Click="Execute" IsEnabled="{Binding CanExecute}"  Grid.Row="3" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+            <Button Click="Execute" IsEnabled="{Binding CanExecute}"  Grid.Row="4" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                 <Run Text="{Binding Operation.OperationName, Mode=OneWay}" />
             </Button>
         </Grid>

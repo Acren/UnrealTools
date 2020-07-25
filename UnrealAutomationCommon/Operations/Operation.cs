@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using UnrealAutomationCommon.Operations.OperationTypes;
 
@@ -25,13 +26,31 @@ namespace UnrealAutomationCommon.Operations
 
         public string OperationName => GetOperationName();
 
-        public void Execute(OperationParameters operationParameters )
+        public void Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler )
         {
             Command command = BuildCommand(operationParameters);
-            if (command != null)
+
+            if (command == null)
             {
-                RunProcess.Run(command);
+                throw new Exception("No command");
             }
+
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = command.File,
+                Arguments = command.Arguments,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            Process process = new Process { StartInfo = startInfo };
+            process.OutputDataReceived += outputHandler;
+            process.ErrorDataReceived += outputHandler;
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
         }
 
         public Command GetCommand(OperationParameters operationParameters)

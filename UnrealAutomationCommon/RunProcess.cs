@@ -2,21 +2,25 @@
 
 namespace UnrealAutomationCommon
 {
-    public class RunProcess
+    public static class RunProcess
     {
+        public static Process Run(ProcessStartInfo StartInfo)
+        {
+            Process process = new Process {StartInfo = StartInfo};
+            process.Start();
+            return process;
+        }
+
         public static Process Run(string File, string Args)
         {
-            ProcessStartInfo PluginBuildStartInfo = new ProcessStartInfo()
+            ProcessStartInfo startInfo = new ProcessStartInfo()
             {
                 Arguments = Args,
                 FileName = File,
                 UseShellExecute = false
             };
 
-            Process Process = new Process();
-            Process.StartInfo = PluginBuildStartInfo;
-            Process.Start();
-            return Process;
+            return Run(startInfo);
         }
 
         public static Process Run(Command command)
@@ -26,9 +30,9 @@ namespace UnrealAutomationCommon
 
         public static Process RunAndWait(string File, string Args)
         {
-            Process Process = Run(File, Args);
-            Process.WaitForExit();
-            return Process;
+            Process process = Run(File, Args);
+            process.WaitForExit();
+            return process;
         }
 
         public static void Run(string File, UnrealArguments Args)

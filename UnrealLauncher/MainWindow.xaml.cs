@@ -1,5 +1,7 @@
-﻿using Microsoft.Win32;
+﻿using System;
+using Microsoft.Win32;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -18,6 +20,7 @@ namespace UnrealLauncher
         private OperationType _operationType;
         private Operation _operation;
         private OperationParameters _operationParameters;
+        private string _output;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -111,6 +114,19 @@ namespace UnrealLauncher
             {
                 Command command = Operation.GetCommand(OperationParameters);
                 return command != null ? command.ToString() : "No command";
+            }
+        }
+
+        private int LineCount { get; set; }
+        private int ProcessLineCount { get; set; }
+
+        public string Output
+        {
+            get => _output;
+            set
+            {
+                _output = value;
+                OnPropertyChanged();
             }
         }
 
@@ -230,7 +246,17 @@ namespace UnrealLauncher
         {
             if (Operation.RequirementsSatisfied(OperationParameters))
             {
-                Operation.Execute(OperationParameters);
+                ProcessLineCount = 0;
+                AddOutputLine("Running command: " + Operation.GetCommand(OperationParameters));
+                Operation.Execute(OperationParameters, new DataReceivedEventHandler((handlerSender, e) =>
+                {
+                    // Prepend line numbers to each line of the output.
+                    if (!String.IsNullOrEmpty(e.Data))
+                    {
+                        ProcessLineCount++;
+                        AddOutputLine("[" + ProcessLineCount + "]: " + e.Data);
+                    }
+                }));
             }
         }
 
@@ -242,6 +268,12 @@ namespace UnrealLauncher
         private void PluginRemoveClick(object sender, RoutedEventArgs e)
         {
             PersistentData.Get().RemovePlugin(GetSelectedPlugin());
+        }
+
+        private void AddOutputLine(string line)
+        {
+            LineCount++;
+            Output += "[" + LineCount + @"]: " + line + "\n";
         }
     }
 }
