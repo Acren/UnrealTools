@@ -273,7 +273,7 @@ namespace UnrealLauncher
         private void AddOutputLine(string line)
         {
             LineCount++;
-            Output += "[" + LineCount + @"]: " + line + "\n";
+            Output += "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\n";
         }
     }
 }
