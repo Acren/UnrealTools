@@ -55,6 +55,23 @@ namespace DeployPlugin
                 }
             }
 
+            string branchName = VersionControlUtils.GetBranchName(ProjectPath);
+            string archiveVersionName = null;
+
+            if (Params.Archive)
+            {
+                if (!branchName.StartsWith("version/", StringComparison.InvariantCultureIgnoreCase) && !branchName.Equals("master", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    Console.WriteLine("On branch '" + branchName + "' which isn't a version or master branch");
+                    archiveVersionName = branchName.Replace("/", "-");
+                }
+                else
+                {
+                    archiveVersionName = PluginDef.VersionName;
+                }
+                Console.WriteLine("Archive version name is '" + archiveVersionName + "'");
+            }
+
             // Begin work
 
             ConsoleUtils.WriteHeader("Preparing plugin");
@@ -221,7 +238,7 @@ namespace DeployPlugin
             {
                 ConsoleUtils.WriteHeader("Archiving");
 
-                string ArchivePrefix = PluginName + "_" + PluginDef.VersionName + "_";
+                string ArchivePrefix = PluginName + "_" + archiveVersionName + "_";
 
                 string ArchivePath = Path.Combine(WorkingTempPath, "Archives");
 
