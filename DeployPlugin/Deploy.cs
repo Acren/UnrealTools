@@ -85,7 +85,7 @@ namespace DeployPlugin
 
             ProcessStartInfo PluginBuildStartInfo = new ProcessStartInfo()
             {
-                Arguments = "BuildPlugin -Plugin=\"" + UPluginPath + "\" -Package=\"" + PluginBuildPath + "\" -Rocket",
+                Arguments = "BuildPlugin -Plugin=\"" + UPluginPath + "\" -Package=\"" + PluginBuildPath + "\" -Rocket -VS2019",
                 FileName = Path.Combine(EnginePath, @"Engine\Build\BatchFiles\RunUAT.bat"),
                 UseShellExecute = false
             };
