@@ -62,22 +62,22 @@ namespace DeployPlugin
             ConsoleUtils.RetryLoop(() =>
             {
                 File.Delete(FilePath);
-            }, "Couldn't access file", true);
+            }, "Couldn't access file: '" + FilePath + "'", true);
         }
 
         public static void DeleteDirectory(string target_dir)
         {
-            if (target_dir.Length < 2 || !target_dir.StartsWith(@"\\"))
-            {
-                target_dir = @"\\?\" + target_dir;
-            }
+            //if (target_dir.Length < 2 || !target_dir.StartsWith(@"\\"))
+            //{
+            //    target_dir = @"\\?\" + target_dir;
+            //}
 
             string[] files = { };
 
             ConsoleUtils.RetryLoop(() =>
             {
                 files = Directory.GetFiles(target_dir);
-            }, "Couldn't access directory", true);
+            }, "Couldn't access directory: '" + target_dir + "'", true);
 
             string[] dirs = Directory.GetDirectories(target_dir);
 
