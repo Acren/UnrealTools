@@ -8,7 +8,7 @@ namespace UnrealAutomationCommon
     public class ProjectUtils
     {
         // Does not include the actual "Engine" subdirectory
-        public static string GetEngineInstallDirectory(string EngineAssociation)
+        public static string GetEngineInstallDirectoryFromRegistry(string EngineAssociation)
         {
             RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
 
@@ -34,7 +34,25 @@ namespace UnrealAutomationCommon
             {
                 return userBuildValue;
             }
-            throw new Exception("Could not find Engine directory based on EngineAssociation: " + EngineAssociation);
+            throw new Exception("Could not find Engine directory based on EngineAssociation: " + EngineAssociation + ". If it's on the launcher, it needs to be opened for the first time to add itself to the registry.");
+        }
+
+        public static string GetEngineInstallDirectoryFromLauncherManifest(string EngineAssociation)
+        {
+            LauncherInstalledEngineManifest Manifest = LauncherInstalledEngineManifest.Load();
+            foreach(EngineInstallation engine in Manifest.InstallationList)
+            {
+                if(engine.AppName.Contains(EngineAssociation))
+                {
+                    return engine.InstallLocation;
+                }
+            }
+            throw new Exception("Could not find Engine installation based on EngineAssociation: + " + EngineAssociation);
+        }
+
+        public static string GetEngineInstallDirectory(string EngineAssociation)
+        {
+            return GetEngineInstallDirectoryFromLauncherManifest(EngineAssociation);
         }
 
         public static bool IsProjectFile(string FilePath)
