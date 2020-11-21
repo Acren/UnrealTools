@@ -101,6 +101,7 @@ namespace DeployPlugin
             {
                 ConsoleUtils.WriteHeader("Encountered exception");
 
+                Console.WriteLine(Ex.GetType());
                 Console.WriteLine(Ex.Message);
                 Console.WriteLine(Ex.StackTrace);
                 Console.WriteLine(Ex.ToString());
