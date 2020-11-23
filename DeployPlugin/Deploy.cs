@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using UnrealAutomationCommon;
 
 namespace DeployPlugin
@@ -60,9 +61,12 @@ namespace DeployPlugin
 
             if (Params.Archive)
             {
-                if (!branchName.StartsWith("version/", StringComparison.InvariantCultureIgnoreCase) && !branchName.Equals("master", StringComparison.InvariantCultureIgnoreCase))
+                // Use the version if on any of these branches
+                string[] standardBranchNames = { "master", "develop", "development" };
+
+                if (!branchName.StartsWith("version/", StringComparison.InvariantCultureIgnoreCase) && !standardBranchNames.Contains(branchName, StringComparer.InvariantCultureIgnoreCase))
                 {
-                    Console.WriteLine("On branch '" + branchName + "' which isn't a version or master branch");
+                    Console.WriteLine("On branch '" + branchName + "' which isn't a version or standard branch");
                     archiveVersionName = branchName.Replace("/", "-");
                 }
                 else
