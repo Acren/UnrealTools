@@ -32,9 +32,10 @@ namespace UnrealAutomationCommon
             string userBuildValue = (string)currentUserBuilds.GetValue(EngineAssociation);
             if (userBuildValue != null)
             {
-                return userBuildValue;
+                return userBuildValue.Replace('/','\\');
             }
-            throw new Exception("Could not find Engine directory based on EngineAssociation: " + EngineAssociation + ". If it's on the launcher, it needs to be opened for the first time to add itself to the registry.");
+
+            return null;
         }
 
         public static string GetEngineInstallDirectoryFromLauncherManifest(string EngineAssociation)
@@ -47,12 +48,25 @@ namespace UnrealAutomationCommon
                     return engine.InstallLocation;
                 }
             }
-            throw new Exception("Could not find Engine installation based on EngineAssociation: + " + EngineAssociation);
+
+            return null;
         }
 
         public static string GetEngineInstallDirectory(string EngineAssociation)
         {
-            return GetEngineInstallDirectoryFromLauncherManifest(EngineAssociation);
+            string Directory = GetEngineInstallDirectoryFromLauncherManifest(EngineAssociation);
+            if (Directory != null)
+            {
+                return Directory;
+            }
+
+            Directory = GetEngineInstallDirectoryFromRegistry(EngineAssociation);
+            if (Directory != null)
+            {
+                return Directory;
+            }
+
+            throw new Exception("Could not find Engine installation based on EngineAssociation: + " + EngineAssociation);
         }
 
         public static bool IsProjectFile(string FilePath)
