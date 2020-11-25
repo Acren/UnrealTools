@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using UnrealAutomationCommon.Operations.OperationTypes;
 
 namespace UnrealAutomationCommon.Operations
@@ -11,6 +12,8 @@ namespace UnrealAutomationCommon.Operations
         {
             switch (operationType)
             {
+                case OperationType.BuildEditorTarget:
+                    return new BuildEditorTarget();
                 case OperationType.BuildEditor:
                     return new BuildEditor();
                 case OperationType.OpenEditor:
@@ -26,7 +29,7 @@ namespace UnrealAutomationCommon.Operations
 
         public string OperationName => GetOperationName();
 
-        public void Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler )
+        public Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, EventHandler exitHandler )
         {
             Command command = BuildCommand(operationParameters);
 
@@ -46,11 +49,15 @@ namespace UnrealAutomationCommon.Operations
             };
 
             Process process = new Process { StartInfo = startInfo };
+            process.EnableRaisingEvents = true;
             process.OutputDataReceived += outputHandler;
             process.ErrorDataReceived += outputHandler;
+            process.Exited += exitHandler;
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
+
+            return process;
         }
 
         public Command GetCommand(OperationParameters operationParameters)
@@ -114,7 +121,8 @@ namespace UnrealAutomationCommon.Operations
 
         protected virtual string GetOperationName()
         {
-            return "Execute";
+            string name = GetType().Name;
+            return string.Concat(name.Select(x => Char.IsUpper(x) ? " " + x : x.ToString())).TrimStart(' ');
         }
     }
 }

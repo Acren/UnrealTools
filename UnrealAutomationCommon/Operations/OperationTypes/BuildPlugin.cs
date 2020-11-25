@@ -6,9 +6,9 @@
         {
             //Engine\Build\BatchFiles\RunUAT.bat BuildPlugin -Plugin=[Path to .uplugin file, must be outside engine directory] -Package=[Output directory] -Rocket
             Arguments buildPluginArguments = new Arguments();
-            buildPluginArguments.AddAction("BuildPlugin");
-            buildPluginArguments.AddPath("Plugin", operationParameters.Plugin.UPluginPath);
-            buildPluginArguments.AddPath("Package", GetOutputPath(operationParameters));
+            buildPluginArguments.AddArgument("BuildPlugin");
+            buildPluginArguments.AddKeyPath("Plugin", operationParameters.Plugin.UPluginPath);
+            buildPluginArguments.AddKeyPath("Package", GetOutputPath(operationParameters));
             buildPluginArguments.AddFlag("Rocket");
             return new Command(operationParameters.Plugin.PluginDescriptor.GetRunUATPath(), buildPluginArguments);
         }

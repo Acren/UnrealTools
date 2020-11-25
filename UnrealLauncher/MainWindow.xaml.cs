@@ -248,7 +248,8 @@ namespace UnrealLauncher
             {
                 ProcessLineCount = 0;
                 AddOutputLine("Running command: " + Operation.GetCommand(OperationParameters));
-                Operation.Execute(OperationParameters, new DataReceivedEventHandler((handlerSender, e) =>
+                Process process = null;
+                process = Operation.Execute(OperationParameters, (handlerSender, e) =>
                 {
                     Dispatcher.Invoke(() =>
                     {
@@ -260,7 +261,13 @@ namespace UnrealLauncher
                         }
                     });
 
-                }));
+                }, (o, args) =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        AddOutputLine("Process exited with code " + process.ExitCode);
+                    });
+                });
             }
         }
 
@@ -279,6 +286,11 @@ namespace UnrealLauncher
             LineCount++;
             Output += "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\n";
             OutputTextBox.ScrollToEnd();
+        }
+
+        private void CopyCommand(object sender, RoutedEventArgs e)
+        {
+            Clipboard.SetText(Operation.GetCommand(OperationParameters).ToString());
         }
     }
 }

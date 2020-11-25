@@ -6,31 +6,36 @@ namespace UnrealAutomationCommon
 {
     public class Arguments
     {
-        string argString;
+        string _argString;
 
-        public void AddAction(string Action)
+        public void AddArgument(string argument)
         {
-            CommandUtils.CombineArgs(ref argString, Action);
+            CommandUtils.CombineArgs(ref _argString, argument);
         }
 
-        public void AddFlag(string Flag)
+        public void AddFlag(string flag)
         {
-            CommandUtils.AddFlag(ref argString, Flag);
+            CommandUtils.AddFlag(ref _argString, flag);
         }
 
-        public void AddValue(string Key, string Value)
+        public void AddKeyValue(string key, string value)
         {
-            CommandUtils.AddValue(ref argString, Key, Value);
+            CommandUtils.AddValue(ref _argString, key, value);
         }
 
-        public void AddPath(string Key, string Path)
+        public void AddPath(string path)
         {
-            AddValue(Key, "\"" + Path + "\"");
+            AddArgument("\"" + path + "\"");
+        }
+
+        public void AddKeyPath(string key, string path)
+        {
+            AddKeyValue(key, "\"" + path + "\"");
         }
 
         public override string ToString()
         {
-            return argString;
+            return _argString;
         }
     }
 }

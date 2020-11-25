@@ -21,5 +21,10 @@ namespace UnrealAutomationCommon
         {
             return EnginePaths.GetRunUATPath(GetEngineInstallDirectory());
         }
+
+        public string GetBuildPath()
+        {
+            return EnginePaths.GetBuildPath(GetEngineInstallDirectory());
+        }
     }
 }

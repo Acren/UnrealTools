@@ -8,5 +8,10 @@ namespace UnrealAutomationCommon
         {
             return Path.Combine(EngineInstallDirectory, "Engine", "Build", "BatchFiles", "RunUAT.bat");
         }
+
+        public static string GetBuildPath(string EngineInstallDirectory)
+        {
+            return Path.Combine(EngineInstallDirectory, "Engine", "Build", "BatchFiles", "Build.bat");
+        }
     }
 }

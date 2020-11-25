@@ -10,10 +10,12 @@ namespace UnrealAutomationCommon
         public static Arguments MakeArguments(OperationParameters operationParameters)
         {
             Arguments Arguments = new Arguments();
-            Arguments.AddAction("BuildCookRun");
-            Arguments.AddPath("project", operationParameters.Project.UProjectPath);
+            Arguments.AddArgument("BuildCookRun");
+            Arguments.AddKeyPath("project", operationParameters.Project.UProjectPath);
             Arguments.AddFlag("build");
-            Arguments.AddValue("clientconfig", operationParameters.Configuration.ToString());
+            string configuration = operationParameters.Configuration.ToString();
+            Arguments.AddKeyValue("clientconfig", configuration);
+            Arguments.AddKeyValue("serverconfig", configuration);
             return Arguments;
         }
     }

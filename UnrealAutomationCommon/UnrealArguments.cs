@@ -12,9 +12,9 @@ namespace UnrealAutomationCommon
 
             if(operationParameters.UseInsights)
             {
-                Arguments.AddValue("trace", "cpu,frame,bookmark");
+                Arguments.AddKeyValue("trace", "cpu,frame,bookmark");
                 Arguments.AddFlag("statnamedevents");
-                Arguments.AddValue("tracehost", "127.0.0.1");
+                Arguments.AddKeyValue("tracehost", "127.0.0.1");
             }
 
             if (operationParameters.StompMalloc)

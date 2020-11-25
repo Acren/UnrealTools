@@ -63,6 +63,7 @@
                         <StackPanel.Resources>
                             <local:ComparisonConverter x:Key="ComparisonConverter" />
                         </StackPanel.Resources>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.BuildEditorTarget}}">Build Editor Target</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.BuildEditor}}">Build Editor</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.OpenEditor}}">Launch Editor</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.PackageProject}}">Package Project</RadioButton>
@@ -96,9 +97,14 @@
             <GroupBox Header="Command" Grid.Row="3" Margin="0,5" Padding="10" >
                 <TextBox IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
             </GroupBox>
-            <Button Click="Execute" IsEnabled="{Binding CanExecute}"  Grid.Row="4" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
-                <Run Text="{Binding Operation.OperationName, Mode=OneWay}" />
-            </Button>
+            <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
+                <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                    <TextBlock Text="Copy"></TextBlock>
+                </Button>
+                <Button Click="Execute" IsEnabled="{Binding CanExecute}" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                    <Run Text="{Binding Operation.OperationName, Mode=OneWay}" />
+                </Button>
+            </WrapPanel>
         </Grid>
     </Grid>
 </Window>
