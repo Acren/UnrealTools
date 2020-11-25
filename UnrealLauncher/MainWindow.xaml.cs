@@ -250,12 +250,16 @@ namespace UnrealLauncher
                 AddOutputLine("Running command: " + Operation.GetCommand(OperationParameters));
                 Operation.Execute(OperationParameters, new DataReceivedEventHandler((handlerSender, e) =>
                 {
-                    // Prepend line numbers to each line of the output.
-                    if (!String.IsNullOrEmpty(e.Data))
+                    Dispatcher.Invoke(() =>
                     {
-                        ProcessLineCount++;
-                        AddOutputLine("[" + ProcessLineCount + "]: " + e.Data);
-                    }
+                        // Prepend line numbers to each line of the output.
+                        if (!String.IsNullOrEmpty(e.Data))
+                        {
+                            ProcessLineCount++;
+                            AddOutputLine("[" + ProcessLineCount + "]: " + e.Data);
+                        }
+                    });
+
                 }));
             }
         }
@@ -274,6 +278,7 @@ namespace UnrealLauncher
         {
             LineCount++;
             Output += "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\n";
+            OutputTextBox.ScrollToEnd();
         }
     }
 }
