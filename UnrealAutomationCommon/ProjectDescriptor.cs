@@ -7,6 +7,8 @@ namespace UnrealAutomationCommon
     {
         public string EngineAssociation { get; set; }
 
+        public string EngineFriendlyName => IsEngineInstalled() ? EngineAssociation : GetEngineInstallDirectory();
+
         public static ProjectDescriptor Load(string uProjectPath)
         {
             return JsonConvert.DeserializeObject<ProjectDescriptor>(File.ReadAllText(uProjectPath));
@@ -15,6 +17,11 @@ namespace UnrealAutomationCommon
         public string GetEngineInstallDirectory()
         {
             return ProjectUtils.GetEngineInstallDirectory(EngineAssociation);
+        }
+
+        public bool IsEngineInstalled()
+        {
+            return !EngineAssociation.StartsWith("{");
         }
 
         public string GetRunUATPath()

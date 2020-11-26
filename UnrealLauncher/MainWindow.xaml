@@ -28,7 +28,7 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Project" IsReadOnly="True" Binding="{Binding Name}"/>
                 <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UProjectPath}" Width="*"/>
-                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding ProjectDescriptor.EngineAssociation}"/>
+                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding ProjectDescriptor.EngineFriendlyName}"/>
             </DataGrid.Columns>
         </DataGrid>
         <DataGrid Name="PluginGrid" AutoGenerateColumns="False" CanUserAddRows="True" SelectionChanged="PluginGrid_SelectionChanged" Grid.Row="1" HorizontalScrollBarVisibility="Hidden">
@@ -45,7 +45,7 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Plugin" IsReadOnly="True" Binding="{Binding Name}"/>
                 <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UPluginPath}" Width="*"/>
-                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding PluginDescriptor.EngineVersion}"/>
+                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding PluginDescriptor.TrimmedEngineVersion}"/>
             </DataGrid.Columns>
         </DataGrid>
         <Grid Margin="10" VerticalAlignment="Stretch" Grid.Row="2">
