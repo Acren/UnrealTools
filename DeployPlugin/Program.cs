@@ -85,6 +85,8 @@ namespace DeployPlugin
                     {
                         DeployParams Params = new DeployParams();
                         Params.PluginPath = Dialog.SelectedPath;
+                        Properties.Settings.Default.PluginPath = Dialog.SelectedPath;
+                        Properties.Settings.Default.Save();
 
                         ConsoleUtils.WriteHeader("Deploying " + DeployUtils.FindPluginName(Params.PluginPath));
 
