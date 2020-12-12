@@ -35,6 +35,11 @@ namespace DeployPlugin
 
             ProjectDescriptor ProjectDef = ProjectDescriptor.Load(UProjectPath);
 
+            if (!ProjectDef.HasPluginEnabled(PluginName))
+            {
+                throw new Exception(".uproject does not list " + PluginName + " as an enabled plugin dependency");
+            }
+
             // Trim patch version
             if (PluginDef.EngineVersion != null)
             {
