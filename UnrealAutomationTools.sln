@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.30104.148
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnrealLauncher", "UnrealLauncher\UnrealLauncher.csproj", "{80D29E3E-7E69-43A3-8972-89FFC9899229}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnrealCommander", "UnrealCommander\UnrealCommander.csproj", "{80D29E3E-7E69-43A3-8972-89FFC9899229}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnrealAutomationCommon", "UnrealAutomationCommon\UnrealAutomationCommon.csproj", "{12DFB058-1A69-4848-B7AE-78C6CEE0A7C2}"
 EndProject

@@ -10,7 +10,7 @@ using System.Windows.Input;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 
-namespace UnrealLauncher
+namespace UnrealCommander
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml

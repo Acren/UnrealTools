@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Windows.Data;
 
-namespace UnrealLauncher
+namespace UnrealCommander
 {
     public class ComparisonConverter : IValueConverter
     {

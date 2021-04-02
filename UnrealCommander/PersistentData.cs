@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using UnrealAutomationCommon;
 
-namespace UnrealLauncher
+namespace UnrealCommander
 {
     class PersistentData
     {
