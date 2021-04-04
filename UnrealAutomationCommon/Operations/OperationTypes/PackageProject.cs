@@ -8,6 +8,8 @@
             arguments.AddFlag("cook");
             arguments.AddFlag("stage");
             arguments.AddFlag("pak");
+            arguments.AddFlag("package");
+            arguments.AddFlag("nocompileeditor");
             return new Command(operationParameters.Project.ProjectDescriptor.GetRunUATPath(), arguments);
         }
 
