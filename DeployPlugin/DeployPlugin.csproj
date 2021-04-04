@@ -83,11 +83,11 @@
   <ItemGroup>
     <Compile Include="ConsoleUtils.cs" />
     <Compile Include="Deploy.cs" />
+    <Compile Include="ConsoleFileUtils.cs" />
     <Compile Include="SavedDeployments.cs" />
     <Compile Include="DeployParams.cs" />
     <Compile Include="DeployUtils.cs" />
     <Compile Include="DriveIntegration.cs" />
-    <Compile Include="FileUtils.cs" />
     <Compile Include="FlashWindow.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

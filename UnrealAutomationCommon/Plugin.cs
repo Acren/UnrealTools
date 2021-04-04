@@ -46,5 +46,10 @@ namespace UnrealAutomationCommon
         {
             PluginDescriptor = PluginDescriptor.Load(UPluginPath);
         }
+
+        public string GetPluginPath()
+        {
+            return Path.GetDirectoryName(_uPluginPath);
+        }
     }
 }

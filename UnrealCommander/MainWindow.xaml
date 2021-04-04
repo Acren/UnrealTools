@@ -13,6 +13,7 @@
             <DataGrid.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="Remove" Click="ProjectRemoveClick" />
+                    <MenuItem Header="Open Directory" Click="ProjectOpenDirectory" />
                 </ContextMenu>
             </DataGrid.ContextMenu>
             <DataGrid.Resources>
@@ -29,7 +30,8 @@
         <DataGrid Name="PluginGrid" AutoGenerateColumns="False" CanUserAddRows="True" SelectionChanged="PluginGrid_SelectionChanged" HorizontalScrollBarVisibility="Hidden" Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="Remove" Click="PluginRemoveClick" />
+                    <MenuItem Header="Remove Plugin" Click="PluginRemoveClick" />
+                    <MenuItem Header="Open Directory" Click="PluginOpenDirectory" />
                 </ContextMenu>
             </DataGrid.ContextMenu>
             <DataGrid.Resources>

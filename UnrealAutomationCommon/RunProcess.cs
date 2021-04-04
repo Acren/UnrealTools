@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon
     {
         public static Process Run(ProcessStartInfo StartInfo)
         {
-            Process process = new Process {StartInfo = StartInfo};
+            Process process = new Process { StartInfo = StartInfo };
             process.Start();
             return process;
         }
@@ -38,6 +38,16 @@ namespace UnrealAutomationCommon
         public static void Run(string File, UnrealArguments Args)
         {
             Run(File, Args.ToString());
+        }
+
+        public static void OpenDirectory(string DirectoryPath)
+        {
+            Process.Start(new ProcessStartInfo()
+            {
+                FileName = DirectoryPath,
+                UseShellExecute = true,
+                Verb = "open"
+            });
         }
     }
 }

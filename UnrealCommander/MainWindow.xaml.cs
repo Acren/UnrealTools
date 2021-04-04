@@ -301,5 +301,15 @@ namespace UnrealCommander
         {
             Clipboard.SetText(Operation.GetCommand(OperationParameters).ToString());
         }
+
+        private void ProjectOpenDirectory(object Sender, RoutedEventArgs E)
+        {
+            RunProcess.OpenDirectory(GetSelectedProject().GetProjectPath());
+        }
+
+        private void PluginOpenDirectory(object Sender, RoutedEventArgs E)
+        {
+            RunProcess.OpenDirectory(GetSelectedPlugin().GetPluginPath());
+        }
     }
 }

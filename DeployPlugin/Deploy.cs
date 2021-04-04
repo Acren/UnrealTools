@@ -93,7 +93,7 @@ namespace DeployPlugin
             string EnginePluginsMarketplacePluginPath = Path.Combine(EnginePluginsMarketplacePath, Path.GetFileName(PluginPath));
 
             // Delete plugin from engine if installed version exists
-            FileUtils.DeleteDirectoryIfExists(EnginePluginsMarketplacePluginPath);
+            ConsoleFileUtils.DeleteDirectoryIfExists(EnginePluginsMarketplacePluginPath);
 
             //string WorkingTempPath = Path.Combine(Path.GetTempPath(), "MarketplaceDeploy", PluginName);
             //string WorkingTempPath = Path.Combine(Path.GetPathRoot(Path.GetTempPath()), "MarketplaceDeploy", PluginName);
@@ -107,7 +107,7 @@ namespace DeployPlugin
 
             string PluginBuildPath = Path.Combine(WorkingTempPath, @"PluginBuild", PluginName);
 
-            FileUtils.DeleteDirectoryIfExists(PluginBuildPath);
+            ConsoleFileUtils.DeleteDirectoryIfExists(PluginBuildPath);
 
             ProcessStartInfo PluginBuildStartInfo = new ProcessStartInfo()
             {
@@ -133,15 +133,15 @@ namespace DeployPlugin
             string SourcePluginConfigPath = Path.Combine(PluginPath, @"Config");
             string PluginBuildConfigPath = Path.Combine(PluginBuildPath, @"Config");
 
-            FileUtils.CopyDirectory(SourcePluginConfigPath, PluginBuildConfigPath);
+            ConsoleFileUtils.CopyDirectory(SourcePluginConfigPath, PluginBuildConfigPath);
 
             // Copy plugin into engine where the marketplace installs it
 
             Console.WriteLine("Copying to Engine/Plugins/Marketplace");
 
-            FileUtils.DeleteDirectoryIfExists(EnginePluginsMarketplacePluginPath);
+            ConsoleFileUtils.DeleteDirectoryIfExists(EnginePluginsMarketplacePluginPath);
 
-            FileUtils.CopyDirectory(PluginBuildPath, EnginePluginsMarketplacePluginPath);
+            ConsoleFileUtils.CopyDirectory(PluginBuildPath, EnginePluginsMarketplacePluginPath);
 
             // Set up host project
 
@@ -152,19 +152,19 @@ namespace DeployPlugin
 
             string ExampleProjectBuildPath = Path.Combine(WorkingTempPath, @"ExampleProject");
 
-            FileUtils.DeleteDirectoryIfExists(ExampleProjectBuildPath);
+            ConsoleFileUtils.DeleteDirectoryIfExists(ExampleProjectBuildPath);
 
-            FileUtils.CopySubdirectory(ProjectPath, ExampleProjectBuildPath, "Content");
-            FileUtils.CopySubdirectory(ProjectPath, ExampleProjectBuildPath, "Config");
+            ConsoleFileUtils.CopySubdirectory(ProjectPath, ExampleProjectBuildPath, "Content");
+            ConsoleFileUtils.CopySubdirectory(ProjectPath, ExampleProjectBuildPath, "Config");
             if (!Params.RemoveSource)
             {
-                FileUtils.CopySubdirectory(ProjectPath, ExampleProjectBuildPath, "Source");
+                ConsoleFileUtils.CopySubdirectory(ProjectPath, ExampleProjectBuildPath, "Source");
             }
 
             string ProjectIcon = ProjectName + ".png";
             if (File.Exists(ProjectIcon))
             {
-                FileUtils.CopyFile(ProjectPath, ExampleProjectBuildPath, ProjectIcon);
+                ConsoleFileUtils.CopyFile(ProjectPath, ExampleProjectBuildPath, ProjectIcon);
             }
 
             // Copy uproject 
@@ -186,7 +186,7 @@ namespace DeployPlugin
             Console.WriteLine("Building example project with installed plugin");
 
             string InstalledPluginTestBuildArchivePath = Path.Combine(WorkingTempPath, @"InstalledPluginTestBuild");
-            FileUtils.DeleteDirectoryIfExists(InstalledPluginTestBuildArchivePath);
+            ConsoleFileUtils.DeleteDirectoryIfExists(InstalledPluginTestBuildArchivePath);
 
             ProcessStartInfo InstalledPluginTestBuildStartInfo = new ProcessStartInfo()
             {
@@ -210,11 +210,11 @@ namespace DeployPlugin
 
             Console.WriteLine("Uninstall from Engine/Plugins/Marketplace");
 
-            FileUtils.DeleteDirectoryIfExists(EnginePluginsMarketplacePluginPath);
+            ConsoleFileUtils.DeleteDirectoryIfExists(EnginePluginsMarketplacePluginPath);
 
             // Copy plugin to example project to prepare for package
             string ExampleProjectPluginPath = Path.Combine(ExampleProjectBuildPath, "Plugins", Path.GetFileName(PluginPath));
-            FileUtils.CopyDirectory(PluginBuildPath, ExampleProjectPluginPath);
+            ConsoleFileUtils.CopyDirectory(PluginBuildPath, ExampleProjectPluginPath);
 
             // Package game for demo
 
@@ -222,7 +222,7 @@ namespace DeployPlugin
 
             string DemoExePath = Path.Combine(WorkingTempPath, @"DemoExe");
 
-            FileUtils.DeleteDirectoryIfExists(DemoExePath);
+            ConsoleFileUtils.DeleteDirectoryIfExists(DemoExePath);
 
             ProcessStartInfo DemoExeStartInfo = new ProcessStartInfo()
             {
@@ -257,7 +257,7 @@ namespace DeployPlugin
 
                 Console.WriteLine("Archiving plugin build");
                 string PluginBuildZipPath = Path.Combine(ArchivePath, ArchivePrefix + "PluginBuild.zip");
-                FileUtils.DeleteFile(PluginBuildZipPath);
+                ConsoleFileUtils.DeleteFile(PluginBuildZipPath);
                 ZipFile.CreateFromDirectory(PluginBuildPath, PluginBuildZipPath, CompressionLevel.Optimal, true);
 
                 // Archive demo exe
@@ -265,7 +265,7 @@ namespace DeployPlugin
                 Console.WriteLine("Archiving demo");
 
                 string DemoExeZipPath = Path.Combine(ArchivePath, ArchivePrefix + "DemoExe.zip");
-                FileUtils.DeleteFile(DemoExeZipPath);
+                ConsoleFileUtils.DeleteFile(DemoExeZipPath);
                 ZipFile.CreateFromDirectory(Path.Combine(DemoExePath, "WindowsNoEditor"), DemoExeZipPath);
 
                 // Archive example project
@@ -274,7 +274,7 @@ namespace DeployPlugin
 
                 // First delete any extra directories
                 string[] AllowedExampleProjectSubDirectoryNames = { "Content", "Config" };
-                FileUtils.DeleteOtherSubdirectories(ExampleProjectBuildPath, AllowedExampleProjectSubDirectoryNames);
+                ConsoleFileUtils.DeleteOtherSubdirectories(ExampleProjectBuildPath, AllowedExampleProjectSubDirectoryNames);
 
                 // If we didn't remove source before, remove it now since we never want it in the example project
                 if (!Params.RemoveSource)
@@ -284,7 +284,7 @@ namespace DeployPlugin
                 }
 
                 string ExampleProjectZipPath = Path.Combine(ArchivePath, ArchivePrefix + "ExampleProject.zip");
-                FileUtils.DeleteFile(ExampleProjectZipPath);
+                ConsoleFileUtils.DeleteFile(ExampleProjectZipPath);
                 ZipFile.CreateFromDirectory(ExampleProjectBuildPath, ExampleProjectZipPath);
 
                 // Archive plugin for submission
@@ -293,14 +293,14 @@ namespace DeployPlugin
 
                 // Copy plugin build to submission so that we can prepare archive for submission without ruining build
                 string PluginSubmissionPath = Path.Combine(WorkingTempPath, @"PluginSubmission", PluginName);
-                FileUtils.DeleteDirectoryIfExists(PluginSubmissionPath);
-                FileUtils.CopyDirectory(PluginBuildPath, PluginSubmissionPath);
+                ConsoleFileUtils.DeleteDirectoryIfExists(PluginSubmissionPath);
+                ConsoleFileUtils.CopyDirectory(PluginBuildPath, PluginSubmissionPath);
 
                 string[] AllowedPluginSubmissionSubDirectoryNames = { "Source", "Resources", "Content", "Config" };
-                FileUtils.DeleteOtherSubdirectories(PluginSubmissionPath, AllowedPluginSubmissionSubDirectoryNames);
+                ConsoleFileUtils.DeleteOtherSubdirectories(PluginSubmissionPath, AllowedPluginSubmissionSubDirectoryNames);
 
                 string PluginSubmissionZipPath = Path.Combine(ArchivePath, ArchivePrefix + "PluginSubmission.zip");
-                FileUtils.DeleteFile(PluginSubmissionZipPath);
+                ConsoleFileUtils.DeleteFile(PluginSubmissionZipPath);
                 ZipFile.CreateFromDirectory(PluginSubmissionPath, PluginSubmissionZipPath, CompressionLevel.Optimal, true);
 
                 // Upload to staging folder on drive

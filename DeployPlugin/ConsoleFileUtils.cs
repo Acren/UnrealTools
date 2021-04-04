@@ -4,7 +4,7 @@ using System.IO.Compression;
 
 namespace DeployPlugin
 {
-    class FileUtils
+    class ConsoleFileUtils
     {
         // The leaf SourcePath directory will be renamed to the leaf DestinationPath directory, not placed inside
         public static void CopyDirectory(string SourcePath, string DestinationPath)

@@ -52,9 +52,14 @@ namespace UnrealAutomationCommon
             return Path.GetFileNameWithoutExtension(_uProjectPath);
         }
 
+        public string GetProjectPath()
+        {
+            return Path.GetDirectoryName(_uProjectPath);
+        }
+
         public string GetStagedPackageExecutablePath()
         {
-            return Path.Combine(Path.GetDirectoryName(_uProjectPath), "Saved", "StagedBuilds", "WindowsNoEditor", GetProjectName() + ".exe");
+            return Path.Combine(GetProjectPath(), "Saved", "StagedBuilds", "WindowsNoEditor", GetProjectName() + ".exe");
         }
     }
 }
