@@ -38,7 +38,7 @@ namespace UnrealCommander
                 UseOutputPathProjectSubfolder = true,
                 UseOutputPathOperationSubfolder = true
             };
-            OperationType = OperationType.OpenEditor;
+            OperationType = OperationType.LaunchEditor;
         }
 
         public OperationType OperationType

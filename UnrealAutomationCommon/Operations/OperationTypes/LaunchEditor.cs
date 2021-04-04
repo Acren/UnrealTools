@@ -2,7 +2,7 @@
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class OpenEditor : Operation
+    public class LaunchEditor : Operation
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {

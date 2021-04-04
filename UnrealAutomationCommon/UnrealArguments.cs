@@ -22,6 +22,11 @@ namespace UnrealAutomationCommon
                 Arguments.AddFlag("stompmalloc");
             }
 
+            if (operationParameters.WaitForAttach)
+            {
+                Arguments.AddFlag("waitforattach");
+            }
+
             return Arguments;
         }
 

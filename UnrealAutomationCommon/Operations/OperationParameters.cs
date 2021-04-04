@@ -10,6 +10,7 @@ namespace UnrealAutomationCommon.Operations
         private BuildConfiguration _configuration;
         private bool _useInsights = false;
         private bool _stompMalloc = false;
+        private bool _waitForAttach = false;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -91,6 +92,16 @@ namespace UnrealAutomationCommon.Operations
             set
             {
                 _stompMalloc = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool WaitForAttach
+        {
+            get => _waitForAttach;
+            set
+            {
+                _waitForAttach = value;
                 OnPropertyChanged();
             }
         }

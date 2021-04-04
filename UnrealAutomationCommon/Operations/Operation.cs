@@ -16,10 +16,12 @@ namespace UnrealAutomationCommon.Operations
                     return new BuildEditorTarget();
                 case OperationType.BuildEditor:
                     return new BuildEditor();
-                case OperationType.OpenEditor:
-                    return new OpenEditor();
+                case OperationType.LaunchEditor:
+                    return new LaunchEditor();
                 case OperationType.PackageProject:
                     return new PackageProject();
+                case OperationType.LaunchPackage:
+                    return new LaunchPackage();
                 case OperationType.BuildPlugin:
                     return new BuildPlugin();
                 default:

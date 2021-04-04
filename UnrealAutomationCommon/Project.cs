@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 namespace UnrealAutomationCommon
 {
     public class Project : INotifyPropertyChanged
-    { 
+    {
         private string _uProjectPath;
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -16,7 +16,7 @@ namespace UnrealAutomationCommon
         public Project(string Path)
         {
             UProjectPath = Path;
-            if(ProjectUtils.IsProjectFile(UProjectPath))
+            if (ProjectUtils.IsProjectFile(UProjectPath))
             {
                 LoadDescriptor();
             }
@@ -45,6 +45,16 @@ namespace UnrealAutomationCommon
         public void LoadDescriptor()
         {
             ProjectDescriptor = ProjectDescriptor.Load(UProjectPath);
+        }
+
+        public string GetProjectName()
+        {
+            return Path.GetFileNameWithoutExtension(_uProjectPath);
+        }
+
+        public string GetStagedPackageExecutablePath()
+        {
+            return Path.Combine(Path.GetDirectoryName(_uProjectPath), "Saved", "StagedBuilds", "WindowsNoEditor", GetProjectName() + ".exe");
         }
     }
 }
