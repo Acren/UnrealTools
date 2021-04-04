@@ -79,8 +79,10 @@
                         <StackPanel.Resources>
                             <local:ComparisonConverter x:Key="ComparisonConverter" />
                         </StackPanel.Resources>
+                        <RadioButton IsChecked="{Binding Path=OperationParameters.Configuration, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:BuildConfiguration.Debug}}">Debug</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationParameters.Configuration, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:BuildConfiguration.DebugGame}}">DebugGame</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationParameters.Configuration, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:BuildConfiguration.Development}}">Development</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationParameters.Configuration, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:BuildConfiguration.Test}}">Test</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationParameters.Configuration, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static common:BuildConfiguration.Shipping}}">Shipping</RadioButton>
                     </StackPanel>
                 </GroupBox>

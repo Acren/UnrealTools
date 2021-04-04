@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
+using System.Collections.Generic;
 
 namespace UnrealCommander
 {
@@ -82,6 +83,14 @@ namespace UnrealCommander
                     OnPropertyChanged(nameof(VisibleCommand));
                     OnPropertyChanged(nameof(CanExecute));
                 }
+            }
+        }
+
+        public List<BuildConfiguration> BuildConfigurations
+        {
+            get
+            {
+                return Enum.GetValues(typeof(BuildConfiguration)).Cast<BuildConfiguration>().ToList();
             }
         }
 

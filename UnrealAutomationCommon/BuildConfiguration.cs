@@ -10,10 +10,14 @@ namespace UnrealAutomationCommon
         {
             switch(config)
             {
+                case BuildConfiguration.Debug:
+                    return "Debug";
                 case BuildConfiguration.DebugGame:
                     return "DebugGame";
                 case BuildConfiguration.Development:
                     return "Development";
+                case BuildConfiguration.Test:
+                    return "Test";
                 case BuildConfiguration.Shipping:
                     return "Shipping";
             }
@@ -23,8 +27,10 @@ namespace UnrealAutomationCommon
 
     public enum BuildConfiguration
     {
+        Debug,
         DebugGame,
         Development,
+        Test,
         Shipping
     }
 }
