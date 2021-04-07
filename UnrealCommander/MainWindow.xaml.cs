@@ -311,5 +311,10 @@ namespace UnrealCommander
         {
             RunProcess.OpenDirectory(GetSelectedPlugin().GetPluginPath());
         }
+
+        private void ProjectOpenStagedBuildWindows(object Sender, RoutedEventArgs E)
+        {
+            RunProcess.OpenDirectory(GetSelectedProject().GetStagedBuildWindowsPath());
+        }
     }
 }
