@@ -10,6 +10,7 @@ using System.Windows.Input;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using System.Collections.Generic;
+using UnrealAutomationCommon.Operations.OperationTypes;
 
 namespace UnrealCommander
 {
@@ -18,7 +19,7 @@ namespace UnrealCommander
     /// </summary>
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
-        private OperationType _operationType;
+        private Type _operationType;
         private Operation _operation;
         private OperationParameters _operationParameters;
         private string _output;
@@ -38,10 +39,10 @@ namespace UnrealCommander
                 UseOutputPathProjectSubfolder = true,
                 UseOutputPathOperationSubfolder = true
             };
-            OperationType = OperationType.LaunchEditor;
+            OperationType = typeof(LaunchEditor);
         }
 
-        public OperationType OperationType
+        public Type OperationType
         {
             get => _operationType;
             set

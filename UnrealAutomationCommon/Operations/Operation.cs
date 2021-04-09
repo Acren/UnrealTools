@@ -8,25 +8,10 @@ namespace UnrealAutomationCommon.Operations
 {
     public abstract class Operation
     {
-        public static Operation CreateOperation(OperationType operationType)
+        public static Operation CreateOperation(Type operationType)
         {
-            switch (operationType)
-            {
-                case OperationType.BuildEditorTarget:
-                    return new BuildEditorTarget();
-                case OperationType.BuildEditor:
-                    return new BuildEditor();
-                case OperationType.LaunchEditor:
-                    return new LaunchEditor();
-                case OperationType.PackageProject:
-                    return new PackageProject();
-                case OperationType.LaunchPackage:
-                    return new LaunchPackage();
-                case OperationType.BuildPlugin:
-                    return new BuildPlugin();
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(operationType), operationType, null);
-            }
+            Operation instance = (Operation)Activator.CreateInstance(operationType);
+            return instance;
         }
 
         public string OperationName => GetOperationName();

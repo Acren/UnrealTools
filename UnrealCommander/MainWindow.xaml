@@ -6,6 +6,7 @@
         xmlns:local="clr-namespace:UnrealCommander"
         xmlns:common="clr-namespace:UnrealAutomationCommon;assembly=UnrealAutomationCommon"
         xmlns:operations="clr-namespace:UnrealAutomationCommon.Operations;assembly=UnrealAutomationCommon"
+        xmlns:operationTypes="clr-namespace:UnrealAutomationCommon.Operations.OperationTypes;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
         Title="Unreal Commander" Height="800" Width="1200">
     <DockPanel LastChildFill="True">
@@ -61,12 +62,12 @@
                         <StackPanel.Resources>
                             <local:ComparisonConverter x:Key="ComparisonConverter" />
                         </StackPanel.Resources>
-                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.BuildEditorTarget}}">Build Editor Target</RadioButton>
-                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.BuildEditor}}">Build Editor</RadioButton>
-                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.LaunchEditor}}">Launch Editor</RadioButton>
-                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.PackageProject}}">Package Project</RadioButton>
-                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.LaunchPackage}}">Launch Package</RadioButton>
-                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Static operations:OperationType.BuildPlugin}}">Build Plugin</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:BuildEditorTarget}}">Build Editor Target</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:BuildEditor}}">Build Editor</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:LaunchEditor}}">Launch Editor</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:PackageProject}}">Package Project</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:LaunchPackage}}">Launch Package</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:BuildPlugin}}">Build Plugin</RadioButton>
                     </StackPanel>
                 </GroupBox>
                 <GroupBox Header="Configuration" Grid.Row="2" Margin="0,5" Padding="10">
