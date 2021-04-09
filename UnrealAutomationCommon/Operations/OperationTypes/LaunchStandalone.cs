@@ -13,7 +13,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.AddFlag("windowed");
             args.AddKeyValue("resx", "1920");
             args.AddKeyValue("resy", "1080");
-            return new Command(UnrealPaths.GetEditorExe(operationParameters.Project.ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), args);
+            return new Command(EnginePaths.GetEditorExe(operationParameters.Project.ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), args);
         }
     }
 }

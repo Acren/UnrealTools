@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            return new Command(UnrealPaths.GetEditorExe(operationParameters.Project.ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), UnrealArguments.MakeArguments(operationParameters, true));
+            return new Command(EnginePaths.GetEditorExe(operationParameters.Project.ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), UnrealArguments.MakeArguments(operationParameters, true));
         }
 
     }
