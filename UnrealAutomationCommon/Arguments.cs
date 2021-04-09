@@ -8,26 +8,31 @@ namespace UnrealAutomationCommon
     {
         string _argString;
 
+        // args {argument}
         public void AddArgument(string argument)
         {
             CommandUtils.CombineArgs(ref _argString, argument);
         }
 
+        // args -{flag}
         public void AddFlag(string flag)
         {
             CommandUtils.AddFlag(ref _argString, flag);
         }
 
+        // args -{key}={value}
         public void AddKeyValue(string key, string value)
         {
             CommandUtils.AddValue(ref _argString, key, value);
         }
 
+        // args "{path}"
         public void AddPath(string path)
         {
             AddArgument("\"" + path + "\"");
         }
 
+        // args -{key}="{path}"
         public void AddKeyPath(string key, string path)
         {
             AddKeyValue(key, "\"" + path + "\"");

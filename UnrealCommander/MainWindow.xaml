@@ -65,6 +65,7 @@
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:BuildEditorTarget}}">Build Editor Target</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:BuildEditor}}">Build Editor</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:LaunchEditor}}">Launch Editor</RadioButton>
+                        <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:LaunchStandalone}}">Launch Standalone</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:PackageProject}}">Package Project</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:LaunchPackage}}">Launch Package</RadioButton>
                         <RadioButton IsChecked="{Binding Path=OperationType, Converter={StaticResource ComparisonConverter}, ConverterParameter={x:Type operationTypes:BuildPlugin}}">Build Plugin</RadioButton>

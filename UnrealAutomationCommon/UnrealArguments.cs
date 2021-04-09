@@ -6,11 +6,16 @@ namespace UnrealAutomationCommon
 {
     public class UnrealArguments
     {
-        public static Arguments MakeArguments(OperationParameters operationParameters)
+        public static Arguments MakeArguments(OperationParameters operationParameters, bool uProjectPath = false)
         {
             Arguments Arguments = new Arguments();
 
-            if(operationParameters.UseInsights)
+            if (uProjectPath)
+            {
+                Arguments.AddPath(operationParameters.Project.UProjectPath);
+            }
+
+            if (operationParameters.UseInsights)
             {
                 Arguments.AddKeyValue("trace", "cpu,frame,bookmark");
                 Arguments.AddFlag("statnamedevents");
