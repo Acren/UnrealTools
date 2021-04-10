@@ -100,7 +100,13 @@
                 </GroupBox>
             </WrapPanel>
             <GroupBox Header="Output" Grid.Row="2" Margin="0,5" Padding="10" >
-                <TextBox Name="OutputTextBox" IsReadOnly="True" Text="{Binding Output, Mode=OneWay}"  TextWrapping="Wrap" Background="#202020" Foreground="#EEEEEE" FontFamily="Consolas"></TextBox>
+                <TextBox Name="OutputTextBox" IsReadOnly="True" Text="{Binding Output, Mode=OneWay}"  TextWrapping="Wrap" Background="#202020" Foreground="#EEEEEE" FontFamily="Consolas">
+                    <TextBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Clear" Click="LogClear" />
+                        </ContextMenu>
+                    </TextBox.ContextMenu>
+                </TextBox>
             </GroupBox>
             <GroupBox Header="Command" Grid.Row="3" Margin="0,5" Padding="10" >
                 <TextBox IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>

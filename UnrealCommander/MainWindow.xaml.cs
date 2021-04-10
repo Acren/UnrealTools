@@ -317,5 +317,10 @@ namespace UnrealCommander
         {
             RunProcess.OpenDirectory(GetSelectedProject().GetStagedBuildWindowsPath());
         }
+
+        private void LogClear(object Sender, RoutedEventArgs E)
+        {
+            Output = "";
+        }
     }
 }
