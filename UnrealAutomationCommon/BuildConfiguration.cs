@@ -8,20 +8,15 @@ namespace UnrealAutomationCommon
     {
         public static string ToString(this BuildConfiguration config)
         {
-            switch(config)
+            try
             {
-                case BuildConfiguration.Debug:
-                    return "Debug";
-                case BuildConfiguration.DebugGame:
-                    return "DebugGame";
-                case BuildConfiguration.Development:
-                    return "Development";
-                case BuildConfiguration.Test:
-                    return "Test";
-                case BuildConfiguration.Shipping:
-                    return "Shipping";
+                string EnumString = Enum.GetName((config.GetType()), config);
+                return EnumString;
             }
-            return "Invalid";
+            catch
+            {
+                return string.Empty;
+            }
         }
     }
 
