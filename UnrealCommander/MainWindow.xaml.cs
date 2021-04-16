@@ -87,13 +87,9 @@ namespace UnrealCommander
             }
         }
 
-        public List<BuildConfiguration> BuildConfigurations
-        {
-            get
-            {
-                return Enum.GetValues(typeof(BuildConfiguration)).Cast<BuildConfiguration>().ToList();
-            }
-        }
+        public List<Type> Operations => OperationList.GetOrderedOperationTypes();
+
+        public List<BuildConfiguration> BuildConfigurations => Enum.GetValues(typeof(BuildConfiguration)).Cast<BuildConfiguration>().ToList();
 
         public string Status
         {

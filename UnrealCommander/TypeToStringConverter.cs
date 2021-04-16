@@ -1,31 +1,22 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Windows.Data;
 
 namespace UnrealCommander
 {
-    public class EnumToStringConverter : IValueConverter
+    public class TypeToStringConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
         {
-            if (value == null)
+            Type type = value as Type;
+
+            if (type == null)
             {
                 return string.Empty;
             }
 
-            if (!(value is Enum))
-            {
-                return string.Empty;
-            }
-
-            try
-            {
-                string EnumString = Enum.GetName(value.GetType(), value);
-                return EnumString;
-            }
-            catch
-            {
-                return string.Empty;
-            }
+            return type.Name;
         }
 
         // No need to implement converting back on a one-way binding 
