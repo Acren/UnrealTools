@@ -291,7 +291,11 @@ namespace UnrealCommander
         {
             LineCount++;
             Output += "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\n";
-            OutputTextBox.ScrollToEnd();
+            if (OutputScrollViewer.VerticalOffset == OutputScrollViewer.ScrollableHeight)
+            {
+                OutputScrollViewer.ScrollToEnd();
+            }
+
         }
 
         private void CopyCommand(object sender, RoutedEventArgs e)
