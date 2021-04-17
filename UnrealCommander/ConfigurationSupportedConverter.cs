@@ -4,6 +4,7 @@ using System.Text;
 using System.Windows.Data;
 using System.Windows.Markup;
 using UnrealAutomationCommon;
+using UnrealAutomationCommon.Operations;
 
 namespace UnrealCommander
 {
@@ -16,11 +17,16 @@ namespace UnrealCommander
                 return false;
             }
 
-            BuildConfiguration Config = (BuildConfiguration) values[0];
+            BuildConfiguration buildConfiguration = (BuildConfiguration) values[0];
 
-            if (values[1] is EngineInstall EngineInstall)
+            if (values[1] is EngineInstall engineInstall && !engineInstall.SupportsConfiguration(buildConfiguration))
             {
-                return EngineInstall.SupportsConfiguration(Config);
+                return false;
+            }
+
+            if (values[2] is Operation operation && !operation.SupportsConfiguration(buildConfiguration))
+            {
+                return false;
             }
 
             return true;

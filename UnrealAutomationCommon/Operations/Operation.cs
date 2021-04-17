@@ -58,6 +58,11 @@ namespace UnrealAutomationCommon.Operations
             return BuildCommand(operationParameters);
         }
 
+        public virtual bool SupportsConfiguration(BuildConfiguration configuration)
+        {
+            return true;
+        }
+
         public bool RequirementsSatisfied(OperationParameters operationParameters)
         {
             if (RequiresProject() && operationParameters.Project == null)
@@ -66,6 +71,11 @@ namespace UnrealAutomationCommon.Operations
             }
 
             if (RequiresPlugin() && operationParameters.Plugin == null)
+            {
+                return false;
+            }
+
+            if (!SupportsConfiguration(operationParameters.Configuration))
             {
                 return false;
             }

@@ -111,9 +111,7 @@
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="{x:Type common:BuildConfiguration}">
-                                    <RadioButton Content="{Binding Converter={StaticResource EnumToStringConverter}}" GroupName="Configurations"
-                                                 Focusable="True"
-                                                 IsHitTestVisible="True">
+                                    <RadioButton Content="{Binding Converter={StaticResource EnumToStringConverter}}" GroupName="Configurations">
                                         <!-- Binding IsChecked to IsSelected requires no support code -->
                                         <RadioButton.IsChecked>
                                             <Binding Path="IsSelected"
@@ -125,8 +123,28 @@
                                                 <Binding />
                                                 <Binding Path="SelectedEngineInstall"
                                                          RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
+                                                <Binding Path="Operation"
+                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
                                             </MultiBinding>
                                         </RadioButton.IsEnabled>
+                                        <RadioButton.Focusable>
+                                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
+                                                <Binding />
+                                                <Binding Path="SelectedEngineInstall"
+                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
+                                                <Binding Path="Operation"
+                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
+                                            </MultiBinding>
+                                        </RadioButton.Focusable>
+                                        <RadioButton.IsHitTestVisible>
+                                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
+                                                <Binding />
+                                                <Binding Path="SelectedEngineInstall"
+                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
+                                                <Binding Path="Operation"
+                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
+                                            </MultiBinding>
+                                        </RadioButton.IsHitTestVisible>
                                     </RadioButton>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
