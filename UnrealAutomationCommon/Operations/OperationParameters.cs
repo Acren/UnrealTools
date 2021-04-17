@@ -110,9 +110,9 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
-        public string OutputPathRoot { get; set; }
-        public bool UseOutputPathProjectSubfolder { get; set; }
-        public bool UseOutputPathOperationSubfolder { get; set; }
+        public string OutputPathRoot => @"C:\UnrealCommander\";
+        public bool UseOutputPathProjectSubfolder => true;
+        public bool UseOutputPathOperationSubfolder => true;
 
         private void OnPropertyChanged([CallerMemberName] string name = null)
         {
