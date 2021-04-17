@@ -68,6 +68,20 @@ namespace UnrealCommander
             set
             {
                 _operation = value;
+                if (!_operation.SupportsConfiguration(PersistentState.OperationParameters.Configuration))
+                {
+                    // Set different configuration
+                    foreach(BuildConfiguration config in BuildConfigurations)
+                    {
+                        if (_operation.SupportsConfiguration(config)
+                            && _operation.GetRelevantEngineInstall(PersistentState.OperationParameters)
+                                .SupportsConfiguration(config))
+                        {
+                            PersistentState.OperationParameters.Configuration = config;
+                            break;
+                        }
+                    }
+                }
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(VisibleCommand));
                 OnPropertyChanged(nameof(CanExecute));

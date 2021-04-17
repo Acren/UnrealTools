@@ -128,7 +128,7 @@ namespace UnrealAutomationCommon.Operations
             return string.Concat(name.Select(x => Char.IsUpper(x) ? " " + x : x.ToString())).TrimStart(' ');
         }
 
-        private EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
+        public EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
         {
             if (RequiresProject() && operationParameters.Project?.ProjectDescriptor != null)
             {
