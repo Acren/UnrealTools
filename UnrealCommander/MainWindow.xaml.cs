@@ -33,12 +33,21 @@ namespace UnrealCommander
             ProjectGrid.ItemsSource = PersistentData.Get().Projects;
             PluginGrid.ItemsSource = PersistentData.Get().Plugins;
             DataContext = this;
-            OperationParameters = new OperationParameters
+
+            if (PersistentData.Get().OperationParameters != null)
             {
-                OutputPathRoot = "C:\\UnrealLauncher",
-                UseOutputPathProjectSubfolder = true,
-                UseOutputPathOperationSubfolder = true
-            };
+                OperationParameters = PersistentData.Get().OperationParameters;
+            }
+            else
+            {
+                OperationParameters = new OperationParameters
+                {
+                    OutputPathRoot = "C:\\UnrealLauncher",
+                    UseOutputPathProjectSubfolder = true,
+                    UseOutputPathOperationSubfolder = true
+                };
+            }
+
             OperationType = typeof(LaunchEditor);
         }
 
@@ -83,6 +92,7 @@ namespace UnrealCommander
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(VisibleCommand));
                     OnPropertyChanged(nameof(CanExecute));
+                    PersistentData.Get().SaveOperationParameters(OperationParameters);
                 }
             }
         }

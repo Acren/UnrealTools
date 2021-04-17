@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using UnrealAutomationCommon;
+using UnrealAutomationCommon.Operations;
 
 namespace UnrealCommander
 {
@@ -14,6 +15,8 @@ namespace UnrealCommander
 
         public ObservableCollection<Project> Projects { get; private set; }
         public ObservableCollection<Plugin> Plugins { get; private set; }
+        [JsonProperty]
+        public OperationParameters OperationParameters { get; private set; }
 
         public PersistentData()
         {
@@ -50,7 +53,8 @@ namespace UnrealCommander
         private static void Save()
         {
             using StreamWriter sw = new StreamWriter(dataFilePath);
-            using JsonWriter writer = new JsonTextWriter(sw);
+            using JsonTextWriter writer = new JsonTextWriter(sw);
+            writer.Formatting = Formatting.Indented;
             JsonSerializer serializer = new JsonSerializer();
             serializer.Serialize(writer, _instance);
         }
@@ -90,6 +94,12 @@ namespace UnrealCommander
         public void RemovePlugin(Plugin plugin)
         {
             Plugins.Remove(plugin);
+            Save();
+        }
+
+        public void SaveOperationParameters(OperationParameters operationParameters)
+        {
+            OperationParameters = operationParameters;
             Save();
         }
 
