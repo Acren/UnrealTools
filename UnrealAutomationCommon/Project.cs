@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon
 {
@@ -33,6 +34,7 @@ namespace UnrealAutomationCommon
             }
         }
 
+        [JsonIgnore]
         public ProjectDescriptor ProjectDescriptor { get; private set; }
 
         public string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";

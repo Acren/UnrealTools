@@ -33,7 +33,9 @@ namespace UnrealAutomationCommon.Operations
                     if (_project != null)
                     {
                         _project.PropertyChanged += ProjectChanged;
+                        Plugin = null;
                     }
+                    OnPropertyChanged();
                 }
                 void ProjectChanged(object sender, PropertyChangedEventArgs args)
                 {
@@ -57,7 +59,9 @@ namespace UnrealAutomationCommon.Operations
                     if (_plugin != null)
                     {
                         _plugin.PropertyChanged += PluginChanged;
+                        Project = null;
                     }
+                    OnPropertyChanged();
                 }
                 void PluginChanged(object sender, PropertyChangedEventArgs args)
                 {

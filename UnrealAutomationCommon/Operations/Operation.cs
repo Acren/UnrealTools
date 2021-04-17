@@ -130,11 +130,17 @@ namespace UnrealAutomationCommon.Operations
 
         private EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
         {
-            return RequiresProject() && operationParameters.Project != null
-                ? operationParameters.Project.ProjectDescriptor.GetEngineInstall()
-                : operationParameters.Plugin != null
-                    ? operationParameters.Plugin.PluginDescriptor.GetEngineInstall()
-                    : null;
+            if (RequiresProject() && operationParameters.Project?.ProjectDescriptor != null)
+            {
+                return operationParameters.Project.ProjectDescriptor.GetEngineInstall();
+            }
+
+            if (operationParameters.Plugin?.PluginDescriptor != null)
+            {
+                return operationParameters.Plugin.PluginDescriptor.GetEngineInstall();
+            }
+
+            return null;
         }
     }
 }

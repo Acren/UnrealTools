@@ -19,9 +19,10 @@ namespace UnrealCommander
     /// </summary>
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
+        private PersistentData _persistentState;
+
         private Type _operationType;
         private Operation _operation;
-        private OperationParameters _operationParameters;
         private string _output;
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -29,26 +30,34 @@ namespace UnrealCommander
         public MainWindow()
         {
             InitializeComponent();
-            PersistentData.Load();
-            ProjectGrid.ItemsSource = PersistentData.Get().Projects;
-            PluginGrid.ItemsSource = PersistentData.Get().Plugins;
             DataContext = this;
 
-            if (PersistentData.Get().OperationParameters != null)
-            {
-                OperationParameters = PersistentData.Get().OperationParameters;
-            }
-            else
-            {
-                OperationParameters = new OperationParameters
-                {
-                    OutputPathRoot = "C:\\UnrealLauncher",
-                    UseOutputPathProjectSubfolder = true,
-                    UseOutputPathOperationSubfolder = true
-                };
-            }
+            PersistentState = PersistentData.Load();
 
             OperationType = typeof(LaunchEditor);
+        }
+
+        public PersistentData PersistentState
+        {
+            get => _persistentState;
+            set
+            {
+                if (_persistentState != value)
+                {
+                    if (_persistentState != null)
+                        _persistentState.PropertyChanged -= PersistentStateChanged;
+                    _persistentState = value;
+                    if (_persistentState != null)
+                        _persistentState.PropertyChanged += PersistentStateChanged;
+                    OnPropertyChanged();
+                }
+                void PersistentStateChanged(object sender, PropertyChangedEventArgs args)
+                {
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(VisibleCommand));
+                    OnPropertyChanged(nameof(CanExecute));
+                }
+            }
         }
 
         public Type OperationType
@@ -71,29 +80,6 @@ namespace UnrealCommander
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(VisibleCommand));
                 OnPropertyChanged(nameof(CanExecute));
-            }
-        }
-
-        public OperationParameters OperationParameters
-        {
-            get => _operationParameters;
-            set
-            {
-                if(_operationParameters != value)
-                {
-                    if (_operationParameters != null)
-                        _operationParameters.PropertyChanged -= OperationParametersChanged;
-                    _operationParameters = value;
-                    if (_operationParameters != null)
-                        _operationParameters.PropertyChanged += OperationParametersChanged;
-                }
-                void OperationParametersChanged(object sender, PropertyChangedEventArgs args)
-                {
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(VisibleCommand));
-                    OnPropertyChanged(nameof(CanExecute));
-                    PersistentData.Get().SaveOperationParameters(OperationParameters);
-                }
             }
         }
 
@@ -127,13 +113,13 @@ namespace UnrealCommander
 
         public bool IsPluginSelected => PluginGrid.SelectedItem != null && PluginGrid.SelectedItem.GetType() == typeof(Plugin);
 
-        public bool CanExecute => Operation.RequirementsSatisfied(OperationParameters);
+        public bool CanExecute => Operation.RequirementsSatisfied(PersistentState.OperationParameters);
 
         public string VisibleCommand
         {
             get
             {
-                Command command = Operation.GetCommand(OperationParameters);
+                Command command = Operation.GetCommand(PersistentState.OperationParameters);
                 return command != null ? command.ToString() : "No command";
             }
         }
@@ -230,36 +216,6 @@ namespace UnrealCommander
             }
         }
 
-        private void ProjectGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (IsProjectSelected)
-            {
-                PluginGrid.SelectedItem = null;
-            }
-            OperationParameters.Project = IsProjectSelected ? GetSelectedProject() : null;
-            OnPropertyChanged(nameof(Status));
-            OnPropertyChanged(nameof(IsProjectSelected));
-            OnPropertyChanged(nameof(IsPluginSelected));
-            OnPropertyChanged(nameof(VisibleCommand));
-            OnPropertyChanged(nameof(CanExecute));
-            OnPropertyChanged(nameof(SelectedEngineInstall));
-        }
-
-        private void PluginGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if(IsPluginSelected)
-            {
-                ProjectGrid.SelectedItem = null;
-            }
-            OperationParameters.Plugin = IsPluginSelected ? GetSelectedPlugin() : null;
-            OnPropertyChanged(nameof(Status));
-            OnPropertyChanged(nameof(IsProjectSelected));
-            OnPropertyChanged(nameof(IsPluginSelected));
-            OnPropertyChanged(nameof(VisibleCommand));
-            OnPropertyChanged(nameof(CanExecute));
-            OnPropertyChanged(nameof(SelectedEngineInstall));
-        }
-
         private void OnPropertyChanged([CallerMemberName] string name = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
@@ -267,12 +223,12 @@ namespace UnrealCommander
 
         private void Execute(object sender, RoutedEventArgs e)
         {
-            if (Operation.RequirementsSatisfied(OperationParameters))
+            if (Operation.RequirementsSatisfied(PersistentState.OperationParameters))
             {
                 ProcessLineCount = 0;
-                AddOutputLine("Running command: " + Operation.GetCommand(OperationParameters));
+                AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
                 Process process = null;
-                process = Operation.Execute(OperationParameters, (handlerSender, e) =>
+                process = Operation.Execute(PersistentState.OperationParameters, (handlerSender, e) =>
                 {
                     Dispatcher.Invoke(() =>
                     {
@@ -317,7 +273,7 @@ namespace UnrealCommander
 
         private void CopyCommand(object sender, RoutedEventArgs e)
         {
-            Clipboard.SetText(Operation.GetCommand(OperationParameters).ToString());
+            Clipboard.SetText(Operation.GetCommand(PersistentState.OperationParameters).ToString());
         }
 
         private void ProjectOpenDirectory(object Sender, RoutedEventArgs E)
