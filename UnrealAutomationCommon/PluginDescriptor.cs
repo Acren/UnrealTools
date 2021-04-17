@@ -32,9 +32,14 @@ namespace UnrealAutomationCommon
             return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
         }
 
+        public EngineInstall GetEngineInstall()
+        {
+            return EngineInstall.GetEngineInstall(EngineVersion);
+        }
+
         public string GetEngineInstallDirectory()
         {
-            return ProjectUtils.GetEngineInstallDirectory(EngineVersion);
+            return GetEngineInstall().InstallDirectory;
         }
 
         public string GetRunUATPath()

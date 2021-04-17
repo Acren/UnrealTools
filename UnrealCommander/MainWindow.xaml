@@ -95,6 +95,7 @@
                         <ListBox ItemsSource="{Binding BuildConfigurations}" SelectedItem="{Binding Path=OperationParameters.Configuration}" BorderBrush="Transparent" Background="Transparent">
                             <ListBox.Resources>
                                 <local:EnumToStringConverter x:Key="EnumToStringConverter"/>
+                                <local:ConfigurationSupportedConverter x:Key="ConfigurationSupportedConverter"/>
                             </ListBox.Resources>
                             <ListBox.ItemContainerStyle>
                                 <!-- Style to get rid of the selection visual -->
@@ -110,13 +111,22 @@
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="{x:Type common:BuildConfiguration}">
-                                    <RadioButton Content="{Binding Converter={StaticResource EnumToStringConverter}}" GroupName="Configurations">
+                                    <RadioButton Content="{Binding Converter={StaticResource EnumToStringConverter}}" GroupName="Configurations"
+                                                 Focusable="True"
+                                                 IsHitTestVisible="True">
                                         <!-- Binding IsChecked to IsSelected requires no support code -->
                                         <RadioButton.IsChecked>
                                             <Binding Path="IsSelected"
                                                      RelativeSource="{RelativeSource AncestorType=ListBoxItem}"
                                                      Mode="TwoWay" />
                                         </RadioButton.IsChecked>
+                                        <RadioButton.IsEnabled>
+                                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
+                                                <Binding />
+                                                <Binding Path="SelectedEngineInstall"
+                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
+                                            </MultiBinding>
+                                        </RadioButton.IsEnabled>
                                     </RadioButton>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

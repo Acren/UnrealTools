@@ -24,9 +24,14 @@ namespace UnrealAutomationCommon
             return JsonConvert.DeserializeObject<ProjectDescriptor>(File.ReadAllText(uProjectPath));
         }
 
+        public EngineInstall GetEngineInstall()
+        {
+            return EngineInstall.GetEngineInstall(EngineAssociation);
+        }
+
         public string GetEngineInstallDirectory()
         {
-            return ProjectUtils.GetEngineInstallDirectory(EngineAssociation);
+            return GetEngineInstall().InstallDirectory;
         }
 
         public bool IsEngineInstalled()
@@ -48,5 +53,6 @@ namespace UnrealAutomationCommon
         {
             return Plugins.Any(Plugin => Plugin.Name == PluginName && Plugin.Enabled);
         }
+
     }
 }

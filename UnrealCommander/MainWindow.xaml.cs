@@ -91,6 +91,11 @@ namespace UnrealCommander
 
         public List<BuildConfiguration> BuildConfigurations => Enum.GetValues(typeof(BuildConfiguration)).Cast<BuildConfiguration>().ToList();
 
+        public EngineInstall SelectedEngineInstall =>
+            IsProjectSelected ? GetSelectedProject().ProjectDescriptor.GetEngineInstall() : 
+                IsPluginSelected ? GetSelectedPlugin().PluginDescriptor.GetEngineInstall() :
+                null;
+
         public string Status
         {
             get
@@ -227,6 +232,7 @@ namespace UnrealCommander
             OnPropertyChanged(nameof(IsPluginSelected));
             OnPropertyChanged(nameof(VisibleCommand));
             OnPropertyChanged(nameof(CanExecute));
+            OnPropertyChanged(nameof(SelectedEngineInstall));
         }
 
         private void PluginGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -241,6 +247,7 @@ namespace UnrealCommander
             OnPropertyChanged(nameof(IsPluginSelected));
             OnPropertyChanged(nameof(VisibleCommand));
             OnPropertyChanged(nameof(CanExecute));
+            OnPropertyChanged(nameof(SelectedEngineInstall));
         }
 
         private void OnPropertyChanged([CallerMemberName] string name = null)
