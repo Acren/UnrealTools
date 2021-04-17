@@ -80,6 +80,11 @@ namespace UnrealAutomationCommon.Operations
                 return false;
             }
 
+            if (!GetRelevantEngineInstall(operationParameters).SupportsConfiguration(operationParameters.Configuration))
+            {
+                return false;
+            }
+
             return true;
         }
 
@@ -121,6 +126,15 @@ namespace UnrealAutomationCommon.Operations
         {
             string name = GetType().Name;
             return string.Concat(name.Select(x => Char.IsUpper(x) ? " " + x : x.ToString())).TrimStart(' ');
+        }
+
+        private EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
+        {
+            return RequiresProject() && operationParameters.Project != null
+                ? operationParameters.Project.ProjectDescriptor.GetEngineInstall()
+                : operationParameters.Plugin != null
+                    ? operationParameters.Plugin.PluginDescriptor.GetEngineInstall()
+                    : null;
         }
     }
 }
