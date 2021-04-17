@@ -21,7 +21,6 @@ namespace UnrealCommander
     {
         private PersistentData _persistentState;
 
-        private Type _operationType;
         private Operation _operation;
         private string _output;
 
@@ -33,8 +32,6 @@ namespace UnrealCommander
             DataContext = this;
 
             PersistentState = PersistentData.Load();
-
-            OperationType = typeof(LaunchEditor);
         }
 
         public PersistentData PersistentState
@@ -49,25 +46,19 @@ namespace UnrealCommander
                     _persistentState = value;
                     if (_persistentState != null)
                         _persistentState.PropertyChanged += PersistentStateChanged;
-                    OnPropertyChanged();
+                    PersistentStateChanged(this, null);
                 }
                 void PersistentStateChanged(object sender, PropertyChangedEventArgs args)
                 {
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(VisibleCommand));
                     OnPropertyChanged(nameof(CanExecute));
-                }
-            }
-        }
 
-        public Type OperationType
-        {
-            get => _operationType;
-            set
-            {
-                _operationType = value;
-                Operation = Operation.CreateOperation(OperationType);
-                OnPropertyChanged();
+                    if (typeof(Operation) != PersistentState.OperationType)
+                    {
+                        Operation = Operation.CreateOperation(PersistentState.OperationType);
+                    }
+                }
             }
         }
 

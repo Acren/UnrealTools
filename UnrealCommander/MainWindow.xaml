@@ -59,7 +59,7 @@
             <WrapPanel Grid.Row="1">
                 <GroupBox Header="Operation" Grid.Row="1" Margin="0,5" Padding="10">
                     <StackPanel>
-                        <ListBox ItemsSource="{Binding Operations}" SelectedItem="{Binding Path=OperationType}" BorderBrush="Transparent" Background="Transparent">
+                        <ListBox ItemsSource="{Binding Operations}" SelectedItem="{Binding Path=PersistentState.OperationType}" BorderBrush="Transparent" Background="Transparent">
                             <ListBox.Resources>
                                 <local:TypeToStringConverter x:Key="TypeToStringConverter"/>
                             </ListBox.Resources>

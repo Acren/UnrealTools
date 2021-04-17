@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using System;
+using Newtonsoft.Json;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealCommander.Annotations;
 
 namespace UnrealCommander
@@ -16,8 +18,10 @@ namespace UnrealCommander
 
         private static PersistentData _instance;
 
-        private OperationParameters _operationParameters;
         private bool _hasFinishedLoading = false;
+
+        private Type _operationType;
+        private OperationParameters _operationParameters;
 
         public ObservableCollection<Project> Projects { get; private set; }
         public ObservableCollection<Plugin> Plugins { get; private set; }
@@ -44,11 +48,22 @@ namespace UnrealCommander
             }
         }
 
+        public Type OperationType
+        {
+            get => _operationType;
+            set
+            {
+                _operationType = value;
+                OnPropertyChanged();
+            }
+        }
+
         public PersistentData()
         {
             Projects = new ObservableCollection<Project>();
             Plugins = new ObservableCollection<Plugin>();
             OperationParameters = new OperationParameters();
+            OperationType = typeof(LaunchEditor);
         }
 
         public static PersistentData Get() { return _instance; }
@@ -141,12 +156,6 @@ namespace UnrealCommander
         public void RemovePlugin(Plugin plugin)
         {
             Plugins.Remove(plugin);
-            Save();
-        }
-
-        public void SaveOperationParameters(OperationParameters operationParameters)
-        {
-            OperationParameters = operationParameters;
             Save();
         }
 
