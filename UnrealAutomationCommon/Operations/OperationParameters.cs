@@ -1,4 +1,5 @@
-﻿using System.ComponentModel;
+﻿using Newtonsoft.Json;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 namespace UnrealAutomationCommon.Operations
@@ -110,8 +111,11 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
+        [JsonIgnore]
         public string OutputPathRoot => @"C:\UnrealCommander\";
+        [JsonIgnore]
         public bool UseOutputPathProjectSubfolder => true;
+        [JsonIgnore]
         public bool UseOutputPathOperationSubfolder => true;
 
         private void OnPropertyChanged([CallerMemberName] string name = null)
