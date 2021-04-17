@@ -39,7 +39,7 @@ namespace UnrealCommander
                     _operationParameters = value;
                     if (_operationParameters != null)
                         _operationParameters.PropertyChanged += OperationParametersChanged;
-                    OnPropertyChanged();
+                    OperationParametersChanged(this, null);
                 }
                 void OperationParametersChanged(object sender, PropertyChangedEventArgs args)
                 {
