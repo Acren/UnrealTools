@@ -10,9 +10,9 @@ namespace UnrealAutomationCommon
         {
             Arguments Arguments = new Arguments();
 
-            if (uProjectPath)
+            if (uProjectPath && operationParameters.Target is Project project)
             {
-                Arguments.AddPath(operationParameters.Project.UProjectPath);
+                Arguments.AddPath(project.UProjectPath);
             }
 
             if (operationParameters.UseInsights)

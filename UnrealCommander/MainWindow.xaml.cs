@@ -34,6 +34,32 @@ namespace UnrealCommander
             PersistentState = PersistentData.Load();
         }
 
+        public Project SelectedProject
+        {
+            get => PersistentState.OperationParameters.Target as Project;
+            set
+            {
+                if (PersistentState.OperationParameters.Target != value)
+                {
+                    PersistentState.OperationParameters.Target = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public Plugin SelectedPlugin
+        {
+            get => PersistentState.OperationParameters.Target as Plugin;
+            set
+            {
+                if (PersistentState.OperationParameters.Target != value)
+                {
+                    PersistentState.OperationParameters.Target = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         public PersistentData PersistentState
         {
             get => _persistentState;
@@ -53,6 +79,9 @@ namespace UnrealCommander
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(VisibleCommand));
                     OnPropertyChanged(nameof(CanExecute));
+                    OnPropertyChanged(nameof(Status));
+                    OnPropertyChanged(nameof(SelectedPlugin));
+                    OnPropertyChanged(nameof(SelectedProject));
 
                     if (typeof(Operation) != PersistentState.OperationType)
                     {
@@ -73,13 +102,14 @@ namespace UnrealCommander
                     // Set different configuration
                     foreach(BuildConfiguration config in BuildConfigurations)
                     {
-                        if (_operation.SupportsConfiguration(config)
-                            && _operation.GetRelevantEngineInstall(PersistentState.OperationParameters)
-                                .SupportsConfiguration(config))
-                        {
-                            PersistentState.OperationParameters.Configuration = config;
-                            break;
-                        }
+                        if (!_operation.SupportsConfiguration(config)) continue;
+
+                        EngineInstall install = _operation.GetRelevantEngineInstall(PersistentState.OperationParameters);
+
+                        if (install != null && !install.SupportsConfiguration(config)) continue;
+
+                        PersistentState.OperationParameters.Configuration = config;
+                        break;
                     }
                 }
                 OnPropertyChanged();
@@ -114,9 +144,11 @@ namespace UnrealCommander
             }
         }
 
-        public bool IsProjectSelected => ProjectGrid.SelectedItem != null && ProjectGrid.SelectedItem.GetType() == typeof(Project);
+        public bool IsProjectSelected => PersistentState.OperationParameters.Target is Project;
+        //ProjectGrid.SelectedItem != null && ProjectGrid.SelectedItem.GetType() == typeof(Project);
 
-        public bool IsPluginSelected => PluginGrid.SelectedItem != null && PluginGrid.SelectedItem.GetType() == typeof(Plugin);
+        public bool IsPluginSelected => PersistentState.OperationParameters.Target is Plugin;
+        //PluginGrid.SelectedItem != null && PluginGrid.SelectedItem.GetType() == typeof(Plugin);
 
         public bool CanExecute => Operation.RequirementsSatisfied(PersistentState.OperationParameters);
 
@@ -144,21 +176,12 @@ namespace UnrealCommander
 
         private Project GetSelectedProject()
         {
-            if(IsProjectSelected)
-            {
-                return (Project)ProjectGrid.SelectedItem;
-            }
-            return null;
+            return PersistentState.OperationParameters.Target as Project;
         }
 
         private Plugin GetSelectedPlugin()
         {
-            if (IsPluginSelected)
-            {
-                return (Plugin) PluginGrid.SelectedItem;
-            }
-
-            return null;
+            return PersistentState.OperationParameters.Target as Plugin;
         }
 
         private void ProjectDoubleClick(object sender, MouseButtonEventArgs e)

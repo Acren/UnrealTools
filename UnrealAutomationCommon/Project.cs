@@ -2,13 +2,13 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
+using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon
 {
-    public class Project : INotifyPropertyChanged
+    public class Project : OperationTarget
     {
         private string _uProjectPath;
-        public event PropertyChangedEventHandler PropertyChanged;
 
         public Project()
         {
@@ -39,12 +39,7 @@ namespace UnrealAutomationCommon
 
         public string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
 
-        private void OnPropertyChanged([CallerMemberName] string name = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
-
-        public void LoadDescriptor()
+        public override void LoadDescriptor()
         {
             ProjectDescriptor = ProjectDescriptor.Load(UProjectPath);
         }
@@ -72,6 +67,16 @@ namespace UnrealAutomationCommon
         public string GetStagedPackageExecutablePath()
         {
             return Path.Combine(GetStagedBuildWindowsPath(), GetProjectName() + ".exe");
+        }
+
+        public override string GetName()
+        {
+            return Name;
+        }
+
+        public override EngineInstall GetEngineInstall()
+        {
+            return ProjectDescriptor.GetEngineInstall();
         }
     }
 }

@@ -6,8 +6,7 @@ namespace UnrealAutomationCommon.Operations
 {
     public class OperationParameters : INotifyPropertyChanged
     {
-        private Project _project;
-        private Plugin _plugin;
+        private OperationTarget _target;
         private BuildConfiguration _configuration;
         private bool _useInsights = false;
         private bool _stompMalloc = false;
@@ -19,52 +18,25 @@ namespace UnrealAutomationCommon.Operations
         {
         }
 
-        public Project Project
+        public OperationTarget Target
         {
-            get => _project;
+            get => _target;
             set
             {
-                if(_project != value)
+                if (_target != value)
                 {
-                    if(_project != null)
+                    if (_target != null)
                     {
-                        _project.PropertyChanged -= ProjectChanged;
+                        _target.PropertyChanged -= TargetChanged;
                     }
-                    _project = value;
-                    if (_project != null)
+                    _target = value;
+                    if (_target != null)
                     {
-                        _project.PropertyChanged += ProjectChanged;
-                        Plugin = null;
+                        _target.PropertyChanged += TargetChanged;
                     }
                     OnPropertyChanged();
                 }
-                void ProjectChanged(object sender, PropertyChangedEventArgs args)
-                {
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        public Plugin Plugin
-        {
-            get => _plugin;
-            set
-            {
-                if (_plugin != value)
-                {
-                    if (_plugin != null)
-                    {
-                        _plugin.PropertyChanged -= PluginChanged;
-                    }
-                    _plugin = value;
-                    if (_plugin != null)
-                    {
-                        _plugin.PropertyChanged += PluginChanged;
-                        Project = null;
-                    }
-                    OnPropertyChanged();
-                }
-                void PluginChanged(object sender, PropertyChangedEventArgs args)
+                void TargetChanged(object sender, PropertyChangedEventArgs args)
                 {
                     OnPropertyChanged();
                 }

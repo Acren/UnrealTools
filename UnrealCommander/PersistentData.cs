@@ -44,6 +44,7 @@ namespace UnrealCommander
                 void OperationParametersChanged(object sender, PropertyChangedEventArgs args)
                 {
                     OnPropertyChanged();
+                    //if(_operationType)
                 }
             }
         }
@@ -93,16 +94,6 @@ namespace UnrealCommander
             foreach (Plugin plugin in _instance.Plugins)
             {
                 plugin.LoadDescriptor();
-            }
-
-            if (_instance.OperationParameters.Project is {ProjectDescriptor: null})
-            {
-                _instance.OperationParameters.Project.LoadDescriptor();
-            }
-
-            if (_instance.OperationParameters.Plugin is { PluginDescriptor: null })
-            {
-                _instance.OperationParameters.Plugin.LoadDescriptor();
             }
 
             _instance._hasFinishedLoading = true;

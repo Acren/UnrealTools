@@ -1,10 +1,10 @@
 ﻿namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class BuildEditor : Operation
+    public class BuildEditor : ProjectOperation
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            return new Command(operationParameters.Project.ProjectDescriptor.GetRunUATPath(), UATArguments.MakeArguments(operationParameters));
+            return new Command(GetProject(operationParameters).ProjectDescriptor.GetRunUATPath(), UATArguments.MakeArguments(operationParameters));
         }
 
         protected override string GetOperationName()

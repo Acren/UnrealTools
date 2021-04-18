@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace UnrealAutomationCommon.Operations.OperationTypes
+﻿namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class LaunchStandalone : Operation
+    public class LaunchStandalone : ProjectOperation
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
@@ -13,7 +9,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.AddFlag("windowed");
             args.AddKeyValue("resx", "1920");
             args.AddKeyValue("resy", "1080");
-            return new Command(EnginePaths.GetEditorExe(operationParameters.Project.ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), args);
+            return new Command(EnginePaths.GetEditorExe(GetProject(operationParameters).ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), args);
         }
     }
 }

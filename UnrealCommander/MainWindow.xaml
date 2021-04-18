@@ -10,7 +10,7 @@
         mc:Ignorable="d"
         Title="Unreal Commander" Height="800" Width="1200">
     <DockPanel LastChildFill="True">
-        <DataGrid Name="ProjectGrid" ItemsSource="{ Binding PersistentState.Projects}" SelectedItem="{Binding Path=PersistentState.OperationParameters.Project, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" Margin="0,0,0,0" HorizontalScrollBarVisibility="Hidden" DockPanel.Dock="Top" Height="Auto">
+        <DataGrid Name="ProjectGrid" ItemsSource="{ Binding PersistentState.Projects}" SelectedItem="{Binding Path=SelectedProject, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" Margin="0,0,0,0" HorizontalScrollBarVisibility="Hidden" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="Remove" Click="ProjectRemoveClick" />
@@ -29,7 +29,7 @@
                 <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding ProjectDescriptor.EngineFriendlyName}"/>
             </DataGrid.Columns>
         </DataGrid>
-        <DataGrid Name="PluginGrid" ItemsSource="{ Binding PersistentState.Plugins}" SelectedItem="{Binding Path=PersistentState.OperationParameters.Plugin, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" HorizontalScrollBarVisibility="Hidden" Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
+        <DataGrid Name="PluginGrid" ItemsSource="{ Binding PersistentState.Plugins}" SelectedItem="{Binding Path=SelectedPlugin, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" HorizontalScrollBarVisibility="Hidden" Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="Remove Plugin" Click="PluginRemoveClick" />

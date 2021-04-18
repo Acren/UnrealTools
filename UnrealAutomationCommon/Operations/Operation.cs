@@ -63,18 +63,8 @@ namespace UnrealAutomationCommon.Operations
             return true;
         }
 
-        public bool RequirementsSatisfied(OperationParameters operationParameters)
+        public virtual bool RequirementsSatisfied(OperationParameters operationParameters)
         {
-            if (RequiresProject() && operationParameters.Project == null)
-            {
-                return false;
-            }
-
-            if (RequiresPlugin() && operationParameters.Plugin == null)
-            {
-                return false;
-            }
-
             if (!SupportsConfiguration(operationParameters.Configuration))
             {
                 return false;
@@ -88,14 +78,17 @@ namespace UnrealAutomationCommon.Operations
             return true;
         }
 
+        protected string GetTargetName(OperationParameters operationParameters)
+        {
+            return operationParameters.Target.GetName();
+        }
+
         protected string GetOutputPath(OperationParameters operationParameters)
         {
             string path = operationParameters.OutputPathRoot;
             if (operationParameters.UseOutputPathProjectSubfolder)
             {
-                string subfolderName = IsPluginOnlyOperation()
-                    ? operationParameters.Plugin.Name
-                    : operationParameters.Project.Name;
+                string subfolderName = GetTargetName(operationParameters);
                 path = Path.Combine(path, subfolderName.Replace(" ", ""));
             }
             if (operationParameters.UseOutputPathOperationSubfolder)
@@ -107,21 +100,6 @@ namespace UnrealAutomationCommon.Operations
 
         protected abstract Command BuildCommand(OperationParameters operationParameters );
 
-        protected virtual bool RequiresProject()
-        {
-            return !IsPluginOnlyOperation();
-        }
-
-        protected virtual bool RequiresPlugin()
-        {
-            return IsPluginOnlyOperation();
-        }
-
-        protected virtual bool IsPluginOnlyOperation()
-        {
-            return false;
-        }
-
         protected virtual string GetOperationName()
         {
             string name = GetType().Name;
@@ -130,17 +108,7 @@ namespace UnrealAutomationCommon.Operations
 
         public EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
         {
-            if (RequiresProject() && operationParameters.Project?.ProjectDescriptor != null)
-            {
-                return operationParameters.Project.ProjectDescriptor.GetEngineInstall();
-            }
-
-            if (operationParameters.Plugin?.PluginDescriptor != null)
-            {
-                return operationParameters.Plugin.PluginDescriptor.GetEngineInstall();
-            }
-
-            return null;
+            return operationParameters.Target?.GetEngineInstall();
         }
     }
 }

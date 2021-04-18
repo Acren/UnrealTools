@@ -11,7 +11,10 @@ namespace UnrealAutomationCommon
         {
             Arguments Arguments = new Arguments();
             Arguments.AddArgument("BuildCookRun");
-            Arguments.AddKeyPath("project", operationParameters.Project.UProjectPath);
+            if (operationParameters.Target is Project project)
+            {
+                Arguments.AddKeyPath("project", project.UProjectPath);
+            }
             Arguments.AddFlag("build");
             string configuration = operationParameters.Configuration.ToString();
             Arguments.AddKeyValue("clientconfig", configuration);

@@ -1,14 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace UnrealAutomationCommon.Operations.OperationTypes
+﻿namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class LaunchPackage : Operation
+    public class LaunchPackage : ProjectOperation
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            return new Command(operationParameters.Project.GetStagedPackageExecutablePath(), UnrealArguments.MakeArguments(operationParameters));
+            return new Command(GetProject(operationParameters).GetStagedPackageExecutablePath(), UnrealArguments.MakeArguments(operationParameters));
         }
 
         protected override string GetOperationName()

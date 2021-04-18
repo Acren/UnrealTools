@@ -2,13 +2,13 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
+using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon
 {
-    public class Plugin : INotifyPropertyChanged
+    public class Plugin : OperationTarget
     {
         private string _uPluginPath;
-        public event PropertyChangedEventHandler PropertyChanged;
 
         public Plugin()
         {
@@ -39,12 +39,7 @@ namespace UnrealAutomationCommon
 
         public string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
 
-        private void OnPropertyChanged([CallerMemberName] string name = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
-
-        public void LoadDescriptor()
+        public override void LoadDescriptor()
         {
             PluginDescriptor = PluginDescriptor.Load(UPluginPath);
         }
@@ -52,6 +47,16 @@ namespace UnrealAutomationCommon
         public string GetPluginPath()
         {
             return Path.GetDirectoryName(_uPluginPath);
+        }
+
+        public override string GetName()
+        {
+            return Name;
+        }
+
+        public override EngineInstall GetEngineInstall()
+        {
+            return PluginDescriptor.GetEngineInstall();
         }
     }
 }
