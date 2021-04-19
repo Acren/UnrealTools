@@ -1,5 +1,4 @@
-﻿using System.ComponentModel;
-using System.Runtime.CompilerServices;
+﻿using System.Collections.Generic;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon
@@ -15,10 +14,26 @@ namespace UnrealAutomationCommon
                 Arguments.AddPath(project.UProjectPath);
             }
 
-            if (operationParameters.UseInsights)
+            bool UseInsights = operationParameters.TraceCpu
+                               || operationParameters.TraceFrame
+                               || operationParameters.TraceBookmark
+                               || operationParameters.TraceLoadTime;
+            if (UseInsights)
             {
-                Arguments.AddKeyValue("trace", "cpu,frame,bookmark");
-                Arguments.AddFlag("statnamedevents");
+                List<string> TraceChannels = new List<string>();
+
+                if (operationParameters.TraceCpu) TraceChannels.Add("cpu");
+                if (operationParameters.TraceFrame) TraceChannels.Add("frame");
+                if (operationParameters.TraceBookmark) TraceChannels.Add("bookmark");
+                if (operationParameters.TraceLoadTime) TraceChannels.Add("loadtime");
+
+                Arguments.AddKeyValue("trace", string.Join(",",TraceChannels));
+
+                if (operationParameters.TraceCpu)
+                {
+                    Arguments.AddFlag("statnamedevents");
+                }
+
                 Arguments.AddKeyValue("tracehost", "127.0.0.1");
             }
 

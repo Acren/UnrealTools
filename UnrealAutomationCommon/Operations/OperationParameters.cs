@@ -8,7 +8,12 @@ namespace UnrealAutomationCommon.Operations
     {
         private OperationTarget _target;
         private BuildConfiguration _configuration;
-        private bool _useInsights = false;
+
+        private bool _traceCpu = false;
+        private bool _traceFrame = false;
+        private bool _traceBookmark = false;
+        private bool _traceLoadTime = false;
+
         private bool _stompMalloc = false;
         private bool _waitForAttach = false;
 
@@ -53,12 +58,42 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
-        public bool UseInsights
+        public bool TraceCpu
         {
-            get => _useInsights;
+            get => _traceCpu;
             set
             {
-                _useInsights = value;
+                _traceCpu = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool TraceFrame
+        {
+            get => _traceFrame;
+            set
+            {
+                _traceFrame = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool TraceBookmark
+        {
+            get => _traceBookmark;
+            set
+            {
+                _traceBookmark = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool TraceLoadTime
+        {
+            get => _traceLoadTime;
+            set
+            {
+                _traceLoadTime = value;
                 OnPropertyChanged();
             }
         }
