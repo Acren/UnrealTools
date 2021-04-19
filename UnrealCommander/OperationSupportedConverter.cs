@@ -1,27 +1,21 @@
 ﻿using System;
 using System.Windows.Data;
-using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealCommander
 {
-    public class ConfigurationSupportedConverter : IMultiValueConverter
+    public class OperationSupportedConverter : IMultiValueConverter
     {
         public object Convert(object[] values, Type targetType, object parameter, System.Globalization.CultureInfo culture)
         {
-            if (!(values[0] is BuildConfiguration))
+            if (!(values[0] is Type))
             {
                 return false;
             }
 
-            BuildConfiguration buildConfiguration = (BuildConfiguration) values[0];
+            Type operationType = values[0] as Type;
 
-            if (values[1] is EngineInstall engineInstall && !engineInstall.SupportsConfiguration(buildConfiguration))
-            {
-                return false;
-            }
-
-            if (values[2] is Operation operation && !operation.SupportsConfiguration(buildConfiguration))
+            if (values[1] is OperationTarget target && !Operation.OperationTypeSupportsTarget(operationType, target))
             {
                 return false;
             }

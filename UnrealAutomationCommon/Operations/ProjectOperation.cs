@@ -6,14 +6,9 @@ namespace UnrealAutomationCommon.Operations
 {
     public abstract class ProjectOperation : Operation
     {
-        public override bool RequirementsSatisfied(OperationParameters operationParameters)
+        public override bool SupportsTarget(OperationTarget Target)
         {
-            if (!(operationParameters.Target is Project))
-            {
-                return false;
-            }
-
-            return base.RequirementsSatisfied(operationParameters);
+            return Target is Project;
         }
 
         public Project GetProject(OperationParameters operationParameters)

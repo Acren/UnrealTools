@@ -1,9 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using UnrealAutomationCommon.Operations.OperationTypes;
 
 namespace UnrealAutomationCommon.Operations
 {
@@ -13,6 +11,11 @@ namespace UnrealAutomationCommon.Operations
         {
             Operation instance = (Operation)Activator.CreateInstance(operationType);
             return instance;
+        }
+
+        public static bool OperationTypeSupportsTarget(Type operationType, OperationTarget target)
+        {
+            return CreateOperation(operationType).SupportsTarget(target);
         }
 
         public string OperationName => GetOperationName();
@@ -65,6 +68,11 @@ namespace UnrealAutomationCommon.Operations
 
         public virtual bool RequirementsSatisfied(OperationParameters operationParameters)
         {
+            if (!SupportsTarget(operationParameters.Target))
+            {
+                return false;
+            }
+
             if (!SupportsConfiguration(operationParameters.Configuration))
             {
                 return false;
@@ -110,5 +118,7 @@ namespace UnrealAutomationCommon.Operations
         {
             return operationParameters.Target?.GetEngineInstall();
         }
+
+        public abstract bool SupportsTarget(OperationTarget Target);
     }
 }

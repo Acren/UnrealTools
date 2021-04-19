@@ -6,14 +6,9 @@ namespace UnrealAutomationCommon.Operations
 {
     public abstract class PluginOperation : Operation
     {
-        public override bool RequirementsSatisfied(OperationParameters operationParameters)
+        public override bool SupportsTarget(OperationTarget Target)
         {
-            if (!(operationParameters.Target is Plugin))
-            {
-                return false;
-            }
-
-            return base.RequirementsSatisfied(operationParameters);
+            return Target is Plugin;
         }
 
         public Plugin GetPlugin(OperationParameters operationParameters)

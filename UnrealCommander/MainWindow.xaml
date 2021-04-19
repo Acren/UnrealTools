@@ -59,9 +59,10 @@
             <WrapPanel Grid.Row="1">
                 <GroupBox Header="Operation" Grid.Row="1" Margin="0,5" Padding="10">
                     <StackPanel>
-                        <ListBox ItemsSource="{Binding Operations}" SelectedItem="{Binding Path=PersistentState.OperationType}" BorderBrush="Transparent" Background="Transparent">
+                        <ListBox ItemsSource="{Binding OperationTypes}" SelectedItem="{Binding Path=PersistentState.OperationType}" BorderBrush="Transparent" Background="Transparent">
                             <ListBox.Resources>
                                 <local:TypeToStringConverter x:Key="TypeToStringConverter"/>
+                                <local:OperationSupportedConverter x:Key="OperationSupportedConverter"/>
                             </ListBox.Resources>
                             <ListBox.ItemContainerStyle>
                                 <!-- Style to get rid of the selection visual -->
@@ -77,13 +78,34 @@
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="{x:Type operations:Operation}">
-                                    <RadioButton Content="{Binding Converter={StaticResource TypeToStringConverter}}" GroupName="Operations">
+                                    <RadioButton Content="{Binding Converter={StaticResource TypeToStringConverter}}" GroupName="OperationTypes">
                                         <!-- Binding IsChecked to IsSelected requires no support code -->
                                         <RadioButton.IsChecked>
                                             <Binding Path="IsSelected"
                                                      RelativeSource="{RelativeSource AncestorType=ListBoxItem}"
                                                      Mode="TwoWay" />
                                         </RadioButton.IsChecked>
+                                        <RadioButton.IsEnabled>
+                                            <MultiBinding Converter="{StaticResource OperationSupportedConverter}">
+                                                <Binding />
+                                                <Binding Path="PersistentState.OperationParameters.Target"
+                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
+                                            </MultiBinding>
+                                        </RadioButton.IsEnabled>
+                                        <RadioButton.Focusable>
+                                            <MultiBinding Converter="{StaticResource OperationSupportedConverter}">
+                                                <Binding />
+                                                <Binding Path="PersistentState.OperationParameters.Target"
+                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
+                                            </MultiBinding>
+                                        </RadioButton.Focusable>
+                                        <RadioButton.IsHitTestVisible>
+                                            <MultiBinding Converter="{StaticResource OperationSupportedConverter}">
+                                                <Binding />
+                                                <Binding Path="PersistentState.OperationParameters.Target"
+                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
+                                            </MultiBinding>
+                                        </RadioButton.IsHitTestVisible>
                                     </RadioButton>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

@@ -1,5 +1,6 @@
-﻿using System;
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
@@ -9,8 +10,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
-using System.Collections.Generic;
-using UnrealAutomationCommon.Operations.OperationTypes;
 
 namespace UnrealCommander
 {
@@ -83,6 +82,20 @@ namespace UnrealCommander
                     OnPropertyChanged(nameof(SelectedPlugin));
                     OnPropertyChanged(nameof(SelectedProject));
 
+                    if (!Operation.OperationTypeSupportsTarget(PersistentState.OperationType,
+                        PersistentState.OperationParameters.Target))
+                    {
+                        foreach (Type operationType in OperationTypes)
+                        {
+                            if (Operation.OperationTypeSupportsTarget(operationType,
+                                PersistentState.OperationParameters.Target))
+                            {
+                                PersistentState.OperationType = operationType;
+                                break;
+                            }
+                        }
+                    }
+
                     if (typeof(Operation) != PersistentState.OperationType)
                     {
                         Operation = Operation.CreateOperation(PersistentState.OperationType);
@@ -118,7 +131,7 @@ namespace UnrealCommander
             }
         }
 
-        public List<Type> Operations => OperationList.GetOrderedOperationTypes();
+        public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
 
         public List<BuildConfiguration> BuildConfigurations => Enum.GetValues(typeof(BuildConfiguration)).Cast<BuildConfiguration>().ToList();
 
