@@ -212,7 +212,7 @@
                 </ScrollViewer>
             </GroupBox>
             <GroupBox Header="Command" Grid.Row="3" Margin="0,5" Padding="10" >
-                <TextBox IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
+                <TextBox Name="CommandTextBox" IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
             </GroupBox>
             <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
                 <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">

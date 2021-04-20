@@ -314,7 +314,9 @@ namespace UnrealCommander
 
         private void CopyCommand(object sender, RoutedEventArgs e)
         {
-            Clipboard.SetText(Operation.GetCommand(PersistentState.OperationParameters).ToString());
+            Clipboard.SetDataObject(Operation.GetCommand(PersistentState.OperationParameters).ToString());
+            CommandTextBox.Focus();
+            CommandTextBox.SelectAll();
         }
 
         private void ProjectOpenDirectory(object Sender, RoutedEventArgs E)
