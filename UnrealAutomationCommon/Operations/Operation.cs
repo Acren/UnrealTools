@@ -111,7 +111,7 @@ namespace UnrealAutomationCommon.Operations
         protected virtual string GetOperationName()
         {
             string name = GetType().Name;
-            return string.Concat(name.Select(x => Char.IsUpper(x) ? " " + x : x.ToString())).TrimStart(' ');
+            return name.SplitWordsByUppercase();
         }
 
         public EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)

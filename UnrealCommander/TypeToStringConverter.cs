@@ -1,7 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Windows.Data;
+using UnrealAutomationCommon;
 
 namespace UnrealCommander
 {
@@ -16,7 +15,7 @@ namespace UnrealCommander
                 return string.Empty;
             }
 
-            return type.Name;
+            return type.Name.SplitWordsByUppercase();
         }
 
         // No need to implement converting back on a one-way binding 
