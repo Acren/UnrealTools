@@ -17,6 +17,8 @@ namespace UnrealAutomationCommon.Operations
         private bool _stompMalloc = false;
         private bool _waitForAttach = false;
 
+        private bool _runTests = false;
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         public OperationParameters()
@@ -114,6 +116,16 @@ namespace UnrealAutomationCommon.Operations
             set
             {
                 _waitForAttach = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool RunTests
+        {
+            get => _runTests;
+            set
+            {
+                _runTests = value;
                 OnPropertyChanged();
             }
         }

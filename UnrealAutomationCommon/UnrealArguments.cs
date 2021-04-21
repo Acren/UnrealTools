@@ -47,6 +47,12 @@ namespace UnrealAutomationCommon
                 Arguments.AddFlag("waitforattach");
             }
 
+            if (operationParameters.RunTests && operationParameters.Target is Project Project)
+            {
+                string execCmds = "Automation RunTests " + Project?.TestName;
+                Arguments.AddKeyValue("ExecCmds", execCmds, true);
+            }
+
             return Arguments;
         }
 

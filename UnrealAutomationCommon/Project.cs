@@ -9,6 +9,7 @@ namespace UnrealAutomationCommon
     public class Project : OperationTarget
     {
         private string _uProjectPath;
+        private string _testName;
 
         public Project()
         {
@@ -31,6 +32,16 @@ namespace UnrealAutomationCommon
                 _uProjectPath = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(Name));
+            }
+        }
+
+        public string TestName
+        {
+            get => _testName;
+            set
+            {
+                _testName = value;
+                OnPropertyChanged();
             }
         }
 

@@ -21,8 +21,12 @@ namespace UnrealAutomationCommon
         }
 
         // args -{key}={value}
-        public void AddKeyValue(string key, string value)
+        public void AddKeyValue(string key, string value, bool wrapQuotes = false)
         {
+            if (wrapQuotes)
+            {
+                value = "\"" + value + "\"";
+            }
             CommandUtils.AddValue(ref _argString, key, value);
         }
 
@@ -35,7 +39,7 @@ namespace UnrealAutomationCommon
         // args -{key}="{path}"
         public void AddKeyPath(string key, string path)
         {
-            AddKeyValue(key, "\"" + path + "\"");
+            AddKeyValue(key, path, true);
         }
 
         public override string ToString()
