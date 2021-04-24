@@ -4,7 +4,7 @@
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            Arguments args = UnrealArguments.MakeArguments(operationParameters, true);
+            Arguments args = UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true);
             args.AddFlag("game");
             args.AddFlag("windowed");
             args.AddKeyValue("resx", "1920");

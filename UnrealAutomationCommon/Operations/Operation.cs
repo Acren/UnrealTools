@@ -22,6 +22,11 @@ namespace UnrealAutomationCommon.Operations
 
         public Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, DataReceivedEventHandler errorHandler, EventHandler exitHandler )
         {
+            if (!RequirementsSatisfied(operationParameters))
+            {
+                throw new Exception("Requirements not satisfied");
+            }
+
             Command command = BuildCommand(operationParameters);
 
             if (command == null)
@@ -91,7 +96,7 @@ namespace UnrealAutomationCommon.Operations
             return operationParameters.Target.GetName();
         }
 
-        protected string GetOutputPath(OperationParameters operationParameters)
+        public string GetOutputPath(OperationParameters operationParameters)
         {
             string path = operationParameters.OutputPathRoot;
             if (operationParameters.UseOutputPathProjectSubfolder)

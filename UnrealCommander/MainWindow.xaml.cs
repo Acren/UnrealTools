@@ -268,39 +268,34 @@ namespace UnrealCommander
             {
                 ProcessLineCount = 0;
                 AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
-                Process process = null;
-                process = Operation.Execute(PersistentState.OperationParameters, (handlerSender, e) =>
+                OperationRunner runner = OperationRunner.Run(Operation, PersistentState.OperationParameters);
+                runner.Output += (S, isError) =>
                 {
                     // Output handler
                     Dispatcher.Invoke(() =>
                     {
                         // Prepend line numbers to each line of the output.
-                        if (!String.IsNullOrEmpty(e.Data))
+                        if (!String.IsNullOrEmpty(S))
                         {
                             ProcessLineCount++;
-                            AddOutputLine("[" + ProcessLineCount + "]: " + e.Data);
+                            AddOutputLine("[" + ProcessLineCount + "]: " + S);
                         }
                     });
-
-                }, (handlerSender, e) =>
-                {
-                    // Error handler
-                    Dispatcher.Invoke(() =>
-                    {
-                        // Prepend line numbers to each line of the output.
-                        if (!String.IsNullOrEmpty(e.Data))
-                        {
-                            ProcessLineCount++;
-                            AddOutputLine("[" + ProcessLineCount + "]: " + e.Data);
-                        }
-                    });
-                }, (o, args) =>
+                };
+                runner.Ended += Result =>
                 {
                     Dispatcher.Invoke(() =>
                     {
-                        AddOutputLine("Process exited with code " + process.ExitCode);
+                        AddOutputLine("Process exited with code " + Result.ExitCode);
+                        if (Result.TestReport != null)
+                        {
+                            foreach (Test test in Result.TestReport.Tests)
+                            {
+                                AddOutputLine(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) +  " - " + test.FullTestPath);
+                            }
+                        }
                     });
-                });
+                };
             }
         }
 

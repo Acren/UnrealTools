@@ -1,11 +1,12 @@
 ﻿using System.Collections.Generic;
+using System.IO;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon
 {
     public class UnrealArguments
     {
-        public static Arguments MakeArguments(OperationParameters operationParameters, bool uProjectPath = false)
+        public static Arguments MakeArguments(OperationParameters operationParameters, string outputhPath, bool uProjectPath = false)
         {
             Arguments Arguments = new Arguments();
 
@@ -51,6 +52,8 @@ namespace UnrealAutomationCommon
             {
                 string execCmds = "Automation RunTests " + Project?.TestName;
                 Arguments.AddKeyValue("ExecCmds", execCmds, true);
+                Arguments.AddKeyPath("ReportOutputPath", OutputPaths.GetTestReportPath(outputhPath));
+                Arguments.AddKeyValue("testexit", "Automation Test Queue Empty", true);
             }
 
             return Arguments;

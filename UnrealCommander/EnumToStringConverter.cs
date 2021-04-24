@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Windows.Data;
+using UnrealAutomationCommon;
 
 namespace UnrealCommander
 {
@@ -19,8 +20,7 @@ namespace UnrealCommander
 
             try
             {
-                string EnumString = Enum.GetName(value.GetType(), value);
-                return EnumString;
+                return EnumUtils.GetName(value);
             }
             catch
             {
