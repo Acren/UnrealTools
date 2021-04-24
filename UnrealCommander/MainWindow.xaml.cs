@@ -271,6 +271,7 @@ namespace UnrealCommander
                 Process process = null;
                 process = Operation.Execute(PersistentState.OperationParameters, (handlerSender, e) =>
                 {
+                    // Output handler
                     Dispatcher.Invoke(() =>
                     {
                         // Prepend line numbers to each line of the output.
@@ -281,6 +282,18 @@ namespace UnrealCommander
                         }
                     });
 
+                }, (handlerSender, e) =>
+                {
+                    // Error handler
+                    Dispatcher.Invoke(() =>
+                    {
+                        // Prepend line numbers to each line of the output.
+                        if (!String.IsNullOrEmpty(e.Data))
+                        {
+                            ProcessLineCount++;
+                            AddOutputLine("[" + ProcessLineCount + "]: " + e.Data);
+                        }
+                    });
                 }, (o, args) =>
                 {
                     Dispatcher.Invoke(() =>

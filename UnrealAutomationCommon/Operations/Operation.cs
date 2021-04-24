@@ -20,7 +20,7 @@ namespace UnrealAutomationCommon.Operations
 
         public string OperationName => GetOperationName();
 
-        public Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, EventHandler exitHandler )
+        public Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, DataReceivedEventHandler errorHandler, EventHandler exitHandler )
         {
             Command command = BuildCommand(operationParameters);
 
@@ -42,7 +42,7 @@ namespace UnrealAutomationCommon.Operations
             Process process = new Process { StartInfo = startInfo };
             process.EnableRaisingEvents = true;
             process.OutputDataReceived += outputHandler;
-            process.ErrorDataReceived += outputHandler;
+            process.ErrorDataReceived += errorHandler;
             process.Exited += exitHandler;
             process.Start();
             process.BeginOutputReadLine();
