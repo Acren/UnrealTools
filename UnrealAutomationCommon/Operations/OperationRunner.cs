@@ -43,7 +43,14 @@ namespace UnrealAutomationCommon.Operations
                 {
                     string reportFilePath = OutputPaths.GetTestReportFilePath(_operation.GetOutputPath(_operationParameters));
                     TestReport report = TestReport.Load(reportFilePath);
-                    result.TestReport = report;
+                    if (report != null)
+                    {
+                        result.TestReport = report;
+                    }
+                    else
+                    {
+                        Output?.Invoke("Expected test report at " + reportFilePath + " but didn't find one", true);
+                    }
                 }
 
                 Ended?.Invoke(result);
