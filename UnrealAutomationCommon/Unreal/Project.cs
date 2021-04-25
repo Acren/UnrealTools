@@ -55,11 +55,6 @@ namespace UnrealAutomationCommon
             ProjectDescriptor = ProjectDescriptor.Load(UProjectPath);
         }
 
-        public string GetProjectName()
-        {
-            return Path.GetFileNameWithoutExtension(_uProjectPath);
-        }
-
         public string GetProjectPath()
         {
             return Path.GetDirectoryName(_uProjectPath);
@@ -77,7 +72,12 @@ namespace UnrealAutomationCommon
 
         public string GetStagedPackageExecutablePath()
         {
-            return Path.Combine(GetStagedBuildWindowsPath(), GetProjectName() + ".exe");
+            return Path.Combine(GetStagedBuildWindowsPath(), Name + ".exe");
+        }
+
+        public string GetLogsPath()
+        {
+            return Path.Combine(GetProjectPath(), "Saved", "Logs");
         }
 
         public override string GetName()

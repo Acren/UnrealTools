@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {
-    public delegate void OperationOutput(string output, bool isError);
-    public delegate void OperationEnded(OperationResult result);
+    public delegate void OperationOutputEventHandler(string output, bool isError);
+    public delegate void OperationEndedEventHandler(OperationResult result);
 
     public class OperationRunner
     {
@@ -12,8 +14,8 @@ namespace UnrealAutomationCommon.Operations
         private OperationParameters _operationParameters;
         private Process _process;
 
-        public event OperationOutput Output;
-        public event OperationEnded Ended;
+        public event OperationOutputEventHandler Output;
+        public event OperationEndedEventHandler Ended;
 
         public static OperationRunner Run(Operation operation, OperationParameters operationParameters)
         {
@@ -28,6 +30,18 @@ namespace UnrealAutomationCommon.Operations
 
         void Run()
         {
+            bool readLogFile = _operation.ShouldReadOutputFromLogFile() && _operationParameters.Target is Project;
+
+            if(readLogFile)
+            {
+                Project project = _operationParameters.Target as Project;
+                LogWatcher logWatcher = new LogWatcher(project);
+                logWatcher.LineLogged += S =>
+                {
+                    Output?.Invoke(S, false);
+                };
+            }
+
             _process = _operation.Execute(_operationParameters, (o, args) =>
             {
                 Output?.Invoke(args.Data, false);

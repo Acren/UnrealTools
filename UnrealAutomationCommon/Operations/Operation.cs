@@ -7,6 +7,9 @@ namespace UnrealAutomationCommon.Operations
 {
     public abstract class Operation
     {
+        public string OperationName => GetOperationName();
+
+
         public static Operation CreateOperation(Type operationType)
         {
             Operation instance = (Operation)Activator.CreateInstance(operationType);
@@ -18,7 +21,6 @@ namespace UnrealAutomationCommon.Operations
             return CreateOperation(operationType).SupportsTarget(target);
         }
 
-        public string OperationName => GetOperationName();
 
         public Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, DataReceivedEventHandler errorHandler, EventHandler exitHandler )
         {
@@ -66,6 +68,27 @@ namespace UnrealAutomationCommon.Operations
             return BuildCommand(operationParameters);
         }
 
+        public string GetOutputPath(OperationParameters operationParameters)
+        {
+            string path = operationParameters.OutputPathRoot;
+            if (operationParameters.UseOutputPathProjectSubfolder)
+            {
+                string subfolderName = GetTargetName(operationParameters);
+                path = Path.Combine(path, subfolderName.Replace(" ", ""));
+            }
+            if (operationParameters.UseOutputPathOperationSubfolder)
+            {
+                path = Path.Combine(path, OperationName.Replace(" ", ""));
+            }
+            return path;
+        }
+
+        public EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
+        {
+            return operationParameters.Target?.GetEngineInstall();
+        }
+
+
         public virtual bool SupportsConfiguration(BuildConfiguration configuration)
         {
             return true;
@@ -91,27 +114,19 @@ namespace UnrealAutomationCommon.Operations
             return true;
         }
 
+        public virtual bool ShouldReadOutputFromLogFile()
+        {
+            return false;
+        }
+
+        public abstract bool SupportsTarget(OperationTarget Target);
+
+        protected abstract Command BuildCommand(OperationParameters operationParameters);
+
         protected string GetTargetName(OperationParameters operationParameters)
         {
             return operationParameters.Target.GetName();
         }
-
-        public string GetOutputPath(OperationParameters operationParameters)
-        {
-            string path = operationParameters.OutputPathRoot;
-            if (operationParameters.UseOutputPathProjectSubfolder)
-            {
-                string subfolderName = GetTargetName(operationParameters);
-                path = Path.Combine(path, subfolderName.Replace(" ", ""));
-            }
-            if (operationParameters.UseOutputPathOperationSubfolder)
-            {
-                path = Path.Combine(path, OperationName.Replace(" ",""));
-            }
-            return path;
-        }
-
-        protected abstract Command BuildCommand(OperationParameters operationParameters );
 
         protected virtual string GetOperationName()
         {
@@ -119,11 +134,6 @@ namespace UnrealAutomationCommon.Operations
             return name.SplitWordsByUppercase();
         }
 
-        public EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
-        {
-            return operationParameters.Target?.GetEngineInstall();
-        }
 
-        public abstract bool SupportsTarget(OperationTarget Target);
     }
 }
