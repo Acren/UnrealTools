@@ -19,7 +19,7 @@ namespace UnrealAutomationCommon.Operations
 
         private bool _runTests = false;
 
-        private string _customArguments;
+        private string _additionalArguments;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -132,12 +132,12 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
-        public string CustomArguments
+        public string AdditionalArguments
         {
-            get => _customArguments;
+            get => _additionalArguments;
             set
             {
-                _customArguments = value;
+                _additionalArguments = value;
                 OnPropertyChanged();
             }
         }

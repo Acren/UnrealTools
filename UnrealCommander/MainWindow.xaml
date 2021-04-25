@@ -52,6 +52,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
+                <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="*"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
@@ -210,11 +211,11 @@
                         </CheckBox>
                     </StackPanel>
                 </GroupBox>
-                <GroupBox Header="Arguments" Margin="0,5" Padding="10">
-                    <TextBox Text="{Binding PersistentState.OperationParameters.CustomArguments}"></TextBox>
-                </GroupBox>
             </WrapPanel>
-            <GroupBox Header="Output" Grid.Row="2" Margin="0,5" Padding="10" >
+            <GroupBox Header="Additional Arguments" Grid.Row="2" Margin="0,5" Padding="10">
+                <TextBox Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}"></TextBox>
+            </GroupBox>
+            <GroupBox Header="Output" Grid.Row="3" Margin="0,5" Padding="10" >
                 <ScrollViewer Name="OutputScrollViewer">
                     <TextBox Name="OutputTextBox" IsReadOnly="True" Text="{Binding Output, Mode=OneWay}"  TextWrapping="Wrap" Background="#202020" Foreground="#EEEEEE" FontFamily="Consolas">
                         <TextBox.ContextMenu>
@@ -225,10 +226,10 @@
                     </TextBox>
                 </ScrollViewer>
             </GroupBox>
-            <GroupBox Header="Command" Grid.Row="3" Margin="0,5" Padding="10" >
+            <GroupBox Header="Command" Grid.Row="4" Margin="0,5" Padding="10" >
                 <TextBox Name="CommandTextBox" IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
             </GroupBox>
-            <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
+            <WrapPanel Grid.Row="5" HorizontalAlignment="Right">
                 <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                     <TextBlock Text="Copy"></TextBlock>
                 </Button>

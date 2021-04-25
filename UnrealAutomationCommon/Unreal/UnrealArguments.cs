@@ -59,6 +59,11 @@ namespace UnrealAutomationCommon
                 arguments.SetKeyValue("resy", "360");
             }
 
+            if (!string.IsNullOrWhiteSpace(operationParameters.AdditionalArguments))
+            {
+                arguments.AddRawArgsString(operationParameters.AdditionalArguments);
+            }
+
             return arguments;
         }
 

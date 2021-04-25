@@ -39,6 +39,7 @@ namespace UnrealAutomationCommon
     public class Arguments
     {
         private readonly List<Argument> _arguments = new List<Argument>();
+        private string _rawArgs = "";
 
         private void UpdateArgument(Argument argument, bool updateExisting)
         {
@@ -114,6 +115,11 @@ namespace UnrealAutomationCommon
             }, updateExisting);
         }
 
+        public void AddRawArgsString(string args)
+        {
+            CommandUtils.CombineArgs(ref _rawArgs, args);
+        }
+
         public override string ToString()
         {
             string builtCommandString = "";
@@ -121,6 +127,7 @@ namespace UnrealAutomationCommon
             {
                 CommandUtils.CombineArgs(ref builtCommandString, arg.ToString());
             }
+            CommandUtils.CombineArgs(ref builtCommandString, _rawArgs);
             return builtCommandString;
         }
     }
