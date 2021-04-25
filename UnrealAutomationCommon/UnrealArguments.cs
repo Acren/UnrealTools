@@ -52,7 +52,7 @@ namespace UnrealAutomationCommon
             {
                 string execCmds = "Automation RunTests " + Project?.TestName;
                 arguments.SetKeyValue("ExecCmds", execCmds);
-                arguments.SetKeyPath("ReportOutputPath", OutputPaths.GetTestReportPath(outputhPath));
+                arguments.SetKeyPath("ReportExportPath", OutputPaths.GetTestReportPath(outputhPath));
                 arguments.SetKeyValue("testexit", "Automation Test Queue Empty");
                 arguments.SetFlag("windowed");
                 arguments.SetKeyValue("resx", "640");
