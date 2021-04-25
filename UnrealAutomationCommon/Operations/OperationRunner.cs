@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
@@ -50,24 +51,29 @@ namespace UnrealAutomationCommon.Operations
                 Output?.Invoke(args.Data, true);
             }, (o, args) =>
             {
-                OperationResult result = new OperationResult();
-                result.ExitCode = _process.ExitCode;
-
-                if (_operationParameters.RunTests)
+                // Wait a little for logs to finish reading
+                Task.Delay(100).ContinueWith(t =>
                 {
-                    string reportFilePath = OutputPaths.GetTestReportFilePath(_operation.GetOutputPath(_operationParameters));
-                    TestReport report = TestReport.Load(reportFilePath);
-                    if (report != null)
-                    {
-                        result.TestReport = report;
-                    }
-                    else
-                    {
-                        Output?.Invoke("Expected test report at " + reportFilePath + " but didn't find one", true);
-                    }
-                }
+                    OperationResult result = new OperationResult();
+                    result.ExitCode = _process.ExitCode;
 
-                Ended?.Invoke(result);
+                    if (_operationParameters.RunTests)
+                    {
+                        string reportFilePath = OutputPaths.GetTestReportFilePath(_operation.GetOutputPath(_operationParameters));
+                        TestReport report = TestReport.Load(reportFilePath);
+                        if (report != null)
+                        {
+                            result.TestReport = report;
+                        }
+                        else
+                        {
+                            Output?.Invoke("Expected test report at " + reportFilePath + " but didn't find one", true);
+                        }
+                    }
+
+                    Ended?.Invoke(result);
+                });
+
             });
         }
     }
