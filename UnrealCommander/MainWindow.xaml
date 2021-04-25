@@ -8,7 +8,8 @@
         xmlns:operations="clr-namespace:UnrealAutomationCommon.Operations;assembly=UnrealAutomationCommon"
         xmlns:operationTypes="clr-namespace:UnrealAutomationCommon.Operations.OperationTypes;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
-        Title="Unreal Commander" Height="800" Width="1200">
+        Title="Unreal Commander" Height="800" Width="1200"
+        DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <DockPanel LastChildFill="True">
         <DataGrid Name="ProjectGrid" ItemsSource="{ Binding PersistentState.Projects}" SelectedItem="{Binding Path=SelectedProject, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" Margin="0,0,0,0" HorizontalScrollBarVisibility="Hidden" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
@@ -208,6 +209,9 @@
                             </StackPanel>
                         </CheckBox>
                     </StackPanel>
+                </GroupBox>
+                <GroupBox Header="Arguments" Margin="0,5" Padding="10">
+                    <TextBox Text="{Binding PersistentState.OperationParameters.CustomArguments}"></TextBox>
                 </GroupBox>
             </WrapPanel>
             <GroupBox Header="Output" Grid.Row="2" Margin="0,5" Padding="10" >

@@ -19,6 +19,8 @@ namespace UnrealAutomationCommon.Operations
 
         private bool _runTests = false;
 
+        private string _customArguments;
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         public OperationParameters()
@@ -126,6 +128,16 @@ namespace UnrealAutomationCommon.Operations
             set
             {
                 _runTests = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public string CustomArguments
+        {
+            get => _customArguments;
+            set
+            {
+                _customArguments = value;
                 OnPropertyChanged();
             }
         }
