@@ -78,7 +78,7 @@ namespace UnrealAutomationCommon
         }
 
         // args -{key}={value}
-        public void SetKeyValue(string key, string value, bool wrapQuotes = false)
+        public void SetKeyValue(string key, string value)
         {
             UpdateArgument(new Argument()
             {

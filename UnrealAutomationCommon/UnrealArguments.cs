@@ -51,9 +51,9 @@ namespace UnrealAutomationCommon
             if (operationParameters.RunTests && operationParameters.Target is Project Project)
             {
                 string execCmds = "Automation RunTests " + Project?.TestName;
-                arguments.SetKeyValue("ExecCmds", execCmds, true);
+                arguments.SetKeyValue("ExecCmds", execCmds);
                 arguments.SetKeyPath("ReportOutputPath", OutputPaths.GetTestReportPath(outputhPath));
-                arguments.SetKeyValue("testexit", "Automation Test Queue Empty", true);
+                arguments.SetKeyValue("testexit", "Automation Test Queue Empty");
                 arguments.SetFlag("windowed");
                 arguments.SetKeyValue("resx", "640");
                 arguments.SetKeyValue("resy", "360");
