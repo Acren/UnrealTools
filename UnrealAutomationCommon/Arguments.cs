@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace UnrealAutomationCommon
@@ -39,19 +40,37 @@ namespace UnrealAutomationCommon
     {
         private readonly List<Argument> _arguments = new List<Argument>();
 
-        // args {argument}
-        public void AddArgument(string argument)
+        private void UpdateArgument(Argument argument)
         {
-            _arguments.Add(new Argument()
+            Argument existingArgument = _arguments.SingleOrDefault(a => a.Key.Equals(argument.Key, StringComparison.InvariantCulture));
+
+            if (existingArgument != null)
+            {
+                // Replace existing argument at the same index
+                int index = _arguments.IndexOf(existingArgument);
+                _arguments.RemoveAt(index);
+                _arguments.Insert(index, argument);
+            }
+            else
+            {
+                _arguments.Add(argument);
+            }
+
+        }
+
+        // args {argument}
+        public void SetArgument(string argument)
+        {
+            UpdateArgument(new Argument()
             {
                 Key = argument
             });
         }
 
         // args -{flag}
-        public void AddFlag(string flag)
+        public void SetFlag(string flag)
         {
-            _arguments.Add(new Argument()
+            UpdateArgument(new Argument()
             {
                 Key = flag,
                 DashPrefix = true
@@ -59,9 +78,9 @@ namespace UnrealAutomationCommon
         }
 
         // args -{key}={value}
-        public void AddKeyValue(string key, string value, bool wrapQuotes = false)
+        public void SetKeyValue(string key, string value, bool wrapQuotes = false)
         {
-            _arguments.Add(new Argument()
+            UpdateArgument(new Argument()
             {
                 Key = key,
                 Value = value,
@@ -70,18 +89,18 @@ namespace UnrealAutomationCommon
         }
 
         // args "{path}"
-        public void AddPath(string path)
+        public void SetPath(string path)
         {
-            _arguments.Add(new Argument()
+            UpdateArgument(new Argument()
             {
                 Key = path
             });
         }
 
         // args -{key}="{path}"
-        public void AddKeyPath(string key, string path)
+        public void SetKeyPath(string key, string path)
         {
-            _arguments.Add(new Argument()
+            UpdateArgument(new Argument()
             {
                 Key = key,
                 Value = path,

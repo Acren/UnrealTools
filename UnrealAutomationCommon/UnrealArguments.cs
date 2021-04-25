@@ -8,11 +8,11 @@ namespace UnrealAutomationCommon
     {
         public static Arguments MakeArguments(OperationParameters operationParameters, string outputhPath, bool uProjectPath = false)
         {
-            Arguments Arguments = new Arguments();
+            Arguments arguments = new Arguments();
 
             if (uProjectPath && operationParameters.Target is Project project)
             {
-                Arguments.AddPath(project.UProjectPath);
+                arguments.SetPath(project.UProjectPath);
             }
 
             bool UseInsights = operationParameters.TraceCpu
@@ -28,35 +28,38 @@ namespace UnrealAutomationCommon
                 if (operationParameters.TraceBookmark) TraceChannels.Add("bookmark");
                 if (operationParameters.TraceLoadTime) TraceChannels.Add("loadtime");
 
-                Arguments.AddKeyValue("trace", string.Join(",",TraceChannels));
+                arguments.SetKeyValue("trace", string.Join(",",TraceChannels));
 
                 if (operationParameters.TraceCpu)
                 {
-                    Arguments.AddFlag("statnamedevents");
+                    arguments.SetFlag("statnamedevents");
                 }
 
-                Arguments.AddKeyValue("tracehost", "127.0.0.1");
+                arguments.SetKeyValue("tracehost", "127.0.0.1");
             }
 
             if (operationParameters.StompMalloc)
             {
-                Arguments.AddFlag("stompmalloc");
+                arguments.SetFlag("stompmalloc");
             }
 
             if (operationParameters.WaitForAttach)
             {
-                Arguments.AddFlag("waitforattach");
+                arguments.SetFlag("waitforattach");
             }
 
             if (operationParameters.RunTests && operationParameters.Target is Project Project)
             {
                 string execCmds = "Automation RunTests " + Project?.TestName;
-                Arguments.AddKeyValue("ExecCmds", execCmds, true);
-                Arguments.AddKeyPath("ReportOutputPath", OutputPaths.GetTestReportPath(outputhPath));
-                Arguments.AddKeyValue("testexit", "Automation Test Queue Empty", true);
+                arguments.SetKeyValue("ExecCmds", execCmds, true);
+                arguments.SetKeyPath("ReportOutputPath", OutputPaths.GetTestReportPath(outputhPath));
+                arguments.SetKeyValue("testexit", "Automation Test Queue Empty", true);
+                arguments.SetFlag("windowed");
+                arguments.SetKeyValue("resx", "640");
+                arguments.SetKeyValue("resy", "360");
             }
 
-            return Arguments;
+            return arguments;
         }
 
     }
