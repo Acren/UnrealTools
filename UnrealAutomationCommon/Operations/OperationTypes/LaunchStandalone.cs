@@ -7,8 +7,8 @@
             Arguments args = UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true);
             args.SetFlag("game");
             args.SetFlag("windowed");
-            args.SetKeyValue("resx", "1920");
-            args.SetKeyValue("resy", "1080");
+            args.SetKeyValue("resx", "1920", false);
+            args.SetKeyValue("resy", "1080", false);
             return new Command(EnginePaths.GetEditorExe(GetProject(operationParameters).ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), args);
         }
     }

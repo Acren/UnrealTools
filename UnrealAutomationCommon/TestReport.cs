@@ -23,6 +23,10 @@ namespace UnrealAutomationCommon
 
         public static TestReport Load(string filePath)
         {
+            if (!File.Exists(filePath))
+            {
+                return null;
+            }
             return JsonConvert.DeserializeObject<TestReport>(File.ReadAllText(filePath));
         }
     }

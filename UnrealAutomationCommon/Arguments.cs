@@ -40,72 +40,78 @@ namespace UnrealAutomationCommon
     {
         private readonly List<Argument> _arguments = new List<Argument>();
 
-        private void UpdateArgument(Argument argument)
+        private void UpdateArgument(Argument argument, bool updateExisting)
         {
             Argument existingArgument = _arguments.SingleOrDefault(a => a.Key.Equals(argument.Key, StringComparison.InvariantCulture));
 
             if (existingArgument != null)
             {
-                // Replace existing argument at the same index
-                int index = _arguments.IndexOf(existingArgument);
-                _arguments.RemoveAt(index);
-                _arguments.Insert(index, argument);
+                if (updateExisting)
+                {
+                    // Replace existing argument at the same index
+                    int index = _arguments.IndexOf(existingArgument);
+                    _arguments.RemoveAt(index);
+                    _arguments.Insert(index, argument);
+                }
+                else
+                {
+                    // Do nothing
+                }
             }
             else
             {
                 _arguments.Add(argument);
             }
-
         }
 
         // args {argument}
-        public void SetArgument(string argument)
+        public void SetArgument(string argument, bool updateExisting = true)
         {
             UpdateArgument(new Argument()
             {
                 Key = argument
-            });
+            }, updateExisting);
         }
 
         // args -{flag}
-        public void SetFlag(string flag)
+        public void SetFlag(string flag, bool updateExisting = true)
         {
             UpdateArgument(new Argument()
             {
                 Key = flag,
                 DashPrefix = true
-            });
+            }, updateExisting);
         }
 
         // args -{key}={value}
-        public void SetKeyValue(string key, string value)
+        public void SetKeyValue(string key, string value, bool updateExisting = true)
         {
             UpdateArgument(new Argument()
             {
                 Key = key,
                 Value = value,
                 DashPrefix = true
-            });
+            }, updateExisting);
         }
 
         // args "{path}"
-        public void SetPath(string path)
+        public void SetPath(string path, bool updateExisting = true)
         {
             UpdateArgument(new Argument()
             {
                 Key = path
-            });
+            }, updateExisting);
         }
 
         // args -{key}="{path}"
-        public void SetKeyPath(string key, string path)
+        public void SetKeyPath(string key, string path, bool updateExisting = true)
         {
             UpdateArgument(new Argument()
             {
                 Key = key,
                 Value = path,
                 DashPrefix = true
-            });
+            }, updateExisting);
         }
 
         public override string ToString()
