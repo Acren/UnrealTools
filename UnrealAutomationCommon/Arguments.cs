@@ -4,47 +4,99 @@ using System.Text;
 
 namespace UnrealAutomationCommon
 {
+    public class Argument
+    {
+        public string Key { get; set; }
+        public string Value { get; set; }
+        public bool DashPrefix { get; set; }
+
+        public override string ToString()
+        {
+            if (string.IsNullOrEmpty(Key))
+            {
+                throw new Exception("Empty key");
+            }
+
+            string argString = "";
+            if (DashPrefix)
+            {
+                argString += "-";
+            }
+
+            argString += Key.AddQuotesIfContainsSpace();
+
+            if (!string.IsNullOrEmpty(Value))
+            {
+                argString += "=";
+                argString += Value.AddQuotesIfContainsSpace();
+            }
+
+            return argString;
+        }
+    }
+
     public class Arguments
     {
-        string _argString;
+        private readonly List<Argument> _arguments = new List<Argument>();
 
         // args {argument}
         public void AddArgument(string argument)
         {
-            CommandUtils.CombineArgs(ref _argString, argument);
+            _arguments.Add(new Argument()
+            {
+                Key = argument
+            });
         }
 
         // args -{flag}
         public void AddFlag(string flag)
         {
-            CommandUtils.AddFlag(ref _argString, flag);
+            _arguments.Add(new Argument()
+            {
+                Key = flag,
+                DashPrefix = true
+            });
         }
 
         // args -{key}={value}
         public void AddKeyValue(string key, string value, bool wrapQuotes = false)
         {
-            if (wrapQuotes)
+            _arguments.Add(new Argument()
             {
-                value = "\"" + value + "\"";
-            }
-            CommandUtils.AddValue(ref _argString, key, value);
+                Key = key,
+                Value = value,
+                DashPrefix = true
+            });
         }
 
         // args "{path}"
         public void AddPath(string path)
         {
-            AddArgument("\"" + path + "\"");
+            _arguments.Add(new Argument()
+            {
+                Key = path
+            });
         }
 
         // args -{key}="{path}"
         public void AddKeyPath(string key, string path)
         {
-            AddKeyValue(key, path, true);
+            _arguments.Add(new Argument()
+            {
+                Key = key,
+                Value = path,
+                DashPrefix = true
+            });
         }
 
         public override string ToString()
         {
-            return _argString;
+            string builtCommandString = "";
+            foreach (Argument arg in _arguments)
+            {
+                CommandUtils.CombineArgs(ref builtCommandString, arg.ToString());
+            }
+            return builtCommandString;
         }
     }
 }
