@@ -14,6 +14,7 @@ namespace UnrealAutomationCommon.Operations
         private Operation _operation;
         private OperationParameters _operationParameters;
         private Process _process;
+        private bool _isWaitingForLogs = false;
 
         public event OperationOutputEventHandler Output;
         public event OperationEndedEventHandler Ended;
@@ -33,7 +34,7 @@ namespace UnrealAutomationCommon.Operations
         {
             bool readLogFile = _operation.ShouldReadOutputFromLogFile() && _operationParameters.Target is Project;
 
-            if(readLogFile)
+            if (readLogFile)
             {
                 Project project = _operationParameters.Target as Project;
                 LogWatcher logWatcher = new LogWatcher(project);
@@ -51,30 +52,47 @@ namespace UnrealAutomationCommon.Operations
                 Output?.Invoke(args.Data, true);
             }, (o, args) =>
             {
-                // Wait a little for logs to finish reading
-                Task.Delay(100).ContinueWith(t =>
-                {
-                    OperationResult result = new OperationResult();
-                    result.ExitCode = _process.ExitCode;
-
-                    if (_operationParameters.RunTests)
-                    {
-                        string reportFilePath = OutputPaths.GetTestReportFilePath(_operation.GetOutputPath(_operationParameters));
-                        TestReport report = TestReport.Load(reportFilePath);
-                        if (report != null)
-                        {
-                            result.TestReport = report;
-                        }
-                        else
-                        {
-                            Output?.Invoke("Expected test report at " + reportFilePath + " but didn't find one", true);
-                        }
-                    }
-
-                    Ended?.Invoke(result);
-                });
-
+                OnProcessEnded();
             });
+        }
+
+        void OnProcessEnded()
+        {
+            if (_isWaitingForLogs)
+            {
+                return;
+            }
+
+            // Wait a little for logs to finish reading
+
+            _isWaitingForLogs = true;
+
+            Task.Delay(100).ContinueWith(t =>
+            {
+                HandleProcessEnded();
+            });
+        }
+
+        void HandleProcessEnded()
+        {
+            OperationResult result = new OperationResult();
+            result.ExitCode = _process.ExitCode;
+
+            if (_operationParameters.RunTests)
+            {
+                string reportFilePath = OutputPaths.GetTestReportFilePath(_operation.GetOutputPath(_operationParameters));
+                TestReport report = TestReport.Load(reportFilePath);
+                if (report != null)
+                {
+                    result.TestReport = report;
+                }
+                else
+                {
+                    Output?.Invoke("Expected test report at " + reportFilePath + " but didn't find one", true);
+                }
+            }
+
+            Ended?.Invoke(result);
         }
     }
 }
