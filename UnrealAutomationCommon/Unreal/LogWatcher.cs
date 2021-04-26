@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Linq;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -61,6 +62,10 @@ namespace UnrealAutomationCommon.Unreal
             while (!_reader.EndOfStream)
             {
                 string line = _reader.ReadLine();
+                if (UnrealLogUtils.IsTimestampedLog(line))
+                {
+                    line = UnrealLogUtils.RemoveTimestamp(line);
+                }
                 LineLogged?.Invoke(line);
             }
         }
