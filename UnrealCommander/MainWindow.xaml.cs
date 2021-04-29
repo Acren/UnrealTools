@@ -296,24 +296,24 @@ namespace UnrealCommander
             TextRange tr = new TextRange(OutputTextBox.Document.ContentEnd, OutputTextBox.Document.ContentEnd);
             tr.Text = finalLine;
 
-            SolidColorBrush color;
+            Color color;
 
             switch(verbosity)
             {
                 case UnrealLogVerbosity.Log:
-                    color = Brushes.White;
+                    color = Colors.White;
                     break;
                 case UnrealLogVerbosity.Warning:
-                    color = Brushes.Orange;
+                    color = Color.FromRgb(230, 230, 10);
                     break;
                 case UnrealLogVerbosity.Error:
-                    color = Brushes.Red;
+                    color = Color.FromRgb(255, 80, 80);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(verbosity), verbosity, null);
             }
 
-            tr.ApplyPropertyValue(TextElement.ForegroundProperty, color);
+            tr.ApplyPropertyValue(TextElement.ForegroundProperty, new SolidColorBrush(color));
 
             if (OutputScrollViewer.VerticalOffset == OutputScrollViewer.ScrollableHeight)
             {
