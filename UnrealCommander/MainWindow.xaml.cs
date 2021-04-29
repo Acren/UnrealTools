@@ -288,7 +288,7 @@ namespace UnrealCommander
             PersistentData.Get().RemovePlugin(GetSelectedPlugin());
         }
 
-        private void AddOutputLine(string line, UnrealLogVerbosity verbosity = UnrealLogVerbosity.Log)
+        private void AddOutputLine(string line, LogVerbosity verbosity = LogVerbosity.Log)
         {
             LineCount++;
             string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\n";
@@ -300,13 +300,13 @@ namespace UnrealCommander
 
             switch(verbosity)
             {
-                case UnrealLogVerbosity.Log:
+                case LogVerbosity.Log:
                     color = Colors.White;
                     break;
-                case UnrealLogVerbosity.Warning:
+                case LogVerbosity.Warning:
                     color = Color.FromRgb(230, 230, 10);
                     break;
-                case UnrealLogVerbosity.Error:
+                case LogVerbosity.Error:
                     color = Color.FromRgb(255, 80, 80);
                     break;
                 default:

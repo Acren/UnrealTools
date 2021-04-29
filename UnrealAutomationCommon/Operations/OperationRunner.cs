@@ -1,12 +1,13 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {
-    public delegate void OperationOutputEventHandler(string output, UnrealLogVerbosity verbosity);
+    public delegate void OperationOutputEventHandler(string output, LogVerbosity verbosity);
     public delegate void OperationEndedEventHandler(OperationResult result);
 
     public class OperationRunner
@@ -46,7 +47,7 @@ namespace UnrealAutomationCommon.Operations
                 HandleLogLine(args.Data);
             }, (o, args) =>
             {
-                Output?.Invoke(args.Data, UnrealLogVerbosity.Error);
+                Output?.Invoke(args.Data, LogVerbosity.Error);
             }, (o, args) =>
             {
                 OnProcessEnded();
@@ -78,16 +79,16 @@ namespace UnrealAutomationCommon.Operations
             }
 
             string[] split = line.Split(new []{": "}, StringSplitOptions.None);
-            UnrealLogVerbosity verbosity = UnrealLogVerbosity.Log;
+            LogVerbosity verbosity = LogVerbosity.Log;
             if (split.Length > 1)
             {
                 if (split[1] == "Error")
                 {
-                    verbosity = UnrealLogVerbosity.Error;
+                    verbosity = LogVerbosity.Error;
                 }
                 else if (split[1] == "Warning")
                 {
-                    verbosity = UnrealLogVerbosity.Warning;
+                    verbosity = LogVerbosity.Warning;
                 }
             }
             Output?.Invoke(line, verbosity);
@@ -98,7 +99,7 @@ namespace UnrealAutomationCommon.Operations
             OperationResult result = new OperationResult();
             result.ExitCode = _process.ExitCode;
 
-            Output?.Invoke("Process exited with code " + result.ExitCode, result.ExitCode == 0 ? UnrealLogVerbosity.Log : UnrealLogVerbosity.Error);
+            Output?.Invoke("Process exited with code " + result.ExitCode, result.ExitCode == 0 ? LogVerbosity.Log : LogVerbosity.Error);
 
             if (_operationParameters.RunTests)
             {
@@ -110,15 +111,18 @@ namespace UnrealAutomationCommon.Operations
                 }
                 else
                 {
-                    Output?.Invoke("Expected test report at " + reportFilePath + " but didn't find one", UnrealLogVerbosity.Error);
+                    Output?.Invoke("Expected test report at " + reportFilePath + " but didn't find one", LogVerbosity.Error);
                 }
 
                 if (result.TestReport != null)
                 {
                     foreach (Test test in result.TestReport.Tests)
                     {
-                        Output?.Invoke(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath, test.State == TestState.Success ? UnrealLogVerbosity.Log : UnrealLogVerbosity.Error);
+                        Output?.Invoke(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath, test.State == TestState.Success ? LogVerbosity.Log : LogVerbosity.Error);
                     }
+                    int testsPassed = result.TestReport.Tests.Count(t => t.State == TestState.Success);
+                    bool allPassed = testsPassed == result.TestReport.Tests.Count;
+                    Output?.Invoke(testsPassed + " of " + result.TestReport.Tests.Count + " tests passed", allPassed ? LogVerbosity.Log : LogVerbosity.Error);
                 }
             }
 
