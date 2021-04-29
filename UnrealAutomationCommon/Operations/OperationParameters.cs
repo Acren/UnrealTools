@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {

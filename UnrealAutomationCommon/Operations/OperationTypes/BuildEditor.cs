@@ -1,4 +1,6 @@
-﻿namespace UnrealAutomationCommon.Operations.OperationTypes
+﻿using UnrealAutomationCommon.Unreal;
+
+namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class BuildEditor : ProjectOperation
     {

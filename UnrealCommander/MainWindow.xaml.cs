@@ -6,9 +6,12 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Media;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealCommander
 {
@@ -20,7 +23,6 @@ namespace UnrealCommander
         private PersistentData _persistentState;
 
         private Operation _operation;
-        private string _output;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -174,16 +176,6 @@ namespace UnrealCommander
         private int LineCount { get; set; }
         private int ProcessLineCount { get; set; }
 
-        public string Output
-        {
-            get => _output;
-            set
-            {
-                _output = value;
-                OnPropertyChanged();
-            }
-        }
-
         private Project GetSelectedProject()
         {
             return PersistentState.OperationParameters.Target as Project;
@@ -266,7 +258,7 @@ namespace UnrealCommander
                 ProcessLineCount = 0;
                 AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
                 OperationRunner runner = OperationRunner.Run(Operation, PersistentState.OperationParameters);
-                runner.Output += (S, isError) =>
+                runner.Output += (S, verbosity) =>
                 {
                     // Output handler
                     Dispatcher.Invoke(() =>
@@ -275,23 +267,13 @@ namespace UnrealCommander
                         if (!String.IsNullOrEmpty(S))
                         {
                             ProcessLineCount++;
-                            AddOutputLine("[" + ProcessLineCount + "]: " + S);
+                            AddOutputLine("[" + ProcessLineCount + "]: " + S, verbosity);
                         }
                     });
                 };
                 runner.Ended += Result =>
                 {
-                    Dispatcher.Invoke(() =>
-                    {
-                        AddOutputLine("Process exited with code " + Result.ExitCode);
-                        if (Result.TestReport != null)
-                        {
-                            foreach (Test test in Result.TestReport.Tests)
-                            {
-                                AddOutputLine(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) +  " - " + test.FullTestPath);
-                            }
-                        }
-                    });
+
                 };
             }
         }
@@ -306,10 +288,33 @@ namespace UnrealCommander
             PersistentData.Get().RemovePlugin(GetSelectedPlugin());
         }
 
-        private void AddOutputLine(string line)
+        private void AddOutputLine(string line, UnrealLogVerbosity verbosity = UnrealLogVerbosity.Log)
         {
             LineCount++;
-            Output += "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\n";
+            string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\n";
+
+            TextRange tr = new TextRange(OutputTextBox.Document.ContentEnd, OutputTextBox.Document.ContentEnd);
+            tr.Text = finalLine;
+
+            SolidColorBrush color;
+
+            switch(verbosity)
+            {
+                case UnrealLogVerbosity.Log:
+                    color = Brushes.White;
+                    break;
+                case UnrealLogVerbosity.Warning:
+                    color = Brushes.Orange;
+                    break;
+                case UnrealLogVerbosity.Error:
+                    color = Brushes.Red;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(verbosity), verbosity, null);
+            }
+
+            tr.ApplyPropertyValue(TextElement.ForegroundProperty, color);
+
             if (OutputScrollViewer.VerticalOffset == OutputScrollViewer.ScrollableHeight)
             {
                 OutputScrollViewer.ScrollToEnd();
@@ -341,7 +346,7 @@ namespace UnrealCommander
 
         private void LogClear(object Sender, RoutedEventArgs E)
         {
-            Output = "";
+            OutputTextBox.Document.Blocks.Clear();
         }
     }
 }

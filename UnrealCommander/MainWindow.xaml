@@ -7,6 +7,7 @@
         xmlns:common="clr-namespace:UnrealAutomationCommon;assembly=UnrealAutomationCommon"
         xmlns:operations="clr-namespace:UnrealAutomationCommon.Operations;assembly=UnrealAutomationCommon"
         xmlns:operationTypes="clr-namespace:UnrealAutomationCommon.Operations.OperationTypes;assembly=UnrealAutomationCommon"
+        xmlns:unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
         Title="Unreal Commander" Height="800" Width="1200"
         DataContext="{Binding RelativeSource={RelativeSource Self}}">
@@ -134,7 +135,7 @@
                                 </Style>
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
-                                <DataTemplate DataType="{x:Type common:BuildConfiguration}">
+                                <DataTemplate DataType="{x:Type unreal:BuildConfiguration}">
                                     <RadioButton Content="{Binding Converter={StaticResource EnumToStringConverter}}" GroupName="Configurations">
                                         <!-- Binding IsChecked to IsSelected requires no support code -->
                                         <RadioButton.IsChecked>
@@ -217,13 +218,18 @@
             </GroupBox>
             <GroupBox Header="Output" Grid.Row="3" Margin="0,5" Padding="10" >
                 <ScrollViewer Name="OutputScrollViewer">
-                    <TextBox Name="OutputTextBox" IsReadOnly="True" Text="{Binding Output, Mode=OneWay}"  TextWrapping="Wrap" Background="#202020" Foreground="#EEEEEE" FontFamily="Consolas">
-                        <TextBox.ContextMenu>
+                    <RichTextBox Name="OutputTextBox" IsReadOnly="True" Background="#202020" Foreground="#EEEEEE" FontFamily="Consolas">
+                        <RichTextBox.Resources>
+                            <Style TargetType="{x:Type Paragraph}">
+                                <Setter Property="Margin" Value="0"/>
+                            </Style>
+                        </RichTextBox.Resources>
+                        <RichTextBox.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Clear" Click="LogClear" />
                             </ContextMenu>
-                        </TextBox.ContextMenu>
-                    </TextBox>
+                        </RichTextBox.ContextMenu>
+                    </RichTextBox>
                 </ScrollViewer>
             </GroupBox>
             <GroupBox Header="Command" Grid.Row="4" Margin="0,5" Padding="10" >
