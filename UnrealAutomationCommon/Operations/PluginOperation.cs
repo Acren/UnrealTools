@@ -1,4 +1,6 @@
-﻿namespace UnrealAutomationCommon.Operations
+﻿using UnrealAutomationCommon.Unreal;
+
+namespace UnrealAutomationCommon.Operations
 {
     public abstract class PluginOperation : Operation
     {

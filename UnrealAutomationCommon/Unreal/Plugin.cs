@@ -1,15 +1,14 @@
-﻿using System.ComponentModel;
-using System.IO;
-using System.Runtime.CompilerServices;
+﻿using System.IO;
 using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Unreal
 {
     public class Plugin : OperationTarget
     {
         private string _uPluginPath;
 
+        // Default constructor is needed to support adding rows from DataGrid
         public Plugin()
         {
         }

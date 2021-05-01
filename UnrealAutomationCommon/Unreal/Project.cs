@@ -12,6 +12,11 @@ namespace UnrealAutomationCommon.Unreal
 
         private FileSystemWatcher watcher;
 
+        // Default constructor is needed to support adding rows from DataGrid
+        public Project()
+        {
+        }
+
         public Project(string path)
         {
             UProjectPath = path;
