@@ -1,28 +1,20 @@
-﻿using System.ComponentModel;
-using System.IO;
-using System.Runtime.CompilerServices;
+﻿using System.IO;
 using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
-using UnrealAutomationCommon.Unreal;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Unreal
 {
     public class Project : OperationTarget
     {
         private string _uProjectPath;
         private string _testName;
+        private ProjectDescriptor _projectDescriptor;
 
-        public Project()
-        {
-        }
+        private FileSystemWatcher watcher;
 
-        public Project(string Path)
+        public Project(string path)
         {
-            UProjectPath = Path;
-            if (ProjectUtils.IsProjectFile(UProjectPath))
-            {
-                LoadDescriptor();
-            }
+            UProjectPath = path;
         }
 
         public string UProjectPath
@@ -30,9 +22,25 @@ namespace UnrealAutomationCommon
             get => _uProjectPath;
             set
             {
-                _uProjectPath = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(Name));
+                if (_uProjectPath != value)
+                {
+                    _uProjectPath = value;
+                    LoadDescriptor();
+
+                    // Reload descriptor if it changes
+                    watcher = new FileSystemWatcher(Path.GetDirectoryName( _uProjectPath));
+                    watcher.Changed += (Sender, Args) =>
+                    {
+                        if (Args.FullPath == UProjectPath)
+                        {
+                            LoadDescriptor();
+                        }
+                    };
+                    watcher.EnableRaisingEvents = true;
+
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(Name));
+                }
             }
         }
 
@@ -47,12 +55,21 @@ namespace UnrealAutomationCommon
         }
 
         [JsonIgnore]
-        public ProjectDescriptor ProjectDescriptor { get; private set; }
+        public ProjectDescriptor ProjectDescriptor
+        {
+            get => _projectDescriptor;
+            private set
+            {
+                _projectDescriptor = value;
+                OnPropertyChanged();
+            }
+        }
 
         public string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
 
         public override void LoadDescriptor()
         {
+            FileUtils.WaitForFileReadable(UProjectPath);
             ProjectDescriptor = ProjectDescriptor.Load(UProjectPath);
         }
 

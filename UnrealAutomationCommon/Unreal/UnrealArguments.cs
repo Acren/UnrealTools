@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon
 {

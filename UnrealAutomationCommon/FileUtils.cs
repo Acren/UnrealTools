@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.IO.Compression;
+using System.Threading;
 
 namespace UnrealAutomationCommon
 {
@@ -91,6 +92,32 @@ namespace UnrealAutomationCommon
         {
             ZipFile.CreateFromDirectory(SourceDirectory, DestinationArchiveFileName, CompressionLevel.Optimal,
                 IncludeBaseDirectory);
+        }
+
+        // Crude blocking way
+        public static void WaitForFileReadable(string filePath)
+        {
+            int secondsWaited = 0;
+            while (true)
+            {
+                try
+                {
+                    using (StreamReader stream = new StreamReader(filePath))
+                    {
+                        break;
+                    }
+                }
+                catch
+                {
+                    Thread.Sleep(1000);
+                    secondsWaited++;
+                }
+
+                if (secondsWaited >= 10)
+                {
+                    throw new Exception("Timed out");
+                }
+            }
         }
     }
 }

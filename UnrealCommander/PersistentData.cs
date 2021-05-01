@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationTypes;
+using UnrealAutomationCommon.Unreal;
 using UnrealCommander.Annotations;
 
 namespace UnrealCommander

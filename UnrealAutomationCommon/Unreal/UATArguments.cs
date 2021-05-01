@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon
 {
