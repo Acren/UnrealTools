@@ -121,6 +121,11 @@ namespace UnrealAutomationCommon.Operations
 
         public abstract bool SupportsTarget(OperationTarget Target);
 
+        public virtual string GetLogsPath(OperationParameters operationParameters)
+        {
+            return null;
+        }
+
         protected abstract Command BuildCommand(OperationParameters operationParameters);
 
         protected string GetTargetName(OperationParameters operationParameters)

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace UnrealAutomationCommon.Operations
+﻿namespace UnrealAutomationCommon.Operations
 {
     public abstract class ProjectOperation : Operation
     {
@@ -14,6 +10,11 @@ namespace UnrealAutomationCommon.Operations
         public Project GetProject(OperationParameters operationParameters)
         {
             return operationParameters.Target as Project;
+        }
+
+        public override string GetLogsPath(OperationParameters operationParameters)
+        {
+            return GetProject(operationParameters).GetLogsPath();
         }
     }
 }

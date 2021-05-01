@@ -11,10 +11,5 @@
             args.SetKeyValue("resy", "1080", false);
             return new Command(EnginePaths.GetEditorExe(GetProject(operationParameters).ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), args);
         }
-
-        public override bool ShouldReadOutputFromLogFile()
-        {
-            return true;
-        }
     }
 }

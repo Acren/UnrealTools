@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon
 {
@@ -68,6 +69,12 @@ namespace UnrealAutomationCommon
         public string GetStagedBuildWindowsPath()
         {
             return Path.Combine(GetStagedBuildsPath(), "WindowsNoEditor");
+        }
+
+        public Package GetStagedPackage()
+        {
+            string path = GetStagedBuildWindowsPath();
+            return Package.IsPackage(path) ? new Package(path) : null;
         }
 
         public string GetStagedPackageExecutablePath()

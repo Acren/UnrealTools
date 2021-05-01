@@ -15,6 +15,10 @@ namespace UnrealAutomationCommon
                 arguments.SetPath(project.UProjectPath);
             }
 
+            arguments.SetFlag("stdout");
+            arguments.SetFlag("FullStdOutLogOutput");
+            arguments.SetFlag("nologtimes");
+
             bool UseInsights = operationParameters.TraceCpu
                                || operationParameters.TraceFrame
                                || operationParameters.TraceBookmark

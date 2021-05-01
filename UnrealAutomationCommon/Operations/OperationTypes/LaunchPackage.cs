@@ -15,5 +15,10 @@
         {
             return "Launch Package";
         }
+
+        public override string GetLogsPath(OperationParameters operationParameters)
+        {
+            return GetProject(operationParameters).GetStagedPackage().GetLogsPath();
+        }
     }
 }

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace UnrealAutomationCommon.Operations
+﻿namespace UnrealAutomationCommon.Operations
 {
     public abstract class PluginOperation : Operation
     {

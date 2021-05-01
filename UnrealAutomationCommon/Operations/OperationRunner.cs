@@ -38,7 +38,7 @@ namespace UnrealAutomationCommon.Operations
             if (readLogFile)
             {
                 Project project = _operationParameters.Target as Project;
-                LogWatcher logWatcher = new LogWatcher(project);
+                LogWatcher logWatcher = new LogWatcher(project, _operation.GetLogsPath(_operationParameters));
                 logWatcher.LineLogged += HandleLogLine;
             }
 
@@ -82,12 +82,21 @@ namespace UnrealAutomationCommon.Operations
             LogVerbosity verbosity = LogVerbosity.Log;
             if (split.Length > 1)
             {
-                if (split[1] == "Error")
+                if (split[0] == "ERROR")
                 {
+                    // UBT error format
+                    // "ERROR: Some message"
+                    verbosity = LogVerbosity.Error;
+                }
+                else if (split[1] == "Error")
+                {
+                    // Unreal error format
+                    // "LogCategory: Error: Some message"
                     verbosity = LogVerbosity.Error;
                 }
                 else if (split[1] == "Warning")
                 {
+                    // Unreal warning format
                     verbosity = LogVerbosity.Warning;
                 }
             }

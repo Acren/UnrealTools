@@ -12,9 +12,13 @@ namespace UnrealAutomationCommon.Unreal
 
         public event LineLoggedEventHandler LineLogged;
 
-        public LogWatcher(Project project)
+        public LogWatcher(Project project) : this(project, project.GetLogsPath())
         {
-            FileSystemWatcher directoryWatcher = new FileSystemWatcher(project.GetLogsPath());
+        }
+
+        public LogWatcher(Project project, string logDirectory)
+        {
+            FileSystemWatcher directoryWatcher = new FileSystemWatcher(logDirectory);
             directoryWatcher.Filter = project.Name + "*.log";
             directoryWatcher.Created += (Sender, Args) =>
             {
@@ -27,7 +31,7 @@ namespace UnrealAutomationCommon.Unreal
             {
                 if (ShouldRegisterLogFile(Args.FullPath))
                 {
-                    RegisterLogFile( Args.FullPath);
+                    RegisterLogFile(Args.FullPath);
                 }
 
                 if (Args.FullPath != _registeredLogFile)
