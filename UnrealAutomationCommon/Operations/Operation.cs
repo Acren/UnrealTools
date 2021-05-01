@@ -5,14 +5,13 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {
-    public abstract class Operation
+    public abstract class Operation<T> where T : OperationTarget
     {
         public string OperationName => GetOperationName();
 
-
-        public static Operation CreateOperation(Type operationType)
+        public static Operation<T> CreateOperation(Type operationType)
         {
-            Operation instance = (Operation)Activator.CreateInstance(operationType);
+            Operation<T> instance = (Operation<T>) Activator.CreateInstance(operationType);
             return instance;
         }
 
@@ -119,7 +118,15 @@ namespace UnrealAutomationCommon.Operations
             return false;
         }
 
-        public abstract bool SupportsTarget(OperationTarget Target);
+        public bool SupportsTarget(OperationTarget Target)
+        {
+            return Target is T;
+        }
+
+        public T GetTarget(OperationParameters operationParameters)
+        {
+            return operationParameters.Target as T;
+        }
 
         protected abstract Command BuildCommand(OperationParameters operationParameters);
 

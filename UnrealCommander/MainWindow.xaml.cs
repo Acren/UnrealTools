@@ -23,7 +23,7 @@ namespace UnrealCommander
     {
         private PersistentData _persistentState = new PersistentData();
 
-        private Operation _operation = new LaunchEditor();
+        private Operation<OperationTarget> _operation = new LaunchEditor();
 
         public event PropertyChangedEventHandler PropertyChanged;
 

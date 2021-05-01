@@ -1,6 +1,6 @@
 ﻿namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class LaunchPackage : ProjectOperation
+    public class LaunchPackage : Operation<Project>
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
@@ -8,7 +8,7 @@
             args.SetFlag("windowed");
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
-            return new Command(GetProject(operationParameters).GetStagedPackageExecutablePath(), args);
+            return new Command(GetTarget(operationParameters).GetStagedPackageExecutablePath(), args);
         }
 
         protected override string GetOperationName()

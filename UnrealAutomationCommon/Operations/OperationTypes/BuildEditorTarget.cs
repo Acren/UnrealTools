@@ -4,7 +4,7 @@ using System.Text;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class BuildEditorTarget : ProjectOperation
+    public class BuildEditorTarget : Operation<Project>
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
@@ -12,8 +12,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetArgument(GetTargetName(operationParameters) + "Editor");
             args.SetArgument("Win64");
             args.SetArgument(operationParameters.Configuration.ToString());
-            args.SetPath(GetProject(operationParameters).UProjectPath);
-            return new Command(GetProject(operationParameters).ProjectDescriptor.GetBuildPath(), args);
+            args.SetPath(GetTarget(operationParameters).UProjectPath);
+            return new Command(GetTarget(operationParameters).ProjectDescriptor.GetBuildPath(), args);
         }
     }
 }

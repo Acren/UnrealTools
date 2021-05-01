@@ -1,6 +1,6 @@
 ﻿namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class LaunchStandalone : ProjectOperation
+    public class LaunchStandalone : Operation<Project>
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
@@ -9,7 +9,7 @@
             args.SetFlag("windowed");
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
-            return new Command(EnginePaths.GetEditorExe(GetProject(operationParameters).ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), args);
+            return new Command(EnginePaths.GetEditorExe(GetTarget(operationParameters).ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), args);
         }
 
         public override bool ShouldReadOutputFromLogFile()
