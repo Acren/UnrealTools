@@ -4,7 +4,11 @@
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            return new Command(GetProject(operationParameters).GetStagedPackageExecutablePath(), UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters)));
+            Arguments args = UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters));
+            args.SetFlag("windowed");
+            args.SetKeyValue("resx", "1920", false);
+            args.SetKeyValue("resy", "1080", false);
+            return new Command(GetProject(operationParameters).GetStagedPackageExecutablePath(), args);
         }
 
         protected override string GetOperationName()
