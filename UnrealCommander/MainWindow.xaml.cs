@@ -11,6 +11,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealCommander
@@ -20,16 +21,16 @@ namespace UnrealCommander
     /// </summary>
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
-        private PersistentData _persistentState;
+        private PersistentData _persistentState = new PersistentData();
 
-        private Operation _operation;
+        private Operation _operation = new LaunchEditor();
 
         public event PropertyChangedEventHandler PropertyChanged;
 
         public MainWindow()
         {
-            PersistentState = PersistentData.Load();
             InitializeComponent();
+            PersistentState = PersistentData.Load();
         }
 
         public Project SelectedProject
@@ -157,10 +158,8 @@ namespace UnrealCommander
         }
 
         public bool IsProjectSelected => PersistentState.OperationParameters.Target is Project;
-        //ProjectGrid.SelectedItem != null && ProjectGrid.SelectedItem.GetType() == typeof(Project);
 
         public bool IsPluginSelected => PersistentState.OperationParameters.Target is Plugin;
-        //PluginGrid.SelectedItem != null && PluginGrid.SelectedItem.GetType() == typeof(Plugin);
 
         public bool CanExecute => Operation.RequirementsSatisfied(PersistentState.OperationParameters);
 
