@@ -256,7 +256,7 @@ namespace UnrealCommander
             {
                 ProcessLineCount = 0;
                 AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
-                OperationRunner runner = OperationRunner.Run(Operation, PersistentState.OperationParameters);
+                OperationRunner runner = new OperationRunner(Operation, PersistentState.OperationParameters);
                 runner.Output += (S, verbosity) =>
                 {
                     // Output handler
@@ -274,6 +274,7 @@ namespace UnrealCommander
                 {
 
                 };
+                runner.Run();
             }
         }
 

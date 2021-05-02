@@ -20,19 +20,17 @@ namespace UnrealAutomationCommon.Operations
         public event OperationOutputEventHandler Output;
         public event OperationEndedEventHandler Ended;
 
-        public static OperationRunner Run(Operation operation, OperationParameters operationParameters)
+        public OperationRunner(Operation operation, OperationParameters operationParameters)
         {
-            OperationRunner runner = new OperationRunner()
-            {
-                _operation = operation,
-                _operationParameters = operationParameters
-            };
-            runner.Run();
-            return runner;
+            _operation = operation;
+            _operationParameters = operationParameters;
         }
 
-        void Run()
+        public void Run()
         {
+            string outputPath = _operation.GetOutputPath(_operationParameters);
+            FileUtils.DeleteDirectoryIfExists(outputPath);
+
             bool readLogFile = _operation.ShouldReadOutputFromLogFile() && _operationParameters.Target is Project;
 
             if (readLogFile)
@@ -52,6 +50,11 @@ namespace UnrealAutomationCommon.Operations
             {
                 OnProcessEnded();
             });
+
+            if(_operationParameters.WaitForAttach)
+            {
+                Output?.Invoke("-WaitForAttach was specified, attach now", LogVerbosity.Log);
+            }
         }
 
         void OnProcessEnded()
@@ -128,6 +131,13 @@ namespace UnrealAutomationCommon.Operations
                     foreach (Test test in result.TestReport.Tests)
                     {
                         Output?.Invoke(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath, test.State == TestState.Success ? LogVerbosity.Log : LogVerbosity.Error);
+                        foreach(TestEntry entry in test.Entries)
+                        {
+                            if(entry.Event.Type != TestEventType.Info)
+                            {
+                                Output?.Invoke("".PadRight(9) + " - " + entry.Event.Message, entry.Event.Type == TestEventType.Error ? LogVerbosity.Error : LogVerbosity.Warning);
+                            }
+                        }
                     }
                     int testsPassed = result.TestReport.Tests.Count(t => t.State == TestState.Success);
                     bool allPassed = testsPassed == result.TestReport.Tests.Count;

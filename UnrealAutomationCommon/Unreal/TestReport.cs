@@ -4,10 +4,28 @@ using System.IO;
 
 namespace UnrealAutomationCommon
 {
+    public enum TestEventType
+    {
+        Info,
+        Warning,
+        Error
+    }
+
     public enum TestState
     {
         Fail,
         Success
+    }
+
+    public class TestEvent
+    {
+        public TestEventType Type { get; set; }
+        public string Message { get; set; }
+    }
+
+    public class TestEntry
+    {
+        public TestEvent Event { get; set; }
     }
 
     public class Test
@@ -15,6 +33,7 @@ namespace UnrealAutomationCommon
         public string TestDisplayName { get; set; }
         public string FullTestPath { get; set; }
         public TestState State { get; set; }
+        public List<TestEntry> Entries { get; set; }
     }
 
     public class TestReport
