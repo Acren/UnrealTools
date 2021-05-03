@@ -25,6 +25,8 @@ namespace UnrealCommander
 
         private Operation _operation = new LaunchEditor();
 
+        private OperationRunner _runningOperation = null;
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         public MainWindow()
@@ -175,6 +177,25 @@ namespace UnrealCommander
         private int LineCount { get; set; }
         private int ProcessLineCount { get; set; }
 
+        public OperationRunner RunningOperation
+        {
+            get => _runningOperation;
+            set
+            {
+                if(_runningOperation != value)
+                {
+                    _runningOperation = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsRunningOperation));
+                }
+            }
+        }
+
+        public bool IsRunningOperation
+        {
+            get => RunningOperation != null;
+        }
+
         private Project GetSelectedProject()
         {
             return PersistentState.OperationParameters.Target as Project;
@@ -256,8 +277,8 @@ namespace UnrealCommander
             {
                 ProcessLineCount = 0;
                 AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
-                OperationRunner runner = new OperationRunner(Operation, PersistentState.OperationParameters);
-                runner.Output += (S, verbosity) =>
+                RunningOperation = new OperationRunner(Operation, PersistentState.OperationParameters);
+                RunningOperation.Output += (S, verbosity) =>
                 {
                     // Output handler
                     Dispatcher.Invoke(() =>
@@ -270,11 +291,19 @@ namespace UnrealCommander
                         }
                     });
                 };
-                runner.Ended += Result =>
+                RunningOperation.Ended += Result =>
                 {
-
+                    RunningOperation = null;
                 };
-                runner.Run();
+                RunningOperation.Run();
+            }
+        }
+
+        private void Terminate(object sender, RoutedEventArgs e)
+        {
+            if(RunningOperation != null)
+            {
+                RunningOperation.Terminate();
             }
         }
 
@@ -347,6 +376,25 @@ namespace UnrealCommander
         private void LogClear(object Sender, RoutedEventArgs E)
         {
             OutputTextBox.Document.Blocks.Clear();
+        }
+
+        private void Window_Closing(object sender, CancelEventArgs e)
+        {
+            if(IsRunningOperation)
+            {
+                MessageBoxResult result = MessageBox.Show("Process is running. Terminate it?", "Terminate process", MessageBoxButton.YesNoCancel);
+                switch(result)
+                {
+                    case MessageBoxResult.Yes:
+                        RunningOperation.Terminate();
+                        break;
+                    case MessageBoxResult.No:
+                        break;
+                    case MessageBoxResult.Cancel:
+                        e.Cancel = true;
+                        break;
+                }
+            }
         }
     }
 }

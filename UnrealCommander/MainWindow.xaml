@@ -10,7 +10,8 @@
         xmlns:unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
         Title="Unreal Commander" Height="800" Width="1200"
-        DataContext="{Binding RelativeSource={RelativeSource Self}}">
+        DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Closing="Window_Closing">
     <DockPanel LastChildFill="True">
         <DataGrid Name="ProjectGrid" ItemsSource="{ Binding PersistentState.Projects}" SelectedItem="{Binding Path=SelectedProject, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" HorizontalScrollBarVisibility="Hidden" Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
@@ -236,11 +237,14 @@
                 <TextBox Name="CommandTextBox" IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
             </GroupBox>
             <WrapPanel Grid.Row="5" HorizontalAlignment="Right">
-                <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                     <TextBlock Text="Copy"></TextBlock>
                 </Button>
-                <Button Click="Execute" IsEnabled="{Binding CanExecute}" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                <Button Click="Execute" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                     <Run Text="{Binding Operation.OperationName, Mode=OneWay}" />
+                </Button>
+                <Button Click="Terminate" IsEnabled="{Binding IsRunningOperation}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                    <Run Text="Terminate" />
                 </Button>
             </WrapPanel>
         </Grid>

@@ -57,6 +57,12 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
+        public void Terminate()
+        {
+            Output?.Invoke("Operation terminated", LogVerbosity.Log);
+            _process.Kill();
+        }
+
         void OnProcessEnded()
         {
             if (_isWaitingForLogs)
