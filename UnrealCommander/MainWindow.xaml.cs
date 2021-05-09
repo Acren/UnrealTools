@@ -275,6 +275,21 @@ namespace UnrealCommander
         {
             if (Operation.RequirementsSatisfied(PersistentState.OperationParameters))
             {
+                if(IsRunningOperation)
+                {
+                    MessageBoxResult result = MessageBox.Show("Process is running. Terminate it?", "Terminate process", MessageBoxButton.YesNoCancel);
+                    switch (result)
+                    {
+                        case MessageBoxResult.Yes:
+                            RunningOperation.Terminate();
+                            break;
+                        case MessageBoxResult.No:
+                            break;
+                        case MessageBoxResult.Cancel:
+                            return;
+                    }
+                }
+
                 ProcessLineCount = 0;
                 AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
                 RunningOperation = new OperationRunner(Operation, PersistentState.OperationParameters);
