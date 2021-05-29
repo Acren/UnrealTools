@@ -1,7 +1,7 @@
-﻿using Newtonsoft.Json;
-using System.IO;
+﻿using System.IO;
+using Newtonsoft.Json;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Unreal
 {
     public class PluginDescriptor
     {
@@ -44,7 +44,7 @@ namespace UnrealAutomationCommon
 
         public string GetRunUATPath()
         {
-            return EnginePaths.GetRunUATPath(GetEngineInstallDirectory());
+            return EnginePaths.GetRunUATPath(GetEngineInstall());
         }
     }
 }

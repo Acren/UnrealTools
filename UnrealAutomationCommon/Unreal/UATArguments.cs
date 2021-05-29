@@ -1,12 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using UnrealAutomationCommon.Operations;
-using UnrealAutomationCommon.Unreal;
+﻿using UnrealAutomationCommon.Operations;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Unreal
 {
-    public class UATArguments
+    public static class UATArguments
     {
         public static Arguments MakeArguments(OperationParameters operationParameters)
         {

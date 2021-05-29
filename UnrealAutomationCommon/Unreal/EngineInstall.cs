@@ -7,7 +7,7 @@ namespace UnrealAutomationCommon
 {
     public class EngineInstall
     {
-        public string InstallDirectory = string.Empty;
+        public string InstallDirectory { get; set; }
         public bool IsSourceBuild = false;
 
         // Does not include the actual "Engine" subdirectory
@@ -82,6 +82,11 @@ namespace UnrealAutomationCommon
             }
 
             throw new Exception("Could not find Engine installation based on EngineAssociation: + " + EngineAssociation);
+        }
+
+        public EngineInstallVersion GetVersion()
+        {
+            return EngineInstallVersion.Load(this.GetBuildVersionPath());
         }
 
         public bool SupportsConfiguration(BuildConfiguration Configuration)
