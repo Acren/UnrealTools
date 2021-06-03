@@ -36,6 +36,11 @@ namespace UnrealAutomationCommon.Operations
                 throw new Exception("No command");
             }
 
+            if (!File.Exists(command.File))
+            {
+                throw new Exception("File " + command.File + " not found");
+            }
+
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = command.File,

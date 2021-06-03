@@ -292,8 +292,9 @@ namespace UnrealCommander
 
                 ProcessLineCount = 0;
                 AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
-                RunningOperation = new OperationRunner(Operation, PersistentState.OperationParameters);
-                RunningOperation.Output += (S, verbosity) =>
+
+                OperationRunner NewRunner = new OperationRunner(Operation, PersistentState.OperationParameters);
+                NewRunner.Output += (S, verbosity) =>
                 {
                     // Output handler
                     Dispatcher.Invoke(() =>
@@ -306,11 +307,21 @@ namespace UnrealCommander
                         }
                     });
                 };
-                RunningOperation.Ended += Result =>
+                NewRunner.Ended += Result =>
                 {
                     RunningOperation = null;
                 };
-                RunningOperation.Run();
+
+                try
+                {
+                    NewRunner.Run();
+                    RunningOperation = NewRunner;
+                }
+                catch (Exception exception)
+                {
+                    AddOutputLine("Exception encountered running " + Operation.OperationName + ":", LogVerbosity.Error);
+                    AddOutputLine(exception.Message, LogVerbosity.Error);
+                }
             }
         }
 
