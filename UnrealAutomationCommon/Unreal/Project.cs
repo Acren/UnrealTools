@@ -90,6 +90,11 @@ namespace UnrealAutomationCommon.Unreal
 
         public string GetStagedBuildWindowsPath()
         {
+            if (GetEngineInstall().GetVersion().MajorVersion >= 5)
+            {
+                return Path.Combine(GetStagedBuildsPath(), "Windows");
+            }
+
             return Path.Combine(GetStagedBuildsPath(), "WindowsNoEditor");
         }
 
