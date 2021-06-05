@@ -22,7 +22,8 @@ namespace UnrealAutomationCommon.Unreal
 
         public static string GetEditorExe(this EngineInstall EngineInstall, OperationParameters operationParameters)
         {
-            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", operationParameters.Configuration == BuildConfiguration.DebugGame ? "UE4Editor-Win64-DebugGame.exe" : "UE4Editor.exe");
+            string mainEditorName = EngineInstall.GetVersion().MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
+            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", operationParameters.Configuration == BuildConfiguration.DebugGame ? mainEditorName + "-Win64-DebugGame.exe" : mainEditorName + ".exe");
         }
 
         public static string GetUBTExe(this EngineInstall EngineInstall)
