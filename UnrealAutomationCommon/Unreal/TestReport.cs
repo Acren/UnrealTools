@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using System;
+using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
 
@@ -39,6 +40,7 @@ namespace UnrealAutomationCommon
     public class TestReport
     {
         public List<Test> Tests { get; set; }
+        public Int32 Failed { get; set; }
 
         public static TestReport Load(string filePath)
         {
@@ -47,6 +49,16 @@ namespace UnrealAutomationCommon
                 return null;
             }
             return JsonConvert.DeserializeObject<TestReport>(File.ReadAllText(filePath));
+        }
+
+        public TestState GetState()
+        {
+            if (Failed > 0)
+            {
+                return TestState.Fail;
+            }
+
+            return TestState.Success;
         }
     }
 }
