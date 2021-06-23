@@ -53,9 +53,11 @@ namespace ParseTestReport
 
             if (args.Contains("-junit"))
             {
+                bool noWarnings = args.Contains("-nowarnings");
+
                 string directory = Path.GetDirectoryName(path);
                 string jUnitPath = Path.Combine(directory, "junit.xml");
-                XmlDocument jUnit = report.ToJUnit();
+                XmlDocument jUnit = report.ToJUnit(!noWarnings);
 
                 XmlWriterSettings settings = new XmlWriterSettings();
                 settings.Indent = true;

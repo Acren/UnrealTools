@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Xml;
 
 namespace UnrealAutomationCommon
@@ -68,7 +69,7 @@ namespace UnrealAutomationCommon
             return TestState.Success;
         }
 
-        public XmlDocument ToJUnit()
+        public XmlDocument ToJUnit(bool includeWarnings)
         {
             XmlDocument doc = new XmlDocument();
             XmlElement testSuites = doc.CreateElement("testsuites");
@@ -86,15 +87,29 @@ namespace UnrealAutomationCommon
                 testSuite.AppendChild(testCase);
                 testCase.SetAttribute("classname", test.FullTestPath);
                 testCase.SetAttribute("name", test.TestDisplayName);
-                foreach(TestEntry testEntry in test.Entries)
+
+                TestEventType mostSevere = TestEventType.Info;
+                List<string> failureLines = new List<string>();
+                foreach (TestEntry testEntry in test.Entries)
                 {
-                    if (testEntry.Event.Type == TestEventType.Error)
+                    bool includeEvent = testEntry.Event.Type == TestEventType.Error ||
+                                        (testEntry.Event.Type == TestEventType.Warning && includeWarnings);
+                    if (includeEvent)
                     {
-                        XmlElement failure = doc.CreateElement("failure");
-                        testCase.AppendChild(failure);
-                        failure.SetAttribute("type", EnumUtils.GetName(testEntry.Event.Type));
-                        failure.SetAttribute("message", testEntry.Event.Message);
+                        failureLines.Add(EnumUtils.GetName(testEntry.Event.Type) + ": " + testEntry.Event.Message);
+                        if (testEntry.Event.Type > mostSevere)
+                        {
+                            mostSevere = testEntry.Event.Type;
+                        }
                     }
+                }
+
+                if (mostSevere != TestEventType.Info)
+                {
+                    XmlElement failure = doc.CreateElement("failure");
+                    testCase.AppendChild(failure);
+                    failure.SetAttribute("type", EnumUtils.GetName(mostSevere));
+                    failure.SetAttribute("message", string.Join( Environment.NewLine, failureLines));
                 }
             }
 
