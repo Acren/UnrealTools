@@ -1,5 +1,7 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
+using System.Xml;
 using UnrealAutomationCommon;
 
 namespace ParseTestReport
@@ -36,13 +38,41 @@ namespace ParseTestReport
                 Environment.Exit(4);
             }
 
+            Console.WriteLine(report.TotalSucceeded + " of " + report.Tests.Count + " tests passed");
+            foreach (Test test in report.Tests)
+            {
+                Console.WriteLine(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath);
+                foreach (TestEntry entry in test.Entries)
+                {
+                    if (entry.Event.Type != TestEventType.Info)
+                    {
+                        Console.WriteLine("".PadRight(9) + " - " + entry.Event.Message);
+                    }
+                }
+            }
+
+            if (args.Contains("-junit"))
+            {
+                string directory = Path.GetDirectoryName(path);
+                string jUnitPath = Path.Combine(directory, "junit.xml");
+                XmlDocument jUnit = report.ToJUnit();
+
+                XmlWriterSettings settings = new XmlWriterSettings();
+                settings.Indent = true;
+                XmlWriter writer = XmlWriter.Create(jUnitPath, settings);
+
+                jUnit.WriteTo(writer);
+
+                writer.Close();
+
+                Console.WriteLine("Created JUnit report at " + jUnitPath);
+            }
+
             if (report.GetState() == TestState.Fail)
             {
-                Console.WriteLine(report.Failed + " tests failed");
                 Environment.Exit(1);
             }
 
-            Console.WriteLine("All tests passed");
             Environment.Exit(0);
         }
     }
