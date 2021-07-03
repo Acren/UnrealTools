@@ -20,22 +20,19 @@ namespace UnrealAutomationCommon
             arguments.SetFlag("FullStdOutLogOutput");
             arguments.SetFlag("nologtimes");
 
-            bool UseInsights = operationParameters.TraceCpu
-                               || operationParameters.TraceFrame
-                               || operationParameters.TraceBookmark
-                               || operationParameters.TraceLoadTime;
-            if (UseInsights)
+            bool useInsights = operationParameters.TraceChannels.Count > 0;
+ 
+            if (useInsights)
             {
-                List<string> TraceChannels = new List<string>();
+                List<string> traceChannels = new List<string>();
+                foreach (TraceChannel channel in operationParameters.TraceChannels)
+                {
+                    traceChannels.Add(channel.Key);
+                }
 
-                if (operationParameters.TraceCpu) TraceChannels.Add("cpu");
-                if (operationParameters.TraceFrame) TraceChannels.Add("frame");
-                if (operationParameters.TraceBookmark) TraceChannels.Add("bookmark");
-                if (operationParameters.TraceLoadTime) TraceChannels.Add("loadtime");
+                arguments.SetKeyValue("trace", string.Join(",",traceChannels));
 
-                arguments.SetKeyValue("trace", string.Join(",",TraceChannels));
-
-                if (operationParameters.TraceCpu)
+                if (traceChannels.Contains("cpu"))
                 {
                     arguments.SetFlag("statnamedevents");
                 }

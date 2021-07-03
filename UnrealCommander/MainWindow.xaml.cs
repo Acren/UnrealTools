@@ -1,6 +1,7 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -33,6 +34,25 @@ namespace UnrealCommander
         {
             InitializeComponent();
             PersistentState = PersistentData.Load();
+
+            foreach (TraceChannel channel in TraceChannels.Channels)
+            {
+                TraceChannelOptions.Add(new TraceChannelOption() { TraceChannel = channel, Enabled = PersistentState.OperationParameters.TraceChannels.Contains(channel) });
+            }
+            TraceChannelOptions.ListChanged += TraceChannelOptions_CollectionChanged;
+        }
+
+        private void TraceChannelOptions_CollectionChanged(object sender, ListChangedEventArgs e)
+        {
+            PersistentState.OperationParameters.TraceChannels.Clear();
+
+            foreach (TraceChannelOption option in TraceChannelOptions)
+            {
+                if (option.Enabled)
+                {
+                    PersistentState.OperationParameters.TraceChannels.Add(option.TraceChannel);
+                }
+            }
         }
 
         public Project SelectedProject
@@ -136,6 +156,8 @@ namespace UnrealCommander
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
 
         public List<BuildConfiguration> BuildConfigurations => Enum.GetValues(typeof(BuildConfiguration)).Cast<BuildConfiguration>().ToList();
+
+        public BindingList<TraceChannelOption> TraceChannelOptions { get; set; } = new BindingList<TraceChannelOption>();
 
         public EngineInstall SelectedEngineInstall =>
             IsProjectSelected ? GetSelectedProject().ProjectDescriptor.GetEngineInstall() : 

@@ -179,18 +179,27 @@
                 </GroupBox>
                 <GroupBox Header="Insights" Margin="0,5" Padding="10">
                     <StackPanel VerticalAlignment="Center">
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.TraceCpu, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Trace CPU" VerticalAlignment="Center" />
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.TraceFrame, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Trace Frame" VerticalAlignment="Center" />
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.TraceBookmark, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Trace Bookmark" VerticalAlignment="Center" />
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.TraceLoadTime, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Trace Load Time" VerticalAlignment="Center" />
-                        </CheckBox>
+                        <ListBox ItemsSource="{Binding TraceChannelOptions}" BorderBrush="Transparent" Background="Transparent">
+                            <ListBox.ItemContainerStyle>
+                                <!-- Style to get rid of the selection visual -->
+                                <Style TargetType="{x:Type ListBoxItem}">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                                <ContentPresenter />
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="local:TraceChannelOption">
+                                    <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
+                                        <TextBlock Text="{Binding TraceChannel.Label}" VerticalAlignment="Center" />
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                     </StackPanel>
                 </GroupBox>
                 <GroupBox Header="Flags" Margin="0,5" Padding="10">

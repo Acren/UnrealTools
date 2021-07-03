@@ -1,4 +1,7 @@
-﻿using Newtonsoft.Json;
+﻿using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using Newtonsoft.Json;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using UnrealAutomationCommon.Unreal;
@@ -10,10 +13,7 @@ namespace UnrealAutomationCommon.Operations
         private OperationTarget _target;
         private BuildConfiguration _configuration;
 
-        private bool _traceCpu = false;
-        private bool _traceFrame = false;
-        private bool _traceBookmark = false;
-        private bool _traceLoadTime = false;
+        private BindingList<TraceChannel> _traceChannels;
 
         private bool _stompMalloc = false;
         private bool _waitForAttach = false;
@@ -26,6 +26,30 @@ namespace UnrealAutomationCommon.Operations
 
         public OperationParameters()
         {
+            TraceChannels = new BindingList<TraceChannel>();
+            TraceChannels.RaiseListChangedEvents = true;
+        }
+
+        public BindingList<TraceChannel> TraceChannels
+        {
+            get => _traceChannels;
+            private set
+            {
+                if (_traceChannels != null)
+                {
+                    _traceChannels.ListChanged -= CollectionChanged;
+                }
+                _traceChannels = value;
+                if (_traceChannels != null)
+                {
+                    _traceChannels.ListChanged += CollectionChanged;
+                }
+                void CollectionChanged(object sender, ListChangedEventArgs args)
+                {
+                    OnPropertyChanged();
+                }
+            }
+
         }
 
         public OperationTarget Target
@@ -59,46 +83,6 @@ namespace UnrealAutomationCommon.Operations
             set
             {
                 _configuration = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool TraceCpu
-        {
-            get => _traceCpu;
-            set
-            {
-                _traceCpu = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool TraceFrame
-        {
-            get => _traceFrame;
-            set
-            {
-                _traceFrame = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool TraceBookmark
-        {
-            get => _traceBookmark;
-            set
-            {
-                _traceBookmark = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool TraceLoadTime
-        {
-            get => _traceLoadTime;
-            set
-            {
-                _traceLoadTime = value;
                 OnPropertyChanged();
             }
         }
