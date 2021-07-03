@@ -62,7 +62,7 @@
             <TextBlock Text="{Binding Status}" Grid.Row="0" Margin="0,5"/>
             <WrapPanel Grid.Row="1">
                 <GroupBox Header="Operation" Margin="0,5" Padding="10">
-                    <StackPanel>
+                    <StackPanel VerticalAlignment="Center">
                         <ListBox ItemsSource="{Binding OperationTypes}" SelectedItem="{Binding Path=PersistentState.OperationType}" BorderBrush="Transparent" Background="Transparent">
                             <ListBox.Resources>
                                 <local:TypeToStringConverter x:Key="TypeToStringConverter"/>
