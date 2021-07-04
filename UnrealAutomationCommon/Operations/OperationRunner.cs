@@ -60,7 +60,7 @@ namespace UnrealAutomationCommon.Operations
         public void Terminate()
         {
             Output?.Invoke("Operation terminated", LogVerbosity.Log);
-            _process.Kill();
+            ProcessUtils.KillProcessAndChildren(_process);
         }
 
         void OnProcessEnded()
