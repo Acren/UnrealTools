@@ -8,6 +8,8 @@ namespace UnrealAutomationCommon.Operations
     {
         public event PropertyChangedEventHandler PropertyChanged;
 
+        public EngineInstall EngineInstall => GetEngineInstall();
+
         public abstract string GetName();
         public abstract EngineInstall GetEngineInstall();
         public abstract void LoadDescriptor();

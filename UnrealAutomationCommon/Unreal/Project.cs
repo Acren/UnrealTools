@@ -7,7 +7,7 @@ namespace UnrealAutomationCommon.Unreal
     public class Project : OperationTarget
     {
         private string _uProjectPath;
-        private string _testName;
+        private string _testName = string.Empty;
         private ProjectDescriptor _projectDescriptor;
 
         private FileSystemWatcher watcher;

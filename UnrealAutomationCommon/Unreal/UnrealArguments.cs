@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon
@@ -20,12 +21,12 @@ namespace UnrealAutomationCommon
             arguments.SetFlag("FullStdOutLogOutput");
             arguments.SetFlag("nologtimes");
 
-            bool useInsights = operationParameters.TraceChannels.Count > 0;
+            bool useInsights = operationParameters.RequestOptions<InsightsOptions>().TraceChannels.Count > 0;
  
             if (useInsights)
             {
                 List<string> traceChannels = new List<string>();
-                foreach (TraceChannel channel in operationParameters.TraceChannels)
+                foreach (TraceChannel channel in operationParameters.RequestOptions<InsightsOptions>().TraceChannels)
                 {
                     traceChannels.Add(channel.Key);
                 }
@@ -40,17 +41,17 @@ namespace UnrealAutomationCommon
                 arguments.SetKeyValue("tracehost", "127.0.0.1");
             }
 
-            if (operationParameters.StompMalloc)
+            if (operationParameters.RequestOptions<FlagOptions>().StompMalloc)
             {
                 arguments.SetFlag("stompmalloc");
             }
 
-            if (operationParameters.WaitForAttach)
+            if (operationParameters.RequestOptions<FlagOptions>().WaitForAttach)
             {
                 arguments.SetFlag("waitforattach");
             }
 
-            if (operationParameters.RunTests && operationParameters.Target is Project Project)
+            if (operationParameters.RequestOptions<AutomationOptions>().RunTests && operationParameters.Target is Project Project)
             {
                 string execCmds = "Automation RunTests " + Project?.TestName;
                 arguments.SetKeyValue("ExecCmds", execCmds);

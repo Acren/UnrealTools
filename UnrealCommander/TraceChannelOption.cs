@@ -24,8 +24,11 @@ namespace UnrealCommander
             get => _enabled;
             set
             {
-                _enabled = value;
-                OnPropertyChanged();
+                if (_enabled != value)
+                {
+                    _enabled = value;
+                    OnPropertyChanged();
+                }
             }
         }
 

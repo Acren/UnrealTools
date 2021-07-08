@@ -1,4 +1,5 @@
 ﻿using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -13,7 +14,7 @@ namespace UnrealAutomationCommon.Unreal
                 arguments.SetKeyPath("project", project.UProjectPath);
             }
             arguments.SetFlag("build");
-            string configuration = operationParameters.Configuration.ToString();
+            string configuration = operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString();
             arguments.SetKeyValue("clientconfig", configuration);
             arguments.SetKeyValue("serverconfig", configuration);
 

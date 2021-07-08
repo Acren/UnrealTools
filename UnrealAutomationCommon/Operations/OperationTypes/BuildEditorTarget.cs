@@ -1,4 +1,5 @@
-﻿using UnrealAutomationCommon.Unreal;
+﻿using UnrealAutomationCommon.Operations.OperationOptionTypes;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
@@ -9,7 +10,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Arguments args = new Arguments();
             args.SetArgument(GetTargetName(operationParameters) + "Editor");
             args.SetArgument("Win64");
-            args.SetArgument(operationParameters.Configuration.ToString());
+            args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString());
             args.SetPath(GetProject(operationParameters).UProjectPath);
             return new Command(GetProject(operationParameters).GetEngineInstall().GetBuildPath(), args);
         }

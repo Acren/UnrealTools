@@ -1,0 +1,71 @@
+﻿<local:OptionsUserControl x:Class="UnrealCommander.Options.BuildConfigurationOptionsControl"
+                          xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                          xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+                          xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+                          xmlns:local="clr-namespace:UnrealCommander.Options"
+                          xmlns:unrealCommander="clr-namespace:UnrealCommander"
+                          xmlns:unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
+                          mc:Ignorable="d" 
+                          d:DesignHeight="450" d:DesignWidth="800"
+                          DataContext="{Binding RelativeSource={RelativeSource Self}}">
+    <StackPanel VerticalAlignment="Center">
+        <ListBox ItemsSource="{Binding BuildConfigurations}" SelectedItem="{Binding Path= Options.Configuration, Mode=TwoWay}" BorderBrush="Transparent" Background="Transparent">
+            <ListBox.Resources>
+                <unrealCommander:EnumToStringConverter x:Key="EnumToStringConverter"/>
+                <unrealCommander:ConfigurationSupportedConverter x:Key="ConfigurationSupportedConverter"/>
+            </ListBox.Resources>
+            <ListBox.ItemContainerStyle>
+                <!-- Style to get rid of the selection visual -->
+                <Style TargetType="{x:Type ListBoxItem}">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                <ContentPresenter />
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="{x:Type unreal:BuildConfiguration}">
+                    <RadioButton Content="{Binding Converter={StaticResource EnumToStringConverter}}" GroupName="Configurations">
+                        <!-- Binding IsChecked to IsSelected requires no support code -->
+                        <RadioButton.IsChecked>
+                            <Binding Path="IsSelected"
+                                                     RelativeSource="{RelativeSource AncestorType=ListBoxItem}"
+                                                     Mode="TwoWay" />
+                        </RadioButton.IsChecked>
+                        <RadioButton.IsEnabled>
+                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
+                                <Binding />
+                                <Binding Path="DataProvider.OperationTarget.EngineInstall"
+                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                                <Binding Path="DataProvider.Operation"
+                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                            </MultiBinding>
+                        </RadioButton.IsEnabled>
+                        <RadioButton.Focusable>
+                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
+                                <Binding />
+                                <Binding Path="DataProvider.OperationTarget.EngineInstall"
+                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                                <Binding Path="DataProvider.Operation"
+                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                            </MultiBinding>
+                        </RadioButton.Focusable>
+                        <RadioButton.IsHitTestVisible>
+                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
+                                <Binding />
+                                <Binding Path="DataProvider.OperationTarget.EngineInstall"
+                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                                <Binding Path="DataProvider.Operation"
+                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                            </MultiBinding>
+                        </RadioButton.IsHitTestVisible>
+                    </RadioButton>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </StackPanel>
+</local:OptionsUserControl>

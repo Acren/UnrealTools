@@ -1,7 +1,6 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -12,15 +11,17 @@ using System.Windows.Input;
 using System.Windows.Media;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
+using UnrealCommander.Options;
 
 namespace UnrealCommander
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class MainWindow : Window, INotifyPropertyChanged
+    public partial class MainWindow : Window, INotifyPropertyChanged, IOptionsDataProvider
     {
         private PersistentData _persistentState = new PersistentData();
 
@@ -35,24 +36,19 @@ namespace UnrealCommander
             InitializeComponent();
             PersistentState = PersistentData.Load();
 
-            foreach (TraceChannel channel in TraceChannels.Channels)
-            {
-                TraceChannelOptions.Add(new TraceChannelOption() { TraceChannel = channel, Enabled = PersistentState.OperationParameters.TraceChannels.Contains(channel) });
-            }
-            TraceChannelOptions.ListChanged += TraceChannelOptions_CollectionChanged;
+            BuildConfigurationOptionsControlElement.DataProvider = this;
+            BuildConfigurationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>();
+            InsightsOptionsControlElement.DataProvider = this;
+            InsightsOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<InsightsOptions>();
+            FlagOptionsControlElement.DataProvider = this;
+            FlagOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<FlagOptions>();
+            AutomationOptionsControlElement.DataProvider = this;
+            AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
         }
 
-        private void TraceChannelOptions_CollectionChanged(object sender, ListChangedEventArgs e)
+        public BindingList<BuildConfiguration> AllowedBuildConfigurations
         {
-            PersistentState.OperationParameters.TraceChannels.Clear();
-
-            foreach (TraceChannelOption option in TraceChannelOptions)
-            {
-                if (option.Enabled)
-                {
-                    PersistentState.OperationParameters.TraceChannels.Add(option.TraceChannel);
-                }
-            }
+            get => new BindingList<BuildConfiguration>(EnumUtils.GetAll<BuildConfiguration>().Where(c => _operation.SupportsConfiguration(c) && PersistentState.OperationParameters.Target.GetEngineInstall().SupportsConfiguration(c)).ToList());
         }
 
         public Project SelectedProject
@@ -64,6 +60,8 @@ namespace UnrealCommander
                 {
                     PersistentState.OperationParameters.Target = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(AllowedBuildConfigurations));
+                    OnPropertyChanged(nameof(TestName));
                 }
             }
         }
@@ -77,8 +75,15 @@ namespace UnrealCommander
                 {
                     PersistentState.OperationParameters.Target = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(AllowedBuildConfigurations));
                 }
             }
+        }
+
+        public string TestName
+        {
+            get => SelectedProject.TestName;
+            set => SelectedProject.TestName = value;
         }
 
         public PersistentData PersistentState
@@ -132,10 +137,10 @@ namespace UnrealCommander
             set
             {
                 _operation = value;
-                if (!_operation.SupportsConfiguration(PersistentState.OperationParameters.Configuration))
+                if (!_operation.SupportsConfiguration(PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>().Configuration))
                 {
                     // Set different configuration
-                    foreach(BuildConfiguration config in BuildConfigurations)
+                    foreach(BuildConfiguration config in EnumUtils.GetAll<BuildConfiguration>())
                     {
                         if (!_operation.SupportsConfiguration(config)) continue;
 
@@ -143,21 +148,20 @@ namespace UnrealCommander
 
                         if (install != null && !install.SupportsConfiguration(config)) continue;
 
-                        PersistentState.OperationParameters.Configuration = config;
+                        PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>().Configuration = config;
                         break;
                     }
                 }
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(VisibleCommand));
                 OnPropertyChanged(nameof(CanExecute));
+                OnPropertyChanged(nameof(AllowedBuildConfigurations));
             }
         }
 
+        public OperationTarget OperationTarget => PersistentState.OperationParameters.Target;
+
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
-
-        public List<BuildConfiguration> BuildConfigurations => Enum.GetValues(typeof(BuildConfiguration)).Cast<BuildConfiguration>().ToList();
-
-        public BindingList<TraceChannelOption> TraceChannelOptions { get; set; } = new BindingList<TraceChannelOption>();
 
         public EngineInstall SelectedEngineInstall =>
             IsProjectSelected ? GetSelectedProject().ProjectDescriptor.GetEngineInstall() : 

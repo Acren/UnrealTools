@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
@@ -51,7 +52,8 @@ namespace UnrealAutomationCommon.Operations
                 OnProcessEnded();
             });
 
-            if(_operationParameters.WaitForAttach)
+            FlagOptions flagOptions = _operationParameters.FindOptions<FlagOptions>();
+            if(flagOptions.WaitForAttach)
             {
                 Output?.Invoke("-WaitForAttach was specified, attach now", LogVerbosity.Log);
             }
@@ -119,7 +121,8 @@ namespace UnrealAutomationCommon.Operations
 
             Output?.Invoke("Process exited with code " + result.ExitCode, result.ExitCode == 0 ? LogVerbosity.Log : LogVerbosity.Error);
 
-            if (_operationParameters.RunTests)
+            AutomationOptions automationOptions = _operationParameters.FindOptions<AutomationOptions>();
+            if (automationOptions.RunTests)
             {
                 string reportFilePath = OutputPaths.GetTestReportFilePath(_operation.GetOutputPath(_operationParameters));
                 TestReport report = TestReport.Load(reportFilePath);

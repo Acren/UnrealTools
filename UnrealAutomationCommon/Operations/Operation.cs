@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
@@ -106,14 +107,19 @@ namespace UnrealAutomationCommon.Operations
                 return false;
             }
 
-            if (!SupportsConfiguration(operationParameters.Configuration))
-            {
-                return false;
-            }
+            BuildConfigurationOptions options = operationParameters.FindOptions<BuildConfigurationOptions>();
 
-            if (!GetRelevantEngineInstall(operationParameters).SupportsConfiguration(operationParameters.Configuration))
+            if (options != null)
             {
-                return false;
+                if (!SupportsConfiguration(options.Configuration))
+                {
+                    return false;
+                }
+
+                if (!GetRelevantEngineInstall(operationParameters).SupportsConfiguration(options.Configuration))
+                {
+                    return false;
+                }
             }
 
             return true;

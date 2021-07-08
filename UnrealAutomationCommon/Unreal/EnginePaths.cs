@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -23,7 +24,19 @@ namespace UnrealAutomationCommon.Unreal
         public static string GetEditorExe(this EngineInstall EngineInstall, OperationParameters operationParameters)
         {
             string mainEditorName = EngineInstall.GetVersion().MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
-            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", operationParameters.Configuration == BuildConfiguration.DebugGame ? mainEditorName + "-Win64-DebugGame.exe" : mainEditorName + ".exe");
+
+            string exeName;
+            BuildConfigurationOptions buildOptions = operationParameters.FindOptions<BuildConfigurationOptions>();
+            if (buildOptions is { Configuration: BuildConfiguration.DebugGame })
+            {
+                exeName = mainEditorName + "-Win64-DebugGame.exe";
+            }
+            else
+            {
+                exeName = mainEditorName + ".exe";
+            }
+
+            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", exeName);
         }
 
         public static string GetUBTExe(this EngineInstall EngineInstall)

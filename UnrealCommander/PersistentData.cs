@@ -72,17 +72,19 @@ namespace UnrealCommander
 
         public static PersistentData Load()
         {
-            if(File.Exists(dataFilePath))
+            if (File.Exists(dataFilePath))
             {
                 using StreamReader sr = new StreamReader(dataFilePath);
                 using JsonReader reader = new JsonTextReader(sr);
                 JsonSerializer serializer = new JsonSerializer
                 {
-                    PreserveReferencesHandling = PreserveReferencesHandling.All
+                    PreserveReferencesHandling = PreserveReferencesHandling.All,
+                    TypeNameHandling = TypeNameHandling.All
                 };
                 _instance = serializer.Deserialize<PersistentData>(reader);
             }
-            else
+
+            if(_instance == null)
             {
                 _instance = new PersistentData();
             }
@@ -108,7 +110,8 @@ namespace UnrealCommander
             using JsonTextWriter writer = new JsonTextWriter(sw) {Formatting = Formatting.Indented};
             JsonSerializer serializer = new JsonSerializer
             {
-                PreserveReferencesHandling = PreserveReferencesHandling.All
+                PreserveReferencesHandling = PreserveReferencesHandling.All,
+                TypeNameHandling = TypeNameHandling.All
             };
             serializer.Serialize(writer, _instance);
         }
