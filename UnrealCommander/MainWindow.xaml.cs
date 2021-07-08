@@ -61,7 +61,6 @@ namespace UnrealCommander
                     PersistentState.OperationParameters.Target = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(AllowedBuildConfigurations));
-                    OnPropertyChanged(nameof(TestName));
                 }
             }
         }
@@ -78,12 +77,6 @@ namespace UnrealCommander
                     OnPropertyChanged(nameof(AllowedBuildConfigurations));
                 }
             }
-        }
-
-        public string TestName
-        {
-            get => SelectedProject.TestName;
-            set => SelectedProject.TestName = value;
         }
 
         public PersistentData PersistentState
