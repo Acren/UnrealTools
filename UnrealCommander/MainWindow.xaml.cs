@@ -194,7 +194,6 @@ namespace UnrealCommander
         }
 
         private int LineCount { get; set; }
-        private int ProcessLineCount { get; set; }
 
         public OperationRunner RunningOperation
         {
@@ -309,11 +308,10 @@ namespace UnrealCommander
                     }
                 }
 
-                ProcessLineCount = 0;
                 AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
 
-                OperationRunner NewRunner = new OperationRunner(Operation, PersistentState.OperationParameters);
-                NewRunner.Output += (S, verbosity) =>
+                OperationRunner newRunner = new OperationRunner(Operation, PersistentState.OperationParameters);
+                newRunner.Output += (S, verbosity) =>
                 {
                     // Output handler
                     Dispatcher.Invoke(() =>
@@ -321,20 +319,19 @@ namespace UnrealCommander
                         // Prepend line numbers to each line of the output.
                         if (!String.IsNullOrEmpty(S))
                         {
-                            ProcessLineCount++;
-                            AddOutputLine("[" + ProcessLineCount + "]: " + S, verbosity);
+                            AddOutputLine(S, verbosity);
                         }
                     });
                 };
-                NewRunner.Ended += Result =>
+                newRunner.Ended += Result =>
                 {
                     RunningOperation = null;
                 };
 
                 try
                 {
-                    NewRunner.Run();
-                    RunningOperation = NewRunner;
+                    newRunner.Run();
+                    RunningOperation = newRunner;
                 }
                 catch (Exception exception)
                 {

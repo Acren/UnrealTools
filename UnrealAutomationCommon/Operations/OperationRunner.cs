@@ -19,6 +19,7 @@ namespace UnrealAutomationCommon.Operations
         private string _processName;
         private bool _isWaitingForLogs = false;
         private bool _terminated = false;
+        private int _lineCount = 0;
 
         public event OperationOutputEventHandler Output;
         public event OperationEndedEventHandler Ended;
@@ -90,10 +91,12 @@ namespace UnrealAutomationCommon.Operations
 
         void HandleLogLine(string line)
         {
-            if (line == null)
+            if (string.IsNullOrEmpty(line))
             {
                 return;
             }
+
+            _lineCount++;
 
             string[] split = line.Split(new []{": "}, StringSplitOptions.None);
             LogVerbosity verbosity = LogVerbosity.Log;
@@ -117,7 +120,7 @@ namespace UnrealAutomationCommon.Operations
                     verbosity = LogVerbosity.Warning;
                 }
             }
-            Output?.Invoke(line, verbosity);
+            Output?.Invoke("[" + _lineCount + "]: " + line, verbosity);
         }
 
         void HandleProcessEnded()
