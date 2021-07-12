@@ -428,7 +428,11 @@ namespace UnrealCommander
                 switch(result)
                 {
                     case MessageBoxResult.Yes:
-                        RunningOperation.Terminate();
+                        // Check is running again, because it may have finished while the message box was open
+                        if (IsRunningOperation)
+                        {
+                            RunningOperation.Terminate();
+                        }
                         break;
                     case MessageBoxResult.No:
                         break;
