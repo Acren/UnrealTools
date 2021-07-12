@@ -362,7 +362,7 @@ namespace UnrealCommander
         private void AddOutputLine(string line, LogVerbosity verbosity = LogVerbosity.Log)
         {
             LineCount++;
-            string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\n";
+            string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\r";
 
             TextRange tr = new TextRange(OutputTextBox.Document.ContentEnd, OutputTextBox.Document.ContentEnd);
             tr.Text = finalLine;
