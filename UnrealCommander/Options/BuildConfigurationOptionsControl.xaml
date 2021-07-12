@@ -10,7 +10,7 @@
                           d:DesignHeight="450" d:DesignWidth="800"
                           DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <StackPanel VerticalAlignment="Center">
-        <ListBox ItemsSource="{Binding BuildConfigurations}" SelectedItem="{Binding Path= Options.Configuration, Mode=TwoWay}" BorderBrush="Transparent" Background="Transparent">
+        <ListBox ItemsSource="{Binding BuildConfigurations}" SelectedItem="{Binding Path= Options.Configuration, Mode=TwoWay}" BorderThickness="0" BorderBrush="Transparent" Background="Transparent">
             <ListBox.Resources>
                 <unrealCommander:EnumToStringConverter x:Key="EnumToStringConverter"/>
                 <unrealCommander:ConfigurationSupportedConverter x:Key="ConfigurationSupportedConverter"/>

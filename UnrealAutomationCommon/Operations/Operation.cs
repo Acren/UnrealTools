@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography.X509Certificates;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
@@ -94,6 +96,22 @@ namespace UnrealAutomationCommon.Operations
             return operationParameters.Target?.GetEngineInstall();
         }
 
+        public List<Type> GetRequiredOptionSetTypes(OperationTarget target)
+        {
+            if (target == null)
+            {
+                return null;
+            }
+            List<Type> result = new ();
+            OperationParameters dummyParams = new();
+            dummyParams.Target = target;
+            Command command = BuildCommand(dummyParams);
+            foreach (OperationOptions options in dummyParams.OptionsInstances)
+            {
+                result.Add(options.GetType());
+            }
+            return result;
+        }
 
         public virtual bool SupportsConfiguration(BuildConfiguration configuration)
         {

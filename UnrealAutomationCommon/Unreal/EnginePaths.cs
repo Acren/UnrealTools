@@ -26,7 +26,7 @@ namespace UnrealAutomationCommon.Unreal
             string mainEditorName = EngineInstall.GetVersion().MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
 
             string exeName;
-            BuildConfigurationOptions buildOptions = operationParameters.FindOptions<BuildConfigurationOptions>();
+            BuildConfigurationOptions buildOptions = operationParameters.RequestOptions<BuildConfigurationOptions>();
             if (buildOptions is { Configuration: BuildConfiguration.DebugGame })
             {
                 exeName = mainEditorName + "-Win64-DebugGame.exe";

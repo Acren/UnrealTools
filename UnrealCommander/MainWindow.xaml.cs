@@ -46,11 +46,6 @@ namespace UnrealCommander
             AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
         }
 
-        public BindingList<BuildConfiguration> AllowedBuildConfigurations
-        {
-            get => new BindingList<BuildConfiguration>(EnumUtils.GetAll<BuildConfiguration>().Where(c => _operation.SupportsConfiguration(c) && PersistentState.OperationParameters.Target.GetEngineInstall().SupportsConfiguration(c)).ToList());
-        }
-
         public Project SelectedProject
         {
             get => PersistentState.OperationParameters.Target as Project;
@@ -149,6 +144,7 @@ namespace UnrealCommander
                 OnPropertyChanged(nameof(VisibleCommand));
                 OnPropertyChanged(nameof(CanExecute));
                 OnPropertyChanged(nameof(AllowedBuildConfigurations));
+                OnPropertyChanged(nameof(EnabledOptionSets));
             }
         }
 
@@ -157,9 +153,13 @@ namespace UnrealCommander
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
 
         public EngineInstall SelectedEngineInstall =>
-            IsProjectSelected ? GetSelectedProject().ProjectDescriptor.GetEngineInstall() : 
+            IsProjectSelected ? GetSelectedProject().ProjectDescriptor.GetEngineInstall() :
                 IsPluginSelected ? GetSelectedPlugin().PluginDescriptor.GetEngineInstall() :
                 null;
+
+        public BindingList<BuildConfiguration> AllowedBuildConfigurations => new BindingList<BuildConfiguration>(EnumUtils.GetAll<BuildConfiguration>().Where(c => _operation.SupportsConfiguration(c) && PersistentState.OperationParameters.Target.GetEngineInstall().SupportsConfiguration(c)).ToList());
+
+        public List<Type> EnabledOptionSets => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target);
 
         public string Status
         {
