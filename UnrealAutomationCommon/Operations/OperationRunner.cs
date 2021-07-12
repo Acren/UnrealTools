@@ -49,7 +49,7 @@ namespace UnrealAutomationCommon.Operations
                 HandleLogLine(args.Data);
             }, (o, args) =>
             {
-                Output?.Invoke(args.Data, LogVerbosity.Error);
+                OutputProcessLine(args.Data, LogVerbosity.Error);
             }, (o, args) =>
             {
                 OnProcessEnded();
@@ -96,9 +96,7 @@ namespace UnrealAutomationCommon.Operations
                 return;
             }
 
-            _lineCount++;
-
-            string[] split = line.Split(new []{": "}, StringSplitOptions.None);
+            string[] split = line.Split(new[] { ": " }, StringSplitOptions.None);
             LogVerbosity verbosity = LogVerbosity.Log;
             if (split.Length > 1)
             {
@@ -120,6 +118,17 @@ namespace UnrealAutomationCommon.Operations
                     verbosity = LogVerbosity.Warning;
                 }
             }
+            OutputProcessLine(line, verbosity);
+        }
+
+        void OutputProcessLine(string line, LogVerbosity verbosity)
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return;
+            }
+
+            _lineCount++;
             Output?.Invoke("[" + _lineCount + "]: " + line, verbosity);
         }
 
