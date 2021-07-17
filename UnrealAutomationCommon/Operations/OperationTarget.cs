@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {

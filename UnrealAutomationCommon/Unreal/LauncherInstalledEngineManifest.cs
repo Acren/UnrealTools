@@ -1,13 +1,13 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Unreal
 {
     public class LauncherInstalledEngineManifest
     {
-        public List<EngineInstallation> InstallationList;
+        public List<LauncherManifestAppInstallation> InstallationList { get; set; }
 
         public static string ManifestPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Epic\\UnrealEngineLauncher\\LauncherInstalled.dat");
 
@@ -17,7 +17,7 @@ namespace UnrealAutomationCommon
         }
     }
 
-    public class EngineInstallation
+    public class LauncherManifestAppInstallation
     {
         public string InstallLocation;
         public string AppName;

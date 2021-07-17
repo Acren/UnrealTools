@@ -55,7 +55,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public override EngineInstall GetEngineInstall()
         {
-            return PluginDescriptor.GetEngineInstall();
+            return PluginDescriptor?.GetEngineInstall();
         }
     }
 }

@@ -105,6 +105,12 @@ namespace UnrealAutomationCommon.Operations
             List<Type> result = new ();
             OperationParameters dummyParams = new();
             dummyParams.Target = target;
+
+            if (GetRelevantEngineInstall(dummyParams) == null)
+            {
+                return null;
+            }
+
             Command command = BuildCommand(dummyParams);
             foreach (OperationOptions options in dummyParams.OptionsInstances)
             {
@@ -120,6 +126,11 @@ namespace UnrealAutomationCommon.Operations
 
         public virtual bool RequirementsSatisfied(OperationParameters operationParameters)
         {
+            if (GetRelevantEngineInstall(operationParameters) == null)
+            {
+                return false;
+            }
+
             if (!SupportsTarget(operationParameters.Target))
             {
                 return false;

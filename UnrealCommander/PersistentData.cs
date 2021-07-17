@@ -79,7 +79,7 @@ namespace UnrealCommander
                 JsonSerializer serializer = new JsonSerializer
                 {
                     PreserveReferencesHandling = PreserveReferencesHandling.All,
-                    TypeNameHandling = TypeNameHandling.All
+                    TypeNameHandling = TypeNameHandling.Auto
                 };
                 _instance = serializer.Deserialize<PersistentData>(reader);
             }
@@ -111,7 +111,7 @@ namespace UnrealCommander
             JsonSerializer serializer = new JsonSerializer
             {
                 PreserveReferencesHandling = PreserveReferencesHandling.All,
-                TypeNameHandling = TypeNameHandling.All
+                TypeNameHandling = TypeNameHandling.Auto
             };
             serializer.Serialize(writer, _instance);
         }

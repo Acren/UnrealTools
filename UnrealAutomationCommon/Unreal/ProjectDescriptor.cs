@@ -18,7 +18,23 @@ namespace UnrealAutomationCommon
         
         public List<ProjectPluginDependency> Plugins { get; set; }
 
-        public string EngineFriendlyName => IsEngineInstalled() ? EngineAssociation : GetEngineInstall().InstallDirectory;
+        public string EngineFriendlyName
+        {
+            get
+            {
+                if (IsEngineInstalled())
+                {
+                    return EngineAssociation;
+                }
+
+                if (GetEngineInstall() == null)
+                {
+                    return EngineAssociation;
+                }
+
+                return GetEngineInstall().InstallDirectory;
+            }
+        }
 
         public static ProjectDescriptor Load(string uProjectPath)
         {
@@ -27,7 +43,7 @@ namespace UnrealAutomationCommon
 
         public EngineInstall GetEngineInstall()
         {
-            return EngineInstall.GetEngineInstall(EngineAssociation);
+            return EngineInstallFinder.GetEngineInstall(EngineAssociation);
         }
 
         public bool IsEngineInstalled()
