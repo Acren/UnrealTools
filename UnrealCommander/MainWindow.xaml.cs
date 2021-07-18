@@ -21,7 +21,7 @@ namespace UnrealCommander
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class MainWindow : Window, INotifyPropertyChanged, IOptionsDataProvider
+    public partial class MainWindow : Window, INotifyPropertyChanged
     {
         private PersistentData _persistentState = new PersistentData();
 
@@ -36,13 +36,9 @@ namespace UnrealCommander
             InitializeComponent();
             PersistentState = PersistentData.Load();
 
-            BuildConfigurationOptionsControlElement.DataProvider = this;
             BuildConfigurationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>();
-            InsightsOptionsControlElement.DataProvider = this;
             InsightsOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<InsightsOptions>();
-            FlagOptionsControlElement.DataProvider = this;
             FlagOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<FlagOptions>();
-            AutomationOptionsControlElement.DataProvider = this;
             AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
         }
 
@@ -157,7 +153,24 @@ namespace UnrealCommander
                 IsPluginSelected ? GetSelectedPlugin().PluginDescriptor.GetEngineInstall() :
                 null;
 
-        public BindingList<BuildConfiguration> AllowedBuildConfigurations => new BindingList<BuildConfiguration>(EnumUtils.GetAll<BuildConfiguration>().Where(c => _operation.SupportsConfiguration(c) && PersistentState.OperationParameters.Target.GetEngineInstall().SupportsConfiguration(c)).ToList());
+        public AllowedBuildConfigurations AllowedBuildConfigurations
+        {
+            get
+            {
+                if (OperationTarget == null)
+                {
+                    return new AllowedBuildConfigurations();
+                }
+
+                return new AllowedBuildConfigurations()
+                {
+                    Configurations = EnumUtils.GetAll<BuildConfiguration>().Where(c =>
+                        _operation.SupportsConfiguration(c) && OperationTarget
+                            .GetEngineInstall()
+                            .SupportsConfiguration(c)).ToList()
+                };
+            }
+        }
 
         public List<Type> EnabledOptionSets => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target);
 

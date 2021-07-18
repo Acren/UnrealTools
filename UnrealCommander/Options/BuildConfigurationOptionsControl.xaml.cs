@@ -1,13 +1,16 @@
 ﻿using System.Collections.Generic;
-using System.ComponentModel;
 using System.Windows;
-using System.Windows.Controls;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealCommander.Options
 {
+    public class AllowedBuildConfigurations
+    {
+        public List<BuildConfiguration> Configurations { get; set; } = new List<BuildConfiguration>();
+    }
+
     /// <summary>
     /// Interaction logic for BuildConfigurationOptionsControl.xaml
     /// </summary>
@@ -21,11 +24,11 @@ namespace UnrealCommander.Options
             set { _options = value; OnPropertyChanged(); }
         }
 
-        public static readonly DependencyProperty AllowedBuildConfigurationsProperty = DependencyProperty.Register(nameof(AllowedBuildConfigurations), typeof(BindingList<BuildConfiguration>), typeof(BuildConfigurationOptionsControl));
+        public static readonly DependencyProperty AllowedBuildConfigurationsProperty = DependencyProperty.Register(nameof(AllowedBuildConfigurations), typeof(AllowedBuildConfigurations), typeof(BuildConfigurationOptionsControl));
 
-        public BindingList<BuildConfiguration> AllowedBuildConfigurations
+        public AllowedBuildConfigurations AllowedBuildConfigurations
         {
-            get => (BindingList<BuildConfiguration>)GetValue(AllowedBuildConfigurationsProperty);
+            get => (AllowedBuildConfigurations)GetValue(AllowedBuildConfigurationsProperty);
             set => SetValue(AllowedBuildConfigurationsProperty, value);
         }
 

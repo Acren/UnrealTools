@@ -7,13 +7,12 @@
                           xmlns:unrealCommander="clr-namespace:UnrealCommander"
                           xmlns:unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
                           mc:Ignorable="d" 
-                          d:DesignHeight="450" d:DesignWidth="800"
-                          DataContext="{Binding RelativeSource={RelativeSource Self}}">
+                          d:DesignHeight="450" d:DesignWidth="800">
     <StackPanel VerticalAlignment="Center">
-        <ListBox ItemsSource="{Binding BuildConfigurations}" SelectedItem="{Binding Path= Options.Configuration, Mode=TwoWay}" BorderThickness="0" BorderBrush="Transparent" Background="Transparent">
+        <ListBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=local:BuildConfigurationOptionsControl}, Path=BuildConfigurations}" SelectedItem="{Binding RelativeSource={RelativeSource AncestorType=local:BuildConfigurationOptionsControl}, Path= Options.Configuration, Mode=TwoWay}" BorderThickness="0" BorderBrush="Transparent" Background="Transparent">
             <ListBox.Resources>
                 <unrealCommander:EnumToStringConverter x:Key="EnumToStringConverter"/>
-                <unrealCommander:ConfigurationSupportedConverter x:Key="ConfigurationSupportedConverter"/>
+                <unrealCommander:ContainsConverter x:Key="ContainsConverter"/>
             </ListBox.Resources>
             <ListBox.ItemContainerStyle>
                 <!-- Style to get rid of the selection visual -->
@@ -37,30 +36,33 @@
                                                      Mode="TwoWay" />
                         </RadioButton.IsChecked>
                         <RadioButton.IsEnabled>
-                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
+                            <MultiBinding Converter="{StaticResource ContainsConverter}">
+                                <Binding RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}" Path="AllowedBuildConfigurations.Configurations"/>
                                 <Binding />
-                                <Binding Path="DataProvider.OperationTarget.EngineInstall"
-                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
-                                <Binding Path="DataProvider.Operation"
-                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                                <!--<Binding Path="OperationTarget.EngineInstall"
+                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                                <Binding Path="Operation"
+                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>-->
                             </MultiBinding>
                         </RadioButton.IsEnabled>
                         <RadioButton.Focusable>
-                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
+                            <MultiBinding Converter="{StaticResource ContainsConverter}">
+                                <Binding RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}" Path="AllowedBuildConfigurations.Configurations"/>
                                 <Binding />
-                                <Binding Path="DataProvider.OperationTarget.EngineInstall"
+                                <!--<Binding Path="OperationTarget.EngineInstall"
                                                          RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
-                                <Binding Path="DataProvider.Operation"
-                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                                <Binding Path="Operation"
+                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>-->
                             </MultiBinding>
                         </RadioButton.Focusable>
                         <RadioButton.IsHitTestVisible>
-                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
+                            <MultiBinding Converter="{StaticResource ContainsConverter}">
+                                <Binding RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}" Path="AllowedBuildConfigurations.Configurations"/>
                                 <Binding />
-                                <Binding Path="DataProvider.OperationTarget.EngineInstall"
+                                <!--<Binding Path="DataProvider.OperationTarget.EngineInstall"
                                                          RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
                                 <Binding Path="DataProvider.Operation"
-                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
+                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>-->
                             </MultiBinding>
                         </RadioButton.IsHitTestVisible>
                     </RadioButton>

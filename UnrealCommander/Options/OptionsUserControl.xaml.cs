@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Controls;
+using UnrealAutomationCommon.Operations;
 using UnrealCommander.Annotations;
 
 namespace UnrealCommander.Options
@@ -8,16 +9,27 @@ namespace UnrealCommander.Options
     /// <summary>
     /// Interaction logic for OptionsUserControl.xaml
     /// </summary>
-    public partial class OptionsUserControl : UserControl, IOptionsControl, INotifyPropertyChanged
+    public partial class OptionsUserControl : UserControl, INotifyPropertyChanged
     {
-        private IOptionsDataProvider _dataProvider = null;
+        private OperationTarget _operationTarget = null;
+        private Operation _operation = null;
 
-        public IOptionsDataProvider DataProvider
+        public OperationTarget OperationTarget
         {
-            get => _dataProvider;
+            get => _operationTarget;
             set
             {
-                _dataProvider = value;
+                _operationTarget = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public Operation Operation
+        {
+            get => _operation;
+            set
+            {
+                _operation = value;
                 OnPropertyChanged();
             }
         }
