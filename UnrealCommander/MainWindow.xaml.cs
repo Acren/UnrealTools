@@ -121,26 +121,22 @@ namespace UnrealCommander
             set
             {
                 _operation = value;
-                if (!_operation.SupportsConfiguration(PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>().Configuration))
-                {
-                    // Set different configuration
-                    foreach(BuildConfiguration config in EnumUtils.GetAll<BuildConfiguration>())
-                    {
-                        if (!_operation.SupportsConfiguration(config)) continue;
-
-                        EngineInstall install = _operation.GetRelevantEngineInstall(PersistentState.OperationParameters);
-
-                        if (install != null && !install.SupportsConfiguration(config)) continue;
-
-                        PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>().Configuration = config;
-                        break;
-                    }
-                }
+                SelectSupportedBuildConfiguration();
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(VisibleCommand));
                 OnPropertyChanged(nameof(CanExecute));
                 OnPropertyChanged(nameof(AllowedBuildConfigurations));
                 OnPropertyChanged(nameof(EnabledOptionSets));
+            }
+        }
+
+        private void SelectSupportedBuildConfiguration()
+        {
+            if (AllowedBuildConfigurations.Configurations.Count > 0 && !AllowedBuildConfigurations.Configurations.Contains(PersistentState.OperationParameters
+                .RequestOptions<BuildConfigurationOptions>().Configuration))
+            {
+                PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>().Configuration =
+                    AllowedBuildConfigurations.Configurations[0];
             }
         }
 
