@@ -9,8 +9,6 @@ namespace UnrealAutomationCommon.Unreal
         public string FriendlyName { get; set; }
         public string EngineVersion { get; set; }
 
-        public string TrimmedEngineVersion => GetEngineInstall().Key;
-
         public static PluginDescriptor Load(string uPluginPath)
         {
             return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
@@ -18,13 +16,12 @@ namespace UnrealAutomationCommon.Unreal
 
         public EngineInstall GetEngineInstall()
         {
-            EngineInstall engine = EngineInstallFinder.GetEngineInstall(EngineVersion);
-            if (engine != null)
+            if (EngineVersion == null)
             {
-                return engine;
+                return EngineInstallFinder.GetDefaultEngineInstall();
             }
 
-            EngineInstallVersion version = new EngineInstallVersion(EngineVersion);
+            EngineInstallVersion version = new(EngineVersion);
 
             return EngineInstallFinder.GetEngineInstall(version);
         }

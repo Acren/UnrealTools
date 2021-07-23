@@ -1,4 +1,5 @@
-﻿using Microsoft.Win32;
+﻿using System;
+using Microsoft.Win32;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -115,14 +116,14 @@ namespace UnrealAutomationCommon.Unreal
                 return GetDefaultEngineInstall();
             }
 
-            EngineInstall engineInstall = GetEngineInstalls().Find(x => x.Key == engineKey);
+            // Check Contains so that engine with "5.0EA" satisfies search for "5.0"
+            EngineInstall engineInstall = GetEngineInstalls().Find(x => x.Key.Contains(engineKey));
             if (engineInstall != null)
             {
                 return engineInstall;
             }
 
-            return null;
-            //throw new Exception("Could not find Engine installation based on EngineAssociation: + " + engineKey);
+            throw new Exception("Could not find Engine installation based on EngineKey: + " + engineKey);
         }
 
         public static EngineInstall GetEngineInstall(EngineInstallVersion version)
