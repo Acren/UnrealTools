@@ -28,6 +28,8 @@ namespace UnrealAutomationCommon.Operations
 
             Command command = BuildCommand(operationParameters);
 
+            _logger.Log("Running command: " + command, LogVerbosity.Log);
+
             if (command == null)
             {
                 throw new Exception("No command");

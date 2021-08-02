@@ -327,7 +327,7 @@ namespace UnrealCommander
                     }
                 }
 
-                AddOutputLine("Running command: " + Operation.GetCommands(PersistentState.OperationParameters));
+                AddOutputLine("Running operation: " + Operation.OperationName);
 
                 OperationRunner newRunner = new OperationRunner(Operation, PersistentState.OperationParameters);
                 newRunner.Output += (S, verbosity) =>
