@@ -4,7 +4,7 @@ using System.IO;
 
 namespace UnrealAutomationCommon.Operations
 {
-    public abstract class SingleCommandOperation : Operation
+    public abstract class SingleCommandOperation<T> : Operation<T> where T : OperationTarget
     {
         public override Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, DataReceivedEventHandler errorHandler, EventHandler exitHandler)
         {

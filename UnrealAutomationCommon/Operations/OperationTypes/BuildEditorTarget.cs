@@ -3,7 +3,7 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class BuildEditorTarget : Operation<Project>
+    public class BuildEditorTarget : SingleCommandOperation<Project>
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
