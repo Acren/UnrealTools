@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -451,6 +452,9 @@ namespace UnrealCommander
                         if (IsRunningOperation)
                         {
                             RunningOperation.Terminate();
+
+                            // Small sleep so that dispatch invokes triggered by termination don't crash
+                            Thread.Sleep(1);
                         }
                         break;
                     case MessageBoxResult.No:
