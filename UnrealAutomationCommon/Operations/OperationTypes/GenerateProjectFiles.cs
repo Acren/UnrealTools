@@ -2,17 +2,17 @@
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class GenerateProjectFiles : ProjectOperation
+    public class GenerateProjectFiles : Operation<Project>
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
             Arguments args = new Arguments();
             args.SetFlag("projectfiles");
-            args.SetKeyPath("project", GetProject(operationParameters).UProjectPath);
+            args.SetKeyPath("project", GetTarget(operationParameters).UProjectPath);
             args.SetFlag("game");
             args.SetFlag("rocket");
             args.SetFlag("progress");
-            return new Command(GetProject(operationParameters).GetEngineInstall().GetUBTExe(), args);
+            return new Command(GetTarget(operationParameters).GetEngineInstall().GetUBTExe(), args);
         }
     }
 }

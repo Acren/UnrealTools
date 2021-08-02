@@ -119,6 +119,11 @@ namespace UnrealAutomationCommon.Operations
 
         public abstract bool SupportsTarget(OperationTarget Target);
 
+        public OperationTarget GetTarget(OperationParameters operationParameters)
+        {
+            return operationParameters.Target;
+        }
+
         public virtual string GetLogsPath(OperationParameters operationParameters)
         {
             return null;
@@ -137,6 +142,24 @@ namespace UnrealAutomationCommon.Operations
             return name.SplitWordsByUppercase();
         }
 
+    }
 
+    public abstract class Operation<T> : Operation where T : OperationTarget
+    {
+        public new static Operation<T> CreateOperation(Type operationType)
+        {
+            Operation<T> instance = (Operation<T>)Activator.CreateInstance(operationType);
+            return instance;
+        }
+
+        public override bool SupportsTarget(OperationTarget Target)
+        {
+            return Target is T;
+        }
+
+        public new T GetTarget(OperationParameters operationParameters)
+        {
+            return operationParameters.Target as T;
+        }
     }
 }
