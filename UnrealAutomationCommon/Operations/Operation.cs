@@ -2,19 +2,18 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Security.Cryptography.X509Certificates;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {
-    public abstract class Operation<T> where T : OperationTarget
+    public abstract class Operation
     {
         public string OperationName => GetOperationName();
 
-        public static Operation<T> CreateOperation(Type operationType)
+        public static Operation CreateOperation(Type operationType)
         {
-            Operation<T> instance = (Operation<T>) Activator.CreateInstance(operationType);
+            Operation instance = (Operation)Activator.CreateInstance(operationType);
             return instance;
         }
 
@@ -22,7 +21,6 @@ namespace UnrealAutomationCommon.Operations
         {
             return CreateOperation(operationType).SupportsTarget(target);
         }
-
 
         public Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, DataReceivedEventHandler errorHandler, EventHandler exitHandler )
         {
@@ -158,14 +156,11 @@ namespace UnrealAutomationCommon.Operations
             return false;
         }
 
-        public bool SupportsTarget(OperationTarget Target)
-        {
-            return Target is T;
-        }
+        public abstract bool SupportsTarget(OperationTarget Target);
 
-        public T GetTarget(OperationParameters operationParameters)
+        public OperationTarget GetTarget(OperationParameters operationParameters)
         {
-            return operationParameters.Target as T;
+            return operationParameters.Target;
         }
 
         public virtual string GetLogsPath(OperationParameters operationParameters)
@@ -186,6 +181,24 @@ namespace UnrealAutomationCommon.Operations
             return name.SplitWordsByUppercase();
         }
 
+    }
 
+    public abstract class Operation<T> : Operation where T : OperationTarget
+    {
+        public new static Operation<T> CreateOperation(Type operationType)
+        {
+            Operation<T> instance = (Operation<T>)Activator.CreateInstance(operationType);
+            return instance;
+        }
+
+        public override bool SupportsTarget(OperationTarget Target)
+        {
+            return Target is T;
+        }
+
+        public new T GetTarget(OperationParameters operationParameters)
+        {
+            return operationParameters.Target as T;
+        }
     }
 }

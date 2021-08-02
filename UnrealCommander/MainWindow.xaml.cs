@@ -25,7 +25,7 @@ namespace UnrealCommander
     {
         private PersistentData _persistentState = new PersistentData();
 
-        private Operation<OperationTarget> _operation = new LaunchEditor();
+        private Operation _operation = new LaunchEditor();
 
         private OperationRunner _runningOperation = null;
 
