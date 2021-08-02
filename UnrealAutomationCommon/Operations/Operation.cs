@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Security.Cryptography.X509Certificates;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
@@ -11,7 +10,6 @@ namespace UnrealAutomationCommon.Operations
     public abstract class Operation
     {
         public string OperationName => GetOperationName();
-
 
         public static Operation CreateOperation(Type operationType)
         {
@@ -24,47 +22,7 @@ namespace UnrealAutomationCommon.Operations
             return CreateOperation(operationType).SupportsTarget(target);
         }
 
-
-        public Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, DataReceivedEventHandler errorHandler, EventHandler exitHandler )
-        {
-            if (!RequirementsSatisfied(operationParameters))
-            {
-                throw new Exception("Requirements not satisfied");
-            }
-
-            Command command = BuildCommand(operationParameters);
-
-            if (command == null)
-            {
-                throw new Exception("No command");
-            }
-
-            if (!File.Exists(command.File))
-            {
-                throw new Exception("File " + command.File + " not found");
-            }
-
-            ProcessStartInfo startInfo = new ProcessStartInfo
-            {
-                FileName = command.File,
-                Arguments = command.Arguments,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-
-            Process process = new Process { StartInfo = startInfo };
-            process.EnableRaisingEvents = true;
-            process.OutputDataReceived += outputHandler;
-            process.ErrorDataReceived += errorHandler;
-            process.Exited += exitHandler;
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
-            return process;
-        }
+        public abstract Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, DataReceivedEventHandler errorHandler, EventHandler exitHandler);
 
         public Command GetCommand(OperationParameters operationParameters)
         {
