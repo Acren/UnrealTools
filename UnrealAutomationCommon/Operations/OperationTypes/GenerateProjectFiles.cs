@@ -2,7 +2,7 @@
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class GenerateProjectFiles : SingleCommandOperation<Project>
+    public class GenerateProjectFiles : CommandProcessOperation<Project>
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {

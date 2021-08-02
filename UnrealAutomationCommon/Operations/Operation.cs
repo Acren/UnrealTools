@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
@@ -10,6 +9,9 @@ namespace UnrealAutomationCommon.Operations
     public abstract class Operation
     {
         public string OperationName => GetOperationName();
+        public event OperationEndedEventHandler Ended;
+
+        protected bool _terminated = false;
 
         public static Operation CreateOperation(Type operationType)
         {
@@ -22,16 +24,26 @@ namespace UnrealAutomationCommon.Operations
             return CreateOperation(operationType).SupportsTarget(target);
         }
 
-        public abstract Process Execute(OperationParameters operationParameters, DataReceivedEventHandler outputHandler, DataReceivedEventHandler errorHandler, EventHandler exitHandler);
-
-        public Command GetCommand(OperationParameters operationParameters)
+        public void Execute(OperationParameters operationParameters, IOperationLogger logger)
         {
             if (!RequirementsSatisfied(operationParameters))
             {
-                return null;
+                throw new Exception("Requirements not satisfied");
             }
 
-            return BuildCommand(operationParameters);
+            OnExecuted(operationParameters, logger);
+        }
+
+        protected abstract void OnExecuted(OperationParameters operationParameters, IOperationLogger logger);
+
+        public IEnumerable<Command> GetCommands(OperationParameters operationParameters)
+        {
+            if (!RequirementsSatisfied(operationParameters))
+            {
+                return new List<Command>();
+            }
+
+            return BuildCommands(operationParameters);
         }
 
         public string GetOutputPath(OperationParameters operationParameters)
@@ -54,13 +66,13 @@ namespace UnrealAutomationCommon.Operations
             return operationParameters.Target?.GetEngineInstall();
         }
 
-        public List<Type> GetRequiredOptionSetTypes(OperationTarget target)
+        public HashSet<Type> GetRequiredOptionSetTypes(OperationTarget target)
         {
             if (target == null)
             {
                 return null;
             }
-            List<Type> result = new ();
+            HashSet<Type> result = new();
             OperationParameters dummyParams = new();
             dummyParams.Target = target;
 
@@ -69,10 +81,12 @@ namespace UnrealAutomationCommon.Operations
                 return null;
             }
 
-            Command command = BuildCommand(dummyParams);
-            foreach (OperationOptions options in dummyParams.OptionsInstances)
+            foreach (Command command in BuildCommands(dummyParams))
             {
-                result.Add(options.GetType());
+                foreach (OperationOptions options in dummyParams.OptionsInstances)
+                {
+                    result.Add(options.GetType());
+                }
             }
             return result;
         }
@@ -129,7 +143,7 @@ namespace UnrealAutomationCommon.Operations
             return null;
         }
 
-        protected abstract Command BuildCommand(OperationParameters operationParameters);
+        protected abstract IEnumerable<Command> BuildCommands(OperationParameters operationParameters);
 
         protected string GetTargetName(OperationParameters operationParameters)
         {
@@ -140,6 +154,22 @@ namespace UnrealAutomationCommon.Operations
         {
             string name = GetType().Name;
             return name.SplitWordsByUppercase();
+        }
+
+        public void Terminate()
+        {
+            _terminated = true;
+            OnTerminated();
+        }
+
+        protected virtual void OnTerminated()
+        {
+
+        }
+
+        protected virtual void End(OperationResult result)
+        {
+            Ended?.Invoke(result);
         }
 
     }

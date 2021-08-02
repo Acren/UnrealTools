@@ -168,7 +168,7 @@ namespace UnrealCommander
             }
         }
 
-        public List<Type> EnabledOptionSets => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target);
+        public List<Type> EnabledOptionSets => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target)?.ToList();
 
         public string Status
         {
@@ -197,8 +197,18 @@ namespace UnrealCommander
         {
             get
             {
-                Command command = Operation.GetCommand(PersistentState.OperationParameters);
-                return command != null ? command.ToString() : "No command";
+                List<string> commandStrings = new List<string>();
+                foreach (Command command in Operation.GetCommands(PersistentState.OperationParameters))
+                {
+                    commandStrings.Add(command.ToString());
+                }
+
+                if (commandStrings.Count > 0)
+                {
+                    return string.Join("\n", commandStrings);
+                }
+
+                return "No command";
             }
         }
 
@@ -317,7 +327,7 @@ namespace UnrealCommander
                     }
                 }
 
-                AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
+                AddOutputLine("Running command: " + Operation.GetCommands(PersistentState.OperationParameters));
 
                 OperationRunner newRunner = new OperationRunner(Operation, PersistentState.OperationParameters);
                 newRunner.Output += (S, verbosity) =>
@@ -404,7 +414,7 @@ namespace UnrealCommander
 
         private void CopyCommand(object sender, RoutedEventArgs e)
         {
-            Clipboard.SetDataObject(Operation.GetCommand(PersistentState.OperationParameters).ToString());
+            Clipboard.SetDataObject(Operation.GetCommands(PersistentState.OperationParameters).ToString());
             CommandTextBox.Focus();
             CommandTextBox.SelectAll();
         }

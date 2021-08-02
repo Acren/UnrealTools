@@ -2,7 +2,7 @@
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class BuildPlugin : SingleCommandOperation<Plugin>
+    public class BuildPlugin : CommandProcessOperation<Plugin>
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
