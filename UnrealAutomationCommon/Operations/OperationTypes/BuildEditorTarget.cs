@@ -1,6 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using UnrealAutomationCommon.Operations.OperationOptionTypes;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
@@ -11,9 +10,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Arguments args = new Arguments();
             args.SetArgument(GetTargetName(operationParameters) + "Editor");
             args.SetArgument("Win64");
-            args.SetArgument(operationParameters.Configuration.ToString());
-            args.SetPath(GetTarget(operationParameters).UProjectPath);
-            return new Command(GetTarget(operationParameters).ProjectDescriptor.GetBuildPath(), args);
+            args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString());
+            args.SetPath(GetProject(operationParameters).UProjectPath);
+            return new Command(GetProject(operationParameters).GetEngineInstall().GetBuildPath(), args);
         }
     }
 }

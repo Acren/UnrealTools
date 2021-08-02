@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon
 {
@@ -15,22 +17,23 @@ namespace UnrealAutomationCommon
                 arguments.SetPath(project.UProjectPath);
             }
 
-            bool UseInsights = operationParameters.TraceCpu
-                               || operationParameters.TraceFrame
-                               || operationParameters.TraceBookmark
-                               || operationParameters.TraceLoadTime;
-            if (UseInsights)
+            arguments.SetFlag("stdout");
+            arguments.SetFlag("FullStdOutLogOutput");
+            arguments.SetFlag("nologtimes");
+
+            bool useInsights = operationParameters.RequestOptions<InsightsOptions>().TraceChannels.Count > 0;
+ 
+            if (useInsights)
             {
-                List<string> TraceChannels = new List<string>();
+                List<string> traceChannels = new List<string>();
+                foreach (TraceChannel channel in operationParameters.RequestOptions<InsightsOptions>().TraceChannels)
+                {
+                    traceChannels.Add(channel.Key);
+                }
 
-                if (operationParameters.TraceCpu) TraceChannels.Add("cpu");
-                if (operationParameters.TraceFrame) TraceChannels.Add("frame");
-                if (operationParameters.TraceBookmark) TraceChannels.Add("bookmark");
-                if (operationParameters.TraceLoadTime) TraceChannels.Add("loadtime");
+                arguments.SetKeyValue("trace", string.Join(",",traceChannels));
 
-                arguments.SetKeyValue("trace", string.Join(",",TraceChannels));
-
-                if (operationParameters.TraceCpu)
+                if (traceChannels.Contains("cpu"))
                 {
                     arguments.SetFlag("statnamedevents");
                 }
@@ -38,17 +41,17 @@ namespace UnrealAutomationCommon
                 arguments.SetKeyValue("tracehost", "127.0.0.1");
             }
 
-            if (operationParameters.StompMalloc)
+            if (operationParameters.RequestOptions<FlagOptions>().StompMalloc)
             {
                 arguments.SetFlag("stompmalloc");
             }
 
-            if (operationParameters.WaitForAttach)
+            if (operationParameters.RequestOptions<FlagOptions>().WaitForAttach)
             {
                 arguments.SetFlag("waitforattach");
             }
 
-            if (operationParameters.RunTests && operationParameters.Target is Project Project)
+            if (operationParameters.RequestOptions<AutomationOptions>().RunTests && operationParameters.Target is Project Project)
             {
                 string execCmds = "Automation RunTests " + Project?.TestName;
                 arguments.SetKeyValue("ExecCmds", execCmds);

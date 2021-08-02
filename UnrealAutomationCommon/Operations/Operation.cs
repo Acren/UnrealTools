@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography.X509Certificates;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
@@ -33,6 +36,11 @@ namespace UnrealAutomationCommon.Operations
             if (command == null)
             {
                 throw new Exception("No command");
+            }
+
+            if (!File.Exists(command.File))
+            {
+                throw new Exception("File " + command.File + " not found");
             }
 
             ProcessStartInfo startInfo = new ProcessStartInfo
@@ -87,6 +95,28 @@ namespace UnrealAutomationCommon.Operations
             return operationParameters.Target?.GetEngineInstall();
         }
 
+        public List<Type> GetRequiredOptionSetTypes(OperationTarget target)
+        {
+            if (target == null)
+            {
+                return null;
+            }
+            List<Type> result = new ();
+            OperationParameters dummyParams = new();
+            dummyParams.Target = target;
+
+            if (GetRelevantEngineInstall(dummyParams) == null)
+            {
+                return null;
+            }
+
+            Command command = BuildCommand(dummyParams);
+            foreach (OperationOptions options in dummyParams.OptionsInstances)
+            {
+                result.Add(options.GetType());
+            }
+            return result;
+        }
 
         public virtual bool SupportsConfiguration(BuildConfiguration configuration)
         {
@@ -95,19 +125,29 @@ namespace UnrealAutomationCommon.Operations
 
         public virtual bool RequirementsSatisfied(OperationParameters operationParameters)
         {
+            if (GetRelevantEngineInstall(operationParameters) == null)
+            {
+                return false;
+            }
+
             if (!SupportsTarget(operationParameters.Target))
             {
                 return false;
             }
 
-            if (!SupportsConfiguration(operationParameters.Configuration))
-            {
-                return false;
-            }
+            BuildConfigurationOptions options = operationParameters.FindOptions<BuildConfigurationOptions>();
 
-            if (!GetRelevantEngineInstall(operationParameters).SupportsConfiguration(operationParameters.Configuration))
+            if (options != null)
             {
-                return false;
+                if (!SupportsConfiguration(options.Configuration))
+                {
+                    return false;
+                }
+
+                if (!GetRelevantEngineInstall(operationParameters).SupportsConfiguration(options.Configuration))
+                {
+                    return false;
+                }
             }
 
             return true;
@@ -126,6 +166,11 @@ namespace UnrealAutomationCommon.Operations
         public T GetTarget(OperationParameters operationParameters)
         {
             return operationParameters.Target as T;
+        }
+
+        public virtual string GetLogsPath(OperationParameters operationParameters)
+        {
+            return null;
         }
 
         protected abstract Command BuildCommand(OperationParameters operationParameters);

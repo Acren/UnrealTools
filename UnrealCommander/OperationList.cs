@@ -14,6 +14,7 @@ namespace UnrealCommander
             List<Type> Result = new List<Type>()
             {
                 // Custom order
+                typeof(GenerateProjectFiles),
                 typeof(BuildEditorTarget),
                 typeof(BuildEditor),
                 typeof(LaunchEditor),

@@ -1,11 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using UnrealAutomationCommon.Operations;
+﻿using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Unreal
 {
-    public class UATArguments
+    public static class UATArguments
     {
         public static Arguments MakeArguments(OperationParameters operationParameters)
         {
@@ -16,7 +14,7 @@ namespace UnrealAutomationCommon
                 arguments.SetKeyPath("project", project.UProjectPath);
             }
             arguments.SetFlag("build");
-            string configuration = operationParameters.Configuration.ToString();
+            string configuration = operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString();
             arguments.SetKeyValue("clientconfig", configuration);
             arguments.SetKeyValue("serverconfig", configuration);
 

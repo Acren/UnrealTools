@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace UnrealAutomationCommon
 {
@@ -7,6 +9,11 @@ namespace UnrealAutomationCommon
         public static string GetName(object value)
         {
             return Enum.GetName(value.GetType(), value);
+        }
+
+        public static List<T> GetAll<T>() where T : System.Enum
+        {
+            return Enum.GetValues(typeof(T)).Cast<T>().ToList();
         }
     }
 }

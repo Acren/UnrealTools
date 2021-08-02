@@ -1,4 +1,6 @@
-﻿namespace UnrealAutomationCommon.Operations.OperationTypes
+﻿using UnrealAutomationCommon.Unreal;
+
+namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class LaunchStandalone : Operation<Project>
     {
@@ -9,12 +11,7 @@
             args.SetFlag("windowed");
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
-            return new Command(EnginePaths.GetEditorExe(GetTarget(operationParameters).ProjectDescriptor.GetEngineInstallDirectory(), operationParameters), args);
-        }
-
-        public override bool ShouldReadOutputFromLogFile()
-        {
-            return true;
+            return new Command(EnginePaths.GetEditorExe(GetProject(operationParameters).GetEngineInstall(), operationParameters), args);
         }
     }
 }

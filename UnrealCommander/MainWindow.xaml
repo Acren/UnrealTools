@@ -8,16 +8,19 @@
         xmlns:operations="clr-namespace:UnrealAutomationCommon.Operations;assembly=UnrealAutomationCommon"
         xmlns:operationTypes="clr-namespace:UnrealAutomationCommon.Operations.OperationTypes;assembly=UnrealAutomationCommon"
         xmlns:unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
+        xmlns:options="clr-namespace:UnrealCommander.Options"
+        xmlns:operationOptionTypes="clr-namespace:UnrealAutomationCommon.Operations.OperationOptionTypes;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
         Title="Unreal Commander" Height="800" Width="1200"
-        DataContext="{Binding RelativeSource={RelativeSource Self}}">
+        DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Closing="Window_Closing">
     <DockPanel LastChildFill="True">
-        <DataGrid Name="ProjectGrid" ItemsSource="{ Binding PersistentState.Projects}" SelectedItem="{Binding Path=SelectedProject, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" Margin="0,0,0,0" HorizontalScrollBarVisibility="Hidden" DockPanel.Dock="Top" Height="Auto">
+        <DataGrid Name="ProjectGrid" ItemsSource="{ Binding PersistentState.Projects}" SelectedItem="{Binding Path=SelectedProject, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" HorizontalScrollBarVisibility="Hidden" Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="Remove" Click="ProjectRemoveClick" />
                     <MenuItem Header="Open Directory" Click="ProjectOpenDirectory" />
                     <MenuItem Header="Open StagedBuild (WindowsNoEditor)" Click="ProjectOpenStagedBuildWindows" />
+                    <MenuItem Header="Remove Project" Click="ProjectRemoveClick" />
                 </ContextMenu>
             </DataGrid.ContextMenu>
             <DataGrid.Resources>
@@ -28,14 +31,14 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Project" IsReadOnly="True" Binding="{Binding Name}"/>
                 <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UProjectPath}" Width="*"/>
-                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding ProjectDescriptor.EngineFriendlyName}"/>
+                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding EngineInstall.Key}"/>
             </DataGrid.Columns>
         </DataGrid>
         <DataGrid Name="PluginGrid" ItemsSource="{ Binding PersistentState.Plugins}" SelectedItem="{Binding Path=SelectedPlugin, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" HorizontalScrollBarVisibility="Hidden" Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="Remove Plugin" Click="PluginRemoveClick" />
                     <MenuItem Header="Open Directory" Click="PluginOpenDirectory" />
+                    <MenuItem Header="Remove Plugin" Click="PluginRemoveClick" />
                 </ContextMenu>
             </DataGrid.ContextMenu>
             <DataGrid.Resources>
@@ -46,7 +49,7 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Plugin" IsReadOnly="True" Binding="{Binding Name}"/>
                 <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UPluginPath}" Width="*"/>
-                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding PluginDescriptor.TrimmedEngineVersion}"/>
+                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding EngineInstall.Key}"/>
             </DataGrid.Columns>
         </DataGrid>
         <Grid Margin="10,10,10,10" Height="Auto">
@@ -60,8 +63,11 @@
             </Grid.RowDefinitions>
             <TextBlock Text="{Binding Status}" Grid.Row="0" Margin="0,5"/>
             <WrapPanel Grid.Row="1">
+                <WrapPanel.Resources>
+                    <local:ContainsConverter x:Key="ContainsConverter"/>
+                </WrapPanel.Resources>
                 <GroupBox Header="Operation" Margin="0,5" Padding="10">
-                    <StackPanel>
+                    <StackPanel VerticalAlignment="Center">
                         <ListBox ItemsSource="{Binding OperationTypes}" SelectedItem="{Binding Path=PersistentState.OperationType}" BorderBrush="Transparent" Background="Transparent">
                             <ListBox.Resources>
                                 <local:TypeToStringConverter x:Key="TypeToStringConverter"/>
@@ -117,100 +123,47 @@
                 </GroupBox>
                 <GroupBox Header="Configuration" Margin="0,5" Padding="10">
                     <StackPanel VerticalAlignment="Center">
-                        <ListBox ItemsSource="{Binding BuildConfigurations}" SelectedItem="{Binding Path=PersistentState.OperationParameters.Configuration}" BorderBrush="Transparent" Background="Transparent">
-                            <ListBox.Resources>
-                                <local:EnumToStringConverter x:Key="EnumToStringConverter"/>
-                                <local:ConfigurationSupportedConverter x:Key="ConfigurationSupportedConverter"/>
-                            </ListBox.Resources>
-                            <ListBox.ItemContainerStyle>
-                                <!-- Style to get rid of the selection visual -->
-                                <Style TargetType="{x:Type ListBoxItem}">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="{x:Type ListBoxItem}">
-                                                <ContentPresenter />
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="{x:Type unreal:BuildConfiguration}">
-                                    <RadioButton Content="{Binding Converter={StaticResource EnumToStringConverter}}" GroupName="Configurations">
-                                        <!-- Binding IsChecked to IsSelected requires no support code -->
-                                        <RadioButton.IsChecked>
-                                            <Binding Path="IsSelected"
-                                                     RelativeSource="{RelativeSource AncestorType=ListBoxItem}"
-                                                     Mode="TwoWay" />
-                                        </RadioButton.IsChecked>
-                                        <RadioButton.IsEnabled>
-                                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
-                                                <Binding />
-                                                <Binding Path="SelectedEngineInstall"
-                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
-                                                <Binding Path="Operation"
-                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
-                                            </MultiBinding>
-                                        </RadioButton.IsEnabled>
-                                        <RadioButton.Focusable>
-                                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
-                                                <Binding />
-                                                <Binding Path="SelectedEngineInstall"
-                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
-                                                <Binding Path="Operation"
-                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
-                                            </MultiBinding>
-                                        </RadioButton.Focusable>
-                                        <RadioButton.IsHitTestVisible>
-                                            <MultiBinding Converter="{StaticResource ConfigurationSupportedConverter}">
-                                                <Binding />
-                                                <Binding Path="SelectedEngineInstall"
-                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
-                                                <Binding Path="Operation"
-                                                         RelativeSource="{RelativeSource AncestorType=local:MainWindow}"/>
-                                            </MultiBinding>
-                                        </RadioButton.IsHitTestVisible>
-                                    </RadioButton>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                        <options:BuildConfigurationOptionsControl x:Name="BuildConfigurationOptionsControlElement" AllowedBuildConfigurations="{Binding AllowedBuildConfigurations}"/>
                     </StackPanel>
+                    <GroupBox.IsEnabled>
+                        <MultiBinding Converter="{StaticResource ContainsConverter}">
+                            <Binding Path="EnabledOptionSets" />
+                            <Binding Source="{x:Type TypeName=operationOptionTypes:BuildConfigurationOptions}" />
+                        </MultiBinding>
+                    </GroupBox.IsEnabled>
                 </GroupBox>
                 <GroupBox Header="Insights" Margin="0,5" Padding="10">
                     <StackPanel VerticalAlignment="Center">
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.TraceCpu, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Trace CPU" VerticalAlignment="Center" />
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.TraceFrame, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Trace Frame" VerticalAlignment="Center" />
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.TraceBookmark, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Trace Bookmark" VerticalAlignment="Center" />
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.TraceLoadTime, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Trace Load Time" VerticalAlignment="Center" />
-                        </CheckBox>
+                        <options:InsightsOptionsControl x:Name="InsightsOptionsControlElement" />
                     </StackPanel>
+                    <GroupBox.IsEnabled>
+                        <MultiBinding Converter="{StaticResource ContainsConverter}">
+                            <Binding Path="EnabledOptionSets" />
+                            <Binding Source="{x:Type TypeName=operationOptionTypes:InsightsOptions}" />
+                        </MultiBinding>
+                    </GroupBox.IsEnabled>
                 </GroupBox>
                 <GroupBox Header="Flags" Margin="0,5" Padding="10">
                     <StackPanel VerticalAlignment="Center">
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.StompMalloc, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Stomp Malloc" VerticalAlignment="Center" />
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.WaitForAttach, Mode=TwoWay}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <TextBlock Text="Wait for Attach" VerticalAlignment="Center" />
-                        </CheckBox>
+                        <options:FlagOptionsControl x:Name="FlagOptionsControlElement" />
                     </StackPanel>
+                    <GroupBox.IsEnabled>
+                        <MultiBinding Converter="{StaticResource ContainsConverter}">
+                            <Binding Path="EnabledOptionSets" />
+                            <Binding Source="{x:Type TypeName=operationOptionTypes:FlagOptions}" />
+                        </MultiBinding>
+                    </GroupBox.IsEnabled>
                 </GroupBox>
                 <GroupBox Header="Automation" Margin="0,5" Padding="10">
                     <StackPanel VerticalAlignment="Center">
-                        <CheckBox IsChecked="{Binding PersistentState.OperationParameters.RunTests}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Run tests:" VerticalAlignment="Center" Margin="0,0,5,0" />
-                                <TextBox Text="{Binding Path=SelectedProject.TestName, UpdateSourceTrigger=PropertyChanged}"  MinWidth="50" />
-                            </StackPanel>
-                        </CheckBox>
+                        <options:AutomationOptionsControl x:Name="AutomationOptionsControlElement" TestName="{Binding SelectedProject.TestName, Mode=TwoWay, RelativeSource={RelativeSource AncestorType=local:MainWindow}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged}"/>
                     </StackPanel>
+                    <GroupBox.IsEnabled>
+                        <MultiBinding Converter="{StaticResource ContainsConverter}">
+                            <Binding Path="EnabledOptionSets" />
+                            <Binding Source="{x:Type TypeName=operationOptionTypes:AutomationOptions}" />
+                        </MultiBinding>
+                    </GroupBox.IsEnabled>
                 </GroupBox>
             </WrapPanel>
             <GroupBox Header="Additional Arguments" Grid.Row="2" Margin="0,5" Padding="10">
@@ -236,11 +189,14 @@
                 <TextBox Name="CommandTextBox" IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
             </GroupBox>
             <WrapPanel Grid.Row="5" HorizontalAlignment="Right">
-                <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                     <TextBlock Text="Copy"></TextBlock>
                 </Button>
-                <Button Click="Execute" IsEnabled="{Binding CanExecute}" Margin="0,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                <Button Click="Execute" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                     <Run Text="{Binding Operation.OperationName, Mode=OneWay}" />
+                </Button>
+                <Button Click="Terminate" IsEnabled="{Binding IsRunningOperation}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                    <Run Text="Terminate" />
                 </Button>
             </WrapPanel>
         </Grid>

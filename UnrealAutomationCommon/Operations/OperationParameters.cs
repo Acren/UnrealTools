@@ -1,4 +1,8 @@
-﻿using Newtonsoft.Json;
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using Newtonsoft.Json;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using UnrealAutomationCommon.Unreal;
@@ -8,17 +12,8 @@ namespace UnrealAutomationCommon.Operations
     public class OperationParameters : INotifyPropertyChanged
     {
         private OperationTarget _target;
-        private BuildConfiguration _configuration;
 
-        private bool _traceCpu = false;
-        private bool _traceFrame = false;
-        private bool _traceBookmark = false;
-        private bool _traceLoadTime = false;
-
-        private bool _stompMalloc = false;
-        private bool _waitForAttach = false;
-
-        private bool _runTests = false;
+        private BindingList<OperationOptions> _optionsInstances = new BindingList<OperationOptions>();
 
         private string _additionalArguments;
 
@@ -26,7 +21,15 @@ namespace UnrealAutomationCommon.Operations
 
         public OperationParameters()
         {
+            _optionsInstances.ListChanged += _optionsInstances_ListChanged;
         }
+
+        private void _optionsInstances_ListChanged(object sender, ListChangedEventArgs e)
+        {
+            OnPropertyChanged(nameof(OptionsInstances));
+        }
+
+        public BindingList<OperationOptions> OptionsInstances => _optionsInstances;
 
         public OperationTarget Target
         {
@@ -53,86 +56,6 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
-        public BuildConfiguration Configuration
-        {
-            get => _configuration;
-            set
-            {
-                _configuration = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool TraceCpu
-        {
-            get => _traceCpu;
-            set
-            {
-                _traceCpu = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool TraceFrame
-        {
-            get => _traceFrame;
-            set
-            {
-                _traceFrame = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool TraceBookmark
-        {
-            get => _traceBookmark;
-            set
-            {
-                _traceBookmark = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool TraceLoadTime
-        {
-            get => _traceLoadTime;
-            set
-            {
-                _traceLoadTime = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool StompMalloc
-        {
-            get => _stompMalloc;
-            set
-            {
-                _stompMalloc = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool WaitForAttach
-        {
-            get => _waitForAttach;
-            set
-            {
-                _waitForAttach = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool RunTests
-        {
-            get => _runTests;
-            set
-            {
-                _runTests = value;
-                OnPropertyChanged();
-            }
-        }
-
         public string AdditionalArguments
         {
             get => _additionalArguments;
@@ -141,6 +64,38 @@ namespace UnrealAutomationCommon.Operations
                 _additionalArguments = value;
                 OnPropertyChanged();
             }
+        }
+
+        public T FindOptions<T>() where T : OperationOptions
+        {
+            foreach (OperationOptions options in _optionsInstances)
+            {
+                if (options.GetType() == typeof(T))
+                {
+                    return (T)options;
+                }
+            }
+
+            return null;
+        }
+
+        public T RequestOptions<T>() where T : OperationOptions
+        {
+            T options = FindOptions<T>();
+
+            if (options != null)
+            {
+                return options;
+            }
+
+            options = (T)Activator.CreateInstance(typeof(T));
+            _optionsInstances.Add(options);
+            return options;
+        }
+
+        public void ResetOptions()
+        {
+            _optionsInstances.Clear();
         }
 
         [JsonIgnore]

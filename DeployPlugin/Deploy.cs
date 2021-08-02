@@ -7,6 +7,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using UnrealAutomationCommon;
+using UnrealAutomationCommon.Unreal;
 
 namespace DeployPlugin
 {
@@ -87,7 +88,7 @@ namespace DeployPlugin
 
             // Get engine path
 
-            string EnginePath = ProjectDef.GetEngineInstallDirectory();
+            string EnginePath = ProjectDef.GetEngineInstall().InstallDirectory;
 
             string EnginePluginsMarketplacePath = Path.Combine(EnginePath, @"Engine\Plugins\Marketplace");
             string EnginePluginsMarketplacePluginPath = Path.Combine(EnginePluginsMarketplacePath, Path.GetFileName(PluginPath));

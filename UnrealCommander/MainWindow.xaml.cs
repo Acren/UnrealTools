@@ -11,8 +11,10 @@ using System.Windows.Input;
 using System.Windows.Media;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
+using UnrealCommander.Options;
 
 namespace UnrealCommander
 {
@@ -25,12 +27,19 @@ namespace UnrealCommander
 
         private Operation<OperationTarget> _operation = new LaunchEditor();
 
+        private OperationRunner _runningOperation = null;
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         public MainWindow()
         {
             InitializeComponent();
             PersistentState = PersistentData.Load();
+
+            BuildConfigurationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>();
+            InsightsOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<InsightsOptions>();
+            FlagOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<FlagOptions>();
+            AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
         }
 
         public Project SelectedProject
@@ -42,6 +51,7 @@ namespace UnrealCommander
                 {
                     PersistentState.OperationParameters.Target = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(AllowedBuildConfigurations));
                 }
             }
         }
@@ -55,6 +65,7 @@ namespace UnrealCommander
                 {
                     PersistentState.OperationParameters.Target = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(AllowedBuildConfigurations));
                 }
             }
         }
@@ -110,35 +121,54 @@ namespace UnrealCommander
             set
             {
                 _operation = value;
-                if (!_operation.SupportsConfiguration(PersistentState.OperationParameters.Configuration))
-                {
-                    // Set different configuration
-                    foreach(BuildConfiguration config in BuildConfigurations)
-                    {
-                        if (!_operation.SupportsConfiguration(config)) continue;
-
-                        EngineInstall install = _operation.GetRelevantEngineInstall(PersistentState.OperationParameters);
-
-                        if (install != null && !install.SupportsConfiguration(config)) continue;
-
-                        PersistentState.OperationParameters.Configuration = config;
-                        break;
-                    }
-                }
+                SelectSupportedBuildConfiguration();
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(VisibleCommand));
                 OnPropertyChanged(nameof(CanExecute));
+                OnPropertyChanged(nameof(AllowedBuildConfigurations));
+                OnPropertyChanged(nameof(EnabledOptionSets));
             }
         }
 
+        private void SelectSupportedBuildConfiguration()
+        {
+            if (AllowedBuildConfigurations.Configurations.Count > 0 && !AllowedBuildConfigurations.Configurations.Contains(PersistentState.OperationParameters
+                .RequestOptions<BuildConfigurationOptions>().Configuration))
+            {
+                PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>().Configuration =
+                    AllowedBuildConfigurations.Configurations[0];
+            }
+        }
+
+        public OperationTarget OperationTarget => PersistentState.OperationParameters.Target;
+
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
 
-        public List<BuildConfiguration> BuildConfigurations => Enum.GetValues(typeof(BuildConfiguration)).Cast<BuildConfiguration>().ToList();
-
         public EngineInstall SelectedEngineInstall =>
-            IsProjectSelected ? GetSelectedProject().ProjectDescriptor.GetEngineInstall() : 
+            IsProjectSelected ? GetSelectedProject().ProjectDescriptor.GetEngineInstall() :
                 IsPluginSelected ? GetSelectedPlugin().PluginDescriptor.GetEngineInstall() :
                 null;
+
+        public AllowedBuildConfigurations AllowedBuildConfigurations
+        {
+            get
+            {
+                if (OperationTarget == null)
+                {
+                    return new AllowedBuildConfigurations();
+                }
+
+                return new AllowedBuildConfigurations()
+                {
+                    Configurations = EnumUtils.GetAll<BuildConfiguration>().Where(c =>
+                        _operation.SupportsConfiguration(c) && OperationTarget
+                            .GetEngineInstall()
+                            .SupportsConfiguration(c)).ToList()
+                };
+            }
+        }
+
+        public List<Type> EnabledOptionSets => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target);
 
         public string Status
         {
@@ -173,7 +203,25 @@ namespace UnrealCommander
         }
 
         private int LineCount { get; set; }
-        private int ProcessLineCount { get; set; }
+
+        public OperationRunner RunningOperation
+        {
+            get => _runningOperation;
+            set
+            {
+                if(_runningOperation != value)
+                {
+                    _runningOperation = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsRunningOperation));
+                }
+            }
+        }
+
+        public bool IsRunningOperation
+        {
+            get => RunningOperation != null;
+        }
 
         private Project GetSelectedProject()
         {
@@ -254,10 +302,25 @@ namespace UnrealCommander
         {
             if (Operation.RequirementsSatisfied(PersistentState.OperationParameters))
             {
-                ProcessLineCount = 0;
+                if(IsRunningOperation)
+                {
+                    MessageBoxResult result = MessageBox.Show("Process is running. Terminate it?", "Terminate process", MessageBoxButton.YesNoCancel);
+                    switch (result)
+                    {
+                        case MessageBoxResult.Yes:
+                            RunningOperation.Terminate();
+                            break;
+                        case MessageBoxResult.No:
+                            break;
+                        case MessageBoxResult.Cancel:
+                            return;
+                    }
+                }
+
                 AddOutputLine("Running command: " + Operation.GetCommand(PersistentState.OperationParameters));
-                OperationRunner runner = OperationRunner.Run(Operation, PersistentState.OperationParameters);
-                runner.Output += (S, verbosity) =>
+
+                OperationRunner newRunner = new OperationRunner(Operation, PersistentState.OperationParameters);
+                newRunner.Output += (S, verbosity) =>
                 {
                     // Output handler
                     Dispatcher.Invoke(() =>
@@ -265,15 +328,33 @@ namespace UnrealCommander
                         // Prepend line numbers to each line of the output.
                         if (!String.IsNullOrEmpty(S))
                         {
-                            ProcessLineCount++;
-                            AddOutputLine("[" + ProcessLineCount + "]: " + S, verbosity);
+                            AddOutputLine(S, verbosity);
                         }
                     });
                 };
-                runner.Ended += Result =>
+                newRunner.Ended += Result =>
                 {
-
+                    RunningOperation = null;
                 };
+
+                try
+                {
+                    newRunner.Run();
+                    RunningOperation = newRunner;
+                }
+                catch (Exception exception)
+                {
+                    AddOutputLine("Exception encountered running " + Operation.OperationName + ":", LogVerbosity.Error);
+                    AddOutputLine(exception.Message, LogVerbosity.Error);
+                }
+            }
+        }
+
+        private void Terminate(object sender, RoutedEventArgs e)
+        {
+            if(RunningOperation != null)
+            {
+                RunningOperation.Terminate();
             }
         }
 
@@ -290,7 +371,7 @@ namespace UnrealCommander
         private void AddOutputLine(string line, LogVerbosity verbosity = LogVerbosity.Log)
         {
             LineCount++;
-            string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\n";
+            string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\r";
 
             TextRange tr = new TextRange(OutputTextBox.Document.ContentEnd, OutputTextBox.Document.ContentEnd);
             tr.Text = finalLine;
@@ -346,6 +427,29 @@ namespace UnrealCommander
         private void LogClear(object Sender, RoutedEventArgs E)
         {
             OutputTextBox.Document.Blocks.Clear();
+        }
+
+        private void Window_Closing(object sender, CancelEventArgs e)
+        {
+            if(IsRunningOperation)
+            {
+                MessageBoxResult result = MessageBox.Show("Process is running. Terminate it?", "Terminate process", MessageBoxButton.YesNoCancel);
+                switch(result)
+                {
+                    case MessageBoxResult.Yes:
+                        // Check is running again, because it may have finished while the message box was open
+                        if (IsRunningOperation)
+                        {
+                            RunningOperation.Terminate();
+                        }
+                        break;
+                    case MessageBoxResult.No:
+                        break;
+                    case MessageBoxResult.Cancel:
+                        e.Cancel = true;
+                        break;
+                }
+            }
         }
     }
 }

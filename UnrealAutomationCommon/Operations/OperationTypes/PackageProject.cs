@@ -1,4 +1,6 @@
-﻿namespace UnrealAutomationCommon.Operations.OperationTypes
+﻿using UnrealAutomationCommon.Unreal;
+
+namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class PackageProject : Operation<Project>
     {
@@ -10,7 +12,7 @@
             arguments.SetFlag("pak");
             arguments.SetFlag("package");
             arguments.SetFlag("nocompileeditor");
-            return new Command(GetTarget(operationParameters).ProjectDescriptor.GetRunUATPath(), arguments);
+            return new Command(GetProject(operationParameters).GetEngineInstall().GetRunUATPath(), arguments);
         }
 
         protected override string GetOperationName()
