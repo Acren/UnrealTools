@@ -11,8 +11,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetArgument(GetTargetName(operationParameters) + "Editor");
             args.SetArgument("Win64");
             args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString());
-            args.SetPath(GetProject(operationParameters).UProjectPath);
-            return new Command(GetProject(operationParameters).GetEngineInstall().GetBuildPath(), args);
+            args.SetPath(GetTarget(operationParameters).UProjectPath);
+            return new Command(GetTarget(operationParameters).GetEngineInstall().GetBuildPath(), args);
         }
     }
 }

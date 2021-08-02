@@ -1,4 +1,6 @@
-﻿namespace UnrealAutomationCommon.Operations.OperationTypes
+﻿using UnrealAutomationCommon.Unreal;
+
+namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class LaunchPackage : Operation<Project>
     {
@@ -18,7 +20,7 @@
 
         public override string GetLogsPath(OperationParameters operationParameters)
         {
-            return GetProject(operationParameters).GetStagedPackage().GetLogsPath();
+            return GetTarget(operationParameters).GetStagedPackage().GetLogsPath();
         }
     }
 }
