@@ -12,6 +12,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             arguments.SetFlag("pak");
             arguments.SetFlag("package");
             arguments.SetFlag("nocompileeditor");
+            arguments.SetFlag("archive");
+            arguments.SetKeyPath("archivedirectory", GetOutputPath(operationParameters));
             return new Command(GetTarget(operationParameters).GetEngineInstall().GetRunUATPath(), arguments);
         }
 

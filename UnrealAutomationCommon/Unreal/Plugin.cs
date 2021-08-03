@@ -1,4 +1,6 @@
-﻿using System.IO;
+﻿using System;
+using System.Dynamic;
+using System.IO;
 using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
 
@@ -35,6 +37,35 @@ namespace UnrealAutomationCommon.Unreal
 
         [JsonIgnore]
         public PluginDescriptor PluginDescriptor { get; private set; }
+        [JsonIgnore]
+        public string HostProjectPath => Path.GetFullPath(Path.Combine(GetPluginPath(), @"..\..\")); // Up 2 levels
+        [JsonIgnore]
+        public string HostProjectUProjectPath{
+            get
+            {
+                // Get project path
+                string[] uProjectFiles;
+                string projectPath = HostProjectPath;
+                uProjectFiles = Directory.GetFiles(projectPath, "*.uproject");
+
+                while (uProjectFiles.Length < 1)
+                {
+                    if (Path.GetPathRoot(projectPath) == projectPath)
+                    {
+                        throw new Exception("No .uproject found in " + projectPath);
+                    }
+
+                    projectPath = Path.GetFullPath(Path.Combine(projectPath, @"..\")); // Up 1 level
+                    uProjectFiles = Directory.GetFiles(projectPath, "*.uproject");
+                }
+
+                string uProjectPath = uProjectFiles[0];
+
+                return uProjectPath;
+            }
+        }
+        [JsonIgnore]
+        public Project HostProject => new Project(HostProjectUProjectPath);
 
         public string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
 

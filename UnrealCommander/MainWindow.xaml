@@ -30,7 +30,7 @@
             </DataGrid.Resources>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Project" IsReadOnly="True" Binding="{Binding Name}"/>
-                <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UProjectPath}" Width="*"/>
+                <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding UProjectUProjectPath}" Width="*"/>
                 <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding EngineInstall.Key}"/>
             </DataGrid.Columns>
         </DataGrid>

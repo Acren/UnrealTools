@@ -1,11 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Collections.Specialized;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {
@@ -17,16 +13,20 @@ namespace UnrealAutomationCommon.Operations
 
         private string _additionalArguments;
 
+        [JsonIgnore]
+        public string OutputPathOverride { get; set; }
+        [JsonIgnore]
+        public string OutputPathRoot => @"C:\UnrealCommander\";
+        [JsonIgnore]
+        public bool UseOutputPathProjectSubfolder => true;
+        [JsonIgnore]
+        public bool UseOutputPathOperationSubfolder => true;
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         public OperationParameters()
         {
-            _optionsInstances.ListChanged += _optionsInstances_ListChanged;
-        }
-
-        private void _optionsInstances_ListChanged(object sender, ListChangedEventArgs e)
-        {
-            OnPropertyChanged(nameof(OptionsInstances));
+            _optionsInstances.ListChanged += ((sender, args) => OnPropertyChanged(nameof(OptionsInstances)));
         }
 
         public BindingList<OperationOptions> OptionsInstances => _optionsInstances;
@@ -97,13 +97,6 @@ namespace UnrealAutomationCommon.Operations
         {
             _optionsInstances.Clear();
         }
-
-        [JsonIgnore]
-        public string OutputPathRoot => @"C:\UnrealCommander\";
-        [JsonIgnore]
-        public bool UseOutputPathProjectSubfolder => true;
-        [JsonIgnore]
-        public bool UseOutputPathOperationSubfolder => true;
 
         private void OnPropertyChanged([CallerMemberName] string name = null)
         {

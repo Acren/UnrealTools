@@ -12,6 +12,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             buildPluginArguments.SetKeyPath("Plugin", GetTarget(operationParameters).UPluginPath);
             buildPluginArguments.SetKeyPath("Package", GetOutputPath(operationParameters));
             buildPluginArguments.SetFlag("Rocket");
+            buildPluginArguments.SetFlag("VS2019");
             return new Command(GetTarget(operationParameters).PluginDescriptor.GetRunUATPath(), buildPluginArguments);
         }
 

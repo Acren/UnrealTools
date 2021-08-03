@@ -63,6 +63,14 @@ namespace UnrealAutomationCommon
             File.Delete(FilePath);
         }
 
+        public static void DeleteFileIfExists(string FilePath)
+        {
+            if (File.Exists(FilePath))
+            {
+                DeleteFile(FilePath);
+            }
+        }
+
         public static void DeleteDirectory(string target_dir)
         {
             string[] files = { };

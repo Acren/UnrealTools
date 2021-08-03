@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Forms;
+using UnrealAutomationCommon;
 
 namespace DeployPlugin
 {

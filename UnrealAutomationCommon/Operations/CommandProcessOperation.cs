@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Operations
@@ -10,9 +11,7 @@ namespace UnrealAutomationCommon.Operations
     public abstract class CommandProcessOperation<T> : Operation<T> where T : OperationTarget
     {
         private Process _process = null;
-        private IOperationLogger _logger = null;
         private string _processName = null;
-        private OperationParameters _operationParameters = null;
 
         protected abstract Command BuildCommand(OperationParameters operationParameters);
 
@@ -21,14 +20,11 @@ namespace UnrealAutomationCommon.Operations
             return new List<Command>() { BuildCommand(operationParameters) };
         }
 
-        protected override void OnExecuted(OperationParameters operationParameters, IOperationLogger logger)
+        protected override async Task<OperationResult> OnExecuted()
         {
-            _operationParameters = operationParameters;
-            _logger = logger;
+            Command command = BuildCommand(OperationParameters);
 
-            Command command = BuildCommand(operationParameters);
-
-            _logger.Log("Running command: " + command, LogVerbosity.Log);
+            Logger.Log("Running command: " + command, LogVerbosity.Log);
 
             if (command == null)
             {
@@ -58,11 +54,7 @@ namespace UnrealAutomationCommon.Operations
             };
             _process.ErrorDataReceived += (sender, args) =>
             {
-                logger.Log(args.Data, LogVerbosity.Error);
-            };
-            _process.Exited += (sender, args) =>
-            {
-                HandleProcessEnded();
+                Logger.Log(args.Data, LogVerbosity.Error);
             };
             _process.Start();
             _process.BeginOutputReadLine();
@@ -70,7 +62,11 @@ namespace UnrealAutomationCommon.Operations
 
             _processName = _process.ProcessName;
 
-            logger.Log("Launched process '" + _processName + "'", LogVerbosity.Log);
+            Logger.Log("Launched process '" + _processName + "'", LogVerbosity.Log);
+
+            await Task.Run(() => _process.WaitForExit());
+
+            return HandleProcessEnded();
         }
 
         void HandleLogLine(string line)
@@ -102,20 +98,20 @@ namespace UnrealAutomationCommon.Operations
                     verbosity = LogVerbosity.Warning;
                 }
             }
-            _logger.Log(line, verbosity);
+            Logger.Log(line, verbosity);
         }
 
-        void HandleProcessEnded()
+        OperationResult HandleProcessEnded()
         {
-            OperationResult result = new OperationResult();
+            OperationResult result = new OperationResult(_process.ExitCode == 0);
             result.ExitCode = _process.ExitCode;
 
-            _logger.Log("Process '" + _processName + "' exited with code " + result.ExitCode, result.ExitCode == 0 ? LogVerbosity.Log : LogVerbosity.Error);
+            Logger.Log("Process '" + _processName + "' exited with code " + result.ExitCode, result.ExitCode == 0 ? LogVerbosity.Log : LogVerbosity.Error);
 
-            AutomationOptions automationOptions = _operationParameters.FindOptions<AutomationOptions>();
-            if (automationOptions.RunTests)
+            AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
+            if (automationOptions is { RunTests: true })
             {
-                string reportFilePath = OutputPaths.GetTestReportFilePath(GetOutputPath(_operationParameters));
+                string reportFilePath = OutputPaths.GetTestReportFilePath(GetOutputPath(OperationParameters));
                 TestReport report = TestReport.Load(reportFilePath);
                 if (report != null)
                 {
@@ -123,31 +119,29 @@ namespace UnrealAutomationCommon.Operations
                 }
                 else
                 {
-                    _logger.Log("Expected test report at " + reportFilePath + " but didn't find one", LogVerbosity.Error);
+                    Logger.Log("Expected test report at " + reportFilePath + " but didn't find one", LogVerbosity.Error);
                 }
 
                 if (result.TestReport != null)
                 {
                     foreach (Test test in result.TestReport.Tests)
                     {
-                        _logger.Log(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath, test.State == TestState.Success ? LogVerbosity.Log : LogVerbosity.Error);
+                        Logger.Log(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath, test.State == TestState.Success ? LogVerbosity.Log : LogVerbosity.Error);
                         foreach (TestEntry entry in test.Entries)
                         {
                             if (entry.Event.Type != TestEventType.Info)
                             {
-                                _logger.Log("".PadRight(9) + " - " + entry.Event.Message, entry.Event.Type == TestEventType.Error ? LogVerbosity.Error : LogVerbosity.Warning);
+                                Logger.Log("".PadRight(9) + " - " + entry.Event.Message, entry.Event.Type == TestEventType.Error ? LogVerbosity.Error : LogVerbosity.Warning);
                             }
                         }
                     }
                     int testsPassed = result.TestReport.Tests.Count(t => t.State == TestState.Success);
                     bool allPassed = testsPassed == result.TestReport.Tests.Count;
-                    _logger.Log(testsPassed + " of " + result.TestReport.Tests.Count + " tests passed", allPassed ? LogVerbosity.Log : LogVerbosity.Error);
+                    Logger.Log(testsPassed + " of " + result.TestReport.Tests.Count + " tests passed", allPassed ? LogVerbosity.Log : LogVerbosity.Error);
                 }
             }
 
-            _logger.Log("Operation '" + OperationName + "' " + (_terminated ? "terminated" : "completed"), _terminated ? LogVerbosity.Warning : LogVerbosity.Log);
-
-            End(result);
+            return result;
         }
 
         protected override void OnTerminated()

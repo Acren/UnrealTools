@@ -17,9 +17,9 @@ namespace UnrealAutomationCommon.Unreal
         {
         }
 
-        public Project(string path)
+        public Project(string uProjectPath)
         {
-            UProjectPath = path;
+            UProjectPath = uProjectPath;
         }
 
         public string UProjectPath

@@ -1,47 +1,44 @@
-﻿using UnrealAutomationCommon.Operations.OperationOptionTypes;
+﻿using System.Threading.Tasks;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Operations
 {
     public delegate void OperationOutputEventHandler(string output, LogVerbosity verbosity);
-    public delegate void OperationEndedEventHandler(OperationResult result);
 
     public class OperationRunner : IOperationLogger
     {
-        private Operation _operation;
+        public Operation Operation { get; private set; }
         private OperationParameters _operationParameters;
         private int _lineCount = 0;
 
         public event OperationOutputEventHandler Output;
-        public event OperationEndedEventHandler Ended;
 
         public OperationRunner(Operation operation, OperationParameters operationParameters)
         {
-            _operation = operation;
+            Operation = operation;
             _operationParameters = operationParameters;
         }
 
-        public void Run()
+        public async Task<OperationResult> Run()
         {
-            string outputPath = _operation.GetOutputPath(_operationParameters);
+            string outputPath = Operation.GetOutputPath(_operationParameters);
             FileUtils.DeleteDirectoryIfExists(outputPath);
 
-            _operation.Ended += result =>
-            {
-                Ended?.Invoke(result);
-            };
-            _operation.Execute(_operationParameters, this);
+            Task<OperationResult> task = Operation.Execute(_operationParameters, this);
 
             FlagOptions flagOptions = _operationParameters.FindOptions<FlagOptions>();
             if(flagOptions.WaitForAttach)
             {
                 Output?.Invoke("-WaitForAttach was specified, attach now", LogVerbosity.Log);
             }
+
+            return await task;
         }
 
         public void Terminate()
         {
-            Output?.Invoke("Terminating operation '" + _operation.OperationName + "'", LogVerbosity.Warning);
-            _operation.Terminate();
+            Output?.Invoke("Terminating operation '" + Operation.OperationName + "'", LogVerbosity.Warning);
+            Operation.Terminate();
         }
 
         void OutputLine(string line, LogVerbosity verbosity)

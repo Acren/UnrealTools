@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
@@ -9,9 +10,10 @@ namespace UnrealAutomationCommon.Operations
     public abstract class Operation
     {
         public string OperationName => GetOperationName();
-        public event OperationEndedEventHandler Ended;
 
-        protected bool _terminated = false;
+        protected bool Terminated { get; private set; }
+        protected IOperationLogger Logger { get; private set; }
+        protected OperationParameters OperationParameters { get; private set; }
 
         public static Operation CreateOperation(Type operationType)
         {
@@ -24,17 +26,28 @@ namespace UnrealAutomationCommon.Operations
             return CreateOperation(operationType).SupportsTarget(target);
         }
 
-        public void Execute(OperationParameters operationParameters, IOperationLogger logger)
+        public async Task<OperationResult> Execute(OperationParameters operationParameters, IOperationLogger logger)
         {
-            if (!RequirementsSatisfied(operationParameters))
+            try
             {
-                throw new Exception("Requirements not satisfied");
-            }
+                logger.Log($"Running operation '{OperationName}'");
+                CheckRequirementsSatisfied(operationParameters);
 
-            OnExecuted(operationParameters, logger);
+                Logger = logger;
+                OperationParameters = operationParameters;
+
+                OperationResult result = await OnExecuted();
+
+                Logger.Log($"Operation '{OperationName}' {(Terminated ? "terminated" : "completed")}", Terminated ? LogVerbosity.Warning : LogVerbosity.Log);
+                return result;
+            }
+            catch (Exception e)
+            {
+                throw new Exception($"Exception encountered running operation '{OperationName}'", e);
+            }
         }
 
-        protected abstract void OnExecuted(OperationParameters operationParameters, IOperationLogger logger);
+        protected abstract Task<OperationResult> OnExecuted();
 
         public IEnumerable<Command> GetCommands(OperationParameters operationParameters)
         {
@@ -48,6 +61,11 @@ namespace UnrealAutomationCommon.Operations
 
         public string GetOutputPath(OperationParameters operationParameters)
         {
+            if (operationParameters.OutputPathOverride != null)
+            {
+                return operationParameters.OutputPathOverride;
+            }
+
             string path = operationParameters.OutputPathRoot;
             if (operationParameters.UseOutputPathProjectSubfolder)
             {
@@ -96,16 +114,21 @@ namespace UnrealAutomationCommon.Operations
             return true;
         }
 
-        public virtual bool RequirementsSatisfied(OperationParameters operationParameters)
+        public virtual void CheckRequirementsSatisfied(OperationParameters operationParameters)
         {
             if (GetRelevantEngineInstall(operationParameters) == null)
             {
-                return false;
+                throw new Exception("Engine install not found");
+            }
+
+            if (operationParameters.Target == null)
+            {
+                throw new Exception("Target not specified");
             }
 
             if (!SupportsTarget(operationParameters.Target))
             {
-                return false;
+                throw new Exception($"Target {operationParameters.Target.GetName()} of type {operationParameters.Target.GetType()} is not supported");
             }
 
             BuildConfigurationOptions options = operationParameters.FindOptions<BuildConfigurationOptions>();
@@ -114,16 +137,27 @@ namespace UnrealAutomationCommon.Operations
             {
                 if (!SupportsConfiguration(options.Configuration))
                 {
-                    return false;
+                    throw new Exception("Configuration is not supported");
                 }
 
                 if (!GetRelevantEngineInstall(operationParameters).SupportsConfiguration(options.Configuration))
                 {
-                    return false;
+                    throw new Exception("Engine install does not support configuration");
                 }
             }
+        }
 
-            return true;
+        public bool RequirementsSatisfied(OperationParameters operationParameters)
+        {
+            try
+            {
+                CheckRequirementsSatisfied(operationParameters);
+                return true;
+            }
+            catch (Exception e)
+            {
+                return false;
+            }
         }
 
         public virtual bool ShouldReadOutputFromLogFile()
@@ -158,18 +192,13 @@ namespace UnrealAutomationCommon.Operations
 
         public void Terminate()
         {
-            _terminated = true;
+            Terminated = true;
             OnTerminated();
         }
 
         protected virtual void OnTerminated()
         {
 
-        }
-
-        protected virtual void End(OperationResult result)
-        {
-            Ended?.Invoke(result);
         }
 
     }

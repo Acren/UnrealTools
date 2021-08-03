@@ -2,9 +2,11 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -313,7 +315,7 @@ namespace UnrealCommander
         {
             if (Operation.RequirementsSatisfied(PersistentState.OperationParameters))
             {
-                if(IsRunningOperation)
+                if (IsRunningOperation)
                 {
                     MessageBoxResult result = MessageBox.Show("Process is running. Terminate it?", "Terminate process", MessageBoxButton.YesNoCancel);
                     switch (result)
@@ -328,7 +330,7 @@ namespace UnrealCommander
                     }
                 }
 
-                AddOutputLine("Running operation: " + Operation.OperationName);
+                AddOutputLine($"User started operation '{Operation.OperationName}'");
 
                 OperationRunner newRunner = new OperationRunner(Operation, PersistentState.OperationParameters);
                 newRunner.Output += (S, verbosity) =>
@@ -343,22 +345,32 @@ namespace UnrealCommander
                         }
                     });
                 };
-                newRunner.Ended += Result =>
-                {
-                    RunningOperation = null;
-                };
 
-                try
-                {
-                    newRunner.Run();
-                    RunningOperation = newRunner;
-                }
-                catch (Exception exception)
-                {
-                    AddOutputLine("Exception encountered running " + Operation.OperationName + ":", LogVerbosity.Error);
-                    AddOutputLine(exception.Message, LogVerbosity.Error);
-                }
+                _ = RunOperation(newRunner);
             }
+        }
+
+        private async Task RunOperation(OperationRunner runner)
+        {
+            if (RunningOperation != null)
+            {
+                AddOutputLine("Already running an operation", LogVerbosity.Error);
+                return;
+            }
+
+            RunningOperation = runner;
+            try
+            {
+                Task task = runner.Run();
+                await task;
+            }
+            catch (Exception e)
+            {
+                AddOutputLine(e.ToString(), LogVerbosity.Error);
+            }
+
+            FlashWindow.Flash(Process.GetCurrentProcess().MainWindowHandle);
+            RunningOperation = null;
         }
 
         private void Terminate(object sender, RoutedEventArgs e)

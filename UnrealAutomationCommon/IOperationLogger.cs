@@ -2,6 +2,6 @@
 {
     public interface IOperationLogger
     {
-        public void Log(string line, LogVerbosity verbosity);
+        public void Log(string line, LogVerbosity verbosity = LogVerbosity.Log);
     }
 }
