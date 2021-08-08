@@ -121,7 +121,7 @@
                         </ListBox>
                     </StackPanel>
                 </GroupBox>
-                <GroupBox Header="Configuration" Margin="0,5" Padding="10">
+                <local:OptionsContainer Header="Configuration" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
                     <StackPanel VerticalAlignment="Center">
                         <options:BuildConfigurationOptionsControl x:Name="BuildConfigurationOptionsControlElement" AllowedBuildConfigurations="{Binding AllowedBuildConfigurations}"/>
                     </StackPanel>
@@ -131,8 +131,8 @@
                             <Binding Source="{x:Type TypeName=operationOptionTypes:BuildConfigurationOptions}" />
                         </MultiBinding>
                     </GroupBox.IsEnabled>
-                </GroupBox>
-                <GroupBox Header="Insights" Margin="0,5" Padding="10">
+                </local:OptionsContainer>
+                <local:OptionsContainer Header="Insights" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
                     <StackPanel VerticalAlignment="Center">
                         <options:InsightsOptionsControl x:Name="InsightsOptionsControlElement" />
                     </StackPanel>
@@ -142,8 +142,8 @@
                             <Binding Source="{x:Type TypeName=operationOptionTypes:InsightsOptions}" />
                         </MultiBinding>
                     </GroupBox.IsEnabled>
-                </GroupBox>
-                <GroupBox Header="Flags" Margin="0,5" Padding="10">
+                </local:OptionsContainer>
+                <local:OptionsContainer Header="Flags" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
                     <StackPanel VerticalAlignment="Center">
                         <options:FlagOptionsControl x:Name="FlagOptionsControlElement" />
                     </StackPanel>
@@ -153,8 +153,8 @@
                             <Binding Source="{x:Type TypeName=operationOptionTypes:FlagOptions}" />
                         </MultiBinding>
                     </GroupBox.IsEnabled>
-                </GroupBox>
-                <GroupBox Header="Automation" Margin="0,5" Padding="10">
+                </local:OptionsContainer>
+                <local:OptionsContainer Header="Automation" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
                     <StackPanel VerticalAlignment="Center">
                         <options:AutomationOptionsControl x:Name="AutomationOptionsControlElement" TestName="{Binding SelectedProject.TestName, Mode=TwoWay, RelativeSource={RelativeSource AncestorType=local:MainWindow}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged}"/>
                     </StackPanel>
@@ -164,7 +164,7 @@
                             <Binding Source="{x:Type TypeName=operationOptionTypes:AutomationOptions}" />
                         </MultiBinding>
                     </GroupBox.IsEnabled>
-                </GroupBox>
+                </local:OptionsContainer>
             </WrapPanel>
             <GroupBox Header="Additional Arguments" Grid.Row="2" Margin="0,5" Padding="10">
                 <TextBox Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}"></TextBox>

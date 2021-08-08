@@ -4,6 +4,12 @@
              xmlns:local="clr-namespace:UnrealCommander"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <Style x:Key="OptionsContainer" TargetType="local:OptionsContainer">
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed"></Setter>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Application.Resources>
 </Application>
