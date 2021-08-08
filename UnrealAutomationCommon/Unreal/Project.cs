@@ -7,7 +7,7 @@ namespace UnrealAutomationCommon.Unreal
     public class Project : OperationTarget
     {
         private string _uProjectPath;
-        private string _testName = string.Empty;
+        //private string _testName = string.Empty;
         private ProjectDescriptor _projectDescriptor;
 
         private FileSystemWatcher watcher;
@@ -49,15 +49,15 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public string TestName
-        {
-            get => _testName;
-            set
-            {
-                _testName = value;
-                OnPropertyChanged();
-            }
-        }
+        //public string TestName
+        //{
+        //    get => _testName;
+        //    set
+        //    {
+        //        _testName = value;
+        //        OnPropertyChanged();
+        //    }
+        //}
 
         [JsonIgnore]
         public ProjectDescriptor ProjectDescriptor

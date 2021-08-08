@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
@@ -131,6 +132,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Example project build with installed plugin failed");
             }
 
+            // Test the package
+
+            LaunchPackage testInstalledPluginBuild = new LaunchPackage();
+            OperationParameters testInstalledPluginBuildParams = new OperationParameters()
+            {
+                Target = new Package(exampleProjectBuildPath)
+            };
+            testInstalledPluginBuildParams.SetOptions(OperationParameters.FindOptions<AutomationOptions>());
+
+            OperationResult testResult = await testInstalledPluginBuild.Execute(testInstalledPluginBuildParams, Logger);
+
             // Uninstall plugin from engine because test has completed
             // Now we'll be using the plugin in the project directory instead
 
@@ -224,6 +236,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
         {
+            operationParameters.RequestOptions<AutomationOptions>();
             return new List<Command>();
         }
     }

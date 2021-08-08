@@ -38,15 +38,15 @@ namespace UnrealAutomationCommon.Operations
             {
                 if (_target != value)
                 {
-                    //if (_target != null)
-                    //{
-                    //    _target.PropertyChanged -= TargetChanged;
-                    //}
+                    if (_target != null)
+                    {
+                        _target.PropertyChanged -= TargetChanged;
+                    }
                     _target = value;
-                    //if (_target != null)
-                    //{
-                    //    _target.PropertyChanged += TargetChanged;
-                    //}
+                    if (_target != null)
+                    {
+                        _target.PropertyChanged += TargetChanged;
+                    }
                     OnPropertyChanged();
                 }
                 void TargetChanged(object sender, PropertyChangedEventArgs args)
@@ -91,6 +91,15 @@ namespace UnrealAutomationCommon.Operations
             options = (T)Activator.CreateInstance(typeof(T));
             _optionsInstances.Add(options);
             return options;
+        }
+
+        public void SetOptions<T>(T options) where T : OperationOptions
+        {
+            if (FindOptions<T>() != null)
+            {
+                throw new Exception("Parameters already has options of this type");
+            }
+            _optionsInstances.Add(options);
         }
 
         public void ResetOptions()

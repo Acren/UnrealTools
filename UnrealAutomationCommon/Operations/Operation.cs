@@ -99,13 +99,13 @@ namespace UnrealAutomationCommon.Operations
                 return null;
             }
 
-            foreach (Command command in BuildCommands(dummyParams))
+            BuildCommands(dummyParams);
+
+            foreach (OperationOptions options in dummyParams.OptionsInstances)
             {
-                foreach (OperationOptions options in dummyParams.OptionsInstances)
-                {
-                    result.Add(options.GetType());
-                }
+                result.Add(options.GetType());
             }
+
             return result;
         }
 

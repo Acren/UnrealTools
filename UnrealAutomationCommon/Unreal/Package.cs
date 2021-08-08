@@ -1,9 +1,15 @@
 ﻿using System;
 using System.IO;
+using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public class Package
+    public interface IPackageSource
+    {
+        public Package ProvidedPackage { get; }
+    }
+
+    public class Package : OperationTarget, IPackageSource
     {
         public Package(string packagePath)
         {
@@ -18,9 +24,18 @@ namespace UnrealAutomationCommon.Unreal
             Name = System.IO.Path.GetFileNameWithoutExtension(ExecutablePath);
         }
 
+        public Package ProvidedPackage => this;
+
         public string Path { get; private set; }
         public string ExecutablePath { get; private set; }
-        public string Name { get; private set; }
+        public override string Name { get;}
+
+        public override EngineInstall EngineInstall => null;
+
+        public override void LoadDescriptor()
+        {
+            throw new NotImplementedException();
+        }
 
         public static bool IsPackage(string path)
         {
@@ -45,5 +60,6 @@ namespace UnrealAutomationCommon.Unreal
         {
             return System.IO.Path.Combine(Path, Name, "Saved", "Logs");
         }
+
     }
 }

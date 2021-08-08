@@ -156,7 +156,7 @@
                 </local:OptionsContainer>
                 <local:OptionsContainer Header="Automation" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
                     <StackPanel VerticalAlignment="Center">
-                        <options:AutomationOptionsControl x:Name="AutomationOptionsControlElement" TestName="{Binding SelectedProject.TestName, Mode=TwoWay, RelativeSource={RelativeSource AncestorType=local:MainWindow}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged}"/>
+                        <options:AutomationOptionsControl x:Name="AutomationOptionsControlElement" TestName="{Binding OperationTarget.TestName, Mode=TwoWay, RelativeSource={RelativeSource AncestorType=local:MainWindow}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged}"/>
                     </StackPanel>
                     <GroupBox.IsEnabled>
                         <MultiBinding Converter="{StaticResource ContainsConverter}">

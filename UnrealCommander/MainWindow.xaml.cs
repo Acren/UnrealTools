@@ -95,6 +95,7 @@ namespace UnrealCommander
                     OnPropertyChanged(nameof(Status));
                     OnPropertyChanged(nameof(SelectedPlugin));
                     OnPropertyChanged(nameof(SelectedProject));
+                    OnPropertyChanged(nameof(OperationTarget));
 
                     if (!Operation.OperationTypeSupportsTarget(PersistentState.OperationType,
                         PersistentState.OperationParameters.Target))
