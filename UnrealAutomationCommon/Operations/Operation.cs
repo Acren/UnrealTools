@@ -21,7 +21,7 @@ namespace UnrealAutomationCommon.Operations
             return instance;
         }
 
-        public static bool OperationTypeSupportsTarget(Type operationType, OperationTarget target)
+        public static bool OperationTypeSupportsTarget(Type operationType, IOperationTarget target)
         {
             return CreateOperation(operationType).SupportsTarget(target);
         }
@@ -81,10 +81,10 @@ namespace UnrealAutomationCommon.Operations
 
         public EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
         {
-            return operationParameters.Target?.GetEngineInstall();
+            return operationParameters.Target?.EngineInstall;
         }
 
-        public HashSet<Type> GetRequiredOptionSetTypes(OperationTarget target)
+        public HashSet<Type> GetRequiredOptionSetTypes(IOperationTarget target)
         {
             if (target == null)
             {
@@ -128,7 +128,7 @@ namespace UnrealAutomationCommon.Operations
 
             if (!SupportsTarget(operationParameters.Target))
             {
-                throw new Exception($"Target {operationParameters.Target.GetName()} of type {operationParameters.Target.GetType()} is not supported");
+                throw new Exception($"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not supported");
             }
 
             BuildConfigurationOptions options = operationParameters.FindOptions<BuildConfigurationOptions>();
@@ -154,7 +154,7 @@ namespace UnrealAutomationCommon.Operations
                 CheckRequirementsSatisfied(operationParameters);
                 return true;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 return false;
             }
@@ -165,9 +165,9 @@ namespace UnrealAutomationCommon.Operations
             return false;
         }
 
-        public abstract bool SupportsTarget(OperationTarget Target);
+        public abstract bool SupportsTarget(IOperationTarget Target);
 
-        public OperationTarget GetTarget(OperationParameters operationParameters)
+        public IOperationTarget GetTarget(OperationParameters operationParameters)
         {
             return operationParameters.Target;
         }
@@ -181,7 +181,7 @@ namespace UnrealAutomationCommon.Operations
 
         protected string GetTargetName(OperationParameters operationParameters)
         {
-            return operationParameters.Target.GetName();
+            return operationParameters.Target.Name;
         }
 
         protected virtual string GetOperationName()
@@ -203,7 +203,7 @@ namespace UnrealAutomationCommon.Operations
 
     }
 
-    public abstract class Operation<T> : Operation where T : OperationTarget
+    public abstract class Operation<T> : Operation where T : IOperationTarget
     {
         public new static Operation<T> CreateOperation(Type operationType)
         {
@@ -211,14 +211,14 @@ namespace UnrealAutomationCommon.Operations
             return instance;
         }
 
-        public override bool SupportsTarget(OperationTarget Target)
+        public override bool SupportsTarget(IOperationTarget Target)
         {
             return Target is T;
         }
 
         public new T GetTarget(OperationParameters operationParameters)
         {
-            return operationParameters.Target as T;
+            return (T)operationParameters.Target;
         }
     }
 }

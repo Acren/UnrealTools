@@ -5,14 +5,19 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {
-    public abstract class OperationTarget : INotifyPropertyChanged
+    public interface IOperationTarget
+    {
+        public string Name { get;}
+        public EngineInstall EngineInstall { get; }
+    }
+
+    public abstract class OperationTarget : IOperationTarget, INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler PropertyChanged;
 
-        public EngineInstall EngineInstall => GetEngineInstall();
+        public abstract string Name { get; }
+        public abstract EngineInstall EngineInstall { get; }
 
-        public abstract string GetName();
-        public abstract EngineInstall GetEngineInstall();
         public abstract void LoadDescriptor();
 
         protected void OnPropertyChanged([CallerMemberName] string name = null)

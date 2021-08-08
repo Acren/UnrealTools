@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            return new Command(GetTarget(operationParameters).GetEngineInstall().GetRunUATPath(), UATArguments.MakeArguments(operationParameters));
+            return new Command(GetTarget(operationParameters).EngineInstall.GetRunUATPath(), UATArguments.MakeArguments(operationParameters));
         }
 
         protected override string GetOperationName()

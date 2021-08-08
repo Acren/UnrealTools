@@ -143,7 +143,7 @@ namespace UnrealCommander
             }
         }
 
-        public OperationTarget OperationTarget => PersistentState.OperationParameters.Target;
+        public IOperationTarget OperationTarget => PersistentState.OperationParameters.Target;
 
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
 
@@ -165,7 +165,7 @@ namespace UnrealCommander
                 {
                     Configurations = EnumUtils.GetAll<BuildConfiguration>().Where(c =>
                         _operation.SupportsConfiguration(c) && OperationTarget
-                            .GetEngineInstall()
+                            .EngineInstall
                             .SupportsConfiguration(c)).ToList()
                 };
             }

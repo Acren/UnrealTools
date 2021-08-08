@@ -67,7 +67,8 @@ namespace UnrealAutomationCommon.Unreal
         [JsonIgnore]
         public Project HostProject => new Project(HostProjectUProjectPath);
 
-        public string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
+        public override string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
+        public override EngineInstall EngineInstall => PluginDescriptor?.GetEngineInstall();
 
         public override void LoadDescriptor()
         {
@@ -79,14 +80,5 @@ namespace UnrealAutomationCommon.Unreal
             return Path.GetDirectoryName(_uPluginPath);
         }
 
-        public override string GetName()
-        {
-            return Name;
-        }
-
-        public override EngineInstall GetEngineInstall()
-        {
-            return PluginDescriptor?.GetEngineInstall();
-        }
     }
 }

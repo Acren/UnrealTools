@@ -12,7 +12,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetArgument("Win64");
             args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString());
             args.SetPath(GetTarget(operationParameters).UProjectPath);
-            return new Command(GetTarget(operationParameters).GetEngineInstall().GetBuildPath(), args);
+            return new Command(GetTarget(operationParameters).EngineInstall.GetBuildPath(), args);
         }
     }
 }

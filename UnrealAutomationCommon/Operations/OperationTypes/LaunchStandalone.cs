@@ -11,7 +11,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetFlag("windowed");
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
-            return new Command(EnginePaths.GetEditorExe(GetTarget(operationParameters).GetEngineInstall(), operationParameters), args);
+            return new Command(EnginePaths.GetEditorExe(GetTarget(operationParameters).EngineInstall, operationParameters), args);
         }
     }
 }

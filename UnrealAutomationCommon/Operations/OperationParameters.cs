@@ -7,7 +7,7 @@ namespace UnrealAutomationCommon.Operations
 {
     public class OperationParameters : INotifyPropertyChanged
     {
-        private OperationTarget _target;
+        private IOperationTarget _target;
 
         private BindingList<OperationOptions> _optionsInstances = new BindingList<OperationOptions>();
 
@@ -31,22 +31,22 @@ namespace UnrealAutomationCommon.Operations
 
         public BindingList<OperationOptions> OptionsInstances => _optionsInstances;
 
-        public OperationTarget Target
+        public IOperationTarget Target
         {
             get => _target;
             set
             {
                 if (_target != value)
                 {
-                    if (_target != null)
-                    {
-                        _target.PropertyChanged -= TargetChanged;
-                    }
+                    //if (_target != null)
+                    //{
+                    //    _target.PropertyChanged -= TargetChanged;
+                    //}
                     _target = value;
-                    if (_target != null)
-                    {
-                        _target.PropertyChanged += TargetChanged;
-                    }
+                    //if (_target != null)
+                    //{
+                    //    _target.PropertyChanged += TargetChanged;
+                    //}
                     OnPropertyChanged();
                 }
                 void TargetChanged(object sender, PropertyChangedEventArgs args)

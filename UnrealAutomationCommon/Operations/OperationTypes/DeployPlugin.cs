@@ -205,7 +205,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Logger.Log("Archiving plugin");
 
                 // Copy plugin build to submission so that we can prepare archive for submission without ruining build
-                string pluginSubmissionPath = Path.Combine(workingTempPath, @"PluginSubmission", plugin.GetName());
+                string pluginSubmissionPath = Path.Combine(workingTempPath, @"PluginSubmission", plugin.Name);
                 FileUtils.DeleteDirectoryIfExists(pluginSubmissionPath);
                 FileUtils.CopyDirectory(pluginBuildPath, pluginSubmissionPath);
 

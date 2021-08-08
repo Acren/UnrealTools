@@ -70,7 +70,8 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+        public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+        public override EngineInstall EngineInstall => ProjectDescriptor.GetEngineInstall();
 
         public override void LoadDescriptor()
         {
@@ -90,7 +91,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public string GetStagedBuildWindowsPath()
         {
-            if (GetEngineInstall().GetVersion().MajorVersion >= 5)
+            if (EngineInstall.GetVersion().MajorVersion >= 5)
             {
                 return Path.Combine(GetStagedBuildsPath(), "Windows");
             }
@@ -114,14 +115,5 @@ namespace UnrealAutomationCommon.Unreal
             return Path.Combine(GetProjectPath(), "Saved", "Logs");
         }
 
-        public override string GetName()
-        {
-            return Name;
-        }
-
-        public override EngineInstall GetEngineInstall()
-        {
-            return ProjectDescriptor.GetEngineInstall();
-        }
     }
 }
