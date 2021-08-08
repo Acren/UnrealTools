@@ -118,10 +118,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string installedPluginTestBuildArchivePath = Path.Combine(workingTempPath, @"InstalledPluginTestBuild");
             FileUtils.DeleteDirectoryIfExists(installedPluginTestBuildArchivePath);
 
+            Project exampleProjectBuild = new Project(exampleProjectBuildUProjectPath);
+
             PackageProject installedPluginPackageOperation = new PackageProject();
             OperationParameters installedPluginPackageParams = new OperationParameters()
             {
-                Target = new Project(exampleProjectBuildUProjectPath),
+                Target = exampleProjectBuild,
                 OutputPathOverride = exampleProjectBuildPath
             };
 
@@ -137,11 +139,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             LaunchPackage testInstalledPluginBuild = new LaunchPackage();
             OperationParameters testInstalledPluginBuildParams = new OperationParameters()
             {
-                Target = new Package(exampleProjectBuildPath)
+                Target = exampleProjectBuild
             };
             testInstalledPluginBuildParams.SetOptions(OperationParameters.FindOptions<AutomationOptions>());
+            exampleProjectBuild.TestName = plugin.TestName;
 
             OperationResult testResult = await testInstalledPluginBuild.Execute(testInstalledPluginBuildParams, Logger);
+
+            if (!testResult.Success)
+            {
+                throw new Exception("Launch and test with installed plugin failed");
+            }
 
             // Uninstall plugin from engine because test has completed
             // Now we'll be using the plugin in the project directory instead

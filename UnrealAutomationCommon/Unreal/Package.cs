@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Unreal
         {
             if (!IsPackage(packagePath))
             {
-                throw new Exception("Path does not appear to be a package");
+                throw new Exception($"Path '{packagePath}' does not appear to be a package (contains no executable)");
             }
 
             Path = packagePath;

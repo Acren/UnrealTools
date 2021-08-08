@@ -116,11 +116,6 @@ namespace UnrealAutomationCommon.Operations
 
         public virtual void CheckRequirementsSatisfied(OperationParameters operationParameters)
         {
-            if (GetRelevantEngineInstall(operationParameters) == null)
-            {
-                throw new Exception("Engine install not found");
-            }
-
             if (operationParameters.Target == null)
             {
                 throw new Exception("Target not specified");
@@ -129,6 +124,11 @@ namespace UnrealAutomationCommon.Operations
             if (!SupportsTarget(operationParameters.Target))
             {
                 throw new Exception($"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not supported");
+            }
+
+            if (GetRelevantEngineInstall(operationParameters) == null)
+            {
+                throw new Exception("Engine install not found");
             }
 
             BuildConfigurationOptions options = operationParameters.FindOptions<BuildConfigurationOptions>();
