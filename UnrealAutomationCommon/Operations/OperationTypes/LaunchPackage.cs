@@ -2,7 +2,7 @@
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class LaunchPackage : CommandProcessOperation<Project>
+    public abstract class LaunchPackage<T> : CommandProcessOperation<T> where T : OperationTarget, IPackageProvider
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
@@ -10,7 +10,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetFlag("windowed");
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
-            return new Command(GetTarget(operationParameters).GetStagedPackageExecutablePath(), args);
+            return new Command(GetTarget(operationParameters).ProvidedPackage.ExecutablePath, args);
         }
 
         protected override string GetOperationName()
@@ -20,7 +20,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         public override string GetLogsPath(OperationParameters operationParameters)
         {
-            return GetTarget(operationParameters).GetStagedPackage().GetLogsPath();
+            return GetTarget(operationParameters).ProvidedPackage.LogsPath;
         }
+    }
+
+    public class LaunchPackage : LaunchPackage<Package>
+    {
+    }
+
+    public class LaunchStagedPackage : LaunchPackage<Project>
+    {
+
     }
 }

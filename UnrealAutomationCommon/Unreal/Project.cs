@@ -4,7 +4,7 @@ using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public class Project : OperationTarget
+    public class Project : OperationTarget, IPackageProvider, IEngineInstallProvider
     {
         private string _uProjectPath;
         //private string _testName = string.Empty;
@@ -21,6 +21,11 @@ namespace UnrealAutomationCommon.Unreal
         {
             UProjectPath = uProjectPath;
         }
+
+        public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+        public EngineInstall EngineInstall => ProjectDescriptor.GetEngineInstall();
+        public Package ProvidedPackage => GetStagedPackage();
+        public EngineInstall ProvidedEngineInstall => EngineInstall;
 
         public string UProjectPath
         {
@@ -49,16 +54,6 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        //public string TestName
-        //{
-        //    get => _testName;
-        //    set
-        //    {
-        //        _testName = value;
-        //        OnPropertyChanged();
-        //    }
-        //}
-
         [JsonIgnore]
         public ProjectDescriptor ProjectDescriptor
         {
@@ -69,9 +64,6 @@ namespace UnrealAutomationCommon.Unreal
                 OnPropertyChanged();
             }
         }
-
-        public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
-        public override EngineInstall EngineInstall => ProjectDescriptor.GetEngineInstall();
 
         public override void LoadDescriptor()
         {
@@ -91,12 +83,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public string GetStagedBuildWindowsPath()
         {
-            if (EngineInstall.GetVersion().MajorVersion >= 5)
-            {
-                return Path.Combine(GetStagedBuildsPath(), "Windows");
-            }
-
-            return Path.Combine(GetStagedBuildsPath(), "WindowsNoEditor");
+            return Path.Combine(GetStagedBuildsPath(), EngineInstall.GetWindowsPlatformName());
         }
 
         public Package GetStagedPackage()
@@ -115,5 +102,9 @@ namespace UnrealAutomationCommon.Unreal
             return Path.Combine(GetProjectPath(), "Saved", "Logs");
         }
 
+        public override bool SupportsConfiguration(BuildConfiguration configuration)
+        {
+            return EngineInstall.SupportsConfiguration(configuration);
+        }
     }
 }

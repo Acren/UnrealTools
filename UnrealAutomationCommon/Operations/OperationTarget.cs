@@ -7,14 +7,14 @@ namespace UnrealAutomationCommon.Operations
     public interface IOperationTarget : INotifyPropertyChanged
     {
         public string Name { get;}
-        public EngineInstall EngineInstall { get; }
         public string TestName { get; set; }
+
+        public bool SupportsConfiguration(BuildConfiguration configuration);
     }
 
     public abstract class OperationTarget : IOperationTarget
     {
         public abstract string Name { get; }
-        public abstract EngineInstall EngineInstall { get; }
 
         private string _testName = string.Empty;
 
@@ -28,9 +28,14 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
+        public event PropertyChangedEventHandler PropertyChanged;
+
         public abstract void LoadDescriptor();
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public virtual bool SupportsConfiguration(BuildConfiguration configuration)
+        {
+            return true;
+        }
 
         protected void OnPropertyChanged([CallerMemberName] string name = null)
         {

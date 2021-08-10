@@ -4,6 +4,7 @@ using System.Linq;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationTypes;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealCommander
 {
@@ -20,7 +21,7 @@ namespace UnrealCommander
                 typeof(LaunchEditor),
                 typeof(LaunchStandalone),
                 typeof(PackageProject),
-                typeof(LaunchPackage),
+                typeof(LaunchStagedPackage),
                 typeof(BuildPlugin)
             };
 

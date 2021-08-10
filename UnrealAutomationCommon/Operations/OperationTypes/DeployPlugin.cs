@@ -50,6 +50,32 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string workingTempPath = Path.Combine(GetOutputPath(OperationParameters), "Temp");
             Directory.CreateDirectory(workingTempPath);
 
+            // Launch and test host project editor
+
+            Logger.Log("Building host project editor");
+
+            OperationParameters buildEditorParams = new()
+            {
+                Target = hostProject
+            };
+
+            if (!(await new BuildEditor().Execute(buildEditorParams, Logger)).Success)
+            {
+                throw new Exception("Failed to build host project");
+            }
+
+            Logger.Log("Launching and testing host project editor");
+
+            OperationParameters launchEditorParams = buildEditorParams;
+            AutomationOptions automationOpts = OperationParameters.FindOptions<AutomationOptions>();
+            automationOpts.TestNameOverride = plugin.TestName;
+            launchEditorParams.SetOptions(automationOpts);
+
+            if (!(await new LaunchEditor().Execute(launchEditorParams, Logger)).Success)
+            {
+                throw new Exception("Failed to launch host project");
+            }
+
             // Build plugin
 
             Logger.Log("Building plugin");
@@ -103,7 +129,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Copy uproject 
             JObject uProjectContents = JObject.Parse(File.ReadAllText(hostProject.UProjectPath));
 
-            // Remove modules property before building, which makes it a Blueprint-only project
+            // Remove modules property, which makes it a Blueprint-only project
             uProjectContents.Remove("Modules");
 
             string exampleProjectBuildUProjectPath = Path.Combine(exampleProjectBuildPath, uProjectFilename);
@@ -136,15 +162,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Test the package
 
-            LaunchPackage testInstalledPluginBuild = new LaunchPackage();
             OperationParameters testInstalledPluginBuildParams = new OperationParameters()
             {
                 Target = exampleProjectBuild
             };
-            testInstalledPluginBuildParams.SetOptions(OperationParameters.FindOptions<AutomationOptions>());
-            exampleProjectBuild.TestName = plugin.TestName;
+            testInstalledPluginBuildParams.SetOptions(automationOpts);
 
-            OperationResult testResult = await testInstalledPluginBuild.Execute(testInstalledPluginBuildParams, Logger);
+            OperationResult testResult = await new LaunchStagedPackage().Execute(testInstalledPluginBuildParams, Logger);
 
             if (!testResult.Success)
             {
@@ -182,6 +206,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Example project build failed");
             }
 
+            OperationParameters demoTestParams = new OperationParameters()
+            {
+                Target = new Package(Path.Combine(demoExePath, plugin.EngineInstall.GetWindowsPlatformName()))
+            };
+            demoTestParams.SetOptions(automationOpts);
+
+            if (!(await new LaunchPackage().Execute(demoTestParams, Logger)).Success)
+            {
+                throw new Exception("Launch and test demo exe failed");
+            }
+
             {
                 // Archiving
 
@@ -189,7 +224,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 string archivePrefix = plugin.Name + "_" + archiveVersionName + "_";
 
-                string archivePath = Path.Combine(workingTempPath, "Archives");
+                string archivePath = Path.Combine(GetOutputPath(OperationParameters), "Archives");
 
                 Directory.CreateDirectory(archivePath);
 
@@ -206,7 +241,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 string demoExeZipPath = Path.Combine(archivePath, archivePrefix + "DemoExe.zip");
                 FileUtils.DeleteFileIfExists(demoExeZipPath);
-                ZipFile.CreateFromDirectory(Path.Combine(demoExePath, "WindowsNoEditor"), demoExeZipPath);
+                ZipFile.CreateFromDirectory(Path.Combine(demoExePath, plugin.EngineInstall.GetWindowsPlatformName()), demoExeZipPath);
 
                 // Archive example project
 

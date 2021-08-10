@@ -1,15 +1,17 @@
 ﻿using System;
 using System.IO;
+using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public interface IPackageSource
+    public interface IPackageProvider : IOperationTarget
     {
+        [JsonIgnore]
         public Package ProvidedPackage { get; }
     }
 
-    public class Package : OperationTarget, IPackageSource
+    public class Package : OperationTarget, IPackageProvider
     {
         public Package(string packagePath)
         {
@@ -29,8 +31,6 @@ namespace UnrealAutomationCommon.Unreal
         public string Path { get; private set; }
         public string ExecutablePath { get; private set; }
         public override string Name { get;}
-
-        public override EngineInstall EngineInstall => null;
 
         public override void LoadDescriptor()
         {
@@ -56,10 +56,7 @@ namespace UnrealAutomationCommon.Unreal
             return null;
         }
 
-        public string GetLogsPath()
-        {
-            return System.IO.Path.Combine(Path, Name, "Saved", "Logs");
-        }
+        public string LogsPath => System.IO.Path.Combine(Path, Name, "Saved", "Logs");
 
     }
 }

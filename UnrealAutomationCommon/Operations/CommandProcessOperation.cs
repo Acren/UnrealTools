@@ -64,7 +64,14 @@ namespace UnrealAutomationCommon.Operations
 
             Logger.Log("Launched process '" + _processName + "'", LogVerbosity.Log);
 
-            await Task.Run(() => _process.WaitForExit());
+            var tcs = new TaskCompletionSource<int>();
+
+            _process.Exited += (sender, args) =>
+            {
+                tcs.TrySetResult(0);
+            };
+
+            await tcs.Task;
 
             return HandleProcessEnded();
         }

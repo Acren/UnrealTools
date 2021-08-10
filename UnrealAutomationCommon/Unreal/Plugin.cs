@@ -5,7 +5,7 @@ using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public class Plugin : OperationTarget
+    public class Plugin : OperationTarget, IEngineInstallProvider
     {
         private string _uPluginPath;
 
@@ -35,9 +35,17 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         [JsonIgnore]
+        public Project HostProject => new Project(HostProjectUProjectPath);
+
+        public override string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
+        public EngineInstall EngineInstall => PluginDescriptor?.GetEngineInstall();
+        public EngineInstall ProvidedEngineInstall => EngineInstall;
+
+        [JsonIgnore]
         public PluginDescriptor PluginDescriptor { get; private set; }
         [JsonIgnore]
         public string HostProjectPath => Path.GetFullPath(Path.Combine(GetPluginPath(), @"..\..\")); // Up 2 levels
+
         [JsonIgnore]
         public string HostProjectUProjectPath{
             get
@@ -63,11 +71,6 @@ namespace UnrealAutomationCommon.Unreal
                 return uProjectPath;
             }
         }
-        [JsonIgnore]
-        public Project HostProject => new Project(HostProjectUProjectPath);
-
-        public override string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
-        public override EngineInstall EngineInstall => PluginDescriptor?.GetEngineInstall();
 
         public override void LoadDescriptor()
         {
@@ -79,5 +82,9 @@ namespace UnrealAutomationCommon.Unreal
             return Path.GetDirectoryName(_uPluginPath);
         }
 
+        public override bool SupportsConfiguration(BuildConfiguration configuration)
+        {
+            return EngineInstall.SupportsConfiguration(configuration);
+        }
     }
 }

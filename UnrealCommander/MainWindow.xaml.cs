@@ -166,7 +166,6 @@ namespace UnrealCommander
                 {
                     Configurations = EnumUtils.GetAll<BuildConfiguration>().Where(c =>
                         _operation.SupportsConfiguration(c) && OperationTarget
-                            .EngineInstall
                             .SupportsConfiguration(c)).ToList()
                 };
             }
@@ -428,7 +427,7 @@ namespace UnrealCommander
 
         private void CopyCommand(object sender, RoutedEventArgs e)
         {
-            Clipboard.SetDataObject(Operation.GetCommands(PersistentState.OperationParameters).ToString());
+            Clipboard.SetDataObject(Operation.GetCommands(PersistentState.OperationParameters).First().ToString());
             CommandTextBox.Focus();
             CommandTextBox.SelectAll();
         }

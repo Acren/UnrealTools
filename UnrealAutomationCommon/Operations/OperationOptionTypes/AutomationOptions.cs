@@ -13,5 +13,7 @@
                 OnPropertyChanged();
             }
         }
+
+        public string TestNameOverride { get; set; }
     }
 }

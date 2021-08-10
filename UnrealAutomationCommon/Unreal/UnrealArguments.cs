@@ -51,15 +51,22 @@ namespace UnrealAutomationCommon
                 arguments.SetFlag("waitforattach");
             }
 
-            if (operationParameters.RequestOptions<AutomationOptions>().RunTests && operationParameters.Target is Project Project)
+            AutomationOptions automationOpts = operationParameters.RequestOptions<AutomationOptions>();
+            if (automationOpts.RunTests)
             {
-                string execCmds = "Automation RunTests " + Project?.TestName;
+                string testNameOverride = automationOpts.TestNameOverride;
+                string testName = !string.IsNullOrEmpty(testNameOverride) ? testNameOverride : operationParameters.Target.TestName;
+                string execCmds = "Automation RunTests " + testName;
                 arguments.SetKeyValue("ExecCmds", execCmds);
                 arguments.SetKeyPath("ReportExportPath", OutputPaths.GetTestReportPath(outputhPath));
                 arguments.SetKeyValue("testexit", "Automation Test Queue Empty");
-                arguments.SetFlag("windowed");
-                arguments.SetKeyValue("resx", "640");
-                arguments.SetKeyValue("resy", "360");
+                //arguments.SetFlag("windowed");
+                //arguments.SetKeyValue("resx", "640");
+                //arguments.SetKeyValue("resy", "360");
+                // Run tests as unattended and headless
+                arguments.SetFlag("unattended");
+                arguments.SetFlag("nullrhi");
+                arguments.SetFlag("server");
             }
 
             if (!string.IsNullOrWhiteSpace(operationParameters.AdditionalArguments))

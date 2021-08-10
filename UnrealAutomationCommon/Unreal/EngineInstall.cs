@@ -23,5 +23,15 @@
             // Always support DebugGame, Development, Shipping
             return true;
         }
+
+        public string GetWindowsPlatformName()
+        {
+            if (GetVersion().MajorVersion >= 5)
+            {
+                return "Windows";
+            }
+
+            return "WindowsNoEditor";
+        }
     }
 }
