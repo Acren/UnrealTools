@@ -13,21 +13,18 @@
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Closing="Window_Closing">
     <DockPanel LastChildFill="True">
-        <DataGrid Name="TargetGrid" ItemsSource="{ Binding PersistentState.Targets}" SelectedItem="{Binding Path=SelectedTarget, Mode=TwoWay}" AutoGenerateColumns="False" CanUserAddRows="True" HorizontalScrollBarVisibility="Hidden" Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
+        <DataGrid Name="TargetGrid" ItemsSource="{ Binding PersistentState.Targets}"
+                  SelectedItem="{Binding Path=SelectedTarget, Mode=TwoWay}"
+                  ContextMenuOpening="TargetGrid_OnContextMenuOpening"
+                  AutoGenerateColumns="False" CanUserAddRows="True" HorizontalScrollBarVisibility="Hidden"
+                  Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="Open Directory" Click="ProjectOpenDirectory" />
-                    <MenuItem Header="Open StagedBuild (WindowsNoEditor)" Click="ProjectOpenStagedBuildWindows" />
-                    <MenuItem Header="Remove Project" Click="ProjectRemoveClick" />
                 </ContextMenu>
             </DataGrid.ContextMenu>
-            <DataGrid.Resources>
-                <Style TargetType="{x:Type DataGridCell}">
-                    <EventSetter Event="MouseDoubleClick" Handler="ProjectDoubleClick"/>
-                </Style>
-            </DataGrid.Resources>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Name" IsReadOnly="True" Binding="{Binding Name}" Width="2*"/>
+                <DataGridTextColumn Header="Type" IsReadOnly="True" Binding="{Binding TypeName}" Width="1*"/>
                 <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding TargetPath}" Width="10*"/>
                 <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding EngineInstall.Key}" Width="50"/>
             </DataGrid.Columns>

@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Media;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
@@ -149,10 +148,7 @@ namespace UnrealCommander
 
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
 
-        public EngineInstall SelectedEngineInstall =>
-            IsProjectSelected ? GetSelectedProject().ProjectDescriptor.GetEngineInstall() :
-                IsPluginSelected ? GetSelectedPlugin().PluginDescriptor.GetEngineInstall() :
-                null;
+        public EngineInstall SelectedEngineInstall => (SelectedTarget as IEngineInstallProvider)?.ProvidedEngineInstall;
 
         public AllowedBuildConfigurations AllowedBuildConfigurations
         {
@@ -178,15 +174,11 @@ namespace UnrealCommander
         {
             get
             {
-                if (IsProjectSelected)
+                if (SelectedTarget != null)
                 {
-                    return "Selected project " + GetSelectedProject().Name;
+                    return $"Selected {SelectedTarget.TypeName} {SelectedTarget.Name}";
                 }
 
-                if (IsPluginSelected)
-                {
-                    return "Selected plugin " + GetSelectedPlugin().Name;
-                }
                 return "Select a project or plugin";
             }
         }
@@ -235,46 +227,6 @@ namespace UnrealCommander
         public bool IsRunningOperation
         {
             get => RunningOperation != null;
-        }
-
-        private Project GetSelectedProject()
-        {
-            return PersistentState.OperationParameters.Target as Project;
-        }
-
-        private Plugin GetSelectedPlugin()
-        {
-            return PersistentState.OperationParameters.Target as Plugin;
-        }
-
-        private void ProjectDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            DataGridCell cell = (DataGridCell)sender;
-
-            DataGridColumn nameColumn = TargetGrid.Columns.First(Column => (string)Column.Header == "Path");
-            if(cell.Column == nameColumn)
-            {
-                OpenFileDialog openFileDialog = new OpenFileDialog();
-                if (openFileDialog.ShowDialog() == true)
-                {
-                    string selectedPath = openFileDialog.FileName;
-                    if (ProjectUtils.IsProjectFile(selectedPath))
-                    {
-                        if (TargetGrid.SelectedItem.GetType() != typeof(Project))
-                        {
-                            // Create new project
-                            TargetGrid.SelectedItem = PersistentData.Get().AddProject(selectedPath);
-                        }
-                        else
-                        {
-                            // Update existing
-                            Project selectedProject = (Project)TargetGrid.SelectedItem;
-                            selectedProject.UProjectPath = selectedPath;
-                        }
-                    }
-
-                }
-            }
         }
 
         private void OnPropertyChanged([CallerMemberName] string name = null)
@@ -352,16 +304,6 @@ namespace UnrealCommander
             }
         }
 
-        private void ProjectRemoveClick(object sender, RoutedEventArgs e)
-        {
-            PersistentData.Get().RemoveProject(GetSelectedProject());
-        }
-
-        private void PluginRemoveClick(object sender, RoutedEventArgs e)
-        {
-            PersistentData.Get().RemovePlugin(GetSelectedPlugin());
-        }
-
         private void AddOutputLine(string line, LogVerbosity verbosity = LogVerbosity.Log)
         {
             LineCount++;
@@ -403,21 +345,6 @@ namespace UnrealCommander
             CommandTextBox.SelectAll();
         }
 
-        private void ProjectOpenDirectory(object Sender, RoutedEventArgs E)
-        {
-            RunProcess.OpenDirectory(GetSelectedProject().GetProjectPath());
-        }
-
-        private void PluginOpenDirectory(object Sender, RoutedEventArgs E)
-        {
-            RunProcess.OpenDirectory(GetSelectedPlugin().GetPluginPath());
-        }
-
-        private void ProjectOpenStagedBuildWindows(object Sender, RoutedEventArgs E)
-        {
-            RunProcess.OpenDirectory(GetSelectedProject().GetStagedBuildWindowsPath());
-        }
-
         private void LogClear(object Sender, RoutedEventArgs E)
         {
             OutputTextBox.Document.Blocks.Clear();
@@ -457,6 +384,26 @@ namespace UnrealCommander
                 string selectedPath = openFileDialog.FileName;
                 PersistentData.Get().AddTarget(selectedPath);
             }
+        }
+
+        private void TargetGrid_OnContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            FrameworkElement fe = e.Source as FrameworkElement;
+            ContextMenu menu = new ContextMenu();
+            fe.ContextMenu = menu;
+
+            menu.Items.Add(new MenuItem() { Header = "Open Directory", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(SelectedTarget.TargetPath); }) });
+
+            menu.Items.Add(new Separator());
+
+            if (SelectedTarget is Project)
+            {
+                menu.Items.Add(new MenuItem() { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory((SelectedTarget as Project).GetStagedBuildWindowsPath()); }) });
+            }
+
+            menu.Items.Add(new Separator());
+
+            menu.Items.Add(new MenuItem() { Header = "Remove", Command = new DelegateCommand(o => { PersistentData.Get().RemoveTarget(SelectedTarget); }) });
         }
     }
 }

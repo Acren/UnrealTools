@@ -26,9 +26,6 @@ namespace UnrealCommander
 
         public BindingList<IOperationTarget> Targets { get; private set; }
 
-        public ObservableCollection<Project> Projects { get; private set; }
-        public ObservableCollection<Plugin> Plugins { get; private set; }
-
         [JsonProperty]
         public OperationParameters OperationParameters
         {
@@ -64,8 +61,6 @@ namespace UnrealCommander
         public PersistentData()
         {
             Targets = new BindingList<IOperationTarget>();
-            Projects = new ObservableCollection<Project>();
-            Plugins = new ObservableCollection<Plugin>();
             OperationParameters = new OperationParameters();
             OperationType = typeof(LaunchEditor);
         }
@@ -89,16 +84,6 @@ namespace UnrealCommander
             if(_instance == null)
             {
                 _instance = new PersistentData();
-            }
-
-            foreach(Project project in _instance.Projects)
-            {
-                project.LoadDescriptor();
-            }
-
-            foreach (Plugin plugin in _instance.Plugins)
-            {
-                plugin.LoadDescriptor();
             }
 
             _instance._hasFinishedLoading = true;
@@ -141,52 +126,10 @@ namespace UnrealCommander
             return target;
         }
 
-        public Project AddProject(string path)
+        public void RemoveTarget(IOperationTarget target)
         {
-            if (GetProject(path) != null)
-            {
-                return null;
-            }
-
-            Project newProject = new Project(path);
-            Projects.Add(newProject);
+            Targets.Remove(target);
             Save();
-            return newProject;
-        }
-
-        public Plugin AddPlugin(string path)
-        {
-            if (GetPlugin(path) != null)
-            {
-                return null;
-            }
-
-            Plugin newPlugin = new Plugin(path);
-            Plugins.Add(newPlugin);
-            Save();
-            return newPlugin;
-        }
-
-        public void RemoveProject(Project project)
-        {
-            Projects.Remove(project);
-            Save();
-        }
-
-        public void RemovePlugin(Plugin plugin)
-        {
-            Plugins.Remove(plugin);
-            Save();
-        }
-
-        public Project GetProject(string path)
-        {
-            return Projects.FirstOrDefault(p => p.UProjectPath == path);
-        }
-
-        public Plugin GetPlugin(string path)
-        {
-            return Plugins.FirstOrDefault(p => p.UPluginPath == path);
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
