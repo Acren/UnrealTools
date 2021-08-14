@@ -9,18 +9,11 @@ namespace UnrealAutomationCommon.Unreal
     {
         private string _uPluginPath;
 
-        // Default constructor is needed to support adding rows from DataGrid
-        public Plugin()
+        [JsonConstructor]
+        public Plugin(string uPluginPath)
         {
-        }
-
-        public Plugin(string Path)
-        {
-            UPluginPath = Path;
-            if (PluginUtils.IsPluginFile(UPluginPath))
-            {
-                LoadDescriptor();
-            }
+            UPluginPath = uPluginPath;
+            LoadDescriptor();
         }
 
         public string UPluginPath
@@ -38,6 +31,7 @@ namespace UnrealAutomationCommon.Unreal
         public Project HostProject => new Project(HostProjectUProjectPath);
 
         public override string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
+        public override string TargetPath => UPluginPath;
         public EngineInstall EngineInstall => PluginDescriptor?.GetEngineInstall();
         public EngineInstall ProvidedEngineInstall => EngineInstall;
 

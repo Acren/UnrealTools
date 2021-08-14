@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon
 {

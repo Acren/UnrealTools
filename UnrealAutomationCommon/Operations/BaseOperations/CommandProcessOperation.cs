@@ -2,11 +2,9 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
-using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
-namespace UnrealAutomationCommon.Operations
+namespace UnrealAutomationCommon.Operations.BaseOperations
 {
     public abstract class CommandProcessOperation<T> : Operation<T> where T : OperationTarget
     {
@@ -110,50 +108,21 @@ namespace UnrealAutomationCommon.Operations
 
         OperationResult HandleProcessEnded()
         {
-            OperationResult result = new OperationResult(_process.ExitCode == 0);
-            result.ExitCode = _process.ExitCode;
-
-            Logger.Log("Process '" + _processName + "' exited with code " + result.ExitCode, result.ExitCode == 0 ? LogVerbosity.Log : LogVerbosity.Error);
-
-            AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
-            if (automationOptions is { RunTests: true })
+            bool success = _process.ExitCode == 0;
+            OperationResult result = new(success)
             {
-                string reportFilePath = OutputPaths.GetTestReportFilePath(GetOutputPath(OperationParameters));
-                TestReport report = TestReport.Load(reportFilePath);
-                if (report != null)
-                {
-                    result.TestReport = report;
-                }
-                else
-                {
-                    throw new Exception("Expected test report at " + reportFilePath + " but didn't find one");
-                }
+                ExitCode = _process.ExitCode
+            };
 
-                if (result.TestReport != null)
-                {
-                    foreach (Test test in result.TestReport.Tests)
-                    {
-                        Logger.Log(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath, test.State == TestState.Success ? LogVerbosity.Log : LogVerbosity.Error);
-                        foreach (TestEntry entry in test.Entries)
-                        {
-                            if (entry.Event.Type != TestEventType.Info)
-                            {
-                                Logger.Log("".PadRight(9) + " - " + entry.Event.Message, entry.Event.Type == TestEventType.Error ? LogVerbosity.Error : LogVerbosity.Warning);
-                            }
-                        }
-                    }
-                    int testsPassed = result.TestReport.Tests.Count(t => t.State == TestState.Success);
-                    bool allPassed = testsPassed == result.TestReport.Tests.Count;
-                    Logger.Log(testsPassed + " of " + result.TestReport.Tests.Count + " tests passed", allPassed ? LogVerbosity.Log : LogVerbosity.Error);
-                }
+            Logger.Log("Process '" + _processName + "' exited with code " + result.ExitCode, success ? LogVerbosity.Log : LogVerbosity.Error);
 
-                if (report.Failed > 0)
-                {
-                    throw new Exception("Tests failed");
-                }
-            }
+            OnProcessEnded(result);
 
             return result;
+        }
+
+        protected virtual void OnProcessEnded(OperationResult result)
+        {
         }
 
         protected override void OnTerminated()

@@ -22,9 +22,17 @@ namespace UnrealAutomationCommon.Unreal
             UProjectPath = uProjectPath;
         }
 
+        [JsonIgnore]
         public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+
+        [JsonIgnore]
+        public override string TargetPath => UProjectPath;
+
+        [JsonIgnore]
         public EngineInstall EngineInstall => ProjectDescriptor.GetEngineInstall();
+        [JsonIgnore]
         public Package ProvidedPackage => GetStagedPackage();
+        [JsonIgnore]
         public EngineInstall ProvidedEngineInstall => EngineInstall;
 
         public string UProjectPath

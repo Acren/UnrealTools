@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Windows.Data;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.BaseOperations;
 
 namespace UnrealCommander
 {

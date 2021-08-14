@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
-namespace UnrealAutomationCommon.Operations
+namespace UnrealAutomationCommon.Operations.BaseOperations
 {
     public abstract class Operation
     {
@@ -86,7 +86,12 @@ namespace UnrealAutomationCommon.Operations
 
         public EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
         {
-            IEngineInstallProvider engineInstallProvider = (IEngineInstallProvider)GetTarget(operationParameters);
+            if (GetTarget(operationParameters) is not IEngineInstallProvider)
+            {
+                return null;
+            }
+
+            IEngineInstallProvider engineInstallProvider = GetTarget(operationParameters) as IEngineInstallProvider;
             return engineInstallProvider?.ProvidedEngineInstall;
         }
 

@@ -14,6 +14,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
@@ -45,9 +46,9 @@ namespace UnrealCommander
             AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
         }
 
-        public Project SelectedProject
+        public IOperationTarget SelectedTarget
         {
-            get => PersistentState.OperationParameters.Target as Project;
+            get => PersistentState.OperationParameters.Target;
             set
             {
                 if (PersistentState.OperationParameters.Target != value)
@@ -94,7 +95,7 @@ namespace UnrealCommander
                     OnPropertyChanged(nameof(CanExecute));
                     OnPropertyChanged(nameof(Status));
                     OnPropertyChanged(nameof(SelectedPlugin));
-                    OnPropertyChanged(nameof(SelectedProject));
+                    OnPropertyChanged(nameof(SelectedTarget));
                     OnPropertyChanged(nameof(OperationTarget));
 
                     if (!Operation.OperationTypeSupportsTarget(PersistentState.OperationType,
@@ -250,7 +251,7 @@ namespace UnrealCommander
         {
             DataGridCell cell = (DataGridCell)sender;
 
-            DataGridColumn nameColumn = ProjectGrid.Columns.First(Column => (string)Column.Header == "Path");
+            DataGridColumn nameColumn = TargetGrid.Columns.First(Column => (string)Column.Header == "Path");
             if(cell.Column == nameColumn)
             {
                 OpenFileDialog openFileDialog = new OpenFileDialog();
@@ -259,46 +260,16 @@ namespace UnrealCommander
                     string selectedPath = openFileDialog.FileName;
                     if (ProjectUtils.IsProjectFile(selectedPath))
                     {
-                        if (ProjectGrid.SelectedItem.GetType() != typeof(Project))
+                        if (TargetGrid.SelectedItem.GetType() != typeof(Project))
                         {
                             // Create new project
-                            ProjectGrid.SelectedItem = PersistentData.Get().AddProject(selectedPath);
+                            TargetGrid.SelectedItem = PersistentData.Get().AddProject(selectedPath);
                         }
                         else
                         {
                             // Update existing
-                            Project selectedProject = (Project)ProjectGrid.SelectedItem;
+                            Project selectedProject = (Project)TargetGrid.SelectedItem;
                             selectedProject.UProjectPath = selectedPath;
-                        }
-                    }
-
-                }
-            }
-        }
-
-        private void PluginDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            DataGridCell cell = (DataGridCell)sender;
-
-            DataGridColumn nameColumn = PluginGrid.Columns.First(Column => (string)Column.Header == "Path");
-            if (cell.Column == nameColumn)
-            {
-                OpenFileDialog openFileDialog = new OpenFileDialog();
-                if (openFileDialog.ShowDialog() == true)
-                {
-                    string selectedPath = openFileDialog.FileName;
-                    if (PluginUtils.IsPluginFile(selectedPath))
-                    {
-                        if (PluginGrid.SelectedItem.GetType() != typeof(Plugin))
-                        {
-                            // Create new project
-                            PluginGrid.SelectedItem = PersistentData.Get().AddPlugin(selectedPath);
-                        }
-                        else
-                        {
-                            // Update existing
-                            Plugin selectedPlugin = (Plugin)PluginGrid.SelectedItem;
-                            selectedPlugin.UPluginPath = selectedPath;
                         }
                     }
 
@@ -475,6 +446,16 @@ namespace UnrealCommander
                         e.Cancel = true;
                         break;
                 }
+            }
+        }
+
+        private void AddTarget(object sender, RoutedEventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            if (openFileDialog.ShowDialog() == true)
+            {
+                string selectedPath = openFileDialog.FileName;
+                PersistentData.Get().AddTarget(selectedPath);
             }
         }
     }

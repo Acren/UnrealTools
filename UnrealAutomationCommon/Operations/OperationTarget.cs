@@ -6,7 +6,8 @@ namespace UnrealAutomationCommon.Operations
 {
     public interface IOperationTarget : INotifyPropertyChanged
     {
-        public string Name { get;}
+        public string Name { get; }
+        public string TargetPath { get; }
         public string TestName { get; set; }
 
         public bool SupportsConfiguration(BuildConfiguration configuration);
@@ -15,6 +16,7 @@ namespace UnrealAutomationCommon.Operations
     public abstract class OperationTarget : IOperationTarget
     {
         public abstract string Name { get; }
+        public abstract string TargetPath { get; }
 
         private string _testName = string.Empty;
 

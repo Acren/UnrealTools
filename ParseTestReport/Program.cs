@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using UnrealAutomationCommon;
+using UnrealAutomationCommon.Unreal;
 
 namespace ParseTestReport
 {

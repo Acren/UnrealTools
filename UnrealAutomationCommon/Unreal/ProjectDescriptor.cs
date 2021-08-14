@@ -1,10 +1,9 @@
 ﻿using System.Collections.Generic;
-using Newtonsoft.Json;
 using System.IO;
 using System.Linq;
-using UnrealAutomationCommon.Unreal;
+using Newtonsoft.Json;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Unreal
 {
     public class ProjectPluginDependency
     {

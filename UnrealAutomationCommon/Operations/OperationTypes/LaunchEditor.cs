@@ -1,8 +1,9 @@
-﻿using UnrealAutomationCommon.Unreal;
+﻿using UnrealAutomationCommon.Operations.BaseOperations;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class LaunchEditor : CommandProcessOperation<Project>
+    public class LaunchEditor : UnrealProcessOperation<Project>
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {

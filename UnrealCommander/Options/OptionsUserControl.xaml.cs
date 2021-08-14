@@ -2,6 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Windows.Controls;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealCommander.Annotations;
 
 namespace UnrealCommander.Options

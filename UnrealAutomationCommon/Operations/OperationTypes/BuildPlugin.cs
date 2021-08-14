@@ -1,4 +1,5 @@
-﻿using UnrealAutomationCommon.Unreal;
+﻿using UnrealAutomationCommon.Operations.BaseOperations;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {

@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Operations

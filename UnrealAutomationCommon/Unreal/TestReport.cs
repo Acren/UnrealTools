@@ -1,11 +1,10 @@
 ﻿using System;
-using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Xml;
+using Newtonsoft.Json;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Unreal
 {
     public enum TestEventType
     {

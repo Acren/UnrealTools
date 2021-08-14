@@ -20,15 +20,16 @@ namespace UnrealAutomationCommon.Unreal
                 throw new Exception($"Path '{packagePath}' does not appear to be a package (contains no executable)");
             }
 
-            Path = packagePath;
+            PackagePath = packagePath;
 
-            ExecutablePath = FindExecutablePath(Path);
+            ExecutablePath = FindExecutablePath(PackagePath);
             Name = System.IO.Path.GetFileNameWithoutExtension(ExecutablePath);
         }
 
         public Package ProvidedPackage => this;
 
-        public string Path { get; private set; }
+        public string PackagePath { get; private set; }
+        public override string TargetPath => PackagePath;
         public string ExecutablePath { get; private set; }
         public override string Name { get;}
 
@@ -56,7 +57,7 @@ namespace UnrealAutomationCommon.Unreal
             return null;
         }
 
-        public string LogsPath => System.IO.Path.Combine(Path, Name, "Saved", "Logs");
+        public string LogsPath => System.IO.Path.Combine(PackagePath, Name, "Saved", "Logs");
 
     }
 }

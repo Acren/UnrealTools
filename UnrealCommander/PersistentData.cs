@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
@@ -22,6 +23,8 @@ namespace UnrealCommander
 
         private Type _operationType;
         private OperationParameters _operationParameters;
+
+        public BindingList<IOperationTarget> Targets { get; private set; }
 
         public ObservableCollection<Project> Projects { get; private set; }
         public ObservableCollection<Plugin> Plugins { get; private set; }
@@ -60,6 +63,7 @@ namespace UnrealCommander
 
         public PersistentData()
         {
+            Targets = new BindingList<IOperationTarget>();
             Projects = new ObservableCollection<Project>();
             Plugins = new ObservableCollection<Plugin>();
             OperationParameters = new OperationParameters();
@@ -105,13 +109,36 @@ namespace UnrealCommander
         private static void Save()
         {
             using StreamWriter sw = new StreamWriter(dataFilePath);
-            using JsonTextWriter writer = new JsonTextWriter(sw) {Formatting = Formatting.Indented};
+            using JsonTextWriter writer = new JsonTextWriter(sw) { Formatting = Formatting.Indented };
             JsonSerializer serializer = new JsonSerializer
             {
                 PreserveReferencesHandling = PreserveReferencesHandling.All,
                 TypeNameHandling = TypeNameHandling.Auto
             };
             serializer.Serialize(writer, _instance);
+        }
+
+        public IOperationTarget AddTarget(string path)
+        {
+            IOperationTarget target;
+            if (ProjectUtils.IsProjectFile(path))
+            {
+                target = new Project(path);
+            }
+            else if (PluginUtils.IsPluginFile(path))
+            {
+                target = new Plugin(path);
+            }
+            else if (Path.GetExtension(path).Equals(".exe", StringComparison.InvariantCultureIgnoreCase))
+            {
+                target = new Package(Path.GetDirectoryName(path));
+            }
+            else
+            {
+                throw new Exception("Path is not a target");
+            }
+            Targets.Add(target);
+            return target;
         }
 
         public Project AddProject(string path)

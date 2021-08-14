@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
 

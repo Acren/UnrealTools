@@ -1,8 +1,9 @@
-﻿using UnrealAutomationCommon.Unreal;
+﻿using UnrealAutomationCommon.Operations.BaseOperations;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public abstract class LaunchPackage<T> : CommandProcessOperation<T> where T : OperationTarget, IPackageProvider
+    public abstract class LaunchPackage<T> : UnrealProcessOperation<T> where T : OperationTarget, IPackageProvider
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {

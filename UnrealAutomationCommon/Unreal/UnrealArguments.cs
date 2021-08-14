@@ -1,10 +1,8 @@
 ﻿using System.Collections.Generic;
-using System.IO;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
-using UnrealAutomationCommon.Unreal;
 
-namespace UnrealAutomationCommon
+namespace UnrealAutomationCommon.Unreal
 {
     public class UnrealArguments
     {
