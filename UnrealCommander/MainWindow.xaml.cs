@@ -393,6 +393,7 @@ namespace UnrealCommander
             fe.ContextMenu = menu;
 
             menu.Items.Add(new MenuItem() { Header = "Open Directory", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(SelectedTarget.TargetPath); }) });
+            menu.Items.Add(new MenuItem() { Header = "Open Output", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(SelectedTarget.OutputPath); }) });
 
             menu.Items.Add(new Separator());
 

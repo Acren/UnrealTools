@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using UnrealAutomationCommon.Unreal;
 
@@ -10,6 +11,7 @@ namespace UnrealAutomationCommon.Operations
         public string TargetPath { get; }
         public string TestName { get; set; }
 
+        public string OutputPath { get; }
         public string TypeName { get; }
 
         public bool SupportsConfiguration(BuildConfiguration configuration);
@@ -32,6 +34,7 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
+        public string OutputPath => Path.Combine("C:/UnrealCommander/", Name.Replace(" ", ""));
         public string TypeName => GetType().Name.SplitWordsByUppercase();
 
         public event PropertyChangedEventHandler PropertyChanged;

@@ -66,16 +66,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 return operationParameters.OutputPathOverride;
             }
 
-            string path = operationParameters.OutputPathRoot;
-            if (operationParameters.UseOutputPathProjectSubfolder)
-            {
-                string subfolderName = GetTargetName(operationParameters);
-                path = Path.Combine(path, subfolderName.Replace(" ", ""));
-            }
-            if (operationParameters.UseOutputPathOperationSubfolder)
-            {
-                path = Path.Combine(path, OperationName.Replace(" ", ""));
-            }
+            string path = Path.Combine(operationParameters.Target.OutputPath, OperationName.Replace(" ", ""));
             return path;
         }
 

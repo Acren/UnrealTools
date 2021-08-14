@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.IO;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon
@@ -43,6 +44,7 @@ namespace UnrealAutomationCommon
 
         public static void OpenDirectory(string DirectoryPath)
         {
+            Directory.CreateDirectory(DirectoryPath);
             Process.Start(new ProcessStartInfo()
             {
                 FileName = DirectoryPath,

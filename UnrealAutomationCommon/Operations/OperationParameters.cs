@@ -15,12 +15,6 @@ namespace UnrealAutomationCommon.Operations
 
         [JsonIgnore]
         public string OutputPathOverride { get; set; }
-        [JsonIgnore]
-        public string OutputPathRoot => @"C:\UnrealCommander\";
-        [JsonIgnore]
-        public bool UseOutputPathProjectSubfolder => true;
-        [JsonIgnore]
-        public bool UseOutputPathOperationSubfolder => true;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
