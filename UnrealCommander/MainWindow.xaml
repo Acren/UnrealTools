@@ -29,22 +29,21 @@
                 <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding EngineInstall.Key}" Width="50"/>
             </DataGrid.Columns>
         </DataGrid>
-        <StackPanel DockPanel.Dock="Top" HorizontalAlignment="Right">
-            <Button Click="AddTarget" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+        <DockPanel DockPanel.Dock="Top" Margin="10,10,10,0" >
+            <TextBlock DockPanel.Dock="Left" Text="{Binding Status}"/>
+            <Button DockPanel.Dock="Right" Click="AddTarget" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                 <Run Text="Add" />
             </Button>
-        </StackPanel>
-        <Grid Margin="10,10,10,10" Height="Auto">
+        </DockPanel>
+        <Grid Margin="10,0,10,10" Height="Auto">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="*"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
             </Grid.RowDefinitions>
-            <TextBlock Text="{Binding Status}" Grid.Row="0" Margin="0,5"/>
-            <WrapPanel Grid.Row="1">
+            <WrapPanel Grid.Row="0">
                 <WrapPanel.Resources>
                     <local:ContainsConverter x:Key="ContainsConverter"/>
                 </WrapPanel.Resources>
@@ -148,10 +147,10 @@
                     </GroupBox.IsEnabled>
                 </local:OptionsContainer>
             </WrapPanel>
-            <GroupBox Header="Additional Arguments" Grid.Row="2" Margin="0,5" Padding="10">
+            <GroupBox Header="Additional Arguments" Grid.Row="1" Margin="0,5" Padding="10">
                 <TextBox Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}"></TextBox>
             </GroupBox>
-            <GroupBox Header="Output" Grid.Row="3" Margin="0,5" Padding="10" >
+            <GroupBox Header="Output" Grid.Row="2" Margin="0,5" Padding="10" >
                 <ScrollViewer Name="OutputScrollViewer">
                     <RichTextBox Name="OutputTextBox" IsReadOnly="True" Background="#202020" Foreground="#EEEEEE" FontFamily="Consolas">
                         <RichTextBox.Resources>
@@ -167,10 +166,10 @@
                     </RichTextBox>
                 </ScrollViewer>
             </GroupBox>
-            <GroupBox Header="Command" Grid.Row="4" Margin="0,5" Padding="10" >
+            <GroupBox Header="Command" Grid.Row="3" Margin="0,5" Padding="10" >
                 <TextBox Name="CommandTextBox" IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
             </GroupBox>
-            <WrapPanel Grid.Row="5" HorizontalAlignment="Right">
+            <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
                 <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                     <TextBlock Text="Copy"></TextBlock>
                 </Button>
