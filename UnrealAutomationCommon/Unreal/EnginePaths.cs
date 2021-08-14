@@ -23,7 +23,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public static string GetEditorExe(this EngineInstall EngineInstall, OperationParameters operationParameters)
         {
-            string mainEditorName = EngineInstall.GetVersion().MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
+            string mainEditorName = EngineInstall.Version.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
 
             string exeName;
             BuildConfigurationOptions buildOptions = operationParameters.RequestOptions<BuildConfigurationOptions>();
@@ -41,7 +41,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public static string GetUBTExe(this EngineInstall EngineInstall)
         {
-            if (EngineInstall.GetVersion().MajorVersion >= 5)
+            if (EngineInstall.Version.MajorVersion >= 5)
             {
                 return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool", "UnrealBuildTool.exe");
             }

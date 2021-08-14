@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
@@ -11,7 +12,7 @@ namespace UnrealAutomationCommon.Unreal
         public Package ProvidedPackage { get; }
     }
 
-    public class Package : OperationTarget, IPackageProvider
+    public class Package : OperationTarget, IPackageProvider, IEngineInstallProvider
     {
         public Package(string packagePath)
         {
@@ -59,5 +60,12 @@ namespace UnrealAutomationCommon.Unreal
 
         public string LogsPath => System.IO.Path.Combine(PackagePath, Name, "Saved", "Logs");
 
+        public EngineInstall EngineInstall {
+            get
+            {
+                EngineInstallVersion version = new EngineInstallVersion(FileVersionInfo.GetVersionInfo(ExecutablePath));
+                return EngineInstallFinder.GetEngineInstall(version);
+            }
+        }
     }
 }

@@ -32,8 +32,6 @@ namespace UnrealAutomationCommon.Unreal
         public EngineInstall EngineInstall => ProjectDescriptor.GetEngineInstall();
         [JsonIgnore]
         public Package ProvidedPackage => GetStagedPackage();
-        [JsonIgnore]
-        public EngineInstall ProvidedEngineInstall => EngineInstall;
 
         public string UProjectPath
         {

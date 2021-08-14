@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using System.Diagnostics;
+using Newtonsoft.Json;
 using System.IO;
 
 namespace UnrealAutomationCommon.Unreal
@@ -28,6 +29,18 @@ namespace UnrealAutomationCommon.Unreal
                     PatchVersion = int.Parse(verStrings[2]);
                 }
             }
+        }
+
+        public EngineInstallVersion(FileVersionInfo fileVersion)
+        {
+            MajorVersion = fileVersion.FileMajorPart;
+            MinorVersion = fileVersion.FileMinorPart;
+            PatchVersion = fileVersion.FileBuildPart;
+        }
+
+        public override string ToString()
+        {
+            return $"{MajorVersion}.{MinorVersion}.{PatchVersion}";
         }
 
         public static EngineInstallVersion Load(string buildVersionPath)

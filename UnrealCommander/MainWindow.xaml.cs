@@ -148,7 +148,7 @@ namespace UnrealCommander
 
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
 
-        public EngineInstall SelectedEngineInstall => (SelectedTarget as IEngineInstallProvider)?.ProvidedEngineInstall;
+        public EngineInstall SelectedEngineInstall => (SelectedTarget as IEngineInstallProvider)?.EngineInstall;
 
         public AllowedBuildConfigurations AllowedBuildConfigurations
         {

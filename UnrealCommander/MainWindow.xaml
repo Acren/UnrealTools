@@ -8,6 +8,7 @@
         xmlns:local="clr-namespace:UnrealCommander"
         xmlns:options="clr-namespace:UnrealCommander.Options"
         xmlns:baseOperations="clr-namespace:UnrealAutomationCommon.Operations.BaseOperations;assembly=UnrealAutomationCommon"
+        xmlns:Unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
         Title="Unreal Commander" Height="800" Width="1200"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
@@ -24,9 +25,10 @@
             </DataGrid.ContextMenu>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Name" IsReadOnly="True" Binding="{Binding Name}" Width="2*"/>
-                <DataGridTextColumn Header="Type" IsReadOnly="True" Binding="{Binding TypeName}" Width="1*"/>
-                <DataGridTextColumn Header="Path" IsReadOnly="True" Binding="{Binding TargetPath}" Width="10*"/>
-                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding EngineInstall.Key}" Width="50"/>
+                <DataGridTextColumn Header="Type" IsReadOnly="True" Binding="{Binding TypeName}"/>
+                <DataGridTextColumn Header="Location" IsReadOnly="True" Binding="{Binding TargetPath}" Width="10*"/>
+                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstall).Version}"/>
+                <DataGridTextColumn Header="Engine Location" IsReadOnly="True" Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstall).LocationString}" />
             </DataGrid.Columns>
         </DataGrid>
         <DockPanel DockPanel.Dock="Top" Margin="10,10,10,0" >

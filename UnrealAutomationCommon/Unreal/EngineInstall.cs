@@ -6,10 +6,10 @@
         public string InstallDirectory { get; set; }
         public bool IsSourceBuild = false;
 
-        public EngineInstallVersion GetVersion()
-        {
-            return EngineInstallVersion.Load(this.GetBuildVersionPath());
-        }
+        public string DisplayName => IsSourceBuild ? $"{Version}: {InstallDirectory}" : Key;
+        public string LocationString => IsSourceBuild ? InstallDirectory : "Launcher";
+
+        public EngineInstallVersion Version => EngineInstallVersion.Load(this.GetBuildVersionPath());
 
         public bool SupportsConfiguration(BuildConfiguration configuration)
         {
@@ -26,7 +26,7 @@
 
         public string GetWindowsPlatformName()
         {
-            if (GetVersion().MajorVersion >= 5)
+            if (Version.MajorVersion >= 5)
             {
                 return "Windows";
             }

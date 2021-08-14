@@ -33,7 +33,6 @@ namespace UnrealAutomationCommon.Unreal
         public override string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
         public override string TargetPath => UPluginPath;
         public EngineInstall EngineInstall => PluginDescriptor?.GetEngineInstall();
-        public EngineInstall ProvidedEngineInstall => EngineInstall;
 
         [JsonIgnore]
         public PluginDescriptor PluginDescriptor { get; private set; }

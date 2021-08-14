@@ -5,6 +5,6 @@ namespace UnrealAutomationCommon.Unreal
     public interface IEngineInstallProvider
     {
         [JsonIgnore]
-        public EngineInstall ProvidedEngineInstall { get; }
+        public EngineInstall EngineInstall { get; }
     }
 }

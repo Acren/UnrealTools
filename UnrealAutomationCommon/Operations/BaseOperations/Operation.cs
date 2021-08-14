@@ -83,7 +83,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             }
 
             IEngineInstallProvider engineInstallProvider = GetTarget(operationParameters) as IEngineInstallProvider;
-            return engineInstallProvider?.ProvidedEngineInstall;
+            return engineInstallProvider?.EngineInstall;
         }
 
         public HashSet<Type> GetRequiredOptionSetTypes(IOperationTarget target)
