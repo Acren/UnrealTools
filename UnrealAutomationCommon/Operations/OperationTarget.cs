@@ -9,10 +9,12 @@ namespace UnrealAutomationCommon.Operations
     {
         public string Name { get; }
         public string TargetPath { get; }
-        public string TestName { get; set; }
+        public string TargetDirectory { get; }
 
-        public string OutputPath { get; }
+        public string OutputDirectory { get; }
         public string TypeName { get; }
+
+        public string TestName { get; set; }
 
         public bool SupportsConfiguration(BuildConfiguration configuration);
     }
@@ -21,6 +23,7 @@ namespace UnrealAutomationCommon.Operations
     {
         public abstract string Name { get; }
         public abstract string TargetPath { get; }
+        public string TargetDirectory => Path.GetDirectoryName(TargetPath);
 
         private string _testName = string.Empty;
 
@@ -34,7 +37,7 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
-        public string OutputPath => Path.Combine("C:/UnrealCommander/", Name.Replace(" ", ""));
+        public string OutputDirectory => Path.Combine("C:/UnrealCommander/", Name.Replace(" ", ""));
         public string TypeName => GetType().Name.SplitWordsByUppercase();
 
         public event PropertyChangedEventHandler PropertyChanged;

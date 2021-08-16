@@ -104,17 +104,17 @@ namespace UnrealCommander
         public IOperationTarget AddTarget(string path)
         {
             IOperationTarget target;
-            if (ProjectUtils.IsProjectFile(path))
+            if (TargetUtils.IsProjectFile(path))
             {
                 target = new Project(path);
             }
-            else if (PluginUtils.IsPluginFile(path))
+            else if (TargetUtils.IsPluginFile(path))
             {
                 target = new Plugin(path);
             }
-            else if (Path.GetExtension(path).Equals(".exe", StringComparison.InvariantCultureIgnoreCase))
+            else if (TargetUtils.IsPackageFile(path))
             {
-                target = new Package(Path.GetDirectoryName(path));
+                target = new Package(path);
             }
             else
             {

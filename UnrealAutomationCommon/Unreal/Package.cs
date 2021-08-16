@@ -14,23 +14,20 @@ namespace UnrealAutomationCommon.Unreal
 
     public class Package : OperationTarget, IPackageProvider, IEngineInstallProvider
     {
-        public Package(string packagePath)
+        public Package(string executablePath)
         {
-            if (!IsPackage(packagePath))
+            ExecutablePath = executablePath;
+            if (!IsPackage(TargetDirectory))
             {
-                throw new Exception($"Path '{packagePath}' does not appear to be a package (contains no executable)");
+                throw new Exception($"Path '{executablePath}' does not appear to be a package (contains no executable)");
             }
 
-            PackagePath = packagePath;
-
-            ExecutablePath = FindExecutablePath(PackagePath);
             Name = System.IO.Path.GetFileNameWithoutExtension(ExecutablePath);
         }
 
         public Package ProvidedPackage => this;
 
-        public string PackagePath { get; private set; }
-        public override string TargetPath => PackagePath;
+        public override string TargetPath => ExecutablePath;
         public string ExecutablePath { get; private set; }
         public override string Name { get;}
 
@@ -58,7 +55,7 @@ namespace UnrealAutomationCommon.Unreal
             return null;
         }
 
-        public string LogsPath => System.IO.Path.Combine(PackagePath, Name, "Saved", "Logs");
+        public string LogsPath => System.IO.Path.Combine(TargetDirectory, Name, "Saved", "Logs");
 
         public EngineInstall EngineInstall {
             get
