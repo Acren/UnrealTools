@@ -66,20 +66,6 @@ namespace UnrealCommander
             }
         }
 
-        public Plugin SelectedPlugin
-        {
-            get => PersistentState.OperationParameters.Target as Plugin;
-            set
-            {
-                if (PersistentState.OperationParameters.Target != value)
-                {
-                    PersistentState.OperationParameters.Target = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(AllowedBuildConfigurations));
-                }
-            }
-        }
-
         public PersistentData PersistentState
         {
             get => _persistentState;
@@ -100,7 +86,6 @@ namespace UnrealCommander
                     OnPropertyChanged(nameof(VisibleCommand));
                     OnPropertyChanged(nameof(CanExecute));
                     OnPropertyChanged(nameof(Status));
-                    OnPropertyChanged(nameof(SelectedPlugin));
                     OnPropertyChanged(nameof(SelectedTarget));
                     OnPropertyChanged(nameof(OperationTarget));
 
@@ -122,6 +107,8 @@ namespace UnrealCommander
                     {
                         Operation = Operation.CreateOperation(PersistentState.OperationType);
                     }
+
+                    Dispatcher.Invoke(() => TargetGrid.Items.Refresh());
                 }
             }
         }
@@ -189,10 +176,6 @@ namespace UnrealCommander
                 return "Select a project or plugin";
             }
         }
-
-        public bool IsProjectSelected => PersistentState.OperationParameters.Target is Project;
-
-        public bool IsPluginSelected => PersistentState.OperationParameters.Target is Plugin;
 
         public bool CanExecute => Operation.RequirementsSatisfied(PersistentState.OperationParameters);
 
