@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Data;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -43,6 +44,12 @@ namespace UnrealCommander
             InsightsOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<InsightsOptions>();
             FlagOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<FlagOptions>();
             AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
+
+            // Default sort
+            TargetGrid.Items.SortDescriptions.Clear();
+            TargetGrid.Items.SortDescriptions.Add(new SortDescription("TypeName", ListSortDirection.Descending));
+            TargetGrid.Items.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
+            TargetGrid.Items.Refresh();
         }
 
         public IOperationTarget SelectedTarget
@@ -405,6 +412,11 @@ namespace UnrealCommander
             menu.Items.Add(new Separator());
 
             menu.Items.Add(new MenuItem() { Header = "Remove", Command = new DelegateCommand(o => { PersistentData.Get().RemoveTarget(SelectedTarget); }) });
+        }
+
+        private void TargetGrid_OnSorting(object sender, DataGridSortingEventArgs e)
+        {
+            
         }
     }
 }

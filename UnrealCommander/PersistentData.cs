@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -21,7 +22,7 @@ namespace UnrealCommander
         private Type _operationType;
         private OperationParameters _operationParameters;
 
-        public BindingList<IOperationTarget> Targets { get; private set; }
+        public List<IOperationTarget> Targets { get; private set; }
 
         [JsonProperty]
         public OperationParameters OperationParameters
@@ -57,7 +58,7 @@ namespace UnrealCommander
 
         public PersistentData()
         {
-            Targets = new BindingList<IOperationTarget>();
+            Targets = new List<IOperationTarget>();
             OperationParameters = new OperationParameters();
             OperationType = typeof(LaunchEditor);
         }
