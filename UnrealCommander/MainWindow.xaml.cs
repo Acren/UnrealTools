@@ -108,7 +108,6 @@ namespace UnrealCommander
                         Operation = Operation.CreateOperation(PersistentState.OperationType);
                     }
 
-                    Dispatcher.Invoke(() => TargetGrid.Items.Refresh());
                 }
             }
         }

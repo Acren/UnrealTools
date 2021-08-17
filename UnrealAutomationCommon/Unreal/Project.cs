@@ -68,6 +68,7 @@ namespace UnrealAutomationCommon.Unreal
             {
                 _projectDescriptor = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(EngineInstall));
             }
         }
 
