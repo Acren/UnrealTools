@@ -388,7 +388,9 @@ namespace UnrealCommander
 
             if (SelectedTarget is Project)
             {
-                menu.Items.Add(new MenuItem() { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory((SelectedTarget as Project).GetStagedBuildWindowsPath()); }) });
+                Project project = SelectedTarget as Project;
+                menu.Items.Add(new MenuItem() { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath()); }) });
+                menu.Items.Add(new MenuItem() { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(@"C:\Program Files\JetBrains\Rider for Unreal Engine 2020.3.1\bin\rider64.exe",  project.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 
             menu.Items.Add(new Separator());
