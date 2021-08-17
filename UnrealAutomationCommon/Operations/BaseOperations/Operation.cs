@@ -38,7 +38,15 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
                 OperationResult result = await OnExecuted();
 
-                Logger.Log($"Operation '{OperationName}' {(Terminated ? "terminated" : "completed")}", Terminated ? LogVerbosity.Warning : LogVerbosity.Log);
+                if (Terminated)
+                {
+                    Logger.Log($"Operation '{OperationName}' terminated by user", LogVerbosity.Warning );
+                }
+                else
+                {
+                    Logger.Log($"Operation '{OperationName}' completed");
+                }
+
                 return result;
             }
             catch (Exception e)
