@@ -390,7 +390,7 @@ namespace UnrealCommander
             {
                 Project project = SelectedTarget as Project;
                 menu.Items.Add(new MenuItem() { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath()); }) });
-                menu.Items.Add(new MenuItem() { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(@"C:\Program Files\JetBrains\Rider for Unreal Engine 2020.3.1\bin\rider64.exe",  project.UProjectPath.AddQuotesIfContainsSpace()); }) });
+                menu.Items.Add(new MenuItem() { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(),  project.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 
             menu.Items.Add(new Separator());
