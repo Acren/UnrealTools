@@ -1,12 +1,18 @@
 ﻿using System;
 using Microsoft.Win32;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 namespace UnrealAutomationCommon.Unreal
 {
     public static class EngineInstallFinder
     {
+        public static bool IsEngineInstallDirectory(string path)
+        {
+            return Directory.Exists(path);
+        }
+
         public static List<EngineInstall> GetEngineInstallsFromRegistry()
         {
             RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
@@ -24,12 +30,16 @@ namespace UnrealAutomationCommon.Unreal
             foreach (string subKeyString in subKeys)
             {
                 RegistryKey engineVersionKey = localMachineUnrealEngine.OpenSubKey(subKeyString);
-                result.Add(new EngineInstall()
+                string directory = (string)engineVersionKey.GetValue("InstalledDirectory");
+                if (IsEngineInstallDirectory(directory))
                 {
-                    Key = subKeyString,
-                    InstallDirectory = (string)engineVersionKey.GetValue("InstalledDirectory"),
-                    IsSourceBuild = false
-                });
+                    result.Add(new EngineInstall()
+                    {
+                        Key = subKeyString,
+                        InstallDirectory = directory,
+                        IsSourceBuild = false
+                    });
+                }
             }
 
             RegistryKey currentUser = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
@@ -39,12 +49,17 @@ namespace UnrealAutomationCommon.Unreal
             foreach (string buildName in buildValueNames)
             {
                 string buildPath = (string)currentUserBuilds.GetValue(buildName);
-                if (buildPath != null)
+                if (buildPath == null)
+                {
+                    continue;
+                }
+                buildPath = buildPath.Replace('/', '\\');
+                if (IsEngineInstallDirectory(buildPath))
                 {
                     result.Add(new EngineInstall()
                     {
                         Key = buildName,
-                        InstallDirectory = buildPath.Replace('/', '\\'),
+                        InstallDirectory = buildPath,
                         IsSourceBuild = true
                     });
                 }

@@ -45,6 +45,10 @@ namespace UnrealAutomationCommon.Unreal
 
         public static EngineInstallVersion Load(string buildVersionPath)
         {
+            if (!File.Exists(buildVersionPath))
+            {
+                return null;
+            }
             return JsonConvert.DeserializeObject<EngineInstallVersion>(File.ReadAllText(buildVersionPath));
         }
 
