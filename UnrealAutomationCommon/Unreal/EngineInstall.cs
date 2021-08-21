@@ -6,7 +6,7 @@
         public string InstallDirectory { get; set; }
         public bool IsSourceBuild = false;
 
-        public string DisplayName => IsSourceBuild ? $"{Version}: {InstallDirectory}" : Key;
+        public string DisplayName => Version.ToString();
         public string LocationString => IsSourceBuild ? InstallDirectory : "Launcher";
 
         public EngineInstallVersion Version => EngineInstallVersion.Load(this.GetBuildVersionPath());

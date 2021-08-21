@@ -22,14 +22,14 @@ namespace UnrealAutomationCommon.Unreal
                 throw new Exception($"Path '{executablePath}' does not appear to be a package (contains no executable)");
             }
 
-            Name = System.IO.Path.GetFileNameWithoutExtension(ExecutablePath);
+            Name = Path.GetFileNameWithoutExtension(ExecutablePath);
         }
 
         public Package ProvidedPackage => this;
 
         public override string TargetPath => ExecutablePath;
         public string ExecutablePath { get; private set; }
-        public override string Name { get;}
+        public override string Name { get; }
 
         public override void LoadDescriptor()
         {
@@ -44,7 +44,7 @@ namespace UnrealAutomationCommon.Unreal
         private static string FindExecutablePath(string path)
         {
             string[] files = Directory.GetFiles(path);
-            foreach(string file in files)
+            foreach (string file in files)
             {
                 if (System.IO.Path.GetExtension(file) == ".exe")
                 {
@@ -57,12 +57,10 @@ namespace UnrealAutomationCommon.Unreal
 
         public string LogsPath => System.IO.Path.Combine(TargetDirectory, Name, "Saved", "Logs");
 
-        public EngineInstall EngineInstall {
-            get
-            {
-                EngineInstallVersion version = new EngineInstallVersion(FileVersionInfo.GetVersionInfo(ExecutablePath));
-                return EngineInstallFinder.GetEngineInstall(version);
-            }
-        }
+        private EngineInstallVersion EngineVersion => new(FileVersionInfo.GetVersionInfo(ExecutablePath));
+
+        public EngineInstall EngineInstall => EngineInstallFinder.GetEngineInstall(EngineVersion);
+
+        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : EngineVersion.ToString();
     }
 }

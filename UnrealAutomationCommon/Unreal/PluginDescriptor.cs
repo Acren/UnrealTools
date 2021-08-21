@@ -11,29 +11,33 @@ namespace UnrealAutomationCommon.Unreal
 
         public static PluginDescriptor Load(string uPluginPath)
         {
+            FileUtils.WaitForFileReadable(uPluginPath);
             return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
         }
 
-        public EngineInstall GetEngineInstall()
+        public EngineInstall EngineInstall
         {
-            if (EngineVersion == null)
+            get
             {
-                return EngineInstallFinder.GetDefaultEngineInstall();
+                if (EngineVersion == null)
+                {
+                    return EngineInstallFinder.GetDefaultEngineInstall();
+                }
+
+                EngineInstallVersion version = new(EngineVersion);
+
+                return EngineInstallFinder.GetEngineInstall(version);
             }
-
-            EngineInstallVersion version = new(EngineVersion);
-
-            return EngineInstallFinder.GetEngineInstall(version);
         }
 
         public string GetEngineInstallDirectory()
         {
-            return GetEngineInstall().InstallDirectory;
+            return EngineInstall.InstallDirectory;
         }
 
         public string GetRunUATPath()
         {
-            return EnginePaths.GetRunUATPath(GetEngineInstall());
+            return EnginePaths.GetRunUATPath(EngineInstall);
         }
     }
 }

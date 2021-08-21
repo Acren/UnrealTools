@@ -26,12 +26,12 @@ namespace UnrealAutomationCommon.Unreal
                     return EngineAssociation;
                 }
 
-                if (GetEngineInstall() == null)
+                if (EngineInstall == null)
                 {
                     return EngineAssociation;
                 }
 
-                return GetEngineInstall().InstallDirectory;
+                return EngineInstall.InstallDirectory;
             }
         }
 
@@ -40,10 +40,7 @@ namespace UnrealAutomationCommon.Unreal
             return JsonConvert.DeserializeObject<ProjectDescriptor>(File.ReadAllText(uProjectPath));
         }
 
-        public EngineInstall GetEngineInstall()
-        {
-            return EngineInstallFinder.GetEngineInstall(EngineAssociation);
-        }
+        public EngineInstall EngineInstall => EngineInstallFinder.GetEngineInstall(EngineAssociation);
 
         public bool IsEngineInstalled()
         {

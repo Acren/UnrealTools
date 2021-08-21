@@ -40,7 +40,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Get engine path
 
-            string enginePath = projectDescriptor.GetEngineInstall().InstallDirectory;
+            string enginePath = projectDescriptor.EngineInstall.InstallDirectory;
 
             string enginePluginsMarketplacePath = Path.Combine(enginePath, @"Engine\Plugins\Marketplace");
             string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, plugin.Name);

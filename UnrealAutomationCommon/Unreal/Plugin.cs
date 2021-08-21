@@ -8,12 +8,13 @@ namespace UnrealAutomationCommon.Unreal
     public class Plugin : OperationTarget, IEngineInstallProvider
     {
         private string _uPluginPath;
+        private PluginDescriptor _pluginDescriptor;
+        private FileSystemWatcher _watcher;
 
         [JsonConstructor]
         public Plugin(string uPluginPath)
         {
             UPluginPath = uPluginPath;
-            LoadDescriptor();
         }
 
         public string UPluginPath
@@ -22,6 +23,19 @@ namespace UnrealAutomationCommon.Unreal
             set
             {
                 _uPluginPath = value;
+                LoadDescriptor();
+
+                // Reload descriptor if it changes
+                _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uPluginPath));
+                _watcher.Changed += (Sender, Args) =>
+                {
+                    if (Args.FullPath == UPluginPath)
+                    {
+                        LoadDescriptor();
+                    }
+                };
+                _watcher.EnableRaisingEvents = true;
+
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(Name));
             }
@@ -32,10 +46,26 @@ namespace UnrealAutomationCommon.Unreal
 
         public override string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
         public override string TargetPath => UPluginPath;
-        public EngineInstall EngineInstall => PluginDescriptor?.GetEngineInstall();
 
         [JsonIgnore]
-        public PluginDescriptor PluginDescriptor { get; private set; }
+        public EngineInstall EngineInstall => PluginDescriptor?.EngineInstall;
+
+        [JsonIgnore]
+        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : PluginDescriptor.EngineVersion;
+
+        [JsonIgnore]
+        public PluginDescriptor PluginDescriptor
+        {
+            get => _pluginDescriptor;
+            private set
+            {
+                _pluginDescriptor = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(EngineInstall));
+                OnPropertyChanged(nameof(EngineInstallName));
+            }
+        }
+
         [JsonIgnore]
         public string HostProjectPath => Path.GetFullPath(Path.Combine(GetPluginPath(), @"..\..\")); // Up 2 levels
 
@@ -77,6 +107,11 @@ namespace UnrealAutomationCommon.Unreal
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
+            if (EngineInstall == null)
+            {
+                return false;
+            }
+
             return EngineInstall.SupportsConfiguration(configuration);
         }
     }

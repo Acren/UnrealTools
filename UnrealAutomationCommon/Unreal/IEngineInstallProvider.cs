@@ -6,5 +6,8 @@ namespace UnrealAutomationCommon.Unreal
     {
         [JsonIgnore]
         public EngineInstall EngineInstall { get; }
+
+        [JsonIgnore]
+        public string EngineInstallName { get; }
     }
 }

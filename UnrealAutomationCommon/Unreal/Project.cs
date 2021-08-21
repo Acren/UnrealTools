@@ -7,10 +7,8 @@ namespace UnrealAutomationCommon.Unreal
     public class Project : OperationTarget, IPackageProvider, IEngineInstallProvider
     {
         private string _uProjectPath;
-        //private string _testName = string.Empty;
         private ProjectDescriptor _projectDescriptor;
-
-        private FileSystemWatcher watcher;
+        private FileSystemWatcher _watcher;
 
         // Default constructor is needed to support adding rows from DataGrid
         public Project()
@@ -29,7 +27,11 @@ namespace UnrealAutomationCommon.Unreal
         public override string TargetPath => UProjectPath;
 
         [JsonIgnore]
-        public EngineInstall EngineInstall => ProjectDescriptor.GetEngineInstall();
+        public EngineInstall EngineInstall => ProjectDescriptor.EngineInstall;
+
+        [JsonIgnore]
+        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : ProjectDescriptor.EngineAssociation;
+
         [JsonIgnore]
         public Package ProvidedPackage => GetStagedPackage();
 
@@ -44,15 +46,15 @@ namespace UnrealAutomationCommon.Unreal
                     LoadDescriptor();
 
                     // Reload descriptor if it changes
-                    watcher = new FileSystemWatcher(Path.GetDirectoryName( _uProjectPath));
-                    watcher.Changed += (Sender, Args) =>
+                    _watcher = new FileSystemWatcher(Path.GetDirectoryName( _uProjectPath));
+                    _watcher.Changed += (Sender, Args) =>
                     {
                         if (Args.FullPath == UProjectPath)
                         {
                             LoadDescriptor();
                         }
                     };
-                    watcher.EnableRaisingEvents = true;
+                    _watcher.EnableRaisingEvents = true;
 
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(Name));
@@ -69,6 +71,7 @@ namespace UnrealAutomationCommon.Unreal
                 _projectDescriptor = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(EngineInstall));
+                OnPropertyChanged(nameof(EngineInstallName));
             }
         }
 
@@ -111,6 +114,11 @@ namespace UnrealAutomationCommon.Unreal
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
+            if (EngineInstall == null)
+            {
+                return false;
+            }
+
             return EngineInstall.SupportsConfiguration(configuration);
         }
     }

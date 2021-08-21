@@ -27,7 +27,7 @@
                 <DataGridTextColumn Header="Name" IsReadOnly="True" Binding="{Binding Name}" Width="2*"/>
                 <DataGridTextColumn Header="Type" IsReadOnly="True" Binding="{Binding TypeName}"/>
                 <DataGridTextColumn Header="Location" IsReadOnly="True" Binding="{Binding TargetPath}" Width="10*"/>
-                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstall).Version}"/>
+                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstallName)}"/>
                 <DataGridTextColumn Header="Engine Location" IsReadOnly="True" Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstall).LocationString}" />
             </DataGrid.Columns>
         </DataGrid>
