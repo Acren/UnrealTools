@@ -70,7 +70,8 @@ namespace UnrealAutomationCommon.Unreal
         public string HostProjectPath => Path.GetFullPath(Path.Combine(GetPluginPath(), @"..\..\")); // Up 2 levels
 
         [JsonIgnore]
-        public string HostProjectUProjectPath{
+        public string HostProjectUProjectPath
+        {
             get
             {
                 // Get project path
@@ -113,6 +114,11 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             return EngineInstall.SupportsConfiguration(configuration);
+        }
+
+        public static bool IsPluginFile(string path)
+        {
+            return FileUtils.HasExtension(path, ".uplugin");
         }
     }
 }

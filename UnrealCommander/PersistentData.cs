@@ -106,15 +106,15 @@ namespace UnrealCommander
         public IOperationTarget AddTarget(string path)
         {
             IOperationTarget target;
-            if (TargetUtils.IsProjectFile(path))
+            if (Project.IsProjectFile(path))
             {
                 target = new Project(path);
             }
-            else if (TargetUtils.IsPluginFile(path))
+            else if (Plugin.IsPluginFile(path))
             {
                 target = new Plugin(path);
             }
-            else if (TargetUtils.IsPackageFile(path))
+            else if (Package.IsPackageFile(path))
             {
                 target = new Package(path);
             }

@@ -10,11 +10,7 @@ namespace UnrealAutomationCommon.Unreal
         private ProjectDescriptor _projectDescriptor;
         private FileSystemWatcher _watcher;
 
-        // Default constructor is needed to support adding rows from DataGrid
-        public Project()
-        {
-        }
-
+        [JsonConstructor]
         public Project(string uProjectPath)
         {
             UProjectPath = uProjectPath;
@@ -46,7 +42,7 @@ namespace UnrealAutomationCommon.Unreal
                     LoadDescriptor();
 
                     // Reload descriptor if it changes
-                    _watcher = new FileSystemWatcher(Path.GetDirectoryName( _uProjectPath));
+                    _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uProjectPath));
                     _watcher.Changed += (Sender, Args) =>
                     {
                         if (Args.FullPath == UProjectPath)
@@ -99,7 +95,7 @@ namespace UnrealAutomationCommon.Unreal
         public Package GetStagedPackage()
         {
             string path = GetStagedBuildWindowsPath();
-            return Package.IsPackage(path) ? new Package(path) : null;
+            return Package.IsPackageDirectory(path) ? new Package(path) : null;
         }
 
         public string GetStagedPackageExecutablePath()
@@ -120,6 +116,11 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             return EngineInstall.SupportsConfiguration(configuration);
+        }
+
+        public static bool IsProjectFile(string path)
+        {
+            return FileUtils.HasExtension(path, ".uproject");
         }
     }
 }

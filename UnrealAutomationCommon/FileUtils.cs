@@ -127,5 +127,20 @@ namespace UnrealAutomationCommon
                 }
             }
         }
+
+        public static bool HasExtension(string filePath, string extension)
+        {
+            if (!File.Exists(filePath))
+            {
+                return false;
+            }
+
+            if (!Path.HasExtension(filePath))
+            {
+                return false;
+            }
+
+            return Path.GetExtension(filePath).Equals(extension, StringComparison.InvariantCultureIgnoreCase);
+        }
     }
 }

@@ -14,10 +14,23 @@ namespace UnrealAutomationCommon.Unreal
 
     public class Package : OperationTarget, IPackageProvider, IEngineInstallProvider
     {
+        [JsonConstructor]
         public Package(string executablePath)
         {
-            ExecutablePath = executablePath;
-            if (!IsPackage(TargetDirectory))
+            if (string.IsNullOrEmpty(executablePath))
+            {
+                throw new Exception("Invalid path");
+            }
+
+            if (IsPackageFile(executablePath))
+            {
+                ExecutablePath = executablePath;
+            }
+            else if(IsPackageDirectory(executablePath))
+            {
+                ExecutablePath = FindExecutablePath(executablePath);
+            }
+            else
             {
                 throw new Exception($"Path '{executablePath}' does not appear to be a package (contains no executable)");
             }
@@ -34,11 +47,6 @@ namespace UnrealAutomationCommon.Unreal
         public override void LoadDescriptor()
         {
             throw new NotImplementedException();
-        }
-
-        public static bool IsPackage(string path)
-        {
-            return FindExecutablePath(path) != null;
         }
 
         private static string FindExecutablePath(string path)
@@ -62,5 +70,15 @@ namespace UnrealAutomationCommon.Unreal
         public EngineInstall EngineInstall => EngineInstallFinder.GetEngineInstall(EngineVersion);
 
         public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : EngineVersion.ToString();
+
+        public static bool IsPackageFile(string path)
+        {
+            return FileUtils.HasExtension(path, ".exe");
+        }
+
+        public static bool IsPackageDirectory(string path)
+        {
+            return FindExecutablePath(path) != null;
+        }
     }
 }
