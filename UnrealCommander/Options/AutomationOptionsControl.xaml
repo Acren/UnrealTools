@@ -7,11 +7,14 @@
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
     <StackPanel>
-        <CheckBox IsChecked="{Binding Options.RunTests, RelativeSource={RelativeSource AncestorType=local:AutomationOptionsControl}}" VerticalAlignment="Center" VerticalContentAlignment="Center">
+        <CheckBox IsChecked="{Binding Options.RunTests.Value, RelativeSource={RelativeSource AncestorType=local:AutomationOptionsControl}}" VerticalAlignment="Center" VerticalContentAlignment="Center">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Run tests:" VerticalAlignment="Center" Margin="0,0,5,0" />
                 <TextBox Text="{Binding TestName, RelativeSource={RelativeSource AncestorType=local:AutomationOptionsControl}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"  MinWidth="50" />
             </StackPanel>
+        </CheckBox>
+        <CheckBox IsChecked="{Binding Options.Headless.Value, RelativeSource={RelativeSource AncestorType=local:AutomationOptionsControl}}">
+            <TextBlock Text="Headless" VerticalAlignment="Center" />
         </CheckBox>
     </StackPanel>
 </local:OptionsUserControl>

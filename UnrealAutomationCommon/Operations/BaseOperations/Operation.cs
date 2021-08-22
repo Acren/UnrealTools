@@ -61,14 +61,23 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                     Logger.Log($"Operation '{OperationName}' completed - {errors} error(s), {warnings} warning(s)");
                 }
 
-                if (errors > 0)
+                if (result.Success)
                 {
-                    throw new Exception($"{errors} error(s) were encountered");
-                }
+                    if (errors > 0)
+                    {
+                        Logger.Log($"{errors} error(s) encountered", LogVerbosity.Error);
+                        result.Success = false;
+                    }
 
-                if (warnings > 0 && FailOnWarning())
-                {
-                    throw new Exception($"{warnings} warning(s) were encountered - operation fails on warnings");
+                    if (warnings > 0)
+                    {
+                        Logger.Log($"{warnings} warning(s) encountered", LogVerbosity.Warning);
+                        if (FailOnWarning())
+                        {
+                            Logger.Log("Operation fails on warnings", LogVerbosity.Error);
+                            result.Success = false;
+                        }
+                    }
                 }
 
                 return result;

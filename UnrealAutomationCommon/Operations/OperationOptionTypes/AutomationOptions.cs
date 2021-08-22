@@ -2,16 +2,13 @@
 {
     public class AutomationOptions : OperationOptions
     {
-        private bool _runTests = false;
+        public Option<bool> RunTests { get;}
+        public Option<bool> Headless { get;}
 
-        public bool RunTests
+        public AutomationOptions()
         {
-            get => _runTests;
-            set
-            {
-                _runTests = value;
-                OnPropertyChanged();
-            }
+            RunTests = new Option<bool>(OptionChanged, false);
+            Headless = new Option<bool>(OptionChanged, true);
         }
 
         public string TestNameOverride { get; set; }

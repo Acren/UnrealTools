@@ -58,13 +58,19 @@ namespace UnrealAutomationCommon.Unreal
                 arguments.SetKeyValue("ExecCmds", execCmds);
                 arguments.SetKeyPath("ReportExportPath", OutputPaths.GetTestReportPath(outputhPath));
                 arguments.SetKeyValue("testexit", "Automation Test Queue Empty");
-                //arguments.SetFlag("windowed");
-                //arguments.SetKeyValue("resx", "640");
-                //arguments.SetKeyValue("resy", "360");
-                // Run tests as unattended and headless
-                arguments.SetFlag("unattended");
-                arguments.SetFlag("nullrhi");
-                arguments.SetFlag("server");
+                if (automationOpts.Headless)
+                {
+                    // Run tests as unattended and headless
+                    arguments.SetFlag("unattended");
+                    arguments.SetFlag("nullrhi");
+                    arguments.SetFlag("server");
+                }
+                else
+                {
+                    arguments.SetFlag("windowed");
+                    arguments.SetKeyValue("resx", "640");
+                    arguments.SetKeyValue("resy", "360");
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(operationParameters.AdditionalArguments))

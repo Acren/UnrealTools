@@ -12,7 +12,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         {
             // Report test results
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
-            if (result.Success && automationOptions is { RunTests: true })
+            if (result.Success && automationOptions is { RunTests: { Value: true } })
             {
                 string reportFilePath = OutputPaths.GetTestReportFilePath(GetOutputPath(OperationParameters));
                 TestReport report = TestReport.Load(reportFilePath);
