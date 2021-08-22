@@ -283,5 +283,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             operationParameters.RequestOptions<AutomationOptions>();
             return new List<Command>();
         }
+
+        protected override bool FailOnWarning()
+        {
+            return true;
+        }
     }
 }

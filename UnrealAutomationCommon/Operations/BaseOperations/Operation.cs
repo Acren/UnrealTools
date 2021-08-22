@@ -33,18 +33,42 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 logger.Log($"Running operation '{OperationName}'");
                 CheckRequirementsSatisfied(operationParameters);
 
+                int warnings = 0;
+                int errors = 0;
+
                 Logger = logger;
+                Logger.Output += (output, verbosity) =>
+                {
+                    if (verbosity == LogVerbosity.Error)
+                    {
+                        errors++;
+                    }
+                    else if (verbosity == LogVerbosity.Warning)
+                    {
+                        warnings++;
+                    }
+                };
                 OperationParameters = operationParameters;
 
                 OperationResult result = await OnExecuted();
 
                 if (Terminated)
                 {
-                    Logger.Log($"Operation '{OperationName}' terminated by user", LogVerbosity.Warning );
+                    Logger.Log($"Operation '{OperationName}' terminated by user", LogVerbosity.Warning);
                 }
                 else
                 {
-                    Logger.Log($"Operation '{OperationName}' completed");
+                    Logger.Log($"Operation '{OperationName}' completed - {errors} error(s), {warnings} warning(s)");
+                }
+
+                if (errors > 0)
+                {
+                    throw new Exception($"{errors} error(s) were encountered");
+                }
+
+                if (warnings > 0 && FailOnWarning())
+                {
+                    throw new Exception($"{warnings} warning(s) were encountered - operation fails on warnings");
                 }
 
                 return result;
@@ -117,6 +141,11 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             }
 
             return result;
+        }
+
+        protected virtual bool FailOnWarning()
+        {
+            return false;
         }
 
         public virtual bool SupportsConfiguration(BuildConfiguration configuration)
