@@ -23,6 +23,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
             if (automationOptions is { RunTests: true })
             {
+                // Packages don't have a test report template, but the engine still expects it
                 // Copy report template from engine to package, otherwise engine automation will error
                 string reportTemplateName = "Report-Template.html";
                 string reportTemplateSubdir = "Engine/Content/Automation";
