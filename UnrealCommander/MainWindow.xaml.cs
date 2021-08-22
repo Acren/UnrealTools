@@ -44,6 +44,7 @@ namespace UnrealCommander
             InsightsOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<InsightsOptions>();
             FlagOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<FlagOptions>();
             AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
+            PackageOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<PackageOptions>();
 
             // Default sort
             TargetGrid.Items.SortDescriptions.Clear();

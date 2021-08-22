@@ -10,7 +10,7 @@ namespace UnrealCommander.Options
     /// <summary>
     /// Interaction logic for OptionsUserControl.xaml
     /// </summary>
-    public partial class OptionsUserControl : UserControl, INotifyPropertyChanged
+    public partial class OptionsUserControl/*<T>*/ : UserControl, INotifyPropertyChanged /*where T : OperationOptions*/
     {
         private OperationTarget _operationTarget = null;
         private Operation _operation = null;
@@ -33,6 +33,24 @@ namespace UnrealCommander.Options
                 _operation = value;
                 OnPropertyChanged();
             }
+        }
+
+        //private T _options = null;
+
+        //public T Options
+        //{
+        //    get => _options;
+        //    set
+        //    {
+        //        _options = value;
+        //        OptionsChanged();
+        //        OnPropertyChanged();
+        //    }
+        //}
+
+        protected virtual void OptionsChanged()
+        {
+
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

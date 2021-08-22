@@ -200,6 +200,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 OutputPathOverride = demoExePath
             };
 
+            // Set options for demo exe
+            demoPackageParams.RequestOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
+            demoPackageParams.RequestOptions<PackageOptions>().NoDebugInfo.Value = true;
+
             OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, Logger);
 
             if (!demoExePackageOperationResult.Success)
@@ -207,16 +211,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Example project build failed");
             }
 
-            OperationParameters demoTestParams = new OperationParameters()
-            {
-                Target = new Package(Path.Combine(demoExePath, plugin.EngineInstall.GetWindowsPlatformName()))
-            };
-            demoTestParams.SetOptions(automationOpts);
+            //OperationParameters demoTestParams = new OperationParameters()
+            //{
+            //    Target = new Package(Path.Combine(demoExePath, plugin.EngineInstall.GetWindowsPlatformName()))
+            //};
+            //demoTestParams.SetOptions(automationOpts);
 
-            if (!(await new LaunchPackage().Execute(demoTestParams, Logger)).Success)
-            {
-                throw new Exception("Launch and test demo exe failed");
-            }
+            //if (!(await new LaunchPackage().Execute(demoTestParams, Logger)).Success)
+            //{
+            //    throw new Exception("Launch and test demo exe failed");
+            //}
 
             {
                 // Archiving

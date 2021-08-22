@@ -148,6 +148,17 @@
                         </MultiBinding>
                     </GroupBox.IsEnabled>
                 </local:OptionsContainer>
+                <local:OptionsContainer Header="Package" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
+                    <StackPanel VerticalAlignment="Center">
+                        <options:PackageOptionsControl x:Name="PackageOptionsControlElement" />
+                    </StackPanel>
+                    <GroupBox.IsEnabled>
+                        <MultiBinding Converter="{StaticResource ContainsConverter}">
+                            <Binding Path="EnabledOptionSets" />
+                            <Binding Source="{x:Type TypeName=operationOptionTypes:PackageOptions}" />
+                        </MultiBinding>
+                    </GroupBox.IsEnabled>
+                </local:OptionsContainer>
             </WrapPanel>
             <GroupBox Header="Additional Arguments" Grid.Row="1" Margin="0,5" Padding="10">
                 <TextBox Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}"></TextBox>

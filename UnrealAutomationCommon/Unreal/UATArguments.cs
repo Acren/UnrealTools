@@ -18,6 +18,11 @@ namespace UnrealAutomationCommon.Unreal
             arguments.SetKeyValue("clientconfig", configuration);
             arguments.SetKeyValue("serverconfig", configuration);
 
+            if(operationParameters.RequestOptions<PackageOptions>().NoDebugInfo)
+            {
+                arguments.SetFlag("NoDebugInfo");
+            }
+
             if (!string.IsNullOrWhiteSpace(operationParameters.AdditionalArguments))
             {
                 arguments.AddRawArgsString(operationParameters.AdditionalArguments);

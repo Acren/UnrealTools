@@ -7,7 +7,7 @@ namespace UnrealCommander.Options
     /// <summary>
     /// Interaction logic for InsightsOptionsControl.xaml
     /// </summary>
-    public partial class InsightsOptionsControl : OptionsUserControl
+    public partial class InsightsOptionsControl : OptionsUserControl/*<InsightsOptions>*/
     {
         private InsightsOptions _options = null;
 
