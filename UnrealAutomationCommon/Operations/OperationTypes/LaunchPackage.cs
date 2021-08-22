@@ -1,4 +1,8 @@
-﻿using UnrealAutomationCommon.Operations.BaseOperations;
+﻿using System;
+using System.IO;
+using System.Threading.Tasks;
+using UnrealAutomationCommon.Operations.BaseOperations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
@@ -12,6 +16,32 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
             return new Command(GetTarget(operationParameters).ProvidedPackage.ExecutablePath, args);
+        }
+
+        protected override async Task<OperationResult> OnExecuted()
+        {
+            AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
+            if (automationOptions is { RunTests: true })
+            {
+                // Copy report template from engine to package, otherwise engine automation will error
+                string reportTemplateName = "Report-Template.html";
+                string reportTemplateSubdir = "Engine/Content/Automation";
+                string reportTemplateSubpath = Path.Combine(reportTemplateSubdir, reportTemplateName);
+                string packageDir = GetTarget(OperationParameters).ProvidedPackage.TargetDirectory;
+                string reportTemplateDir = Path.Combine(packageDir, reportTemplateSubdir);
+                string reportTemplatePath = Path.Combine(packageDir, reportTemplateSubpath);
+                if (!File.Exists(reportTemplatePath))
+                {
+                    string engineReportTemplate = Path.Combine((GetTarget(OperationParameters) as IEngineInstallProvider).EngineInstall.InstallDirectory, reportTemplateSubpath);
+                    if (!File.Exists(engineReportTemplate))
+                    {
+                        throw new Exception("Expected engine report template");
+                    }
+                    Directory.CreateDirectory(reportTemplateDir);
+                    File.Copy(engineReportTemplate, reportTemplatePath);
+                }
+            }
+            return await base.OnExecuted();
         }
 
         protected override string GetOperationName()
