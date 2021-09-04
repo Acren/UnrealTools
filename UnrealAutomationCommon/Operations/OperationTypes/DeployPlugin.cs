@@ -70,16 +70,20 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Failed to build host project");
             }
 
-            Logger.Log("Launching and testing host project editor");
-
-            OperationParameters launchEditorParams = buildEditorParams;
             AutomationOptions automationOpts = OperationParameters.FindOptions<AutomationOptions>();
             automationOpts.TestNameOverride = plugin.TestName;
-            launchEditorParams.SetOptions(automationOpts);
 
-            if (!(await new LaunchEditor().Execute(launchEditorParams, Logger)).Success)
+            if (automationOpts.RunTests)
             {
-                throw new Exception("Failed to launch host project");
+                Logger.Log("Launching and testing host project editor");
+
+                OperationParameters launchEditorParams = buildEditorParams;
+                launchEditorParams.SetOptions(automationOpts);
+
+                if (!(await new LaunchEditor().Execute(launchEditorParams, Logger)).Success)
+                {
+                    throw new Exception("Failed to launch host project");
+                }
             }
 
             // Build plugin
@@ -168,17 +172,20 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Test the package
 
-            OperationParameters testInstalledPluginBuildParams = new OperationParameters()
+            if (automationOpts.RunTests)
             {
-                Target = exampleProjectBuild
-            };
-            testInstalledPluginBuildParams.SetOptions(automationOpts);
+                OperationParameters testInstalledPluginBuildParams = new OperationParameters()
+                {
+                    Target = exampleProjectBuild
+                };
+                testInstalledPluginBuildParams.SetOptions(automationOpts);
 
-            OperationResult testResult = await new LaunchStagedPackage().Execute(testInstalledPluginBuildParams, Logger);
+                OperationResult testResult = await new LaunchStagedPackage().Execute(testInstalledPluginBuildParams, Logger);
 
-            if (!testResult.Success)
-            {
-                throw new Exception("Launch and test with installed plugin failed");
+                if (!testResult.Success)
+                {
+                    throw new Exception("Launch and test with installed plugin failed");
+                }
             }
 
             // Uninstall plugin from engine because test has completed
