@@ -51,6 +51,11 @@ namespace UnrealAutomationCommon.Unreal
 
         private static string FindExecutablePath(string path)
         {
+            if(!Directory.Exists(path))
+            {
+                return null;
+            }
+
             string[] files = Directory.GetFiles(path);
             foreach (string file in files)
             {
