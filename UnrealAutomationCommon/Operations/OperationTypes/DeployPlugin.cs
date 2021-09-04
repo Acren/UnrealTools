@@ -22,6 +22,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Project hostProject = plugin.HostProject;
             ProjectDescriptor projectDescriptor = hostProject.ProjectDescriptor;
 
+            if (!projectDescriptor.HasPluginEnabled(plugin.Name))
+            {
+                throw new Exception("Host project must have plugin enabled");
+            }
+
             string branchName = VersionControlUtils.GetBranchName(hostProject.GetProjectPath());
             string archiveVersionName = null;
             // Use the version if on any of these branches
