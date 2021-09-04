@@ -100,6 +100,11 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return BuildCommands(operationParameters);
         }
 
+        public string GetOperationTempPath()
+        {
+            return Path.Combine(OutputPaths.Root(), "Temp");
+        }
+
         public string GetOutputPath(OperationParameters operationParameters)
         {
             if (operationParameters.OutputPathOverride != null)

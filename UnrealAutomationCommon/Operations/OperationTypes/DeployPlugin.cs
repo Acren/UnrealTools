@@ -53,7 +53,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Delete plugin from engine if installed version exists
             FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath);
 
-            string workingTempPath = Path.Combine(GetOutputPath(OperationParameters), "Temp");
+            string workingTempPath = GetOperationTempPath();
+            //string workingTempPath = Path.Combine(GetOutputPath(OperationParameters), "Temp");
+            
             Directory.CreateDirectory(workingTempPath);
 
             // Launch and test host project editor

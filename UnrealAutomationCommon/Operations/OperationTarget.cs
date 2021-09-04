@@ -37,7 +37,7 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
-        public string OutputDirectory => Path.Combine("C:/UnrealCommander/", Name.Replace(" ", ""));
+        public string OutputDirectory => Path.Combine(OutputPaths.Root(), Name.Replace(" ", ""));
         public string TypeName => GetType().Name.SplitWordsByUppercase();
 
         public event PropertyChangedEventHandler PropertyChanged;
