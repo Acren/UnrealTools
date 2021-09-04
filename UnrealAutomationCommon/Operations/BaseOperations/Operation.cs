@@ -137,7 +137,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             OperationParameters dummyParams = new();
             dummyParams.Target = target;
 
-            if (GetRelevantEngineInstall(dummyParams) == null)
+            if (!RequirementsSatisfied(dummyParams))
             {
                 return null;
             }
