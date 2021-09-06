@@ -73,10 +73,7 @@ namespace UnrealAutomationCommon.Unreal
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(operationParameters.AdditionalArguments))
-            {
-                arguments.AddRawArgsString(operationParameters.AdditionalArguments);
-            }
+            arguments.AddAdditionalArguments(operationParameters);
 
             return arguments;
         }

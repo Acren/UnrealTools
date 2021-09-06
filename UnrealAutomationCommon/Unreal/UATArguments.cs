@@ -23,10 +23,7 @@ namespace UnrealAutomationCommon.Unreal
                 arguments.SetFlag("NoDebugInfo");
             }
 
-            if (!string.IsNullOrWhiteSpace(operationParameters.AdditionalArguments))
-            {
-                arguments.AddRawArgsString(operationParameters.AdditionalArguments);
-            }
+            arguments.AddAdditionalArguments(operationParameters);
 
             return arguments;
         }
