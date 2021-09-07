@@ -95,12 +95,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string pluginBuildPath = Path.Combine(workingTempPath, @"PluginBuild", plugin.Name);
             FileUtils.DeleteDirectoryIfExists(pluginBuildPath);
 
-            BuildPlugin buildPlugin = new BuildPlugin();
-            OperationResult buildResult = await buildPlugin.Execute(new OperationParameters()
+            OperationParameters buildPluginParams = new OperationParameters()
             {
                 Target = plugin,
                 OutputPathOverride = pluginBuildPath
-            }, Logger);
+            };
+            buildPluginParams.SetOptions(OperationParameters.RequestOptions<PluginBuildOptions>());
+
+            OperationResult buildResult = await new BuildPlugin().Execute(buildPluginParams, Logger);
 
             if (!buildResult.Success)
             {
@@ -299,6 +301,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
         {
             operationParameters.RequestOptions<AutomationOptions>();
+            operationParameters.RequestOptions<PluginBuildOptions>();
             return new List<Command>();
         }
 
