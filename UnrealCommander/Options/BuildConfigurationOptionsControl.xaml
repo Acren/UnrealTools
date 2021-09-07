@@ -44,18 +44,12 @@
                                 <Binding />
                             </MultiBinding>
                         </RadioButton.IsEnabled>
-                        <RadioButton.Focusable>
-                            <MultiBinding Converter="{StaticResource ContainsConverter}">
-                                <Binding RelativeSource="{RelativeSource AncestorType=unrealCommander:MainWindow}" Path="AllowedBuildConfigurations.Configurations"/>
-                                <Binding />
-                            </MultiBinding>
-                        </RadioButton.Focusable>
-                        <RadioButton.IsHitTestVisible>
-                            <MultiBinding Converter="{StaticResource ContainsConverter}">
-                                <Binding RelativeSource="{RelativeSource AncestorType=unrealCommander:MainWindow}" Path="AllowedBuildConfigurations.Configurations"/>
-                                <Binding />
-                            </MultiBinding>
-                        </RadioButton.IsHitTestVisible>
+                        <RadioButton.Style>
+                            <Style TargetType="RadioButton">
+                                <Setter Property="Focusable" Value="{Binding RelativeSource={RelativeSource Mode=Self}, Path=IsEnabled }"/>
+                                <Setter Property="IsHitTestVisible" Value="{Binding RelativeSource={RelativeSource Mode=Self}, Path=IsEnabled }"/>
+                            </Style>
+                        </RadioButton.Style>
                     </RadioButton>
                 </DataTemplate>
             </ListBox.ItemTemplate>
