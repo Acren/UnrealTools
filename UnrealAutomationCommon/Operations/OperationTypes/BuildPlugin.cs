@@ -1,4 +1,5 @@
 ﻿using UnrealAutomationCommon.Operations.BaseOperations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
@@ -14,6 +15,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             buildPluginArguments.SetKeyPath("Package", GetOutputPath(operationParameters));
             buildPluginArguments.SetFlag("Rocket");
             buildPluginArguments.SetFlag("VS2019");
+            if (operationParameters.RequestOptions<PluginBuildOptions>().StrictIncludes)
+            {
+                buildPluginArguments.SetFlag("StrictIncludes");
+            }
             buildPluginArguments.AddAdditionalArguments(operationParameters);
             return new Command(GetTarget(operationParameters).PluginDescriptor.GetRunUATPath(), buildPluginArguments);
         }
