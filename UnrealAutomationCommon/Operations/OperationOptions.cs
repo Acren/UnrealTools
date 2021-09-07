@@ -50,6 +50,15 @@ namespace UnrealAutomationCommon.Operations
         //    return option;
         //}
 
+        public string Name
+        {
+            get
+            {
+                string name = GetType().Name;
+                return name.SplitWordsByUppercase();
+            }
+        }
+
         protected void OptionChanged()
         {
             OnPropertyChanged();

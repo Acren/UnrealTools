@@ -6,11 +6,12 @@
                           xmlns:local="clr-namespace:UnrealCommander.Options"
                           xmlns:unrealCommander="clr-namespace:UnrealCommander"
                           xmlns:unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
+                          xmlns:operationOptionTypes="clr-namespace:UnrealAutomationCommon.Operations.OperationOptionTypes;assembly=UnrealAutomationCommon"
                           mc:Ignorable="d" 
                           d:DesignHeight="450" d:DesignWidth="800">
     <StackPanel VerticalAlignment="Center">
         <ListBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=local:BuildConfigurationOptionsControl}, Path=BuildConfigurations}"
-                 SelectedItem="{Binding RelativeSource={RelativeSource AncestorType=local:BuildConfigurationOptionsControl}, Path= Options.Configuration, Mode=TwoWay}"
+                 SelectedItem="{Binding Path= Configuration, Mode=TwoWay}"
                  BorderThickness="0" BorderBrush="Transparent" Background="Transparent">
             <ListBox.Resources>
                 <unrealCommander:EnumToStringConverter x:Key="EnumToStringConverter"/>
@@ -39,7 +40,7 @@
                         </RadioButton.IsChecked>
                         <RadioButton.IsEnabled>
                             <MultiBinding Converter="{StaticResource ContainsConverter}">
-                                <Binding RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}" Path="AllowedBuildConfigurations.Configurations"/>
+                                <Binding RelativeSource="{RelativeSource AncestorType=unrealCommander:MainWindow}" Path="AllowedBuildConfigurations.Configurations"/>
                                 <Binding />
                                 <!--<Binding Path="OperationTarget.EngineInstall"
                                          RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
@@ -49,7 +50,7 @@
                         </RadioButton.IsEnabled>
                         <RadioButton.Focusable>
                             <MultiBinding Converter="{StaticResource ContainsConverter}">
-                                <Binding RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}" Path="AllowedBuildConfigurations.Configurations"/>
+                                <Binding RelativeSource="{RelativeSource AncestorType=unrealCommander:MainWindow}" Path="AllowedBuildConfigurations.Configurations"/>
                                 <Binding />
                                 <!--<Binding Path="OperationTarget.EngineInstall"
                                                          RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
@@ -59,7 +60,7 @@
                         </RadioButton.Focusable>
                         <RadioButton.IsHitTestVisible>
                             <MultiBinding Converter="{StaticResource ContainsConverter}">
-                                <Binding RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}" Path="AllowedBuildConfigurations.Configurations"/>
+                                <Binding RelativeSource="{RelativeSource AncestorType=unrealCommander:MainWindow}" Path="AllowedBuildConfigurations.Configurations"/>
                                 <Binding />
                                 <!--<Binding Path="DataProvider.OperationTarget.EngineInstall"
                                                          RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>

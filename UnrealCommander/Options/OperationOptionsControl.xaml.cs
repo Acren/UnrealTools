@@ -10,18 +10,6 @@ namespace UnrealCommander.Options
     /// </summary>
     public partial class OperationOptionsControl : OptionsUserControl
     {
-        //public static readonly DependencyProperty AllowedOperationTypesProperty = DependencyProperty.Register(nameof(AllowedOperationTypes), typeof(List<Type>), typeof(OperationOptionsControl));
-
-        //public List<Type> AllowedOperationTypes
-        //{
-        //    get => (List<Type>)GetValue(AllowedOperationTypesProperty);
-        //    set
-        //    {
-        //        SetValue(AllowedOperationTypesProperty, value);
-        //        OnPropertyChanged();
-        //    }
-        //}
-
         public static readonly DependencyProperty SelectedOperationTypeProperty = DependencyProperty.Register(nameof(SelectedOperationType), typeof(Type), typeof(OperationOptionsControl), new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
 
         public Type SelectedOperationType

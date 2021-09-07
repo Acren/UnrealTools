@@ -40,11 +40,11 @@ namespace UnrealCommander
             InitializeComponent();
             PersistentState = PersistentData.Load();
 
-            BuildConfigurationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>();
-            InsightsOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<InsightsOptions>();
-            FlagOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<FlagOptions>();
-            AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
-            PackageOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<PackageOptions>();
+            //BuildConfigurationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>();
+            //InsightsOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<InsightsOptions>();
+            //FlagOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<FlagOptions>();
+            //AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
+            //PackageOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<PackageOptions>();
 
             // Default sort
             TargetGrid.Items.SortDescriptions.Clear();
@@ -124,6 +124,7 @@ namespace UnrealCommander
                 OnPropertyChanged(nameof(VisibleCommand));
                 OnPropertyChanged(nameof(CanExecute));
                 OnPropertyChanged(nameof(AllowedBuildConfigurations));
+                OnPropertyChanged(nameof(EnabledOptionSetTypes));
                 OnPropertyChanged(nameof(EnabledOptionSets));
             }
         }
@@ -162,7 +163,9 @@ namespace UnrealCommander
             }
         }
 
-        public List<Type> EnabledOptionSets => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target)?.ToList();
+        public List<Type> EnabledOptionSetTypes => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target)?.ToList();
+
+        public List<OperationOptions> EnabledOptionSets => PersistentState.OperationParameters.OptionsInstances.Where(x => EnabledOptionSetTypes.Contains(x.GetType())).ToList();
 
         public string Status
         {

@@ -8,18 +8,9 @@ namespace UnrealCommander.Options
     /// </summary>
     public partial class FlagOptionsControl : OptionsUserControl
     {
-        private FlagOptions _options = null;
-
-        public FlagOptions Options
-        {
-            get => _options;
-            set { _options = value; OnPropertyChanged(); }
-        }
-
         public FlagOptionsControl()
         {
             InitializeComponent();
         }
-
     }
 }

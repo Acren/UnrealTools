@@ -4,16 +4,18 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:UnrealCommander.Options"
+             xmlns:operationOptionTypes="clr-namespace:UnrealAutomationCommon.Operations.OperationOptionTypes;assembly=UnrealAutomationCommon"
+             xmlns:unrealCommander="clr-namespace:UnrealCommander"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
     <StackPanel>
-        <CheckBox IsChecked="{Binding Options.RunTests.Value, RelativeSource={RelativeSource AncestorType=local:AutomationOptionsControl}}" VerticalAlignment="Center" VerticalContentAlignment="Center">
+        <CheckBox IsChecked="{Binding RunTests.Value}" VerticalAlignment="Center" VerticalContentAlignment="Center">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Run tests:" VerticalAlignment="Center" Margin="0,0,5,0" />
-                <TextBox Text="{Binding TestName, RelativeSource={RelativeSource AncestorType=local:AutomationOptionsControl}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"  MinWidth="50" />
+                <TextBox Text="{Binding PersistentState.OperationParameters.Target.TestName, RelativeSource={RelativeSource AncestorType=unrealCommander:MainWindow}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"  MinWidth="50" />
             </StackPanel>
         </CheckBox>
-        <CheckBox IsChecked="{Binding Options.Headless.Value, RelativeSource={RelativeSource AncestorType=local:AutomationOptionsControl}}">
+        <CheckBox IsChecked="{Binding Headless.Value}">
             <TextBlock Text="Headless" VerticalAlignment="Center" />
         </CheckBox>
     </StackPanel>

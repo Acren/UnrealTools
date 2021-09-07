@@ -8,6 +8,7 @@
         xmlns:Unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
         xmlns:local="clr-namespace:UnrealCommander"
         xmlns:options="clr-namespace:UnrealCommander.Options"
+        xmlns:operations="clr-namespace:UnrealAutomationCommon.Operations;assembly=UnrealAutomationCommon"
         mc:Ignorable="d"
         Title="Unreal Commander" Height="800" Width="1200"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
@@ -45,11 +46,59 @@
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
             </Grid.RowDefinitions>
-            <WrapPanel Grid.Row="0">
+            <ItemsControl>
+                <ItemsControl.Resources>
+                    <CollectionViewSource x:Key="OptionsCollection" Source="{Binding EnabledOptionSets}"/>
+                </ItemsControl.Resources>
+                <ItemsControl.ItemsSource>
+                    <CompositeCollection>
+                        <StackPanel>
+                            <local:OptionsContainer Header="Operations" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
+                                <StackPanel VerticalAlignment="Center">
+                                    <options:OperationOptionsControl SelectedOperationType="{Binding Path=PersistentState.OperationType}" />
+                                </StackPanel>
+                            </local:OptionsContainer>
+                        </StackPanel>
+                        <CollectionContainer Collection="{Binding Source={StaticResource OptionsCollection}}"/>
+                    </CompositeCollection>
+                </ItemsControl.ItemsSource>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type operations:OperationOptions}">
+                        <local:OptionsContainer Header="{Binding Path=Name}" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
+                            <StackPanel VerticalAlignment="Center">
+                                <StackPanel.Resources>
+                                    <DataTemplate DataType="{x:Type operationOptionTypes:BuildConfigurationOptions}">
+                                        <options:BuildConfigurationOptionsControl DataContext="{Binding}"/>
+                                    </DataTemplate>
+                                    <DataTemplate DataType="{x:Type operationOptionTypes:InsightsOptions}">
+                                        <options:InsightsOptionsControl DataContext="{Binding}"/>
+                                    </DataTemplate>
+                                    <DataTemplate DataType="{x:Type operationOptionTypes:FlagOptions}">
+                                        <options:FlagOptionsControl DataContext="{Binding}"/>
+                                    </DataTemplate>
+                                    <DataTemplate DataType="{x:Type operationOptionTypes:AutomationOptions}">
+                                        <options:AutomationOptionsControl DataContext="{Binding}"/>
+                                    </DataTemplate>
+                                    <DataTemplate DataType="{x:Type operationOptionTypes:PackageOptions}">
+                                        <options:PackageOptionsControl DataContext="{Binding}"/>
+                                    </DataTemplate>
+                                </StackPanel.Resources>
+                                <ContentPresenter Content="{Binding}"/>
+                            </StackPanel>
+                        </local:OptionsContainer>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+            <!--<WrapPanel Grid.Row="0">
                 <WrapPanel.Resources>
                     <local:ContainsConverter x:Key="ContainsConverter"/>
                 </WrapPanel.Resources>
-                <!--<GroupBox Header="Operation" Margin="0,5" Padding="10">
+                --><!--<GroupBox Header="Operation" Margin="0,5" Padding="10">
                     <StackPanel VerticalAlignment="Center">
                         <ListBox ItemsSource="{Binding OperationTypes}" SelectedItem="{Binding Path=PersistentState.OperationType}" BorderBrush="Transparent" Background="Transparent">
                             <ListBox.Resources>
@@ -103,10 +152,10 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
                     </StackPanel>
-                </GroupBox>-->
+                </GroupBox>--><!--
                 <local:OptionsContainer Header="Operation" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
                     <StackPanel VerticalAlignment="Center">
-                        <!-- AllowedOperationTypes="{Binding OperationTypes}" -->
+                        --><!-- AllowedOperationTypes="{Binding OperationTypes}" --><!--
                         <options:OperationOptionsControl x:Name="OperationOptionsControlElement" SelectedOperationType="{Binding Path=PersistentState.OperationType, Mode=TwoWay, RelativeSource={RelativeSource AncestorType=local:MainWindow}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged}"/>
                     </StackPanel>
                 </local:OptionsContainer>
@@ -165,7 +214,7 @@
                         </MultiBinding>
                     </GroupBox.IsEnabled>
                 </local:OptionsContainer>
-            </WrapPanel>
+            </WrapPanel>-->
             <GroupBox Header="Additional Arguments" Grid.Row="1" Margin="0,5" Padding="10">
                 <TextBox Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}"></TextBox>
             </GroupBox>

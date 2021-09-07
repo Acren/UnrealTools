@@ -1,7 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Windows;
 using UnrealAutomationCommon;
-using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealCommander.Options
@@ -16,24 +15,23 @@ namespace UnrealCommander.Options
     /// </summary>
     public partial class BuildConfigurationOptionsControl : OptionsUserControl
     {
-        private BuildConfigurationOptions _options = null;
+        //public static readonly DependencyProperty AllowedBuildConfigurationsProperty = DependencyProperty.Register(nameof(AllowedBuildConfigurations), typeof(AllowedBuildConfigurations), typeof(BuildConfigurationOptionsControl), new FrameworkPropertyMetadata(new AllowedBuildConfigurations()));
 
-        public BuildConfigurationOptions Options
-        {
-            get => _options;
-            set { _options = value; OnPropertyChanged(); }
-        }
-
-        public static readonly DependencyProperty AllowedBuildConfigurationsProperty = DependencyProperty.Register(nameof(AllowedBuildConfigurations), typeof(AllowedBuildConfigurations), typeof(BuildConfigurationOptionsControl));
-
-        public AllowedBuildConfigurations AllowedBuildConfigurations
-        {
-            get => (AllowedBuildConfigurations)GetValue(AllowedBuildConfigurationsProperty);
-            set => SetValue(AllowedBuildConfigurationsProperty, value);
-        }
+        //public AllowedBuildConfigurations AllowedBuildConfigurations
+        //{
+        //    get => (AllowedBuildConfigurations)GetValue(AllowedBuildConfigurationsProperty);
+        //    set => SetValue(AllowedBuildConfigurationsProperty, value);
+        //}
 
         public BuildConfigurationOptionsControl()
         {
+            DataContextChanged += (sender, args) =>
+            {
+                if (this.DataContext == null)
+                {
+                    return;
+                }
+            };
             InitializeComponent();
         }
 

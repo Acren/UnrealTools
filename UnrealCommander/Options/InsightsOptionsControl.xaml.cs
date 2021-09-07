@@ -9,18 +9,7 @@ namespace UnrealCommander.Options
     /// </summary>
     public partial class InsightsOptionsControl : OptionsUserControl/*<InsightsOptions>*/
     {
-        private InsightsOptions _options = null;
-
-        public InsightsOptions Options
-        {
-            get => _options;
-            set
-            {
-                _options = value;
-                UpdateOptionsFromChannels();
-                OnPropertyChanged();
-            }
-        }
+        private InsightsOptions Options => DataContext as InsightsOptions;
 
         public InsightsOptionsControl()
         {

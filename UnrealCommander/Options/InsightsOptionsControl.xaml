@@ -8,9 +8,8 @@
                           xmlns:unrealCommander="clr-namespace:UnrealCommander"
                           xmlns:operationOptionTypes="clr-namespace:UnrealAutomationCommon.Operations.OperationOptionTypes;assembly=UnrealAutomationCommon"
                           mc:Ignorable="d" 
-                          d:DesignHeight="450" d:DesignWidth="800"
-                          DataContext="{Binding RelativeSource={RelativeSource Self}}">
-    <ListBox ItemsSource="{Binding  TraceChannelOptions}" BorderThickness="0" BorderBrush="Transparent" Background="Transparent">
+                          d:DesignHeight="450" d:DesignWidth="800">
+    <ListBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=local:InsightsOptionsControl}, Path=TraceChannelOptions}" BorderThickness="0" BorderBrush="Transparent" Background="Transparent">
         <ListBox.ItemContainerStyle>
             <!-- Style to get rid of the selection visual -->
             <Style TargetType="{x:Type ListBoxItem}">
