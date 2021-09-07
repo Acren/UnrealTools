@@ -49,20 +49,6 @@
             <ItemsControl>
                 <ItemsControl.Resources>
                     <CollectionViewSource x:Key="OptionsCollection" Source="{Binding EnabledOptionSets}"/>
-                </ItemsControl.Resources>
-                <ItemsControl.ItemsSource>
-                    <CompositeCollection>
-                        <StackPanel>
-                            <local:OptionsContainer Header="Operations" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
-                                <StackPanel VerticalAlignment="Center">
-                                    <options:OperationOptionsControl SelectedOperationType="{Binding Path=PersistentState.OperationType}" />
-                                </StackPanel>
-                            </local:OptionsContainer>
-                        </StackPanel>
-                        <CollectionContainer Collection="{Binding Source={StaticResource OptionsCollection}}"/>
-                    </CompositeCollection>
-                </ItemsControl.ItemsSource>
-                <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type operations:OperationOptions}">
                         <local:OptionsContainer Header="{Binding Path=Name}" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
                             <StackPanel VerticalAlignment="Center">
@@ -87,7 +73,19 @@
                             </StackPanel>
                         </local:OptionsContainer>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
+                </ItemsControl.Resources>
+                <ItemsControl.ItemsSource>
+                    <CompositeCollection>
+                        <StackPanel>
+                            <local:OptionsContainer Header="Operations" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
+                                <StackPanel VerticalAlignment="Center">
+                                    <options:OperationOptionsControl SelectedOperationType="{Binding Path=PersistentState.OperationType}" />
+                                </StackPanel>
+                            </local:OptionsContainer>
+                        </StackPanel>
+                        <CollectionContainer Collection="{Binding Source={StaticResource OptionsCollection}}"/>
+                    </CompositeCollection>
+                </ItemsControl.ItemsSource>
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <WrapPanel/>
