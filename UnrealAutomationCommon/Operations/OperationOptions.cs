@@ -50,11 +50,12 @@ namespace UnrealAutomationCommon.Operations
         //    return option;
         //}
 
-        public string Name
+        public virtual string Name
         {
             get
             {
                 string name = GetType().Name;
+                name = name.Replace("Options", "");
                 return name.SplitWordsByUppercase();
             }
         }

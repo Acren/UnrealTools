@@ -80,7 +80,7 @@
                 <ItemsControl.ItemsSource>
                     <CompositeCollection>
                         <StackPanel>
-                            <local:OptionsContainer Header="Operations" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
+                            <local:OptionsContainer Header="Operation" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
                                 <StackPanel VerticalAlignment="Center">
                                     <options:OperationOptionsControl SelectedOperationType="{Binding Path=PersistentState.OperationType}" />
                                 </StackPanel>

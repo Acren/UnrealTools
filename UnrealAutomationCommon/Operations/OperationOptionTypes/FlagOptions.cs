@@ -5,6 +5,8 @@
         private bool _stompMalloc = false;
         private bool _waitForAttach = false;
 
+        public override string Name => "Flags";
+
         public bool StompMalloc
         {
             get => _stompMalloc;
