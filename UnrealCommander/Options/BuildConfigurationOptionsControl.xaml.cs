@@ -15,13 +15,6 @@ namespace UnrealCommander.Options
     /// </summary>
     public partial class BuildConfigurationOptionsControl : OptionsUserControl
     {
-        //public static readonly DependencyProperty AllowedBuildConfigurationsProperty = DependencyProperty.Register(nameof(AllowedBuildConfigurations), typeof(AllowedBuildConfigurations), typeof(BuildConfigurationOptionsControl), new FrameworkPropertyMetadata(new AllowedBuildConfigurations()));
-
-        //public AllowedBuildConfigurations AllowedBuildConfigurations
-        //{
-        //    get => (AllowedBuildConfigurations)GetValue(AllowedBuildConfigurationsProperty);
-        //    set => SetValue(AllowedBuildConfigurationsProperty, value);
-        //}
 
         public BuildConfigurationOptionsControl()
         {

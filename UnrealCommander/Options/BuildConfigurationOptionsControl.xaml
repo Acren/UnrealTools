@@ -42,30 +42,18 @@
                             <MultiBinding Converter="{StaticResource ContainsConverter}">
                                 <Binding RelativeSource="{RelativeSource AncestorType=unrealCommander:MainWindow}" Path="AllowedBuildConfigurations.Configurations"/>
                                 <Binding />
-                                <!--<Binding Path="OperationTarget.EngineInstall"
-                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
-                                <Binding Path="Operation"
-                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>-->
                             </MultiBinding>
                         </RadioButton.IsEnabled>
                         <RadioButton.Focusable>
                             <MultiBinding Converter="{StaticResource ContainsConverter}">
                                 <Binding RelativeSource="{RelativeSource AncestorType=unrealCommander:MainWindow}" Path="AllowedBuildConfigurations.Configurations"/>
                                 <Binding />
-                                <!--<Binding Path="OperationTarget.EngineInstall"
-                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
-                                <Binding Path="Operation"
-                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>-->
                             </MultiBinding>
                         </RadioButton.Focusable>
                         <RadioButton.IsHitTestVisible>
                             <MultiBinding Converter="{StaticResource ContainsConverter}">
                                 <Binding RelativeSource="{RelativeSource AncestorType=unrealCommander:MainWindow}" Path="AllowedBuildConfigurations.Configurations"/>
                                 <Binding />
-                                <!--<Binding Path="DataProvider.OperationTarget.EngineInstall"
-                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>
-                                <Binding Path="DataProvider.Operation"
-                                                         RelativeSource="{RelativeSource AncestorType=local:BuildConfigurationOptionsControl}"/>-->
                             </MultiBinding>
                         </RadioButton.IsHitTestVisible>
                     </RadioButton>
