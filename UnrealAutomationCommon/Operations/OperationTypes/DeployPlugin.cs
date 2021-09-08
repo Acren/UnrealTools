@@ -54,9 +54,40 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath);
 
             string workingTempPath = GetOperationTempPath();
-            //string workingTempPath = Path.Combine(GetOutputPath(OperationParameters), "Temp");
-            
+
             Directory.CreateDirectory(workingTempPath);
+
+            // Check copyright notice
+
+            string hostProjectDefaultGameConfig = Path.Combine(hostProject.TargetDirectory, "Config", "DefaultGame.ini");
+            UnrealConfig config = new UnrealConfig(hostProjectDefaultGameConfig);
+            string copyrightNotice = config.GetSection("/Script/EngineSettings.GeneralProjectSettings").GetValue("CopyrightNotice");
+
+            string sourcePath = Path.Combine(plugin.TargetDirectory, "Source");
+            string expectedComment = $"// {copyrightNotice}";
+            foreach (string file in Directory.EnumerateFiles(sourcePath, "*.*", SearchOption.AllDirectories))
+            {
+                string firstLine;
+                using (StreamReader reader = new StreamReader(file))
+                {
+                    firstLine = reader.ReadLine();
+                }
+                if (firstLine != expectedComment)
+                {
+                    List<string> lines = File.ReadAllLines(file).ToList();
+                    if (firstLine.StartsWith("//"))
+                    {
+                        // Replace existing comment with expected comment
+                        lines[0] = expectedComment;
+                    }
+                    else
+                    {
+                        // Insert expected comment
+                        lines.Insert(0, expectedComment);
+                    }
+                    File.WriteAllLines(file, lines);
+                }
+            }
 
             // Launch and test host project editor
 
