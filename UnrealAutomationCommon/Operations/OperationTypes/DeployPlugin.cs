@@ -28,11 +28,25 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             string branchName = VersionControlUtils.GetBranchName(hostProject.GetProjectPath());
-            string archiveVersionName = null;
             // Use the version if on any of these branches
             string[] standardBranchNames = { "master", "develop", "development" };
+            string[] standardBranchPrefixes = { "version/", "release/" };
 
-            if (!branchName.StartsWith("version/", StringComparison.InvariantCultureIgnoreCase) && !standardBranchNames.Contains(branchName, StringComparer.InvariantCultureIgnoreCase))
+            bool bStandardBranch = standardBranchNames.Contains(branchName, StringComparer.InvariantCultureIgnoreCase);
+            if (!bStandardBranch)
+            {
+                foreach (string prefix in standardBranchPrefixes)
+                {
+                    if (branchName.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        bStandardBranch = true;
+                        break;
+                    }
+                }
+            }
+
+            string archiveVersionName;
+            if (!bStandardBranch)
             {
                 Logger.Log("On branch '" + branchName + "' which isn't a version or standard branch");
                 archiveVersionName = branchName.Replace("/", "-");
