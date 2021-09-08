@@ -7,9 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnrealCommander", "UnrealCo
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnrealAutomationCommon", "UnrealAutomationCommon\UnrealAutomationCommon.csproj", "{12DFB058-1A69-4848-B7AE-78C6CEE0A7C2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeployPlugin", "DeployPlugin\DeployPlugin.csproj", "{E85725F2-8C76-4AAE-AB95-85AE6122BAA1}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ParseTestReport", "ParseTestReport\ParseTestReport.csproj", "{5FDE3642-61C4-4FC9-A462-8A1B30A9C791}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ParseTestReport", "ParseTestReport\ParseTestReport.csproj", "{5FDE3642-61C4-4FC9-A462-8A1B30A9C791}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -30,12 +28,6 @@ Global
 		{12DFB058-1A69-4848-B7AE-78C6CEE0A7C2}.Development|Any CPU.Build.0 = Debug|Any CPU
 		{12DFB058-1A69-4848-B7AE-78C6CEE0A7C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{12DFB058-1A69-4848-B7AE-78C6CEE0A7C2}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E85725F2-8C76-4AAE-AB95-85AE6122BAA1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E85725F2-8C76-4AAE-AB95-85AE6122BAA1}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E85725F2-8C76-4AAE-AB95-85AE6122BAA1}.Development|Any CPU.ActiveCfg = Debug|Any CPU
-		{E85725F2-8C76-4AAE-AB95-85AE6122BAA1}.Development|Any CPU.Build.0 = Debug|Any CPU
-		{E85725F2-8C76-4AAE-AB95-85AE6122BAA1}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E85725F2-8C76-4AAE-AB95-85AE6122BAA1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5FDE3642-61C4-4FC9-A462-8A1B30A9C791}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5FDE3642-61C4-4FC9-A462-8A1B30A9C791}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5FDE3642-61C4-4FC9-A462-8A1B30A9C791}.Development|Any CPU.ActiveCfg = Debug|Any CPU
