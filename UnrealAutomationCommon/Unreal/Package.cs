@@ -17,11 +17,6 @@ namespace UnrealAutomationCommon.Unreal
         [JsonConstructor]
         public Package(string executablePath)
         {
-            if (string.IsNullOrEmpty(executablePath))
-            {
-                throw new Exception("Invalid path");
-            }
-
             if (IsPackageFile(executablePath))
             {
                 ExecutablePath = executablePath;
@@ -32,7 +27,7 @@ namespace UnrealAutomationCommon.Unreal
             }
             else
             {
-                throw new Exception($"Path '{executablePath}' does not appear to be a package (contains no executable)");
+                ExecutablePath = executablePath;
             }
 
             Name = Path.GetFileNameWithoutExtension(ExecutablePath);
@@ -43,6 +38,8 @@ namespace UnrealAutomationCommon.Unreal
         public override string TargetPath => ExecutablePath;
         public string ExecutablePath { get; private set; }
         public override string Name { get; }
+
+        public override bool IsValid => IsPackageFile(ExecutablePath);
 
         public override void LoadDescriptor()
         {
@@ -70,11 +67,11 @@ namespace UnrealAutomationCommon.Unreal
 
         public string LogsPath => System.IO.Path.Combine(TargetDirectory, Name, "Saved", "Logs");
 
-        private EngineInstallVersion EngineVersion => new(FileVersionInfo.GetVersionInfo(ExecutablePath));
+        private EngineInstallVersion EngineVersion => IsValid ? new(FileVersionInfo.GetVersionInfo(ExecutablePath)) : null;
 
-        public EngineInstall EngineInstall => EngineInstallFinder.GetEngineInstall(EngineVersion);
+        public EngineInstall EngineInstall => EngineVersion != null ? EngineInstallFinder.GetEngineInstall(EngineVersion) : null;
 
-        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : EngineVersion.ToString();
+        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : EngineVersion?.ToString();
 
         public static bool IsPackageFile(string path)
         {

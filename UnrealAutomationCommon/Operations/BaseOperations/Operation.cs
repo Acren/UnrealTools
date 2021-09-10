@@ -136,7 +136,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         {
             if (target == null)
             {
-                return null;
+                return new();
             }
             HashSet<Type> result = new();
             OperationParameters dummyParams = new();
@@ -144,7 +144,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             if (!RequirementsSatisfied(dummyParams))
             {
-                return null;
+                return new();
             }
 
             BuildCommands(dummyParams);
@@ -177,6 +177,11 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             if (!SupportsTarget(operationParameters.Target))
             {
                 throw new Exception($"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not supported");
+            }
+
+            if (!operationParameters.Target.IsValid)
+            {
+                throw new Exception($"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not valid");
             }
 
             if (TargetProvidesEngineInstall(operationParameters) && GetRelevantEngineInstall(operationParameters) == null)

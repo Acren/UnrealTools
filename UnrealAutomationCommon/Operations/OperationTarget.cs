@@ -16,6 +16,8 @@ namespace UnrealAutomationCommon.Operations
 
         public string TestName { get; set; }
 
+        public bool IsValid { get; }
+
         public bool SupportsConfiguration(BuildConfiguration configuration);
     }
 
@@ -39,6 +41,8 @@ namespace UnrealAutomationCommon.Operations
 
         public string OutputDirectory => Path.Combine(OutputPaths.Root(), Name.Replace(" ", ""));
         public string TypeName => GetType().Name.SplitWordsByUppercase();
+
+        public virtual bool IsValid => true;
 
         public event PropertyChangedEventHandler PropertyChanged;
 

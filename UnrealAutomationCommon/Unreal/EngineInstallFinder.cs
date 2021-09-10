@@ -143,6 +143,11 @@ namespace UnrealAutomationCommon.Unreal
 
         public static EngineInstall GetEngineInstall(EngineInstallVersion version)
         {
+            if (version == null)
+            {
+                throw new Exception("Invalid version");
+            }
+
             return GetEngineInstalls().Find(x => x.Version.MinorVersionEquals(version));
         }
     }

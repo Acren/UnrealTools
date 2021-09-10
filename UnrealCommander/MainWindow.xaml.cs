@@ -163,7 +163,7 @@ namespace UnrealCommander
             }
         }
 
-        public List<Type> EnabledOptionSetTypes => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target)?.ToList();
+        public List<Type> EnabledOptionSetTypes => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target).ToList();
 
         public List<OperationOptions> EnabledOptionSets => PersistentState.OperationParameters.OptionsInstances.Where(x => EnabledOptionSetTypes.Contains(x.GetType())).ToList();
 
