@@ -229,7 +229,10 @@ namespace UnrealCommander
 
         private void Execute(object sender, RoutedEventArgs e)
         {
-            if (Operation.RequirementsSatisfied(PersistentState.OperationParameters))
+            // Create a new operation instance of the selected one
+            Operation newOperation = Operation.CreateOperation(Operation.GetType());
+
+            if (newOperation.RequirementsSatisfied(PersistentState.OperationParameters))
             {
                 if (IsRunningOperation)
                 {
@@ -246,9 +249,9 @@ namespace UnrealCommander
                     }
                 }
 
-                AddOutputLine($"User started operation '{Operation.OperationName}'");
+                AddOutputLine($"User started operation '{newOperation.OperationName}'");
 
-                OperationRunner newRunner = new OperationRunner(Operation, PersistentState.OperationParameters);
+                OperationRunner newRunner = new OperationRunner(newOperation, PersistentState.OperationParameters);
                 newRunner.Output += (S, verbosity) =>
                 {
                     // Output handler
