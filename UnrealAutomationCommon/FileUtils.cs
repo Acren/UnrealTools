@@ -7,9 +7,15 @@ namespace UnrealAutomationCommon
 {
     class FileUtils
     {
-        // The leaf SourcePath directory will be renamed to the leaf DestinationPath directory, not placed inside
-        public static void CopyDirectory(string SourcePath, string DestinationPath)
+        // placeInside: SourcePath directory will be copied inside DestinationPath, otherwise the copy will be renamed to DestinationPath
+        public static void CopyDirectory(string SourcePath, string DestinationPath, bool placeInside = false)
         {
+            if (placeInside)
+            {
+                string dirName = Path.GetDirectoryName(SourcePath);
+                DestinationPath = Path.Combine(DestinationPath, dirName);
+            }
+
             Directory.CreateDirectory(DestinationPath);
 
             //Now Create all of the directories

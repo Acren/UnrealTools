@@ -58,5 +58,14 @@ namespace UnrealAutomationCommon.Operations
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
 
+        public override bool Equals(object other)
+        {
+            if (other == null || other.GetType() != GetType())
+            {
+                return false;
+            }
+
+            return (other as OperationTarget).TargetPath == TargetPath;
+        }
     }
 }

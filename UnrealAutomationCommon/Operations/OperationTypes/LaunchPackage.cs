@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Threading.Tasks;
-using UnrealAutomationCommon.Annotations;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
@@ -10,14 +9,20 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public abstract class LaunchPackage<T> : UnrealProcessOperation<T> where T : OperationTarget, IPackageProvider
     {
-        public override void CheckRequirementsSatisfied(OperationParameters operationParameters)
+        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
         {
-            base.CheckRequirementsSatisfied(operationParameters);
+            string baseError = base.CheckRequirementsSatisfied(operationParameters);
+            if (baseError != null)
+            {
+                return baseError;
+            }
 
             if (GetTarget(operationParameters).ProvidedPackage == null)
             {
-                throw new Exception("Provided package is null");
+                return "Provided package is null";
             }
+
+            return null;
         }
 
         protected override Command BuildCommand(OperationParameters operationParameters)

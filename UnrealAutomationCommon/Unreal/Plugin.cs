@@ -12,9 +12,16 @@ namespace UnrealAutomationCommon.Unreal
         private FileSystemWatcher _watcher;
 
         [JsonConstructor]
-        public Plugin(string uPluginPath)
+        public Plugin([JsonProperty("UPluginPath")] string path)
         {
-            UPluginPath = uPluginPath;
+            if (IsPluginFile(path))
+            {
+                UPluginPath = path;
+            }
+            else
+            {
+                UPluginPath = FindUPlugin(path);
+            }
         }
 
         public string UPluginPath
@@ -119,6 +126,25 @@ namespace UnrealAutomationCommon.Unreal
         public static bool IsPluginFile(string path)
         {
             return FileUtils.HasExtension(path, ".uplugin");
+        }
+
+        public static string FindUPlugin(string path)
+        {
+            if (!Directory.Exists(path))
+            {
+                return null;
+            }
+
+            string[] files = Directory.GetFiles(path);
+            foreach (string file in files)
+            {
+                if (System.IO.Path.GetExtension(file).Equals(".uplugin", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    return file;
+                }
+            }
+
+            return null;
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System.Collections.Generic;
+using System.IO;
 using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
 
@@ -116,6 +117,18 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             return EngineInstall.SupportsConfiguration(configuration);
+        }
+
+        public List<Plugin> GetPlugins()
+        {
+            List<Plugin> plugins = new List<Plugin>();
+            foreach (string pluginPath in Directory.GetDirectories(Path.Combine(GetProjectPath(), "Plugins")))
+            {
+                Plugin plugin = new Plugin(pluginPath);
+                plugins.Add(plugin);
+            }
+
+            return plugins;
         }
 
         public static bool IsProjectFile(string path)

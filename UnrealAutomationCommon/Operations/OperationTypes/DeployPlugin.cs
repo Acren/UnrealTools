@@ -100,6 +100,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         lines.Insert(0, expectedComment);
                     }
                     File.WriteAllLines(file, lines);
+                    string relativePath = System.IO.Path.GetRelativePath(sourcePath, file);
+                    Logger.Log($"Updated copyright notice: {relativePath}");
                 }
             }
 
@@ -183,6 +185,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             if (File.Exists(projectIcon))
             {
                 FileUtils.CopyFile(hostProject.GetProjectPath(), exampleProjectBuildPath, projectIcon);
+            }
+
+            // Copy other plugins
+
+            List<Plugin> sourcePlugins = hostProject.GetPlugins();
+            foreach (Plugin sourcePlugin in sourcePlugins)
+            {
+                if (!sourcePlugin.Equals(plugin))
+                {
+                    FileUtils.CopyDirectory(sourcePlugin.TargetDirectory, Path.Combine(exampleProjectBuildPath, "Plugins"));
+                }
             }
 
             // Copy uproject 

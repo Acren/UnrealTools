@@ -15,19 +15,19 @@ namespace UnrealAutomationCommon.Unreal
     public class Package : OperationTarget, IPackageProvider, IEngineInstallProvider
     {
         [JsonConstructor]
-        public Package(string executablePath)
+        public Package([JsonProperty("ExecutablePath")] string path)
         {
-            if (IsPackageFile(executablePath))
+            if (IsPackageFile(path))
             {
-                ExecutablePath = executablePath;
+                ExecutablePath = path;
             }
-            else if(IsPackageDirectory(executablePath))
+            else if(IsPackageDirectory(path))
             {
-                ExecutablePath = FindExecutablePath(executablePath);
+                ExecutablePath = FindExecutablePath(path);
             }
             else
             {
-                ExecutablePath = executablePath;
+                ExecutablePath = path;
             }
 
             Name = Path.GetFileNameWithoutExtension(ExecutablePath);
@@ -56,7 +56,7 @@ namespace UnrealAutomationCommon.Unreal
             string[] files = Directory.GetFiles(path);
             foreach (string file in files)
             {
-                if (System.IO.Path.GetExtension(file) == ".exe")
+                if (System.IO.Path.GetExtension(file).Equals(".exe", StringComparison.InvariantCultureIgnoreCase))
                 {
                     return file;
                 }

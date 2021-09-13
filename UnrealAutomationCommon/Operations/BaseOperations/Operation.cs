@@ -31,7 +31,6 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             try
             {
                 logger.Log($"Running operation '{OperationName}'");
-                CheckRequirementsSatisfied(operationParameters);
 
                 int warnings = 0;
                 int errors = 0;
@@ -48,6 +47,14 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                         warnings++;
                     }
                 };
+
+                string requirementsError = CheckRequirementsSatisfied(operationParameters);
+                if (requirementsError != null)
+                {
+                    Logger.Log(requirementsError, LogVerbosity.Error);
+                    return new OperationResult(false);
+                }
+
                 OperationParameters = operationParameters;
 
                 OperationResult result = await OnExecuted();
@@ -167,26 +174,26 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return true;
         }
 
-        public virtual void CheckRequirementsSatisfied(OperationParameters operationParameters)
+        public virtual string CheckRequirementsSatisfied(OperationParameters operationParameters)
         {
             if (operationParameters.Target == null)
             {
-                throw new Exception("Target not specified");
+                return "Target not specified";
             }
 
             if (!SupportsTarget(operationParameters.Target))
             {
-                throw new Exception($"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not supported");
+                return $"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not supported";
             }
 
             if (!operationParameters.Target.IsValid)
             {
-                throw new Exception($"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not valid");
+                return $"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not valid";
             }
 
             if (TargetProvidesEngineInstall(operationParameters) && GetRelevantEngineInstall(operationParameters) == null)
             {
-                throw new Exception("Engine install not found");
+                return "Engine install not found";
             }
 
             BuildConfigurationOptions options = operationParameters.FindOptions<BuildConfigurationOptions>();
@@ -195,27 +202,21 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             {
                 if (!SupportsConfiguration(options.Configuration))
                 {
-                    throw new Exception("Configuration is not supported");
+                    return "Configuration is not supported";
                 }
 
                 if (TargetProvidesEngineInstall(operationParameters) && !GetRelevantEngineInstall(operationParameters).SupportsConfiguration(options.Configuration))
                 {
-                    throw new Exception("Engine install does not support configuration");
+                    return "Engine install does not support configuration";
                 }
             }
+
+            return null;
         }
 
         public bool RequirementsSatisfied(OperationParameters operationParameters)
         {
-            try
-            {
-                CheckRequirementsSatisfied(operationParameters);
-                return true;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
+            return CheckRequirementsSatisfied(operationParameters) == null;
         }
 
         public virtual bool ShouldReadOutputFromLogFile()
