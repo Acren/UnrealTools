@@ -194,7 +194,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 if (!sourcePlugin.Equals(plugin))
                 {
-                    FileUtils.CopyDirectory(sourcePlugin.TargetDirectory, Path.Combine(exampleProjectBuildPath, "Plugins"));
+                    FileUtils.CopyDirectory(sourcePlugin.TargetDirectory, Path.Combine(exampleProjectBuildPath, "Plugins"), true);
                 }
             }
 

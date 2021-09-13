@@ -12,7 +12,7 @@ namespace UnrealAutomationCommon
         {
             if (placeInside)
             {
-                string dirName = Path.GetDirectoryName(SourcePath);
+                string dirName = new DirectoryInfo(SourcePath).Name;
                 DestinationPath = Path.Combine(DestinationPath, dirName);
             }
 
