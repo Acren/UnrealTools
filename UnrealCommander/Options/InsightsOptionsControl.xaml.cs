@@ -19,7 +19,14 @@ namespace UnrealCommander.Options
             {
                 TraceChannelOptions.Add(new TraceChannelOption() { TraceChannel = channel, Enabled = false });
             }
+
             TraceChannelOptions.ListChanged += TraceChannelOptions_ListChanged;
+        }
+
+        public override void EndInit()
+        {
+            UpdateOptionsFromChannels();
+            base.EndInit();
         }
 
         private void TraceChannels_ListChanged(object sender, ListChangedEventArgs e)
