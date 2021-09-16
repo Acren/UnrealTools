@@ -30,18 +30,21 @@ namespace UnrealAutomationCommon.Unreal
             set
             {
                 _uPluginPath = value;
-                LoadDescriptor();
-
-                // Reload descriptor if it changes
-                _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uPluginPath));
-                _watcher.Changed += (Sender, Args) =>
+                if (_uPluginPath != null)
                 {
-                    if (Args.FullPath == UPluginPath)
+                    LoadDescriptor();
+
+                    // Reload descriptor if it changes
+                    _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uPluginPath));
+                    _watcher.Changed += (Sender, Args) =>
                     {
-                        LoadDescriptor();
-                    }
-                };
-                _watcher.EnableRaisingEvents = true;
+                        if (Args.FullPath == UPluginPath)
+                        {
+                            LoadDescriptor();
+                        }
+                    };
+                    _watcher.EnableRaisingEvents = true;
+                }
 
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(Name));
@@ -58,7 +61,7 @@ namespace UnrealAutomationCommon.Unreal
         public EngineInstall EngineInstall => PluginDescriptor?.EngineInstall;
 
         [JsonIgnore]
-        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : PluginDescriptor.EngineVersion;
+        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : PluginDescriptor?.EngineVersion;
 
         [JsonIgnore]
         public PluginDescriptor PluginDescriptor

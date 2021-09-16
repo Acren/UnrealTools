@@ -14,7 +14,10 @@ namespace UnrealAutomationCommon.Unreal
         [JsonConstructor]
         public Project(string uProjectPath)
         {
-            UProjectPath = uProjectPath;
+            if (IsProjectFile(uProjectPath))
+            {
+                UProjectPath = uProjectPath;
+            }
         }
 
         [JsonIgnore]
@@ -24,10 +27,10 @@ namespace UnrealAutomationCommon.Unreal
         public override string TargetPath => UProjectPath;
 
         [JsonIgnore]
-        public EngineInstall EngineInstall => ProjectDescriptor.EngineInstall;
+        public EngineInstall EngineInstall => ProjectDescriptor?.EngineInstall;
 
         [JsonIgnore]
-        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : ProjectDescriptor.EngineAssociation;
+        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : ProjectDescriptor?.EngineAssociation;
 
         [JsonIgnore]
         public Package ProvidedPackage => GetStagedPackage();
