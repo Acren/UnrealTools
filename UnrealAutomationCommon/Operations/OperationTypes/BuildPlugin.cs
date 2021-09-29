@@ -15,6 +15,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             buildPluginArguments.SetKeyPath("Package", GetOutputPath(operationParameters));
             buildPluginArguments.SetFlag("Rocket");
             buildPluginArguments.SetFlag("VS2019");
+            buildPluginArguments.SetKeyValue("TargetPlatforms", "Win64"); // Specify Win64 only to avoid Win32 being compiled
             if (operationParameters.RequestOptions<PluginBuildOptions>().StrictIncludes)
             {
                 buildPluginArguments.SetFlag("StrictIncludes");
