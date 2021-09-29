@@ -327,8 +327,29 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Logger.Log("Archiving example project");
 
                 // First delete any extra directories
-                string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config" };
+                string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
                 FileUtils.DeleteOtherSubdirectories(exampleProjectBuildPath, allowedExampleProjectSubDirectoryNames);
+
+                List<Plugin> exampleProjectPlugins = exampleProjectBuild.GetPlugins();
+                string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
+                string[] allowedExampleProjectPluginFileExtensions = { ".uplugin" };
+                foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
+                {
+                    if (exampleProjectPlugin.Name == plugin.Name)
+                    {
+                        // Delete target plugin from example project
+                        FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
+                    }
+                    else
+                    {
+                        // Secondary plugins will be included, strip out unwanted files
+                        FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
+                        FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginFileExtensions);
+                    }
+                }
+
+                // Delete debug files recursive
+                FileUtils.DeleteFilesWithExtension(exampleProjectBuildPath, new [] {".pdb"}, SearchOption.AllDirectories);
 
                 string exampleProjectZipPath = Path.Combine(archivePath, archivePrefix + "ExampleProject.zip");
                 FileUtils.DeleteFileIfExists(exampleProjectZipPath);

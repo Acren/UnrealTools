@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Threading;
 
 namespace UnrealAutomationCommon
@@ -74,6 +75,32 @@ namespace UnrealAutomationCommon
             if (File.Exists(FilePath))
             {
                 DeleteFile(FilePath);
+            }
+        }
+
+        public static void DeleteFilesWithExtension(string path, string[] extensionsToDelete, SearchOption searchOption = SearchOption.TopDirectoryOnly)
+        {
+            string[] files = Directory.GetFiles(path, "*.*", searchOption);
+
+            foreach (string file in files)
+            {
+                if (extensionsToDelete.Contains(Path.GetExtension(file), StringComparer.InvariantCultureIgnoreCase))
+                {
+                    DeleteFile(file);
+                }
+            }
+        }
+
+        public static void DeleteFilesWithoutExtension(string path, string[] extensionsToKeep, SearchOption searchOption = SearchOption.TopDirectoryOnly)
+        {
+            string[] files = Directory.GetFiles(path, "*.*", searchOption);
+
+            foreach (string file in files)
+            {
+                if (!extensionsToKeep.Contains(Path.GetExtension(file), StringComparer.InvariantCultureIgnoreCase))
+                {
+                    DeleteFile(file);
+                }
             }
         }
 
