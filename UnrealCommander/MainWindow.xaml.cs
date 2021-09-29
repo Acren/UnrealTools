@@ -400,6 +400,12 @@ namespace UnrealCommander
                 menu.Items.Add(new MenuItem() { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(),  project.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 
+            if (SelectedTarget is Plugin)
+            {
+                Plugin plugin = SelectedTarget as Plugin;
+                menu.Items.Add(new MenuItem() { Header = $"Open {plugin.HostProject.Name} with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), plugin.HostProject.UProjectPath.AddQuotesIfContainsSpace()); }) });
+            }
+
             menu.Items.Add(new Separator());
 
             menu.Items.Add(new MenuItem() { Header = "Remove", Command = new DelegateCommand(o => { PersistentData.Get().RemoveTarget(SelectedTarget); }) });
