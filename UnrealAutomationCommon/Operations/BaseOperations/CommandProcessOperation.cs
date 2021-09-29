@@ -103,6 +103,13 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                     verbosity = LogVerbosity.Warning;
                 }
             }
+
+            if (line.Contains("): warning "))
+            {
+                // MSBuild warning format
+                verbosity = LogVerbosity.Warning;
+            }
+
             Logger.Log(line, verbosity);
         }
 
