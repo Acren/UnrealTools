@@ -332,7 +332,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 List<Plugin> exampleProjectPlugins = exampleProjectBuild.GetPlugins();
                 string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
-                string[] allowedExampleProjectPluginFileExtensions = { ".uplugin" };
+                string[] allowedPluginFileExtensions = { ".uplugin" };
                 foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
                 {
                     if (exampleProjectPlugin.Name == plugin.Name)
@@ -344,7 +344,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     {
                         // Secondary plugins will be included, strip out unwanted files
                         FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
-                        FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginFileExtensions);
+                        FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, allowedPluginFileExtensions);
                     }
                 }
 
@@ -366,6 +366,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 string[] allowedPluginSubmissionSubDirectoryNames = { "Source", "Resources", "Content", "Config" };
                 FileUtils.DeleteOtherSubdirectories(pluginSubmissionPath, allowedPluginSubmissionSubDirectoryNames);
+
+                // Delete top-level files other than uproject
+                FileUtils.DeleteFilesWithoutExtension(pluginSubmissionPath, allowedPluginFileExtensions);
 
                 string pluginSubmissionZipPath = Path.Combine(archivePath, archivePrefix + "PluginSubmission.zip");
                 FileUtils.DeleteFileIfExists(pluginSubmissionZipPath);
