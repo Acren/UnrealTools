@@ -45,14 +45,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
+            Logger.Log("On branch '" + branchName + "'");
             string archiveVersionName;
-            if (!bStandardBranch)
+            if (pluginDescriptor.VersionName.Contains(branchName))
             {
-                Logger.Log("On branch '" + branchName + "' which isn't a version or standard branch");
-                archiveVersionName = branchName.Replace("/", "-");
+                Logger.Log("Branch is contained in version name");
+                archiveVersionName = pluginDescriptor.VersionName;
+            }
+            else if (!bStandardBranch)
+            {
+                Logger.Log("Branch isn't a version or standard branch");
+                archiveVersionName = $"{pluginDescriptor.VersionName}-{branchName.Replace("/", "-")}";
             }
             else
             {
+                Logger.Log("Branch is a version or standard branch");
                 archiveVersionName = pluginDescriptor.VersionName;
             }
             Logger.Log("Archive version name is '" + archiveVersionName + "'");
