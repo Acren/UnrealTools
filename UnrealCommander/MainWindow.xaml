@@ -71,6 +71,9 @@
                                     <DataTemplate DataType="{x:Type operationOptionTypes:PluginBuildOptions}">
                                         <options:PluginBuildOptionsControl DataContext="{Binding}"/>
                                     </DataTemplate>
+                                    <DataTemplate DataType="{x:Type operationOptionTypes:PluginDeployOptions}">
+                                        <options:PluginDeployOptionsControl DataContext="{Binding}"/>
+                                    </DataTemplate>
                                 </StackPanel.Resources>
                                 <ContentPresenter Content="{Binding}"/>
                             </StackPanel>

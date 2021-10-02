@@ -15,4 +15,17 @@
     <ProjectReference Include="..\UnrealAutomationCommon\UnrealAutomationCommon.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Update="Options\PluginDeployOptionsControl.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Page Update="Options\PluginDeployOptionsControl.xaml">
+      <XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
+      <SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
+
 </Project>

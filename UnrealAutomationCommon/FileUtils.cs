@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -34,15 +35,26 @@ namespace UnrealAutomationCommon
             CopyDirectory(Path.Combine(SourcePath, Subdirectory), Path.Combine(DestinationPath, Subdirectory));
         }
 
-        public static void CopyFile(string SourcePath, string DestinationPath, string FileName, bool ErrorIfSourceMissing = true)
+        public static void CopyFile(string SourceDirectoryPath, string DestinationDirectoryPath, string FileName, bool ErrorIfSourceMissing = true, bool Overwrite = false)
         {
-            if (!File.Exists(SourcePath) && !ErrorIfSourceMissing)
+            CopyFile(Path.Combine(SourceDirectoryPath, FileName), DestinationDirectoryPath, ErrorIfSourceMissing, Overwrite);
+        }
+
+        public static void CopyFile(string SourceFilePath, string DestinationDirectoryPath, bool ErrorIfSourceMissing = true, bool Overwrite = false)
+        {
+            if (!File.Exists(SourceFilePath) && !ErrorIfSourceMissing)
             {
                 // Missing source but want to quietly fail
                 // If we do want an error then File.Copy will throw it
                 return;
             }
-            File.Copy(Path.Combine(SourcePath, FileName), Path.Combine(DestinationPath, FileName), true);
+            string fileName = Path.GetFileName(SourceFilePath);
+            string destinationFilePath = Path.Combine(DestinationDirectoryPath, fileName);
+            if (Overwrite)
+            {
+                DeleteFileIfExists(destinationFilePath);
+            }
+            File.Copy(SourceFilePath, destinationFilePath);
         }
 
         public static void DeleteDirectoryIfExists(string Path)

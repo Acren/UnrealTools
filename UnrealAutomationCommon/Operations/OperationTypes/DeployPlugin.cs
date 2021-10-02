@@ -381,6 +381,19 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 FileUtils.DeleteFileIfExists(pluginSubmissionZipPath);
                 ZipFile.CreateFromDirectory(pluginSubmissionPath, pluginSubmissionZipPath, CompressionLevel.Optimal, true);
 
+                string archiveOutputPath = OperationParameters.RequestOptions<PluginDeployOptions>().ArchivePath;
+                if (!string.IsNullOrEmpty(archiveOutputPath))
+                {
+                    Logger.Log("Copying to archive output path");
+                    Directory.CreateDirectory(archiveOutputPath);
+                    if (!Directory.Exists(archiveOutputPath))
+                    {
+                        throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
+                    }
+                    FileUtils.CopyFile(exampleProjectZipPath, archiveOutputPath, true, true);
+                    FileUtils.CopyFile(pluginSubmissionZipPath, archiveOutputPath, true, true);
+                }
+
                 Logger.Log("Finished archiving");
             }
 
@@ -391,6 +404,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             operationParameters.RequestOptions<AutomationOptions>();
             operationParameters.RequestOptions<PluginBuildOptions>();
+            operationParameters.RequestOptions<PluginDeployOptions>();
             return new List<Command>();
         }
 
