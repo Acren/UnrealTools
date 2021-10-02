@@ -29,7 +29,7 @@ namespace UnrealCommander
     {
         private PersistentData _persistentState = new PersistentData();
 
-        private Operation _operation = new LaunchEditor();
+        private Operation _operation;
 
         private OperationRunner _runningOperation = null;
 
@@ -37,8 +37,8 @@ namespace UnrealCommander
 
         public MainWindow()
         {
-            InitializeComponent();
             PersistentState = PersistentData.Load();
+            InitializeComponent();
 
             //BuildConfigurationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>();
             //InsightsOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<InsightsOptions>();
@@ -104,7 +104,7 @@ namespace UnrealCommander
                         }
                     }
 
-                    if (typeof(Operation) != PersistentState.OperationType)
+                    if (Operation == null || Operation.GetType() != PersistentState.OperationType)
                     {
                         Operation = Operation.CreateOperation(PersistentState.OperationType);
                     }
@@ -118,14 +118,17 @@ namespace UnrealCommander
             get => _operation;
             set
             {
-                _operation = value;
-                SelectSupportedBuildConfiguration();
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(VisibleCommand));
-                OnPropertyChanged(nameof(CanExecute));
-                OnPropertyChanged(nameof(AllowedBuildConfigurations));
-                OnPropertyChanged(nameof(EnabledOptionSetTypes));
-                OnPropertyChanged(nameof(EnabledOptionSets));
+                if (_operation != value)
+                {
+                    _operation = value;
+                    SelectSupportedBuildConfiguration();
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(VisibleCommand));
+                    OnPropertyChanged(nameof(CanExecute));
+                    OnPropertyChanged(nameof(AllowedBuildConfigurations));
+                    OnPropertyChanged(nameof(EnabledOptionSetTypes));
+                    OnPropertyChanged(nameof(EnabledOptionSets));
+                }
             }
         }
 
@@ -186,6 +189,11 @@ namespace UnrealCommander
         {
             get
             {
+                if (Operation == null)
+                {
+                    return "No operation";
+                }
+
                 List<string> commandStrings = new List<string>();
                 foreach (Command command in Operation.GetCommands(PersistentState.OperationParameters))
                 {
