@@ -2,8 +2,8 @@
 {
     public class AutomationOptions : OperationOptions
     {
-        public Option<bool> RunTests { get;}
-        public Option<bool> Headless { get;}
+        public Option<bool> RunTests { get; }
+        public Option<bool> Headless { get; }
 
         public AutomationOptions()
         {

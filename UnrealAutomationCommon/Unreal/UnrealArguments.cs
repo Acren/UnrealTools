@@ -20,7 +20,7 @@ namespace UnrealAutomationCommon.Unreal
             arguments.SetFlag("nologtimes");
 
             bool useInsights = operationParameters.RequestOptions<InsightsOptions>().TraceChannels.Count > 0;
- 
+
             if (useInsights)
             {
                 List<string> traceChannels = new List<string>();
@@ -29,7 +29,7 @@ namespace UnrealAutomationCommon.Unreal
                     traceChannels.Add(channel.Key);
                 }
 
-                arguments.SetKeyValue("trace", string.Join(",",traceChannels));
+                arguments.SetKeyValue("trace", string.Join(",", traceChannels));
 
                 if (traceChannels.Contains("cpu"))
                 {

@@ -1,7 +1,4 @@
-﻿using System.Windows.Controls;
-using UnrealAutomationCommon.Operations.OperationOptionTypes;
-
-namespace UnrealCommander.Options
+﻿namespace UnrealCommander.Options
 {
     /// <summary>
     /// Interaction logic for FlagOptionsControl.xaml

@@ -16,7 +16,7 @@ namespace UnrealAutomationCommon.Unreal
                 return;
             }
 
-            string[] split = line.Split(new []{'='}, 2);
+            string[] split = line.Split(new[] { '=' }, 2);
             _values.Add(split[0], split[1]);
         }
 

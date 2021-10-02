@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using UnrealAutomationCommon.Unreal;
+﻿using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {

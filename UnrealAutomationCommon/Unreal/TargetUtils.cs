@@ -1,6 +1,4 @@
-﻿using System.IO;
-
-namespace UnrealAutomationCommon.Unreal
+﻿namespace UnrealAutomationCommon.Unreal
 {
     public static class TargetUtils
     {

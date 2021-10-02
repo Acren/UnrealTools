@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace UnrealAutomationCommon.Operations.OperationOptionTypes
+﻿namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
     class GameOptions
     {

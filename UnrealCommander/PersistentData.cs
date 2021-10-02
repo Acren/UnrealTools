@@ -1,6 +1,5 @@
 ﻿using Newtonsoft.Json;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -81,7 +80,7 @@ namespace UnrealCommander
                 _instance = serializer.Deserialize<PersistentData>(reader);
             }
 
-            if(_instance == null)
+            if (_instance == null)
             {
                 _instance = new PersistentData();
             }

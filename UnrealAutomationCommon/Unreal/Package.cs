@@ -1,7 +1,7 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Diagnostics;
 using System.IO;
-using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
@@ -21,7 +21,7 @@ namespace UnrealAutomationCommon.Unreal
             {
                 ExecutablePath = path;
             }
-            else if(IsPackageDirectory(path))
+            else if (IsPackageDirectory(path))
             {
                 ExecutablePath = FindExecutablePath(path);
             }
@@ -48,7 +48,7 @@ namespace UnrealAutomationCommon.Unreal
 
         private static string FindExecutablePath(string path)
         {
-            if(!Directory.Exists(path))
+            if (!Directory.Exists(path))
             {
                 return null;
             }

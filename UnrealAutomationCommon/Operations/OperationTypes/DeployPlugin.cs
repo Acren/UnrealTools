@@ -356,7 +356,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
 
                 // Delete debug files recursive
-                FileUtils.DeleteFilesWithExtension(exampleProjectBuildPath, new [] {".pdb"}, SearchOption.AllDirectories);
+                FileUtils.DeleteFilesWithExtension(exampleProjectBuildPath, new[] { ".pdb" }, SearchOption.AllDirectories);
 
                 string exampleProjectZipPath = Path.Combine(archivePath, archivePrefix + "ExampleProject.zip");
                 FileUtils.DeleteFileIfExists(exampleProjectZipPath);

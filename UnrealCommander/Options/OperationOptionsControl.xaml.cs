@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Windows;
-using UnrealAutomationCommon.Operations.OperationTypes;
 
 namespace UnrealCommander.Options
 {

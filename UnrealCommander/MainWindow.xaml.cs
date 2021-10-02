@@ -16,7 +16,6 @@ using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
-using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
 using UnrealCommander.Options;
 
@@ -216,7 +215,7 @@ namespace UnrealCommander
             get => _runningOperation;
             set
             {
-                if(_runningOperation != value)
+                if (_runningOperation != value)
                 {
                     _runningOperation = value;
                     OnPropertyChanged();
@@ -302,7 +301,7 @@ namespace UnrealCommander
 
         private void Terminate(object sender, RoutedEventArgs e)
         {
-            if(RunningOperation != null)
+            if (RunningOperation != null)
             {
                 RunningOperation.Terminate();
             }
@@ -318,7 +317,7 @@ namespace UnrealCommander
 
             Color color;
 
-            switch(verbosity)
+            switch (verbosity)
             {
                 case LogVerbosity.Log:
                     color = Colors.White;
@@ -356,10 +355,10 @@ namespace UnrealCommander
 
         private void Window_Closing(object sender, CancelEventArgs e)
         {
-            if(IsRunningOperation)
+            if (IsRunningOperation)
             {
                 MessageBoxResult result = MessageBox.Show("Process is running. Terminate it?", "Terminate process", MessageBoxButton.YesNoCancel);
-                switch(result)
+                switch (result)
                 {
                     case MessageBoxResult.Yes:
                         // Check is running again, because it may have finished while the message box was open
@@ -405,7 +404,7 @@ namespace UnrealCommander
             {
                 Project project = SelectedTarget as Project;
                 menu.Items.Add(new MenuItem() { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath()); }) });
-                menu.Items.Add(new MenuItem() { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(),  project.UProjectPath.AddQuotesIfContainsSpace()); }) });
+                menu.Items.Add(new MenuItem() { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), project.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 
             if (SelectedTarget is Plugin)
@@ -421,7 +420,7 @@ namespace UnrealCommander
 
         private void TargetGrid_OnSorting(object sender, DataGridSortingEventArgs e)
         {
-            
+
         }
     }
 }

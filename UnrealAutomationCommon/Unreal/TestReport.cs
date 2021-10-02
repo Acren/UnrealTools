@@ -1,8 +1,8 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Xml;
-using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -73,7 +73,7 @@ namespace UnrealAutomationCommon.Unreal
             XmlDocument doc = new XmlDocument();
             XmlElement testSuites = doc.CreateElement("testsuites");
             doc.AppendChild(testSuites);
-            testSuites.SetAttribute("duration",  TotalDuration.ToString());
+            testSuites.SetAttribute("duration", TotalDuration.ToString());
             testSuites.SetAttribute("tests", TotalNumTests.ToString());
             testSuites.SetAttribute("failures", Failed.ToString());
             XmlElement testSuite = doc.CreateElement("testsuite");
@@ -108,7 +108,7 @@ namespace UnrealAutomationCommon.Unreal
                     XmlElement failure = doc.CreateElement("failure");
                     testCase.AppendChild(failure);
                     failure.SetAttribute("type", EnumUtils.GetName(mostSevere));
-                    failure.SetAttribute("message", string.Join( Environment.NewLine, failureLines));
+                    failure.SetAttribute("message", string.Join(Environment.NewLine, failureLines));
                 }
             }
 

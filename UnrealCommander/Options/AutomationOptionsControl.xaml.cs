@@ -1,6 +1,4 @@
-﻿using System.Windows;
-
-namespace UnrealCommander.Options
+﻿namespace UnrealCommander.Options
 {
     /// <summary>
     /// Interaction logic for AutomationOptionsControl.xaml

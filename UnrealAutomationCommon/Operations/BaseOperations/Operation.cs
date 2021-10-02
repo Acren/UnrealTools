@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
@@ -14,6 +15,8 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         protected bool Terminated { get; private set; }
         protected IOperationLogger Logger { get; private set; }
         protected OperationParameters OperationParameters { get; private set; }
+
+        private CancellationTokenSource _cancellationTokenSource = null;
 
         public static Operation CreateOperation(Type operationType)
         {
@@ -57,7 +60,20 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
                 OperationParameters = operationParameters;
 
-                OperationResult result = await OnExecuted();
+                TaskCompletionSource<OperationResult> taskCompletionSource = new TaskCompletionSource<OperationResult>();
+
+                _cancellationTokenSource = new();
+                _cancellationTokenSource.Token.Register(() =>
+                {
+                    taskCompletionSource.TrySetCanceled();
+                });
+
+                Task<OperationResult> mainTask = OnExecuted();
+                Task<OperationResult> completedTask = await Task.WhenAny(mainTask, taskCompletionSource.Task);
+
+                _cancellationTokenSource.Dispose();
+
+                OperationResult result = await completedTask;
 
                 if (Terminated)
                 {
@@ -257,7 +273,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         protected virtual void OnTerminated()
         {
-
+            _cancellationTokenSource.Cancel();
         }
 
     }

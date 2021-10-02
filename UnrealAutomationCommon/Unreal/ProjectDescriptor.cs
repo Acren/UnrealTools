@@ -1,7 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using Newtonsoft.Json;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -14,7 +14,7 @@ namespace UnrealAutomationCommon.Unreal
     public class ProjectDescriptor
     {
         public string EngineAssociation { get; set; }
-        
+
         public List<ProjectPluginDependency> Plugins { get; set; }
 
         public string EngineFriendlyName
