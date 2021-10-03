@@ -12,11 +12,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     {
         public string OperationName => GetOperationName();
 
-        protected bool Terminated { get; private set; }
+        protected bool Cancelled { get; private set; }
         protected IOperationLogger Logger { get; private set; }
         protected OperationParameters OperationParameters { get; private set; }
-
-        private CancellationTokenSource _cancellationTokenSource = null;
 
         public static Operation CreateOperation(Type operationType)
         {
@@ -29,7 +27,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return CreateOperation(operationType).SupportsTarget(target);
         }
 
-        public async Task<OperationResult> Execute(OperationParameters operationParameters, IOperationLogger logger)
+        public async Task<OperationResult> Execute(OperationParameters operationParameters, IOperationLogger logger, CancellationToken token)
         {
             try
             {
@@ -60,22 +58,11 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
                 OperationParameters = operationParameters;
 
-                TaskCompletionSource<OperationResult> taskCompletionSource = new TaskCompletionSource<OperationResult>();
+                Task<OperationResult> mainTask = OnExecuted(token);
 
-                _cancellationTokenSource = new();
-                _cancellationTokenSource.Token.Register(() =>
-                {
-                    taskCompletionSource.TrySetCanceled();
-                });
+                OperationResult result = await mainTask;
 
-                Task<OperationResult> mainTask = OnExecuted();
-                Task<OperationResult> completedTask = await Task.WhenAny(mainTask, taskCompletionSource.Task);
-
-                _cancellationTokenSource.Dispose();
-
-                OperationResult result = await completedTask;
-
-                if (Terminated)
+                if (Cancelled)
                 {
                     Logger.Log($"Operation '{OperationName}' terminated by user", LogVerbosity.Warning);
                 }
@@ -111,7 +98,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             }
         }
 
-        protected abstract Task<OperationResult> OnExecuted();
+        protected abstract Task<OperationResult> OnExecuted(CancellationToken token);
 
         public IEnumerable<Command> GetCommands(OperationParameters operationParameters)
         {
@@ -265,15 +252,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return name.SplitWordsByUppercase();
         }
 
-        public void Terminate()
+        protected void SetCancelled()
         {
-            Terminated = true;
-            OnTerminated();
-        }
-
-        protected virtual void OnTerminated()
-        {
-            _cancellationTokenSource.Cancel();
+            Cancelled = true;
         }
 
     }

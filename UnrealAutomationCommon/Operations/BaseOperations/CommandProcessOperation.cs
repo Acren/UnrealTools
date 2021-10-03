@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace UnrealAutomationCommon.Operations.BaseOperations
@@ -18,7 +19,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return new List<Command>() { BuildCommand(operationParameters) };
         }
 
-        protected override async Task<OperationResult> OnExecuted()
+        protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
             Command command = BuildCommand(OperationParameters);
 
@@ -68,6 +69,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             {
                 tcs.TrySetResult(0);
             };
+
+            token.Register(() =>
+            {
+                SetCancelled();
+                ProcessUtils.KillProcessAndChildren(_process);
+            });
 
             await tcs.Task;
 
@@ -132,9 +139,5 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         {
         }
 
-        protected override void OnTerminated()
-        {
-            ProcessUtils.KillProcessAndChildren(_process);
-        }
     }
 }

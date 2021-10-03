@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System.Threading;
+using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
@@ -11,6 +12,8 @@ namespace UnrealAutomationCommon.Operations
         public Operation Operation { get; private set; }
         private OperationParameters _operationParameters;
         private int _lineCount = 0;
+
+        private CancellationTokenSource _cancellationTokenSource = new();
 
         public event OperationOutputEventHandler Output;
 
@@ -25,7 +28,7 @@ namespace UnrealAutomationCommon.Operations
             string outputPath = Operation.GetOutputPath(_operationParameters);
             FileUtils.DeleteDirectoryIfExists(outputPath);
 
-            Task<OperationResult> task = Operation.Execute(_operationParameters, this);
+            Task<OperationResult> task = Operation.Execute(_operationParameters, this, _cancellationTokenSource.Token);
 
             FlagOptions flagOptions = _operationParameters.FindOptions<FlagOptions>();
             if (flagOptions.WaitForAttach)
@@ -36,10 +39,10 @@ namespace UnrealAutomationCommon.Operations
             return await task;
         }
 
-        public void Terminate()
+        public void Cancel()
         {
-            Output?.Invoke("Terminating operation '" + Operation.OperationName + "'", LogVerbosity.Warning);
-            Operation.Terminate();
+            Output?.Invoke("Cancelling operation '" + Operation.OperationName + "'", LogVerbosity.Warning);
+            _cancellationTokenSource.Cancel();
         }
 
         void OutputLine(string line, LogVerbosity verbosity)

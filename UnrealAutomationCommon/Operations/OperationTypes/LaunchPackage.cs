@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
@@ -34,7 +35,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new Command(GetTarget(operationParameters).ProvidedPackage.ExecutablePath, args);
         }
 
-        protected override async Task<OperationResult> OnExecuted()
+        protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
             if (automationOptions is { RunTests: { Value: true } })
@@ -58,7 +59,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     File.Copy(engineReportTemplate, reportTemplatePath);
                 }
             }
-            return await base.OnExecuted();
+            return await base.OnExecuted(token);
         }
 
         protected override string GetOperationName()

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
@@ -13,7 +14,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class DeployPlugin : Operation<Plugin>
     {
-        protected override async Task<OperationResult> OnExecuted()
+        protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
             Logger.Log("Preparing plugin");
 
@@ -121,7 +122,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Target = hostProject
             };
 
-            if (!(await new BuildEditor().Execute(buildEditorParams, Logger)).Success)
+            if (!(await new BuildEditor().Execute(buildEditorParams, Logger, token)).Success)
             {
                 throw new Exception("Failed to build host project");
             }
@@ -136,7 +137,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 OperationParameters launchEditorParams = buildEditorParams;
                 launchEditorParams.SetOptions(automationOpts);
 
-                if (!(await new LaunchEditor().Execute(launchEditorParams, Logger)).Success)
+                if (!(await new LaunchEditor().Execute(launchEditorParams, Logger, token)).Success)
                 {
                     throw new Exception("Failed to launch host project");
                 }
@@ -156,7 +157,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
             buildPluginParams.SetOptions(OperationParameters.RequestOptions<PluginBuildOptions>());
 
-            OperationResult buildResult = await new BuildPlugin().Execute(buildPluginParams, Logger);
+            OperationResult buildResult = await new BuildPlugin().Execute(buildPluginParams, Logger, token);
 
             if (!buildResult.Success)
             {
@@ -232,7 +233,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 OutputPathOverride = exampleProjectBuildPath
             };
 
-            OperationResult installedPluginPackageOperationResult = await installedPluginPackageOperation.Execute(installedPluginPackageParams, Logger);
+            OperationResult installedPluginPackageOperationResult = await installedPluginPackageOperation.Execute(installedPluginPackageParams, Logger, token);
 
             if (!installedPluginPackageOperationResult.Success)
             {
@@ -249,7 +250,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 };
                 testInstalledPluginBuildParams.SetOptions(automationOpts);
 
-                OperationResult testResult = await new LaunchStagedPackage().Execute(testInstalledPluginBuildParams, Logger);
+                OperationResult testResult = await new LaunchStagedPackage().Execute(testInstalledPluginBuildParams, Logger, token);
 
                 if (!testResult.Success)
                 {
@@ -285,7 +286,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             demoPackageParams.RequestOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
             demoPackageParams.RequestOptions<PackageOptions>().NoDebugInfo.Value = true;
 
-            OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, Logger);
+            OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, Logger, token);
 
             if (!demoExePackageOperationResult.Success)
             {

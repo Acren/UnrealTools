@@ -247,7 +247,7 @@ namespace UnrealCommander
                     switch (result)
                     {
                         case MessageBoxResult.Yes:
-                            RunningOperation.Terminate();
+                            RunningOperation.Cancel();
                             break;
                         case MessageBoxResult.No:
                             break;
@@ -303,7 +303,7 @@ namespace UnrealCommander
         {
             if (RunningOperation != null)
             {
-                RunningOperation.Terminate();
+                RunningOperation.Cancel();
             }
         }
 
@@ -364,7 +364,7 @@ namespace UnrealCommander
                         // Check is running again, because it may have finished while the message box was open
                         if (IsRunningOperation)
                         {
-                            RunningOperation.Terminate();
+                            RunningOperation.Cancel();
 
                             // Small sleep so that dispatch invokes triggered by termination don't crash
                             Thread.Sleep(1);
