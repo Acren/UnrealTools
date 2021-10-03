@@ -39,17 +39,16 @@ namespace UnrealCommander
             PersistentState = PersistentData.Load();
             InitializeComponent();
 
-            //BuildConfigurationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>();
-            //InsightsOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<InsightsOptions>();
-            //FlagOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<FlagOptions>();
-            //AutomationOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<AutomationOptions>();
-            //PackageOptionsControlElement.Options = PersistentState.OperationParameters.RequestOptions<PackageOptions>();
-
             // Default sort
             TargetGrid.Items.SortDescriptions.Clear();
             TargetGrid.Items.SortDescriptions.Add(new SortDescription("TypeName", ListSortDirection.Descending));
             TargetGrid.Items.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
             TargetGrid.Items.Refresh();
+
+            // Refresh selected target, otherwise the grid does not highlight it for reasons currently unknown
+            IOperationTarget target = SelectedTarget;
+            SelectedTarget = null;
+            SelectedTarget = target;
         }
 
         public IOperationTarget SelectedTarget
