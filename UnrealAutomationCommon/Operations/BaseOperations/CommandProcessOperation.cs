@@ -128,7 +128,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         OperationResult HandleProcessEnded()
         {
-            bool success = _process.ExitCode == 0;
+            bool success = _process.ExitCode == 0 && !Cancelled;
             OperationResult result = new(success)
             {
                 ExitCode = _process.ExitCode
