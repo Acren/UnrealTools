@@ -70,13 +70,19 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 tcs.TrySetResult(0);
             };
 
-            token.Register(() =>
+            CancellationTokenRegistration registration = token.Register(() =>
             {
+                // Token cancelled, kill the process
+                Logger.Log($"Operation '{OperationName}' cancelled", LogVerbosity.Warning);
+                Logger.Log("Terminating process '" + _processName + "'", LogVerbosity.Warning);
                 SetCancelled();
                 ProcessUtils.KillProcessAndChildren(_process);
             });
 
             await tcs.Task;
+
+            // Dispose registration, otherwise GC is prevented through above lambda
+            await registration.DisposeAsync();
 
             return HandleProcessEnded();
         }
