@@ -31,7 +31,7 @@ namespace UnrealAutomationCommon.Operations
             Task<OperationResult> task = Operation.Execute(_operationParameters, this, _cancellationTokenSource.Token);
 
             FlagOptions flagOptions = _operationParameters.FindOptions<FlagOptions>();
-            if (flagOptions.WaitForAttach)
+            if (flagOptions is { WaitForAttach: true })
             {
                 Output?.Invoke("-WaitForAttach was specified, attach now", LogVerbosity.Log);
             }
