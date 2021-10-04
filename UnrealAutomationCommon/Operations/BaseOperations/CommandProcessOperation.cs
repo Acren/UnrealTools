@@ -1,4 +1,5 @@
 ﻿using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -10,7 +11,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     public abstract class CommandProcessOperation<T> : Operation<T> where T : OperationTarget
     {
         private Process _process = null;
+        private string _fileName = null;
         private string _processName = null;
+
+        private string FileAndProcess => $"{_fileName}:{_processName}";
 
         protected abstract Command BuildCommand(OperationParameters operationParameters);
 
@@ -22,6 +26,8 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
             Command command = BuildCommand(OperationParameters);
+
+            _fileName = Path.GetFileName(command.File);
 
             Logger.Log("Running command: " + command, LogVerbosity.Log);
 
@@ -61,12 +67,13 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             _processName = _process.ProcessName;
 
-            Logger.Log("Launched process '" + _processName + "'", LogVerbosity.Log);
+            Logger.Log("Launched process '" + FileAndProcess + "'", LogVerbosity.Log);
 
             var tcs = new TaskCompletionSource<int>();
 
             _process.Exited += (sender, args) =>
             {
+                Logger.Log($"Process '{FileAndProcess}' exited");
                 tcs.TrySetResult(0);
             };
 
@@ -74,7 +81,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             {
                 // Token cancelled, kill the process
                 Logger.Log($"Operation '{OperationName}' cancelled", LogVerbosity.Warning);
-                Logger.Log("Terminating process '" + _processName + "'", LogVerbosity.Warning);
+                Logger.Log("Terminating process '" + FileAndProcess + "'", LogVerbosity.Warning);
                 SetCancelled();
                 ProcessUtils.KillProcessAndChildren(_process);
             });
@@ -134,7 +141,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 ExitCode = _process.ExitCode
             };
 
-            Logger.Log("Process '" + _processName + "' exited with code " + result.ExitCode, success ? LogVerbosity.Log : LogVerbosity.Error);
+            Logger.Log("Process '" + FileAndProcess + "' exited with code " + result.ExitCode, success ? LogVerbosity.Log : LogVerbosity.Error);
 
             OnProcessEnded(result);
 
