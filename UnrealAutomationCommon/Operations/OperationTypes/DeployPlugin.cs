@@ -63,7 +63,20 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Logger.Log("Branch is a version or standard branch");
                 archiveVersionName = pluginDescriptor.VersionName;
             }
-            Logger.Log("Archive version name is '" + archiveVersionName + "'");
+
+            string archivePrefix;
+            bool beta = pluginDescriptor.IsBetaVersion;
+            if (beta)
+            {
+                Logger.Log("Plugin is marked as beta version");
+                archivePrefix = $"{plugin.Name}_beta_{archiveVersionName}";
+            }
+            else
+            {
+                archivePrefix = $"{plugin.Name}_{archiveVersionName}";
+            }
+
+            Logger.Log($"Archive name prefix is '{archivePrefix}'");
 
             // Get engine path
 
@@ -308,8 +321,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Archiving
 
                 Logger.Log("Archiving");
-
-                string archivePrefix = plugin.Name + "_" + archiveVersionName + "_";
 
                 string archivePath = Path.Combine(GetOutputPath(OperationParameters), "Archives");
 

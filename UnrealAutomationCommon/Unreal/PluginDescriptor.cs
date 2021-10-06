@@ -7,6 +7,7 @@ namespace UnrealAutomationCommon.Unreal
     {
         public string VersionName { get; set; }
         public string FriendlyName { get; set; }
+        public bool IsBetaVersion { get; set; }
         public string EngineVersion { get; set; }
 
         public static PluginDescriptor Load(string uPluginPath)
