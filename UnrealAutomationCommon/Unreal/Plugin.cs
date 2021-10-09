@@ -54,6 +54,8 @@ namespace UnrealAutomationCommon.Unreal
 
         public Project HostProject => new Project(HostProjectUProjectPath);
 
+        public override IOperationTarget ParentTarget => HostProject;
+
         public override string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
         public override string TargetPath => UPluginPath;
 

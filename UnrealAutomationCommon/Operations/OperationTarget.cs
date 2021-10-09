@@ -19,6 +19,31 @@ namespace UnrealAutomationCommon.Operations
 
         public bool IsValid { get; }
 
+        // Targets can be nested within each other - e.g. Projects can have Plugins and Packages within them
+        public IOperationTarget ParentTarget { get; }
+
+        public IOperationTarget RootTarget
+        {
+            get
+            {
+                IOperationTarget currentRoot = this;
+                while (true)
+                {
+                    IOperationTarget parent = currentRoot.ParentTarget;
+                    if (parent != null)
+                    {
+                        currentRoot = parent;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                return currentRoot;
+            }
+        }
+
         public bool SupportsConfiguration(BuildConfiguration configuration);
     }
 
@@ -27,6 +52,9 @@ namespace UnrealAutomationCommon.Operations
     {
         public abstract string Name { get; }
         public abstract string TargetPath { get; }
+
+        public virtual IOperationTarget ParentTarget => null;
+
         public string TargetDirectory => Path.GetDirectoryName(TargetPath);
 
         private string _testName = string.Empty;
@@ -70,5 +98,7 @@ namespace UnrealAutomationCommon.Operations
 
             return (other as OperationTarget).TargetPath == TargetPath;
         }
+
+
     }
 }

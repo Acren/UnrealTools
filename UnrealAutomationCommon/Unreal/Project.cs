@@ -14,7 +14,7 @@ namespace UnrealAutomationCommon.Unreal
         [JsonConstructor]
         public Project(string uProjectPath)
         {
-            if (IsProjectFile(uProjectPath))
+            if (ProjectPaths.Instance.IsTargetFile(uProjectPath))
             {
                 UProjectPath = uProjectPath;
             }
@@ -94,7 +94,7 @@ namespace UnrealAutomationCommon.Unreal
         public Package GetStagedPackage()
         {
             string path = GetStagedBuildWindowsPath();
-            return Package.IsPackageDirectory(path) ? new Package(path) : null;
+            return PackagePaths.Instance.IsTargetDirectory(path) ? new Package(path) : null;
         }
 
         public string GetStagedPackageExecutablePath()
@@ -129,9 +129,5 @@ namespace UnrealAutomationCommon.Unreal
             return plugins;
         }
 
-        public static bool IsProjectFile(string path)
-        {
-            return FileUtils.HasExtension(path, ".uproject");
-        }
     }
 }

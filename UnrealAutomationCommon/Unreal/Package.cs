@@ -16,13 +16,13 @@ namespace UnrealAutomationCommon.Unreal
         [JsonConstructor]
         public Package([JsonProperty("ExecutablePath")] string path)
         {
-            if (IsPackageFile(path))
+            if (PackagePaths.Instance.IsTargetFile(path))
             {
                 ExecutablePath = path;
             }
-            else if (IsPackageDirectory(path))
+            else if (PackagePaths.Instance.IsTargetDirectory(path))
             {
-                ExecutablePath = FindExecutablePath(path);
+                ExecutablePath = PackagePaths.Instance.FindTargetFile(path);
             }
             else
             {
@@ -40,30 +40,27 @@ namespace UnrealAutomationCommon.Unreal
         public string ExecutablePath { get; private set; }
         public override string Name { get; }
 
-        public override bool IsValid => IsPackageFile(ExecutablePath);
+        public Project HostProject
+        {
+            get
+            {
+                string projectPath = Path.GetFullPath(Path.Combine(TargetDirectory,@"..\..\..\")); // Up 3 levels
+                if (ProjectPaths.Instance.IsTargetDirectory(projectPath))
+                {
+                    return new Project(projectPath);
+                }
+
+                return null;
+            }
+        }
+
+        public override IOperationTarget ParentTarget => HostProject;
+
+        public override bool IsValid => PackagePaths.Instance.IsTargetFile(ExecutablePath);
 
         public override void LoadDescriptor()
         {
             throw new NotImplementedException();
-        }
-
-        private static string FindExecutablePath(string path)
-        {
-            if (!Directory.Exists(path))
-            {
-                return null;
-            }
-
-            string[] files = Directory.GetFiles(path);
-            foreach (string file in files)
-            {
-                if (System.IO.Path.GetExtension(file).Equals(".exe", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    return file;
-                }
-            }
-
-            return null;
         }
 
         public string LogsPath => System.IO.Path.Combine(TargetDirectory, Name, "Saved", "Logs");
@@ -74,14 +71,5 @@ namespace UnrealAutomationCommon.Unreal
 
         public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : EngineVersion?.ToString();
 
-        public static bool IsPackageFile(string path)
-        {
-            return FileUtils.HasExtension(path, ".exe");
-        }
-
-        public static bool IsPackageDirectory(string path)
-        {
-            return FindExecutablePath(path) != null;
-        }
     }
 }
