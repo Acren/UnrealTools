@@ -20,21 +20,17 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        [JsonIgnore]
         public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
 
-        [JsonIgnore]
         public override string TargetPath => UProjectPath;
 
-        [JsonIgnore]
         public EngineInstall EngineInstall => ProjectDescriptor?.EngineInstall;
 
-        [JsonIgnore]
         public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : ProjectDescriptor?.EngineAssociation;
 
-        [JsonIgnore]
         public Package ProvidedPackage => GetStagedPackage();
 
+        [JsonProperty]
         public string UProjectPath
         {
             get => _uProjectPath;
@@ -62,7 +58,6 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        [JsonIgnore]
         public ProjectDescriptor ProjectDescriptor
         {
             get => _projectDescriptor;

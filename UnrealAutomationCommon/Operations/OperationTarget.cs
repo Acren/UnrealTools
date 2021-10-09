@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using Newtonsoft.Json;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
@@ -21,6 +22,7 @@ namespace UnrealAutomationCommon.Operations
         public bool SupportsConfiguration(BuildConfiguration configuration);
     }
 
+    [JsonObject(MemberSerialization.OptIn)]
     public abstract class OperationTarget : IOperationTarget
     {
         public abstract string Name { get; }
@@ -29,6 +31,7 @@ namespace UnrealAutomationCommon.Operations
 
         private string _testName = string.Empty;
 
+        [JsonProperty]
         public string TestName
         {
             get => _testName;

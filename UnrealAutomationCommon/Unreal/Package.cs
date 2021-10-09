@@ -8,7 +8,6 @@ namespace UnrealAutomationCommon.Unreal
 {
     public interface IPackageProvider : IOperationTarget
     {
-        [JsonIgnore]
         public Package ProvidedPackage { get; }
     }
 
@@ -36,6 +35,8 @@ namespace UnrealAutomationCommon.Unreal
         public Package ProvidedPackage => this;
 
         public override string TargetPath => ExecutablePath;
+
+        [JsonProperty]
         public string ExecutablePath { get; private set; }
         public override string Name { get; }
 

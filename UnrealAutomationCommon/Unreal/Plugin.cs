@@ -24,6 +24,7 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
+        [JsonProperty]
         public string UPluginPath
         {
             get => _uPluginPath;
@@ -51,19 +52,15 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        [JsonIgnore]
         public Project HostProject => new Project(HostProjectUProjectPath);
 
         public override string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
         public override string TargetPath => UPluginPath;
 
-        [JsonIgnore]
         public EngineInstall EngineInstall => PluginDescriptor?.EngineInstall;
 
-        [JsonIgnore]
         public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : PluginDescriptor?.EngineVersion;
 
-        [JsonIgnore]
         public PluginDescriptor PluginDescriptor
         {
             get => _pluginDescriptor;
@@ -76,10 +73,8 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        [JsonIgnore]
         public string HostProjectPath => Path.GetFullPath(Path.Combine(GetPluginPath(), @"..\..\")); // Up 2 levels
 
-        [JsonIgnore]
         public string HostProjectUProjectPath
         {
             get
