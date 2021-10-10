@@ -1,9 +1,7 @@
-﻿using Microsoft.Win32;
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Data;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
@@ -15,6 +13,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
+using Microsoft.Win32;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -31,43 +30,32 @@ namespace UnrealCommander
             IOperationTarget targetX = x as IOperationTarget;
             IOperationTarget targetY = y as IOperationTarget;
 
-            int rootNameComp = String.Compare(targetX.RootTarget.Name, targetY.RootTarget.Name, StringComparison.Ordinal);
-            if (rootNameComp != 0)
-            {
-                return rootNameComp;
-            }
+            string xName = targetX.RootTarget.Name;
+            string yName = targetY.RootTarget.Name;
+            int rootNameComp = string.Compare(xName, yName, StringComparison.Ordinal);
+            if (rootNameComp != 0) return rootNameComp;
 
-            int rootPathComp = String.Compare(targetX.RootTarget.TargetDirectory, targetY.RootTarget.TargetDirectory, StringComparison.Ordinal);
-            if (rootPathComp != 0)
-            {
-                return rootPathComp;
-            }
+            int rootPathComp = string.Compare(targetX.RootTarget.TargetDirectory, targetY.RootTarget.TargetDirectory, StringComparison.Ordinal);
+            if (rootPathComp != 0) return rootPathComp;
 
             bool xRoot = targetX.RootTarget.Equals(targetX);
             bool yRoot = targetY.RootTarget.Equals(targetY);
             int rootComp = xRoot.CompareTo(yRoot);
-            if (rootComp != 0)
-            {
-                return rootComp * -1;
-            }
+            if (rootComp != 0) return rootComp * -1;
 
             return 0;
         }
-
     }
 
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    ///     Interaction logic for MainWindow.xaml
     /// </summary>
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
-        private PersistentData _persistentState = new PersistentData();
-
         private Operation _operation;
+        private PersistentData _persistentState = new();
 
-        private OperationRunner _runningOperation = null;
-
-        public event PropertyChangedEventHandler PropertyChanged;
+        private OperationRunner _runningOperation;
 
         public MainWindow()
         {
@@ -81,7 +69,7 @@ namespace UnrealCommander
                 // Prevent the built-in sort from sorting
                 e.Handled = true;
 
-                ListSortDirection direction = (column.SortDirection != ListSortDirection.Ascending) ? ListSortDirection.Ascending : ListSortDirection.Descending;
+                ListSortDirection direction = column.SortDirection != ListSortDirection.Ascending ? ListSortDirection.Ascending : ListSortDirection.Descending;
 
                 // Set the sort order on the column
                 column.SortDirection = direction;
@@ -99,7 +87,7 @@ namespace UnrealCommander
             TargetGrid.Items.Refresh();
 
             // Trigger initial sort
-            var performSortMethod = typeof(DataGrid)
+            MethodInfo performSortMethod = typeof(DataGrid)
                 .GetMethod("PerformSort",
                     BindingFlags.Instance | BindingFlags.NonPublic);
             performSortMethod?.Invoke(TargetGrid, new[] { TargetGrid.Columns[0] });
@@ -108,7 +96,6 @@ namespace UnrealCommander
             IOperationTarget target = SelectedTarget;
             SelectedTarget = null;
             SelectedTarget = target;
-
         }
 
         public IOperationTarget SelectedTarget
@@ -139,6 +126,7 @@ namespace UnrealCommander
                         _persistentState.PropertyChanged += PersistentStateChanged;
                     PersistentStateChanged(this, null);
                 }
+
                 void PersistentStateChanged(object sender, PropertyChangedEventArgs args)
                 {
                     OnPropertyChanged();
@@ -150,23 +138,15 @@ namespace UnrealCommander
 
                     if (!Operation.OperationTypeSupportsTarget(PersistentState.OperationType,
                         PersistentState.OperationParameters.Target))
-                    {
                         foreach (Type operationType in OperationTypes)
-                        {
                             if (Operation.OperationTypeSupportsTarget(operationType,
                                 PersistentState.OperationParameters.Target))
                             {
                                 PersistentState.OperationType = operationType;
                                 break;
                             }
-                        }
-                    }
 
-                    if (Operation == null || Operation.GetType() != PersistentState.OperationType)
-                    {
-                        Operation = Operation.CreateOperation(PersistentState.OperationType);
-                    }
-
+                    if (Operation == null || Operation.GetType() != PersistentState.OperationType) Operation = Operation.CreateOperation(PersistentState.OperationType);
                 }
             }
         }
@@ -190,16 +170,6 @@ namespace UnrealCommander
             }
         }
 
-        private void SelectSupportedBuildConfiguration()
-        {
-            if (AllowedBuildConfigurations.Configurations.Count > 0 && !AllowedBuildConfigurations.Configurations.Contains(PersistentState.OperationParameters
-                .RequestOptions<BuildConfigurationOptions>().Configuration))
-            {
-                PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>().Configuration =
-                    AllowedBuildConfigurations.Configurations[0];
-            }
-        }
-
         public IOperationTarget OperationTarget => PersistentState.OperationParameters.Target;
 
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
@@ -210,12 +180,9 @@ namespace UnrealCommander
         {
             get
             {
-                if (OperationTarget == null)
-                {
-                    return new AllowedBuildConfigurations();
-                }
+                if (OperationTarget == null) return new AllowedBuildConfigurations();
 
-                return new AllowedBuildConfigurations()
+                return new AllowedBuildConfigurations
                 {
                     Configurations = EnumUtils.GetAll<BuildConfiguration>().Where(c =>
                         _operation.SupportsConfiguration(c) && OperationTarget
@@ -232,10 +199,7 @@ namespace UnrealCommander
         {
             get
             {
-                if (SelectedTarget != null)
-                {
-                    return $"Selected {SelectedTarget.TypeName} {SelectedTarget.Name}";
-                }
+                if (SelectedTarget != null) return $"Selected {SelectedTarget.TypeName} {SelectedTarget.Name}";
 
                 return "Select a project or plugin";
             }
@@ -247,21 +211,12 @@ namespace UnrealCommander
         {
             get
             {
-                if (Operation == null)
-                {
-                    return "No operation";
-                }
+                if (Operation == null) return "No operation";
 
-                List<string> commandStrings = new List<string>();
-                foreach (Command command in Operation.GetCommands(PersistentState.OperationParameters))
-                {
-                    commandStrings.Add(command.ToString());
-                }
+                var commandStrings = new List<string>();
+                foreach (Command command in Operation.GetCommands(PersistentState.OperationParameters)) commandStrings.Add(command.ToString());
 
-                if (commandStrings.Count > 0)
-                {
-                    return string.Join("\n", commandStrings);
-                }
+                if (commandStrings.Count > 0) return string.Join("\n", commandStrings);
 
                 return "No command";
             }
@@ -283,9 +238,16 @@ namespace UnrealCommander
             }
         }
 
-        public bool IsRunningOperation
+        public bool IsRunningOperation => RunningOperation != null;
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private void SelectSupportedBuildConfiguration()
         {
-            get => RunningOperation != null;
+            if (AllowedBuildConfigurations.Configurations.Count > 0 && !AllowedBuildConfigurations.Configurations.Contains(PersistentState.OperationParameters
+                .RequestOptions<BuildConfigurationOptions>().Configuration))
+                PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>().Configuration =
+                    AllowedBuildConfigurations.Configurations[0];
         }
 
         private void OnPropertyChanged([CallerMemberName] string name = null)
@@ -317,17 +279,14 @@ namespace UnrealCommander
 
                 AddOutputLine($"User started operation '{newOperation.OperationName}'");
 
-                OperationRunner newRunner = new OperationRunner(newOperation, PersistentState.OperationParameters);
+                OperationRunner newRunner = new(newOperation, PersistentState.OperationParameters);
                 newRunner.Output += (S, verbosity) =>
                 {
                     // Output handler
                     Dispatcher.Invoke(() =>
                     {
                         // Prepend line numbers to each line of the output.
-                        if (!String.IsNullOrEmpty(S))
-                        {
-                            AddOutputLine(S, verbosity);
-                        }
+                        if (!string.IsNullOrEmpty(S)) AddOutputLine(S, verbosity);
                     });
                 };
 
@@ -360,10 +319,7 @@ namespace UnrealCommander
 
         private void Terminate(object sender, RoutedEventArgs e)
         {
-            if (RunningOperation != null)
-            {
-                RunningOperation.Cancel();
-            }
+            if (RunningOperation != null) RunningOperation.Cancel();
         }
 
         private void AddOutputLine(string line, LogVerbosity verbosity = LogVerbosity.Log)
@@ -371,7 +327,7 @@ namespace UnrealCommander
             LineCount++;
             string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\r";
 
-            TextRange tr = new TextRange(OutputTextBox.Document.ContentEnd, OutputTextBox.Document.ContentEnd);
+            TextRange tr = new(OutputTextBox.Document.ContentEnd, OutputTextBox.Document.ContentEnd);
             tr.Text = finalLine;
 
             Color color;
@@ -393,11 +349,7 @@ namespace UnrealCommander
 
             tr.ApplyPropertyValue(TextElement.ForegroundProperty, new SolidColorBrush(color));
 
-            if (OutputScrollViewer.VerticalOffset == OutputScrollViewer.ScrollableHeight)
-            {
-                OutputScrollViewer.ScrollToEnd();
-            }
-
+            if (OutputScrollViewer.VerticalOffset == OutputScrollViewer.ScrollableHeight) OutputScrollViewer.ScrollToEnd();
         }
 
         private void CopyCommand(object sender, RoutedEventArgs e)
@@ -428,6 +380,7 @@ namespace UnrealCommander
                             // Small sleep so that dispatch invokes triggered by termination don't crash
                             Thread.Sleep(1);
                         }
+
                         break;
                     case MessageBoxResult.No:
                         break;
@@ -440,7 +393,7 @@ namespace UnrealCommander
 
         private void AddTarget(object sender, RoutedEventArgs e)
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog();
+            OpenFileDialog openFileDialog = new();
             if (openFileDialog.ShowDialog() == true)
             {
                 string selectedPath = openFileDialog.FileName;
@@ -451,31 +404,30 @@ namespace UnrealCommander
         private void TargetGrid_OnContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
             FrameworkElement fe = e.Source as FrameworkElement;
-            ContextMenu menu = new ContextMenu();
+            ContextMenu menu = new();
             fe.ContextMenu = menu;
 
-            menu.Items.Add(new MenuItem() { Header = "Open Directory", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(SelectedTarget.TargetDirectory); }) });
-            menu.Items.Add(new MenuItem() { Header = "Open Output", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(SelectedTarget.OutputDirectory); }) });
+            menu.Items.Add(new MenuItem { Header = "Open Directory", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(SelectedTarget.TargetDirectory); }) });
+            menu.Items.Add(new MenuItem { Header = "Open Output", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(SelectedTarget.OutputDirectory); }) });
 
             menu.Items.Add(new Separator());
 
             if (SelectedTarget is Project)
             {
                 Project project = SelectedTarget as Project;
-                menu.Items.Add(new MenuItem() { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath()); }) });
-                menu.Items.Add(new MenuItem() { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), project.UProjectPath.AddQuotesIfContainsSpace()); }) });
+                menu.Items.Add(new MenuItem { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath()); }) });
+                menu.Items.Add(new MenuItem { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), project.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 
             if (SelectedTarget is Plugin)
             {
                 Plugin plugin = SelectedTarget as Plugin;
-                menu.Items.Add(new MenuItem() { Header = $"Open {plugin.HostProject.Name} with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), plugin.HostProject.UProjectPath.AddQuotesIfContainsSpace()); }) });
+                menu.Items.Add(new MenuItem { Header = $"Open {plugin.HostProject.Name} with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), plugin.HostProject.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 
             menu.Items.Add(new Separator());
 
-            menu.Items.Add(new MenuItem() { Header = "Remove", Command = new DelegateCommand(o => { PersistentData.Get().RemoveTarget(SelectedTarget); }) });
+            menu.Items.Add(new MenuItem { Header = "Remove", Command = new DelegateCommand(o => { PersistentData.Get().RemoveTarget(SelectedTarget); }) });
         }
-
     }
 }

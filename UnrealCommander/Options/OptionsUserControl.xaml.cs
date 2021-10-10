@@ -8,12 +8,12 @@ using UnrealCommander.Annotations;
 namespace UnrealCommander.Options
 {
     /// <summary>
-    /// Interaction logic for OptionsUserControl.xaml
+    ///     Interaction logic for OptionsUserControl.xaml
     /// </summary>
-    public partial class OptionsUserControl/*<T>*/ : UserControl, INotifyPropertyChanged /*where T : OperationOptions*/
+    public class OptionsUserControl /*<T>*/ : UserControl, INotifyPropertyChanged /*where T : OperationOptions*/
     {
-        private OperationTarget _operationTarget = null;
-        private Operation _operation = null;
+        private Operation _operation;
+        private OperationTarget _operationTarget;
 
         public OperationTarget OperationTarget
         {
@@ -35,6 +35,8 @@ namespace UnrealCommander.Options
             }
         }
 
+        public event PropertyChangedEventHandler PropertyChanged;
+
         //private T _options = null;
 
         //public T Options
@@ -50,10 +52,7 @@ namespace UnrealCommander.Options
 
         protected virtual void OptionsChanged()
         {
-
         }
-
-        public event PropertyChangedEventHandler PropertyChanged;
 
         [NotifyPropertyChangedInvocator]
         protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)

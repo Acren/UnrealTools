@@ -1,5 +1,5 @@
-﻿using Microsoft.Win32;
-using System.IO;
+﻿using System.IO;
+using Microsoft.Win32;
 
 namespace UnrealAutomationCommon
 {
@@ -13,7 +13,7 @@ namespace UnrealAutomationCommon
 
             string subkeyName = localMachineRider.GetSubKeyNames()[0];
             RegistryKey version = localMachineRider.OpenSubKey(subkeyName);
-            string path = version.GetValue(null) as string;
+            var path = version.GetValue(null) as string;
             return path;
         }
 

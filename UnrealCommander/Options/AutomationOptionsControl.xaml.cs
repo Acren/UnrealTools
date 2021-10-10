@@ -1,7 +1,7 @@
 ﻿namespace UnrealCommander.Options
 {
     /// <summary>
-    /// Interaction logic for AutomationOptionsControl.xaml
+    ///     Interaction logic for AutomationOptionsControl.xaml
     /// </summary>
     public partial class AutomationOptionsControl : OptionsUserControl
     {
@@ -9,6 +9,5 @@
         {
             InitializeComponent();
         }
-
     }
 }

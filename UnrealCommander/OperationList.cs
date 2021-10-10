@@ -11,7 +11,7 @@ namespace UnrealCommander
     {
         public static List<Type> GetOrderedOperationTypes()
         {
-            List<Type> Result = new List<Type>()
+            var Result = new List<Type>
             {
                 // Custom order
                 typeof(GenerateProjectFiles),

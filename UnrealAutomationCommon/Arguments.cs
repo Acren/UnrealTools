@@ -17,7 +17,7 @@ namespace UnrealAutomationCommon
                 throw new Exception("Empty key");
             }
 
-            string argString = "";
+            var argString = "";
             if (DashPrefix)
             {
                 argString += "-";
@@ -37,7 +37,7 @@ namespace UnrealAutomationCommon
 
     public class Arguments
     {
-        private readonly List<Argument> _arguments = new List<Argument>();
+        private readonly List<Argument> _arguments = new();
         private string _rawArgs = "";
 
         private void UpdateArgument(Argument argument, bool updateExisting)
@@ -53,10 +53,6 @@ namespace UnrealAutomationCommon
                     _arguments.RemoveAt(index);
                     _arguments.Insert(index, argument);
                 }
-                else
-                {
-                    // Do nothing
-                }
             }
             else
             {
@@ -67,7 +63,7 @@ namespace UnrealAutomationCommon
         // args {argument}
         public void SetArgument(string argument, bool updateExisting = true)
         {
-            UpdateArgument(new Argument()
+            UpdateArgument(new Argument
             {
                 Key = argument
             }, updateExisting);
@@ -76,7 +72,7 @@ namespace UnrealAutomationCommon
         // args -{flag}
         public void SetFlag(string flag, bool updateExisting = true)
         {
-            UpdateArgument(new Argument()
+            UpdateArgument(new Argument
             {
                 Key = flag,
                 DashPrefix = true
@@ -86,7 +82,7 @@ namespace UnrealAutomationCommon
         // args -{key}={value}
         public void SetKeyValue(string key, string value, bool updateExisting = true)
         {
-            UpdateArgument(new Argument()
+            UpdateArgument(new Argument
             {
                 Key = key,
                 Value = value,
@@ -97,7 +93,7 @@ namespace UnrealAutomationCommon
         // args "{path}"
         public void SetPath(string path, bool updateExisting = true)
         {
-            UpdateArgument(new Argument()
+            UpdateArgument(new Argument
             {
                 Key = path
             }, updateExisting);
@@ -106,7 +102,7 @@ namespace UnrealAutomationCommon
         // args -{key}="{path}"
         public void SetKeyPath(string key, string path, bool updateExisting = true)
         {
-            UpdateArgument(new Argument()
+            UpdateArgument(new Argument
             {
                 Key = key,
                 Value = path,
@@ -121,11 +117,12 @@ namespace UnrealAutomationCommon
 
         public override string ToString()
         {
-            string builtCommandString = "";
+            var builtCommandString = "";
             foreach (Argument arg in _arguments)
             {
                 CommandUtils.CombineArgs(ref builtCommandString, arg.ToString());
             }
+
             CommandUtils.CombineArgs(ref builtCommandString, _rawArgs);
             return builtCommandString;
         }

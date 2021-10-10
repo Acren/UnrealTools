@@ -11,7 +11,7 @@ namespace UnrealAutomationCommon
             return Enum.GetName(value.GetType(), value);
         }
 
-        public static List<T> GetAll<T>() where T : System.Enum
+        public static List<T> GetAll<T>() where T : Enum
         {
             return Enum.GetValues(typeof(T)).Cast<T>().ToList();
         }

@@ -6,10 +6,8 @@ namespace UnrealAutomationCommon.Unreal
 
     public class LogWatcher
     {
-        private string _registeredLogFile = null;
-        private StreamReader _reader = null;
-
-        public event LineLoggedEventHandler LineLogged;
+        private StreamReader _reader;
+        private string _registeredLogFile;
 
         public LogWatcher(Project project) : this(project, project.GetLogsPath())
         {
@@ -17,27 +15,19 @@ namespace UnrealAutomationCommon.Unreal
 
         public LogWatcher(Project project, string logDirectory)
         {
-            FileSystemWatcher directoryWatcher = new FileSystemWatcher(logDirectory);
+            FileSystemWatcher directoryWatcher = new(logDirectory);
             directoryWatcher.Filter = project.Name + "*.log";
             directoryWatcher.Created += (Sender, Args) =>
             {
-                if (ShouldRegisterLogFile(Args.FullPath))
-                {
-                    RegisterLogFile(Args.FullPath);
-                }
+                if (ShouldRegisterLogFile(Args.FullPath)) RegisterLogFile(Args.FullPath);
             };
             directoryWatcher.Changed += (Sender, Args) =>
             {
-                if (ShouldRegisterLogFile(Args.FullPath))
-                {
-                    RegisterLogFile(Args.FullPath);
-                }
+                if (ShouldRegisterLogFile(Args.FullPath)) RegisterLogFile(Args.FullPath);
 
                 if (Args.FullPath != _registeredLogFile)
-                {
                     // Ignore logs other than the registered one
                     return;
-                }
 
                 ReadToEnd();
             };
@@ -45,6 +35,8 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         private bool HasRegisteredLogFile => _registeredLogFile != null;
+
+        public event LineLoggedEventHandler LineLogged;
 
         private bool ShouldRegisterLogFile(string logFile)
         {
@@ -55,8 +47,8 @@ namespace UnrealAutomationCommon.Unreal
         {
             _registeredLogFile = logFile;
 
-            FileStream stream = new System.IO.FileStream(_registeredLogFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            _reader = new System.IO.StreamReader(stream);
+            FileStream stream = new(_registeredLogFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            _reader = new StreamReader(stream);
             ReadToEnd();
         }
 
@@ -65,10 +57,7 @@ namespace UnrealAutomationCommon.Unreal
             while (!_reader.EndOfStream)
             {
                 string line = _reader.ReadLine();
-                if (UnrealLogUtils.IsTimestampedLog(line))
-                {
-                    line = UnrealLogUtils.RemoveTimestamp(line);
-                }
+                if (UnrealLogUtils.IsTimestampedLog(line)) line = UnrealLogUtils.RemoveTimestamp(line);
                 LineLogged?.Invoke(line);
             }
         }

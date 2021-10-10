@@ -7,7 +7,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            Arguments args = new Arguments();
+            Arguments args = new();
             args.SetFlag("projectfiles");
             args.SetKeyPath("project", GetTarget(operationParameters).UProjectPath);
             args.SetFlag("game");

@@ -1,29 +1,24 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Operations
 {
     public class OperationParameters : INotifyPropertyChanged
     {
-        private IOperationTarget _target;
-
-        private BindingList<OperationOptions> _optionsInstances = new BindingList<OperationOptions>();
-
         private string _additionalArguments;
 
-        [JsonIgnore]
-        public string OutputPathOverride { get; set; }
-
-        public event PropertyChangedEventHandler PropertyChanged;
+        private IOperationTarget _target;
 
         public OperationParameters()
         {
-            _optionsInstances.ListChanged += ((sender, args) => OnPropertyChanged(nameof(OptionsInstances)));
+            OptionsInstances.ListChanged += (sender, args) => OnPropertyChanged(nameof(OptionsInstances));
         }
 
-        public BindingList<OperationOptions> OptionsInstances => _optionsInstances;
+        [JsonIgnore] public string OutputPathOverride { get; set; }
+
+        public BindingList<OperationOptions> OptionsInstances { get; } = new();
 
         public IOperationTarget Target
         {
@@ -32,17 +27,12 @@ namespace UnrealAutomationCommon.Operations
             {
                 if (_target != value)
                 {
-                    if (_target != null)
-                    {
-                        _target.PropertyChanged -= TargetChanged;
-                    }
+                    if (_target != null) _target.PropertyChanged -= TargetChanged;
                     _target = value;
-                    if (_target != null)
-                    {
-                        _target.PropertyChanged += TargetChanged;
-                    }
+                    if (_target != null) _target.PropertyChanged += TargetChanged;
                     OnPropertyChanged();
                 }
+
                 void TargetChanged(object sender, PropertyChangedEventArgs args)
                 {
                     OnPropertyChanged();
@@ -60,15 +50,13 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
+        public event PropertyChangedEventHandler PropertyChanged;
+
         public T FindOptions<T>() where T : OperationOptions
         {
-            foreach (OperationOptions options in _optionsInstances)
-            {
+            foreach (OperationOptions options in OptionsInstances)
                 if (options.GetType() == typeof(T))
-                {
                     return (T)options;
-                }
-            }
 
             return null;
         }
@@ -77,28 +65,22 @@ namespace UnrealAutomationCommon.Operations
         {
             T options = FindOptions<T>();
 
-            if (options != null)
-            {
-                return options;
-            }
+            if (options != null) return options;
 
             options = (T)Activator.CreateInstance(typeof(T));
-            _optionsInstances.Add(options);
+            OptionsInstances.Add(options);
             return options;
         }
 
         public void SetOptions<T>(T options) where T : OperationOptions
         {
-            if (FindOptions<T>() != null)
-            {
-                throw new Exception("Parameters already has options of this type");
-            }
-            _optionsInstances.Add(options);
+            if (FindOptions<T>() != null) throw new Exception("Parameters already has options of this type");
+            OptionsInstances.Add(options);
         }
 
         public void ResetOptions()
         {
-            _optionsInstances.Clear();
+            OptionsInstances.Clear();
         }
 
         private void OnPropertyChanged([CallerMemberName] string name = null)

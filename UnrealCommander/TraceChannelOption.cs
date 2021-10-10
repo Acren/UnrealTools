@@ -6,8 +6,8 @@ namespace UnrealCommander
 {
     public class TraceChannelOption : INotifyPropertyChanged
     {
-        private TraceChannel _traceChannel = null;
-        private bool _enabled = false;
+        private bool _enabled;
+        private TraceChannel _traceChannel;
 
         public TraceChannel TraceChannel
         {

@@ -1,6 +1,6 @@
 ﻿namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    class GameOptions
+    internal class GameOptions
     {
     }
 }

@@ -2,11 +2,11 @@
 {
     public class PluginBuildOptions : OperationOptions
     {
-        public Option<bool> StrictIncludes { get; }
-
         public PluginBuildOptions()
         {
             StrictIncludes = new Option<bool>(OptionChanged, false);
         }
+
+        public Option<bool> StrictIncludes { get; }
     }
 }

@@ -1,8 +1,8 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Xml;
+using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -51,26 +51,20 @@ namespace UnrealAutomationCommon.Unreal
 
         public static TestReport Load(string filePath)
         {
-            if (!File.Exists(filePath))
-            {
-                return null;
-            }
+            if (!File.Exists(filePath)) return null;
             return JsonConvert.DeserializeObject<TestReport>(File.ReadAllText(filePath));
         }
 
         public TestState GetState()
         {
-            if (Failed > 0)
-            {
-                return TestState.Fail;
-            }
+            if (Failed > 0) return TestState.Fail;
 
             return TestState.Success;
         }
 
         public XmlDocument ToJUnit(bool includeWarnings)
         {
-            XmlDocument doc = new XmlDocument();
+            XmlDocument doc = new();
             XmlElement testSuites = doc.CreateElement("testsuites");
             doc.AppendChild(testSuites);
             testSuites.SetAttribute("duration", TotalDuration.ToString());
@@ -88,18 +82,15 @@ namespace UnrealAutomationCommon.Unreal
                 testCase.SetAttribute("name", test.TestDisplayName);
 
                 TestEventType mostSevere = TestEventType.Info;
-                List<string> failureLines = new List<string>();
+                var failureLines = new List<string>();
                 foreach (TestEntry testEntry in test.Entries)
                 {
                     bool includeEvent = testEntry.Event.Type == TestEventType.Error ||
-                                        (testEntry.Event.Type == TestEventType.Warning && includeWarnings);
+                                        testEntry.Event.Type == TestEventType.Warning && includeWarnings;
                     if (includeEvent)
                     {
                         failureLines.Add(EnumUtils.GetName(testEntry.Event.Type) + ": " + testEntry.Event.Message);
-                        if (testEntry.Event.Type > mostSevere)
-                        {
-                            mostSevere = testEntry.Event.Type;
-                        }
+                        if (testEntry.Event.Type > mostSevere) mostSevere = testEntry.Event.Type;
                     }
                 }
 

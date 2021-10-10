@@ -1,27 +1,23 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.IO;
+using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
     public class Plugin : OperationTarget, IEngineInstallProvider
     {
-        private string _uPluginPath;
         private PluginDescriptor _pluginDescriptor;
+        private string _uPluginPath;
         private FileSystemWatcher _watcher;
 
         [JsonConstructor]
         public Plugin([JsonProperty("UPluginPath")] string path)
         {
             if (IsPluginFile(path))
-            {
                 UPluginPath = path;
-            }
             else
-            {
                 UPluginPath = FindUPlugin(path);
-            }
         }
 
         [JsonProperty]
@@ -39,10 +35,7 @@ namespace UnrealAutomationCommon.Unreal
                     _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uPluginPath));
                     _watcher.Changed += (Sender, Args) =>
                     {
-                        if (Args.FullPath == UPluginPath)
-                        {
-                            LoadDescriptor();
-                        }
+                        if (Args.FullPath == UPluginPath) LoadDescriptor();
                     };
                     _watcher.EnableRaisingEvents = true;
                 }
@@ -52,16 +45,12 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public Project HostProject => new Project(HostProjectUProjectPath);
+        public Project HostProject => new(HostProjectUProjectPath);
 
         public override IOperationTarget ParentTarget => HostProject;
 
-        public override string Name => Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
+        public override string Name => DirectoryName; // Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
         public override string TargetPath => UPluginPath;
-
-        public EngineInstall EngineInstall => PluginDescriptor?.EngineInstall;
-
-        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : PluginDescriptor?.EngineVersion;
 
         public PluginDescriptor PluginDescriptor
         {
@@ -88,10 +77,7 @@ namespace UnrealAutomationCommon.Unreal
 
                 while (uProjectFiles.Length < 1)
                 {
-                    if (Path.GetPathRoot(projectPath) == projectPath)
-                    {
-                        throw new Exception("No .uproject found in " + projectPath);
-                    }
+                    if (Path.GetPathRoot(projectPath) == projectPath) throw new Exception("No .uproject found in " + projectPath);
 
                     projectPath = Path.GetFullPath(Path.Combine(projectPath, @"..\")); // Up 1 level
                     uProjectFiles = Directory.GetFiles(projectPath, "*.uproject");
@@ -102,6 +88,10 @@ namespace UnrealAutomationCommon.Unreal
                 return uProjectPath;
             }
         }
+
+        public EngineInstall EngineInstall => PluginDescriptor?.EngineInstall;
+
+        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : PluginDescriptor?.EngineVersion;
 
         public override void LoadDescriptor()
         {
@@ -115,10 +105,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
-            if (EngineInstall == null)
-            {
-                return false;
-            }
+            if (EngineInstall == null) return false;
 
             return EngineInstall.SupportsConfiguration(configuration);
         }
@@ -130,19 +117,12 @@ namespace UnrealAutomationCommon.Unreal
 
         public static string FindUPlugin(string path)
         {
-            if (!Directory.Exists(path))
-            {
-                return null;
-            }
+            if (!Directory.Exists(path)) return null;
 
             string[] files = Directory.GetFiles(path);
             foreach (string file in files)
-            {
-                if (System.IO.Path.GetExtension(file).Equals(".uplugin", StringComparison.InvariantCultureIgnoreCase))
-                {
+                if (Path.GetExtension(file).Equals(".uplugin", StringComparison.InvariantCultureIgnoreCase))
                     return file;
-                }
-            }
 
             return null;
         }

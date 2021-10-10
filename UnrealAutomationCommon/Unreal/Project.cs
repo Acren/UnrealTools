@@ -1,34 +1,21 @@
-﻿using Newtonsoft.Json;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
     public class Project : OperationTarget, IPackageProvider, IEngineInstallProvider
     {
-        private string _uProjectPath;
         private ProjectDescriptor _projectDescriptor;
+        private string _uProjectPath;
         private FileSystemWatcher _watcher;
 
         [JsonConstructor]
         public Project(string uProjectPath)
         {
-            if (ProjectPaths.Instance.IsTargetFile(uProjectPath))
-            {
-                UProjectPath = uProjectPath;
-            }
+            if (ProjectPaths.Instance.IsTargetFile(uProjectPath)) UProjectPath = uProjectPath;
         }
-
-        public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
-
-        public override string TargetPath => UProjectPath;
-
-        public EngineInstall EngineInstall => ProjectDescriptor?.EngineInstall;
-
-        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : ProjectDescriptor?.EngineAssociation;
-
-        public Package ProvidedPackage => GetStagedPackage();
 
         [JsonProperty]
         public string UProjectPath
@@ -45,10 +32,7 @@ namespace UnrealAutomationCommon.Unreal
                     _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uProjectPath));
                     _watcher.Changed += (Sender, Args) =>
                     {
-                        if (Args.FullPath == UProjectPath)
-                        {
-                            LoadDescriptor();
-                        }
+                        if (Args.FullPath == UProjectPath) LoadDescriptor();
                     };
                     _watcher.EnableRaisingEvents = true;
 
@@ -68,6 +52,23 @@ namespace UnrealAutomationCommon.Unreal
                 OnPropertyChanged(nameof(EngineInstall));
                 OnPropertyChanged(nameof(EngineInstallName));
             }
+        }
+
+        public EngineInstall EngineInstall => ProjectDescriptor?.EngineInstall;
+
+        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : ProjectDescriptor?.EngineAssociation;
+
+        public override string Name => DirectoryName; //Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+
+        public override string TargetPath => UProjectPath;
+
+        public Package ProvidedPackage => GetStagedPackage();
+
+        public override bool SupportsConfiguration(BuildConfiguration configuration)
+        {
+            if (EngineInstall == null) return false;
+
+            return EngineInstall.SupportsConfiguration(configuration);
         }
 
         public override void LoadDescriptor()
@@ -107,27 +108,16 @@ namespace UnrealAutomationCommon.Unreal
             return Path.Combine(GetProjectPath(), "Saved", "Logs");
         }
 
-        public override bool SupportsConfiguration(BuildConfiguration configuration)
-        {
-            if (EngineInstall == null)
-            {
-                return false;
-            }
-
-            return EngineInstall.SupportsConfiguration(configuration);
-        }
-
         public List<Plugin> GetPlugins()
         {
-            List<Plugin> plugins = new List<Plugin>();
+            var plugins = new List<Plugin>();
             foreach (string pluginPath in Directory.GetDirectories(Path.Combine(GetProjectPath(), "Plugins")))
             {
-                Plugin plugin = new Plugin(pluginPath);
+                Plugin plugin = new(pluginPath);
                 plugins.Add(plugin);
             }
 
             return plugins;
         }
-
     }
 }

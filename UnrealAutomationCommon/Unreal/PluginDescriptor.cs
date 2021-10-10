@@ -1,5 +1,5 @@
-﻿using Newtonsoft.Json;
-using System.IO;
+﻿using System.IO;
+using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -10,25 +10,22 @@ namespace UnrealAutomationCommon.Unreal
         public bool IsBetaVersion { get; set; }
         public string EngineVersion { get; set; }
 
-        public static PluginDescriptor Load(string uPluginPath)
-        {
-            FileUtils.WaitForFileReadable(uPluginPath);
-            return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
-        }
-
         public EngineInstall EngineInstall
         {
             get
             {
-                if (EngineVersion == null)
-                {
-                    return EngineInstallFinder.GetDefaultEngineInstall();
-                }
+                if (EngineVersion == null) return EngineInstallFinder.GetDefaultEngineInstall();
 
                 EngineInstallVersion version = new(EngineVersion);
 
                 return EngineInstallFinder.GetEngineInstall(version);
             }
+        }
+
+        public static PluginDescriptor Load(string uPluginPath)
+        {
+            FileUtils.WaitForFileReadable(uPluginPath);
+            return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
         }
 
         public string GetEngineInstallDirectory()
@@ -38,7 +35,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public string GetRunUATPath()
         {
-            return EnginePaths.GetRunUATPath(EngineInstall);
+            return EngineInstall.GetRunUATPath();
         }
     }
 }

@@ -9,13 +9,9 @@ namespace UnrealAutomationCommon.Operations
 
     public class OperationRunner : IOperationLogger
     {
-        public Operation Operation { get; private set; }
-        private OperationParameters _operationParameters;
-        private int _lineCount = 0;
-
-        private CancellationTokenSource _cancellationTokenSource = new();
-
-        public event OperationOutputEventHandler Output;
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly OperationParameters _operationParameters;
+        private int _lineCount;
 
         public OperationRunner(Operation operation, OperationParameters operationParameters)
         {
@@ -23,18 +19,24 @@ namespace UnrealAutomationCommon.Operations
             _operationParameters = operationParameters;
         }
 
+        public Operation Operation { get; }
+
+        public event OperationOutputEventHandler Output;
+
+        public void Log(string line, LogVerbosity verbosity)
+        {
+            OutputLine(line, verbosity);
+        }
+
         public async Task<OperationResult> Run()
         {
             string outputPath = Operation.GetOutputPath(_operationParameters);
             FileUtils.DeleteDirectoryIfExists(outputPath);
 
-            Task<OperationResult> task = Operation.Execute(_operationParameters, this, _cancellationTokenSource.Token);
+            var task = Operation.Execute(_operationParameters, this, _cancellationTokenSource.Token);
 
             FlagOptions flagOptions = _operationParameters.FindOptions<FlagOptions>();
-            if (flagOptions is { WaitForAttach: true })
-            {
-                Output?.Invoke("-WaitForAttach was specified, attach now", LogVerbosity.Log);
-            }
+            if (flagOptions is { WaitForAttach: true }) Output?.Invoke("-WaitForAttach was specified, attach now", LogVerbosity.Log);
 
             return await task;
         }
@@ -45,20 +47,12 @@ namespace UnrealAutomationCommon.Operations
             _cancellationTokenSource.Cancel();
         }
 
-        void OutputLine(string line, LogVerbosity verbosity)
+        private void OutputLine(string line, LogVerbosity verbosity)
         {
-            if (string.IsNullOrEmpty(line))
-            {
-                return;
-            }
+            if (string.IsNullOrEmpty(line)) return;
 
             _lineCount++;
             Output?.Invoke("[" + _lineCount + "]: " + line, verbosity);
-        }
-
-        public void Log(string line, LogVerbosity verbosity)
-        {
-            OutputLine(line, verbosity);
         }
     }
 }

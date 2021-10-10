@@ -31,13 +31,9 @@ namespace UnrealAutomationCommon.Operations
                 {
                     IOperationTarget parent = currentRoot.ParentTarget;
                     if (parent != null)
-                    {
                         currentRoot = parent;
-                    }
                     else
-                    {
                         break;
-                    }
                 }
 
                 return currentRoot;
@@ -52,16 +48,16 @@ namespace UnrealAutomationCommon.Operations
     [JsonObject(MemberSerialization.OptIn)]
     public abstract class OperationTarget : IOperationTarget
     {
+        private string _testName = string.Empty;
         public abstract string Name { get; }
         public abstract string TargetPath { get; }
 
         public virtual IOperationTarget ParentTarget => null;
 
         public string TargetDirectory => Path.GetDirectoryName(TargetPath);
+        public string DirectoryName => TargetDirectory != null ? new DirectoryInfo(TargetDirectory).Name : null;
 
         public bool IsRoot => ParentTarget == null;
-
-        private string _testName = string.Empty;
 
         [JsonProperty]
         public string TestName
@@ -81,12 +77,12 @@ namespace UnrealAutomationCommon.Operations
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        public abstract void LoadDescriptor();
-
         public virtual bool SupportsConfiguration(BuildConfiguration configuration)
         {
             return true;
         }
+
+        public abstract void LoadDescriptor();
 
         protected void OnPropertyChanged([CallerMemberName] string name = null)
         {
@@ -95,14 +91,9 @@ namespace UnrealAutomationCommon.Operations
 
         public override bool Equals(object other)
         {
-            if (other == null || other.GetType() != GetType())
-            {
-                return false;
-            }
+            if (other == null || other.GetType() != GetType()) return false;
 
             return (other as OperationTarget).TargetPath == TargetPath;
         }
-
-
     }
 }

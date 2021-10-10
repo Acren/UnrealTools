@@ -8,12 +8,9 @@ namespace UnrealAutomationCommon.Unreal
     {
         public static Arguments MakeArguments(OperationParameters operationParameters, string outputhPath, bool uProjectPath = false)
         {
-            Arguments arguments = new Arguments();
+            Arguments arguments = new();
 
-            if (uProjectPath && operationParameters.Target is Project project)
-            {
-                arguments.SetPath(project.UProjectPath);
-            }
+            if (uProjectPath && operationParameters.Target is Project project) arguments.SetPath(project.UProjectPath);
 
             arguments.SetFlag("stdout");
             arguments.SetFlag("FullStdOutLogOutput");
@@ -23,31 +20,19 @@ namespace UnrealAutomationCommon.Unreal
 
             if (useInsights)
             {
-                List<string> traceChannels = new List<string>();
-                foreach (TraceChannel channel in operationParameters.RequestOptions<InsightsOptions>().TraceChannels)
-                {
-                    traceChannels.Add(channel.Key);
-                }
+                var traceChannels = new List<string>();
+                foreach (TraceChannel channel in operationParameters.RequestOptions<InsightsOptions>().TraceChannels) traceChannels.Add(channel.Key);
 
                 arguments.SetKeyValue("trace", string.Join(",", traceChannels));
 
-                if (traceChannels.Contains("cpu"))
-                {
-                    arguments.SetFlag("statnamedevents");
-                }
+                if (traceChannels.Contains("cpu")) arguments.SetFlag("statnamedevents");
 
                 arguments.SetKeyValue("tracehost", "127.0.0.1");
             }
 
-            if (operationParameters.RequestOptions<FlagOptions>().StompMalloc)
-            {
-                arguments.SetFlag("stompmalloc");
-            }
+            if (operationParameters.RequestOptions<FlagOptions>().StompMalloc) arguments.SetFlag("stompmalloc");
 
-            if (operationParameters.RequestOptions<FlagOptions>().WaitForAttach)
-            {
-                arguments.SetFlag("waitforattach");
-            }
+            if (operationParameters.RequestOptions<FlagOptions>().WaitForAttach) arguments.SetFlag("waitforattach");
 
             AutomationOptions automationOpts = operationParameters.RequestOptions<AutomationOptions>();
             if (automationOpts.RunTests)
@@ -77,6 +62,5 @@ namespace UnrealAutomationCommon.Unreal
 
             return arguments;
         }
-
     }
 }

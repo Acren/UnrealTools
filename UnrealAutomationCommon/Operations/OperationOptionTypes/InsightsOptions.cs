@@ -18,21 +18,15 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
             get => _traceChannels;
             private set
             {
-                if (_traceChannels != null)
-                {
-                    _traceChannels.ListChanged -= CollectionChanged;
-                }
+                if (_traceChannels != null) _traceChannels.ListChanged -= CollectionChanged;
                 _traceChannels = value;
-                if (_traceChannels != null)
-                {
-                    _traceChannels.ListChanged += CollectionChanged;
-                }
+                if (_traceChannels != null) _traceChannels.ListChanged += CollectionChanged;
+
                 void CollectionChanged(object sender, ListChangedEventArgs args)
                 {
                     OnPropertyChanged();
                 }
             }
-
         }
     }
 }

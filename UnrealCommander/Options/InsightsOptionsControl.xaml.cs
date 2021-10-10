@@ -5,23 +5,22 @@ using UnrealAutomationCommon.Unreal;
 namespace UnrealCommander.Options
 {
     /// <summary>
-    /// Interaction logic for InsightsOptionsControl.xaml
+    ///     Interaction logic for InsightsOptionsControl.xaml
     /// </summary>
-    public partial class InsightsOptionsControl : OptionsUserControl/*<InsightsOptions>*/
+    public partial class InsightsOptionsControl : OptionsUserControl /*<InsightsOptions>*/
     {
-        private InsightsOptions Options => DataContext as InsightsOptions;
-
         public InsightsOptionsControl()
         {
             InitializeComponent();
 
-            foreach (TraceChannel channel in TraceChannels.Channels)
-            {
-                TraceChannelOptions.Add(new TraceChannelOption() { TraceChannel = channel, Enabled = false });
-            }
+            foreach (TraceChannel channel in TraceChannels.Channels) TraceChannelOptions.Add(new TraceChannelOption { TraceChannel = channel, Enabled = false });
 
             TraceChannelOptions.ListChanged += TraceChannelOptions_ListChanged;
         }
+
+        private InsightsOptions Options => DataContext as InsightsOptions;
+
+        public BindingList<TraceChannelOption> TraceChannelOptions { get; set; } = new();
 
         public override void EndInit()
         {
@@ -39,26 +38,17 @@ namespace UnrealCommander.Options
             Options.TraceChannels.Clear();
 
             foreach (TraceChannelOption option in TraceChannelOptions)
-            {
                 if (option.Enabled)
-                {
                     Options.TraceChannels.Add(option.TraceChannel);
-                }
-            }
         }
 
         private void UpdateOptionsFromChannels()
         {
             TraceChannelOptions.RaiseListChangedEvents = false;
 
-            foreach (TraceChannelOption option in TraceChannelOptions)
-            {
-                option.Enabled = Options.TraceChannels.Contains(option.TraceChannel);
-            }
+            foreach (TraceChannelOption option in TraceChannelOptions) option.Enabled = Options.TraceChannels.Contains(option.TraceChannel);
 
             TraceChannelOptions.RaiseListChangedEvents = true;
         }
-
-        public BindingList<TraceChannelOption> TraceChannelOptions { get; set; } = new BindingList<TraceChannelOption>();
     }
 }

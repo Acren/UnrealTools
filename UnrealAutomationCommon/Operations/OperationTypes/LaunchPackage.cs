@@ -13,15 +13,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
         {
             string baseError = base.CheckRequirementsSatisfied(operationParameters);
-            if (baseError != null)
-            {
-                return baseError;
-            }
+            if (baseError != null) return baseError;
 
-            if (GetTarget(operationParameters).ProvidedPackage == null)
-            {
-                return "Provided package is null";
-            }
+            if (GetTarget(operationParameters).ProvidedPackage == null) return "Provided package is null";
 
             return null;
         }
@@ -42,8 +36,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 // Packages don't have a test report template, but the engine still expects it
                 // Copy report template from engine to package, otherwise engine automation will error
-                string reportTemplateName = "Report-Template.html";
-                string reportTemplateSubdir = "Engine/Content/Automation";
+                var reportTemplateName = "Report-Template.html";
+                var reportTemplateSubdir = "Engine/Content/Automation";
                 string reportTemplateSubpath = Path.Combine(reportTemplateSubdir, reportTemplateName);
                 string packageDir = GetTarget(OperationParameters).ProvidedPackage.TargetDirectory;
                 string reportTemplateDir = Path.Combine(packageDir, reportTemplateSubdir);
@@ -51,14 +45,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 if (!File.Exists(reportTemplatePath))
                 {
                     string engineReportTemplate = Path.Combine((GetTarget(OperationParameters) as IEngineInstallProvider).EngineInstall.InstallDirectory, reportTemplateSubpath);
-                    if (!File.Exists(engineReportTemplate))
-                    {
-                        throw new Exception("Expected engine report template");
-                    }
+                    if (!File.Exists(engineReportTemplate)) throw new Exception("Expected engine report template");
                     Directory.CreateDirectory(reportTemplateDir);
                     File.Copy(engineReportTemplate, reportTemplatePath);
                 }
             }
+
             return await base.OnExecuted(token);
         }
 
@@ -79,6 +71,5 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
     public class LaunchStagedPackage : LaunchPackage<Project>
     {
-
     }
 }

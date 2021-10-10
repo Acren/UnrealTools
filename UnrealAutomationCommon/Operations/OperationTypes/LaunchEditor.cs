@@ -9,6 +9,5 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             return new Command(GetTarget(operationParameters).EngineInstall.GetEditorExe(operationParameters), UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true));
         }
-
     }
 }

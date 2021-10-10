@@ -1,7 +1,7 @@
 ﻿namespace UnrealCommander.Options
 {
     /// <summary>
-    /// Interaction logic for PackageOptionsControl.xaml
+    ///     Interaction logic for PackageOptionsControl.xaml
     /// </summary>
     public partial class PackageOptionsControl : OptionsUserControl
     {

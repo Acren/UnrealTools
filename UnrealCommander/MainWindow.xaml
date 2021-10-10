@@ -3,7 +3,6 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:baseOperations="clr-namespace:UnrealAutomationCommon.Operations.BaseOperations;assembly=UnrealAutomationCommon"
         xmlns:operationOptionTypes="clr-namespace:UnrealAutomationCommon.Operations.OperationOptionTypes;assembly=UnrealAutomationCommon"
         xmlns:Unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
         xmlns:local="clr-namespace:UnrealCommander"
@@ -17,75 +16,78 @@
         <DataGrid Name="TargetGrid" ItemsSource="{ Binding Path=PersistentState.Targets}"
                   SelectedItem="{Binding Path=SelectedTarget, Mode=TwoWay}"
                   ContextMenuOpening="TargetGrid_OnContextMenuOpening"
-                  AutoGenerateColumns="False" CanUserAddRows="True" CanUserSortColumns="True" HorizontalScrollBarVisibility="Hidden"
+                  AutoGenerateColumns="False" CanUserAddRows="True" CanUserSortColumns="True"
+                  HorizontalScrollBarVisibility="Hidden"
                   Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
-                <ContextMenu>
-                </ContextMenu>
+                <ContextMenu />
             </DataGrid.ContextMenu>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Name" IsReadOnly="True" Width="2*">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
-                            <Setter Property="Text" Value="{Binding Name}"/>
+                            <Setter Property="Text" Value="{Binding Name}" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsRoot}" Value="False">
-                                    <Setter Property="Text" Value="{Binding Name, StringFormat={}     {0}}"/>
+                                    <Setter Property="Text" Value="{Binding Name, StringFormat={}      {0}}" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
-                <DataGridTextColumn Header="Type" IsReadOnly="True" Binding="{Binding TypeName}"/>
-                <DataGridTextColumn Header="Location" IsReadOnly="True" Binding="{Binding TargetPath}" Width="10*"/>
-                <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstallName)}"/>
-                <DataGridTextColumn Header="Engine Location" IsReadOnly="True" Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstall).LocationString}" />
+                <DataGridTextColumn Header="Type" IsReadOnly="True" Binding="{Binding TypeName}" />
+                <DataGridTextColumn Header="Location" IsReadOnly="True" Binding="{Binding TargetPath}" Width="10*" />
+                <DataGridTextColumn Header="Engine" IsReadOnly="True"
+                                    Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstallName)}" />
+                <DataGridTextColumn Header="Engine Location" IsReadOnly="True"
+                                    Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstall).LocationString}" />
             </DataGrid.Columns>
         </DataGrid>
-        <DockPanel DockPanel.Dock="Top" Margin="10,10,10,0" >
-            <TextBlock DockPanel.Dock="Left" Text="{Binding Status}"/>
+        <DockPanel DockPanel.Dock="Top" Margin="10,10,10,0">
+            <TextBlock DockPanel.Dock="Left" Text="{Binding Status}" />
             <Button DockPanel.Dock="Right" Click="AddTarget" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
                 <Run Text="Add" />
             </Button>
         </DockPanel>
         <Grid Margin="10,0,10,10" Height="Auto">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"></RowDefinition>
-                <RowDefinition Height="Auto"></RowDefinition>
-                <RowDefinition Height="*"></RowDefinition>
-                <RowDefinition Height="Auto"></RowDefinition>
-                <RowDefinition Height="Auto"></RowDefinition>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <ItemsControl>
                 <ItemsControl.Resources>
-                    <CollectionViewSource x:Key="OptionsCollection" Source="{Binding EnabledOptionSets}"/>
+                    <CollectionViewSource x:Key="OptionsCollection" Source="{Binding EnabledOptionSets}" />
                     <DataTemplate DataType="{x:Type operations:OperationOptions}">
-                        <local:OptionsContainer Header="{Binding Path=Name}" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
+                        <local:OptionsContainer Header="{Binding Path=Name}" Margin="0,5" Padding="10"
+                                                Style="{StaticResource OptionsContainer}">
                             <StackPanel VerticalAlignment="Center">
                                 <StackPanel.Resources>
                                     <DataTemplate DataType="{x:Type operationOptionTypes:BuildConfigurationOptions}">
-                                        <options:BuildConfigurationOptionsControl DataContext="{Binding}"/>
+                                        <options:BuildConfigurationOptionsControl DataContext="{Binding}" />
                                     </DataTemplate>
                                     <DataTemplate DataType="{x:Type operationOptionTypes:InsightsOptions}">
-                                        <options:InsightsOptionsControl DataContext="{Binding}"/>
+                                        <options:InsightsOptionsControl DataContext="{Binding}" />
                                     </DataTemplate>
                                     <DataTemplate DataType="{x:Type operationOptionTypes:FlagOptions}">
-                                        <options:FlagOptionsControl DataContext="{Binding}"/>
+                                        <options:FlagOptionsControl DataContext="{Binding}" />
                                     </DataTemplate>
                                     <DataTemplate DataType="{x:Type operationOptionTypes:AutomationOptions}">
-                                        <options:AutomationOptionsControl DataContext="{Binding}"/>
+                                        <options:AutomationOptionsControl DataContext="{Binding}" />
                                     </DataTemplate>
                                     <DataTemplate DataType="{x:Type operationOptionTypes:PackageOptions}">
-                                        <options:PackageOptionsControl DataContext="{Binding}"/>
+                                        <options:PackageOptionsControl DataContext="{Binding}" />
                                     </DataTemplate>
                                     <DataTemplate DataType="{x:Type operationOptionTypes:PluginBuildOptions}">
-                                        <options:PluginBuildOptionsControl DataContext="{Binding}"/>
+                                        <options:PluginBuildOptionsControl DataContext="{Binding}" />
                                     </DataTemplate>
                                     <DataTemplate DataType="{x:Type operationOptionTypes:PluginDeployOptions}">
-                                        <options:PluginDeployOptionsControl DataContext="{Binding}"/>
+                                        <options:PluginDeployOptionsControl DataContext="{Binding}" />
                                     </DataTemplate>
                                 </StackPanel.Resources>
-                                <ContentPresenter Content="{Binding}"/>
+                                <ContentPresenter Content="{Binding}" />
                             </StackPanel>
                         </local:OptionsContainer>
                     </DataTemplate>
@@ -93,30 +95,34 @@
                 <ItemsControl.ItemsSource>
                     <CompositeCollection>
                         <StackPanel>
-                            <local:OptionsContainer Header="Operation" Margin="0,5" Padding="10" Style="{StaticResource OptionsContainer}">
+                            <local:OptionsContainer Header="Operation" Margin="0,5" Padding="10"
+                                                    Style="{StaticResource OptionsContainer}">
                                 <StackPanel VerticalAlignment="Center">
-                                    <options:OperationOptionsControl SelectedOperationType="{Binding Path=PersistentState.OperationType}" />
+                                    <options:OperationOptionsControl
+                                        SelectedOperationType="{Binding Path=PersistentState.OperationType}" />
                                 </StackPanel>
                             </local:OptionsContainer>
                         </StackPanel>
-                        <CollectionContainer Collection="{Binding Source={StaticResource OptionsCollection}}"/>
+                        <CollectionContainer Collection="{Binding Source={StaticResource OptionsCollection}}" />
                     </CompositeCollection>
                 </ItemsControl.ItemsSource>
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <WrapPanel/>
+                        <WrapPanel />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
             </ItemsControl>
             <GroupBox Header="Additional Arguments" Grid.Row="1" Margin="0,5" Padding="10">
-                <TextBox Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}"></TextBox>
+                <TextBox
+                    Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}" />
             </GroupBox>
-            <GroupBox Header="Output" Grid.Row="2" Margin="0,5" Padding="10" >
+            <GroupBox Header="Output" Grid.Row="2" Margin="0,5" Padding="10">
                 <ScrollViewer Name="OutputScrollViewer">
-                    <RichTextBox Name="OutputTextBox" IsReadOnly="True" Background="#202020" Foreground="#EEEEEE" FontFamily="Consolas">
+                    <RichTextBox Name="OutputTextBox" IsReadOnly="True" Background="#202020" Foreground="#EEEEEE"
+                                 FontFamily="Consolas">
                         <RichTextBox.Resources>
                             <Style TargetType="{x:Type Paragraph}">
-                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="Margin" Value="0" />
                             </Style>
                         </RichTextBox.Resources>
                         <RichTextBox.ContextMenu>
@@ -127,17 +133,21 @@
                     </RichTextBox>
                 </ScrollViewer>
             </GroupBox>
-            <GroupBox Header="Command" Grid.Row="3" Margin="0,5" Padding="10" >
-                <TextBox Name="CommandTextBox" IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"  TextWrapping="Wrap" FontFamily="Consolas"></TextBox>
+            <GroupBox Header="Command" Grid.Row="3" Margin="0,5" Padding="10">
+                <TextBox Name="CommandTextBox" IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"
+                         TextWrapping="Wrap" FontFamily="Consolas" />
             </GroupBox>
             <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
-                <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
-                    <TextBlock Text="Copy"></TextBlock>
+                <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2"
+                        Width="Auto" HorizontalAlignment="Right">
+                    <TextBlock Text="Copy" />
                 </Button>
-                <Button Click="Execute" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                <Button Click="Execute" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2" Width="Auto"
+                        HorizontalAlignment="Right">
                     <Run Text="{Binding Operation.OperationName, Mode=OneWay}" />
                 </Button>
-                <Button Click="Terminate" IsEnabled="{Binding IsRunningOperation}" Margin="0,5,5,5" Padding="20,2" Width="Auto" HorizontalAlignment="Right">
+                <Button Click="Terminate" IsEnabled="{Binding IsRunningOperation}" Margin="0,5,5,5" Padding="20,2"
+                        Width="Auto" HorizontalAlignment="Right">
                     <Run Text="Terminate" />
                 </Button>
             </WrapPanel>

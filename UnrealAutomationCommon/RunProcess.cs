@@ -8,14 +8,14 @@ namespace UnrealAutomationCommon
     {
         public static Process Run(ProcessStartInfo StartInfo)
         {
-            Process process = new Process { StartInfo = StartInfo };
+            Process process = new() { StartInfo = StartInfo };
             process.Start();
             return process;
         }
 
         public static Process Run(string File, string Args)
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo()
+            ProcessStartInfo startInfo = new()
             {
                 Arguments = Args,
                 FileName = File,
@@ -45,7 +45,7 @@ namespace UnrealAutomationCommon
         public static void OpenDirectory(string DirectoryPath)
         {
             Directory.CreateDirectory(DirectoryPath);
-            Process.Start(new ProcessStartInfo()
+            Process.Start(new ProcessStartInfo
             {
                 FileName = DirectoryPath,
                 UseShellExecute = true,

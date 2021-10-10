@@ -2,8 +2,8 @@
 {
     public class FlagOptions : OperationOptions
     {
-        private bool _stompMalloc = false;
-        private bool _waitForAttach = false;
+        private bool _stompMalloc;
+        private bool _waitForAttach;
 
         public override string Name => "Flags";
 

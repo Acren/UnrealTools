@@ -7,7 +7,7 @@
         <Style x:Key="OptionsContainer" TargetType="local:OptionsContainer">
             <Style.Triggers>
                 <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Visibility" Value="Collapsed"></Setter>
+                    <Setter Property="Visibility" Value="Collapsed" />
                 </Trigger>
             </Style.Triggers>
         </Style>

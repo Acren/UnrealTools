@@ -10,11 +10,11 @@ namespace UnrealAutomationCommon
         {
             return (
                 from domainAssembly in AppDomain.CurrentDomain.GetAssemblies()
-                    // alternative: from domainAssembly in domainAssembly.GetExportedTypes()
+                // alternative: from domainAssembly in domainAssembly.GetExportedTypes()
                 from assemblyType in domainAssembly.GetTypes()
-                    // where superType.IsAssignableFrom(assemblyType)
+                // where superType.IsAssignableFrom(assemblyType)
                 where assemblyType.IsSubclassOf(superType)
-                && !assemblyType.IsAbstract || includeAbstract
+                    && !assemblyType.IsAbstract || includeAbstract
                 select assemblyType).ToList();
         }
     }

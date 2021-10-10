@@ -1,5 +1,4 @@
-﻿using System;
-using System.Linq;
+﻿using System.Linq;
 
 namespace UnrealAutomationCommon
 {
@@ -7,12 +6,12 @@ namespace UnrealAutomationCommon
     {
         public static string SplitWordsByUppercase(this string str)
         {
-            return string.Concat(str.Select(x => Char.IsUpper(x) ? " " + x : x.ToString())).TrimStart(' ');
+            return string.Concat(str.Select(x => char.IsUpper(x) ? " " + x : x.ToString())).TrimStart(' ');
         }
 
         public static string AddQuotesIfContainsSpace(this string str)
         {
-            if (str.Any(Char.IsWhiteSpace))
+            if (str.Any(char.IsWhiteSpace))
             {
                 return "\"" + str + "\"";
             }

@@ -9,17 +9,11 @@ namespace UnrealCommander
     {
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
-            if (values.Length < 2)
-            {
-                return false;
-            }
+            if (values.Length < 2) return false;
 
             IList collection = (IList)values[0];
 
-            if (collection == null)
-            {
-                return false;
-            }
+            if (collection == null) return false;
 
             return collection.Contains(values[1]);
         }

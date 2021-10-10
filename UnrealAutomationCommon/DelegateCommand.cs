@@ -8,8 +8,6 @@ namespace UnrealAutomationCommon
         private readonly Predicate<object> _canExecute;
         private readonly Action<object> _execute;
 
-        public event EventHandler CanExecuteChanged;
-
         public DelegateCommand(Action<object> execute)
             : this(execute, null)
         {
@@ -21,6 +19,8 @@ namespace UnrealAutomationCommon
             _execute = execute;
             _canExecute = canExecute;
         }
+
+        public event EventHandler CanExecuteChanged;
 
         public bool CanExecute(object parameter)
         {

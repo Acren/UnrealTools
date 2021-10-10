@@ -2,9 +2,9 @@
 {
     public class EngineInstall
     {
+        public bool IsSourceBuild = false;
         public string Key { get; set; }
         public string InstallDirectory { get; set; }
-        public bool IsSourceBuild = false;
 
         public string DisplayName => Version.ToString();
         public string LocationString => IsSourceBuild ? InstallDirectory : "Launcher";
@@ -15,10 +15,8 @@
         {
             if (configuration == BuildConfiguration.Debug
                 || configuration == BuildConfiguration.Test)
-            {
                 // Only support Debug and Test in source builds
                 return IsSourceBuild;
-            }
 
             // Always support DebugGame, Development, Shipping
             return true;
@@ -26,10 +24,7 @@
 
         public string GetWindowsPlatformName()
         {
-            if (Version.MajorVersion >= 5)
-            {
-                return "Windows";
-            }
+            if (Version.MajorVersion >= 5) return "Windows";
 
             return "WindowsNoEditor";
         }

@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace UnrealAutomationCommon
 {
-    class FileUtils
+    internal class FileUtils
     {
         // placeInside: SourcePath directory will be copied inside DestinationPath, otherwise the copy will be renamed to DestinationPath
         public static void CopyDirectory(string SourcePath, string DestinationPath, bool placeInside = false)
@@ -47,12 +47,14 @@ namespace UnrealAutomationCommon
                 // If we do want an error then File.Copy will throw it
                 return;
             }
+
             string fileName = Path.GetFileName(SourceFilePath);
             string destinationFilePath = Path.Combine(DestinationDirectoryPath, fileName);
             if (Overwrite)
             {
                 DeleteFileIfExists(destinationFilePath);
             }
+
             File.Copy(SourceFilePath, destinationFilePath);
         }
 
@@ -128,7 +130,6 @@ namespace UnrealAutomationCommon
                 File.SetAttributes(file, FileAttributes.Normal);
 
                 File.Delete(file);
-
             }
 
             foreach (string dir in dirs)
@@ -137,7 +138,6 @@ namespace UnrealAutomationCommon
             }
 
             Directory.Delete(target_dir, true);
-
         }
 
         public static void CreateZipFromDirectory(string SourceDirectory, string DestinationArchiveFileName, bool IncludeBaseDirectory)
@@ -149,12 +149,12 @@ namespace UnrealAutomationCommon
         // Crude blocking way
         public static void WaitForFileReadable(string filePath)
         {
-            int secondsWaited = 0;
+            var secondsWaited = 0;
             while (true)
             {
                 try
                 {
-                    using (StreamReader stream = new StreamReader(filePath))
+                    using (StreamReader stream = new(filePath))
                     {
                         break;
                     }

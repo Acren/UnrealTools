@@ -7,9 +7,9 @@ using UnrealAutomationCommon.Unreal;
 
 namespace ParseTestReport
 {
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             Console.WriteLine("ParseTestReport for parsing Unreal test results");
 
@@ -60,7 +60,7 @@ namespace ParseTestReport
                 string jUnitPath = Path.Combine(directory, "junit.xml");
                 XmlDocument jUnit = report.ToJUnit(!noWarnings);
 
-                XmlWriterSettings settings = new XmlWriterSettings();
+                XmlWriterSettings settings = new();
                 settings.Indent = true;
                 XmlWriter writer = XmlWriter.Create(jUnitPath, settings);
 

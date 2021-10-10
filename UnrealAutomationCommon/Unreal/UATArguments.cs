@@ -7,21 +7,15 @@ namespace UnrealAutomationCommon.Unreal
     {
         public static Arguments MakeArguments(OperationParameters operationParameters)
         {
-            Arguments arguments = new Arguments();
+            Arguments arguments = new();
             arguments.SetArgument("BuildCookRun");
-            if (operationParameters.Target is Project project)
-            {
-                arguments.SetKeyPath("project", project.UProjectPath);
-            }
+            if (operationParameters.Target is Project project) arguments.SetKeyPath("project", project.UProjectPath);
             arguments.SetFlag("build");
-            string configuration = operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString();
+            var configuration = operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString();
             arguments.SetKeyValue("clientconfig", configuration);
             arguments.SetKeyValue("serverconfig", configuration);
 
-            if (operationParameters.RequestOptions<PackageOptions>().NoDebugInfo)
-            {
-                arguments.SetFlag("NoDebugInfo");
-            }
+            if (operationParameters.RequestOptions<PackageOptions>().NoDebugInfo) arguments.SetFlag("NoDebugInfo");
 
             arguments.AddAdditionalArguments(operationParameters);
 

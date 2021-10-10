@@ -7,11 +7,12 @@ namespace UnrealAutomationCommon.Unreal
     public static class Extensions
     {
         public static BuildConfiguration Hello;
+
         public static string ToString(this BuildConfiguration config)
         {
             try
             {
-                string EnumString = Enum.GetName((config.GetType()), config);
+                string EnumString = Enum.GetName(config.GetType(), config);
                 return EnumString;
             }
             catch

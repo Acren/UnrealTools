@@ -5,34 +5,34 @@ namespace UnrealAutomationCommon
 {
     public static class FlashWindow
     {
+        public const uint FLASHW_ALL = 3;
+        public const uint FLASHW_TIMERNOFG = 12;
+
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct FLASHWINFO
-        {
-            public UInt32 cbSize;
-            public IntPtr hwnd;
-            public UInt32 dwFlags;
-            public UInt32 uCount;
-            public Int32 dwTimeout;
-        }
-
-        public const UInt32 FLASHW_ALL = 3;
-        public const UInt32 FLASHW_TIMERNOFG = 12;
+        private static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
 
         public static void Flash(IntPtr hWnd)
         {
-            FLASHWINFO fInfo = new FLASHWINFO();
+            FLASHWINFO fInfo = new();
 
             fInfo.cbSize = Convert.ToUInt32(Marshal.SizeOf(fInfo));
             fInfo.hwnd = hWnd;
             fInfo.dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG;
-            fInfo.uCount = UInt32.MaxValue;
+            fInfo.uCount = uint.MaxValue;
             fInfo.dwTimeout = 0;
 
             FlashWindowEx(ref fInfo);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct FLASHWINFO
+        {
+            public uint cbSize;
+            public IntPtr hwnd;
+            public uint dwFlags;
+            public uint uCount;
+            public int dwTimeout;
         }
     }
 }

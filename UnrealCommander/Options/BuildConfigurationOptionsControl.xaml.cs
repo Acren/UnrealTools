@@ -6,28 +6,23 @@ namespace UnrealCommander.Options
 {
     public class AllowedBuildConfigurations
     {
-        public List<BuildConfiguration> Configurations { get; set; } = new List<BuildConfiguration>();
+        public List<BuildConfiguration> Configurations { get; set; } = new();
     }
 
     /// <summary>
-    /// Interaction logic for BuildConfigurationOptionsControl.xaml
+    ///     Interaction logic for BuildConfigurationOptionsControl.xaml
     /// </summary>
     public partial class BuildConfigurationOptionsControl : OptionsUserControl
     {
-
         public BuildConfigurationOptionsControl()
         {
             DataContextChanged += (sender, args) =>
             {
-                if (this.DataContext == null)
-                {
-                    return;
-                }
+                if (DataContext == null) return;
             };
             InitializeComponent();
         }
 
         public List<BuildConfiguration> BuildConfigurations => EnumUtils.GetAll<BuildConfiguration>();
-
     }
 }

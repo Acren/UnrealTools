@@ -8,7 +8,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            Arguments args = new Arguments();
+            Arguments args = new();
             args.SetArgument(GetTargetName(operationParameters) + "Editor");
             args.SetArgument("Win64");
             args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString());

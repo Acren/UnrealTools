@@ -1,18 +1,13 @@
-﻿using Newtonsoft.Json;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
+using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
 {
     public class EngineInstallVersion
     {
-        public int MajorVersion { get; set; }
-        public int MinorVersion { get; set; }
-        public int PatchVersion { get; set; }
-
         public EngineInstallVersion()
         {
-
         }
 
         public EngineInstallVersion(string versionString)
@@ -24,10 +19,7 @@ namespace UnrealAutomationCommon.Unreal
             if (verStrings.Length >= 1)
             {
                 MinorVersion = int.Parse(verStrings[1]);
-                if (verStrings.Length >= 2)
-                {
-                    PatchVersion = int.Parse(verStrings[2]);
-                }
+                if (verStrings.Length >= 2) PatchVersion = int.Parse(verStrings[2]);
             }
         }
 
@@ -38,6 +30,10 @@ namespace UnrealAutomationCommon.Unreal
             PatchVersion = fileVersion.FileBuildPart;
         }
 
+        public int MajorVersion { get; set; }
+        public int MinorVersion { get; set; }
+        public int PatchVersion { get; set; }
+
         public override string ToString()
         {
             return $"{MajorVersion}.{MinorVersion}.{PatchVersion}";
@@ -45,10 +41,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public static EngineInstallVersion Load(string buildVersionPath)
         {
-            if (!File.Exists(buildVersionPath))
-            {
-                return null;
-            }
+            if (!File.Exists(buildVersionPath)) return null;
             return JsonConvert.DeserializeObject<EngineInstallVersion>(File.ReadAllText(buildVersionPath));
         }
 
@@ -56,6 +49,5 @@ namespace UnrealAutomationCommon.Unreal
         {
             return MajorVersion == other.MajorVersion && MinorVersion == other.MinorVersion;
         }
-
     }
 }

@@ -7,9 +7,8 @@ namespace UnrealAutomationCommon.Unreal
 {
     public class LauncherInstalledEngineManifest
     {
-        public List<LauncherManifestAppInstallation> InstallationList { get; set; }
-
         public static string ManifestPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Epic\\UnrealEngineLauncher\\LauncherInstalled.dat");
+        public List<LauncherManifestAppInstallation> InstallationList { get; set; }
 
         public static LauncherInstalledEngineManifest Load()
         {
@@ -19,7 +18,7 @@ namespace UnrealAutomationCommon.Unreal
 
     public class LauncherManifestAppInstallation
     {
-        public string InstallLocation;
         public string AppName;
+        public string InstallLocation;
     }
 }

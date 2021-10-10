@@ -1,11 +1,11 @@
-﻿using Newtonsoft.Json.Linq;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
@@ -23,10 +23,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Project hostProject = plugin.HostProject;
             ProjectDescriptor projectDescriptor = hostProject.ProjectDescriptor;
 
-            if (!projectDescriptor.HasPluginEnabled(plugin.Name))
-            {
-                throw new Exception("Host project must have plugin enabled");
-            }
+            if (!projectDescriptor.HasPluginEnabled(plugin.Name)) throw new Exception("Host project must have plugin enabled");
 
             string branchName = VersionControlUtils.GetBranchName(hostProject.GetProjectPath());
             // Use the version if on any of these branches
@@ -35,16 +32,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             bool bStandardBranch = standardBranchNames.Contains(branchName, StringComparer.InvariantCultureIgnoreCase);
             if (!bStandardBranch)
-            {
                 foreach (string prefix in standardBranchPrefixes)
-                {
                     if (branchName.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase))
                     {
                         bStandardBranch = true;
                         break;
                     }
-                }
-            }
 
             Logger.Log("On branch '" + branchName + "'");
             string archiveVersionName;
@@ -95,33 +88,30 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Check copyright notice
 
             string hostProjectDefaultGameConfig = Path.Combine(hostProject.TargetDirectory, "Config", "DefaultGame.ini");
-            UnrealConfig config = new UnrealConfig(hostProjectDefaultGameConfig);
+            UnrealConfig config = new(hostProjectDefaultGameConfig);
             string copyrightNotice = config.GetSection("/Script/EngineSettings.GeneralProjectSettings").GetValue("CopyrightNotice");
 
             string sourcePath = Path.Combine(plugin.TargetDirectory, "Source");
-            string expectedComment = $"// {copyrightNotice}";
+            var expectedComment = $"// {copyrightNotice}";
             foreach (string file in Directory.EnumerateFiles(sourcePath, "*.*", SearchOption.AllDirectories))
             {
                 string firstLine;
-                using (StreamReader reader = new StreamReader(file))
+                using (StreamReader reader = new(file))
                 {
                     firstLine = reader.ReadLine();
                 }
+
                 if (firstLine != expectedComment)
                 {
-                    List<string> lines = File.ReadAllLines(file).ToList();
+                    var lines = File.ReadAllLines(file).ToList();
                     if (firstLine.StartsWith("//"))
-                    {
                         // Replace existing comment with expected comment
                         lines[0] = expectedComment;
-                    }
                     else
-                    {
                         // Insert expected comment
                         lines.Insert(0, expectedComment);
-                    }
                     File.WriteAllLines(file, lines);
-                    string relativePath = System.IO.Path.GetRelativePath(sourcePath, file);
+                    string relativePath = Path.GetRelativePath(sourcePath, file);
                     Logger.Log($"Updated copyright notice: {relativePath}");
                 }
             }
@@ -135,10 +125,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Target = hostProject
             };
 
-            if (!(await new BuildEditor().Execute(buildEditorParams, Logger, token)).Success)
-            {
-                throw new Exception("Failed to build host project");
-            }
+            if (!(await new BuildEditor().Execute(buildEditorParams, Logger, token)).Success) throw new Exception("Failed to build host project");
 
             AutomationOptions automationOpts = OperationParameters.FindOptions<AutomationOptions>();
             automationOpts.TestNameOverride = plugin.TestName;
@@ -150,10 +137,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 OperationParameters launchEditorParams = buildEditorParams;
                 launchEditorParams.SetOptions(automationOpts);
 
-                if (!(await new LaunchEditor().Execute(launchEditorParams, Logger, token)).Success)
-                {
-                    throw new Exception("Failed to launch host project");
-                }
+                if (!(await new LaunchEditor().Execute(launchEditorParams, Logger, token)).Success) throw new Exception("Failed to launch host project");
             }
 
             // Build plugin
@@ -163,7 +147,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string pluginBuildPath = Path.Combine(workingTempPath, @"PluginBuild", plugin.Name);
             FileUtils.DeleteDirectoryIfExists(pluginBuildPath);
 
-            OperationParameters buildPluginParams = new OperationParameters()
+            OperationParameters buildPluginParams = new()
             {
                 Target = plugin,
                 OutputPathOverride = pluginBuildPath
@@ -203,21 +187,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.CopySubdirectory(hostProject.GetProjectPath(), exampleProjectBuildPath, "Config");
 
             string projectIcon = projectName + ".png";
-            if (File.Exists(projectIcon))
-            {
-                FileUtils.CopyFile(hostProject.GetProjectPath(), exampleProjectBuildPath, projectIcon);
-            }
+            if (File.Exists(projectIcon)) FileUtils.CopyFile(hostProject.GetProjectPath(), exampleProjectBuildPath, projectIcon);
 
             // Copy other plugins
 
-            List<Plugin> sourcePlugins = hostProject.GetPlugins();
+            var sourcePlugins = hostProject.GetPlugins();
             foreach (Plugin sourcePlugin in sourcePlugins)
-            {
                 if (!sourcePlugin.Equals(plugin))
-                {
                     FileUtils.CopyDirectory(sourcePlugin.TargetDirectory, Path.Combine(exampleProjectBuildPath, "Plugins"), true);
-                }
-            }
 
             // Copy uproject 
             JObject uProjectContents = JObject.Parse(File.ReadAllText(hostProject.UProjectPath));
@@ -237,10 +214,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string installedPluginTestBuildArchivePath = Path.Combine(workingTempPath, @"InstalledPluginTestBuild");
             FileUtils.DeleteDirectoryIfExists(installedPluginTestBuildArchivePath);
 
-            Project exampleProjectBuild = new Project(exampleProjectBuildUProjectPath);
+            Project exampleProjectBuild = new(exampleProjectBuildUProjectPath);
 
-            PackageProject installedPluginPackageOperation = new PackageProject();
-            OperationParameters installedPluginPackageParams = new OperationParameters()
+            PackageProject installedPluginPackageOperation = new();
+            OperationParameters installedPluginPackageParams = new()
             {
                 Target = exampleProjectBuild,
                 OutputPathOverride = exampleProjectBuildPath
@@ -248,16 +225,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             OperationResult installedPluginPackageOperationResult = await installedPluginPackageOperation.Execute(installedPluginPackageParams, Logger, token);
 
-            if (!installedPluginPackageOperationResult.Success)
-            {
-                throw new Exception("Example project build with installed plugin failed");
-            }
+            if (!installedPluginPackageOperationResult.Success) throw new Exception("Example project build with installed plugin failed");
 
             // Test the package
 
             if (automationOpts.RunTests)
             {
-                OperationParameters testInstalledPluginBuildParams = new OperationParameters()
+                OperationParameters testInstalledPluginBuildParams = new()
                 {
                     Target = exampleProjectBuild
                 };
@@ -265,10 +239,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 OperationResult testResult = await new LaunchStagedPackage().Execute(testInstalledPluginBuildParams, Logger, token);
 
-                if (!testResult.Success)
-                {
-                    throw new Exception("Launch and test with installed plugin failed");
-                }
+                if (!testResult.Success) throw new Exception("Launch and test with installed plugin failed");
             }
 
             // Uninstall plugin from engine because test has completed
@@ -288,8 +259,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             FileUtils.DeleteDirectoryIfExists(demoExePath);
 
-            PackageProject demoPackageOperation = new PackageProject();
-            OperationParameters demoPackageParams = new OperationParameters()
+            PackageProject demoPackageOperation = new();
+            OperationParameters demoPackageParams = new()
             {
                 Target = new Project(exampleProjectBuildUProjectPath),
                 OutputPathOverride = demoExePath
@@ -301,10 +272,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, Logger, token);
 
-            if (!demoExePackageOperationResult.Success)
-            {
-                throw new Exception("Example project build failed");
-            }
+            if (!demoExePackageOperationResult.Success) throw new Exception("Example project build failed");
 
             //OperationParameters demoTestParams = new OperationParameters()
             //{
@@ -349,11 +317,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
                 FileUtils.DeleteOtherSubdirectories(exampleProjectBuildPath, allowedExampleProjectSubDirectoryNames);
 
-                List<Plugin> exampleProjectPlugins = exampleProjectBuild.GetPlugins();
+                var exampleProjectPlugins = exampleProjectBuild.GetPlugins();
                 string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
                 string[] allowedPluginFileExtensions = { ".uplugin" };
                 foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
-                {
                     if (exampleProjectPlugin.Name == plugin.Name)
                     {
                         // Delete target plugin from example project
@@ -365,7 +332,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
                         FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, allowedPluginFileExtensions);
                     }
-                }
 
                 // Delete debug files recursive
                 FileUtils.DeleteFilesWithExtension(exampleProjectBuildPath, new[] { ".pdb" }, SearchOption.AllDirectories);
@@ -398,10 +364,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     Logger.Log("Copying to archive output path");
                     Directory.CreateDirectory(archiveOutputPath);
-                    if (!Directory.Exists(archiveOutputPath))
-                    {
-                        throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
-                    }
+                    if (!Directory.Exists(archiveOutputPath)) throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
                     FileUtils.CopyFile(exampleProjectZipPath, archiveOutputPath, true, true);
                     FileUtils.CopyFile(pluginSubmissionZipPath, archiveOutputPath, true, true);
                 }
