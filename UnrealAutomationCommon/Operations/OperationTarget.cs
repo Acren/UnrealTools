@@ -44,6 +44,8 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
+        public bool IsRoot { get; }
+
         public bool SupportsConfiguration(BuildConfiguration configuration);
     }
 
@@ -56,6 +58,8 @@ namespace UnrealAutomationCommon.Operations
         public virtual IOperationTarget ParentTarget => null;
 
         public string TargetDirectory => Path.GetDirectoryName(TargetPath);
+
+        public bool IsRoot => ParentTarget == null;
 
         private string _testName = string.Empty;
 

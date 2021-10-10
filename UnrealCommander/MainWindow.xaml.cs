@@ -1,15 +1,18 @@
 ﻿using Microsoft.Win32;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
 using UnrealAutomationCommon;
@@ -21,6 +24,38 @@ using UnrealCommander.Options;
 
 namespace UnrealCommander
 {
+    public class TargetSorter : IComparer
+    {
+        public int Compare(object x, object y)
+        {
+            IOperationTarget targetX = x as IOperationTarget;
+            IOperationTarget targetY = y as IOperationTarget;
+
+            int rootNameComp = String.Compare(targetX.RootTarget.Name, targetY.RootTarget.Name, StringComparison.Ordinal);
+            if (rootNameComp != 0)
+            {
+                return rootNameComp;
+            }
+
+            int rootPathComp = String.Compare(targetX.RootTarget.TargetDirectory, targetY.RootTarget.TargetDirectory, StringComparison.Ordinal);
+            if (rootPathComp != 0)
+            {
+                return rootPathComp;
+            }
+
+            bool xRoot = targetX.RootTarget.Equals(targetX);
+            bool yRoot = targetY.RootTarget.Equals(targetY);
+            int rootComp = xRoot.CompareTo(yRoot);
+            if (rootComp != 0)
+            {
+                return rootComp * -1;
+            }
+
+            return 0;
+        }
+
+    }
+
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
@@ -39,16 +74,41 @@ namespace UnrealCommander
             PersistentState = PersistentData.Load();
             InitializeComponent();
 
+            TargetGrid.Sorting += (sender, e) =>
+            {
+                DataGridColumn column = e.Column;
+
+                // Prevent the built-in sort from sorting
+                e.Handled = true;
+
+                ListSortDirection direction = (column.SortDirection != ListSortDirection.Ascending) ? ListSortDirection.Ascending : ListSortDirection.Descending;
+
+                // Set the sort order on the column
+                column.SortDirection = direction;
+
+                // Use a ListCollectionView to do the sort
+                ListCollectionView lcv = (ListCollectionView)CollectionViewSource.GetDefaultView(PersistentState.Targets);
+
+                lcv.CustomSort = new TargetSorter();
+            };
+
             // Default sort
             TargetGrid.Items.SortDescriptions.Clear();
             TargetGrid.Items.SortDescriptions.Add(new SortDescription("TypeName", ListSortDirection.Descending));
             TargetGrid.Items.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
             TargetGrid.Items.Refresh();
 
+            // Trigger initial sort
+            var performSortMethod = typeof(DataGrid)
+                .GetMethod("PerformSort",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            performSortMethod?.Invoke(TargetGrid, new[] { TargetGrid.Columns[0] });
+
             // Refresh selected target, otherwise the grid does not highlight it for reasons currently unknown
             IOperationTarget target = SelectedTarget;
             SelectedTarget = null;
             SelectedTarget = target;
+
         }
 
         public IOperationTarget SelectedTarget
@@ -417,9 +477,5 @@ namespace UnrealCommander
             menu.Items.Add(new MenuItem() { Header = "Remove", Command = new DelegateCommand(o => { PersistentData.Get().RemoveTarget(SelectedTarget); }) });
         }
 
-        private void TargetGrid_OnSorting(object sender, DataGridSortingEventArgs e)
-        {
-
-        }
     }
 }

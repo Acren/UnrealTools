@@ -17,7 +17,6 @@
         <DataGrid Name="TargetGrid" ItemsSource="{ Binding Path=PersistentState.Targets}"
                   SelectedItem="{Binding Path=SelectedTarget, Mode=TwoWay}"
                   ContextMenuOpening="TargetGrid_OnContextMenuOpening"
-                  Sorting="TargetGrid_OnSorting"
                   AutoGenerateColumns="False" CanUserAddRows="True" CanUserSortColumns="True" HorizontalScrollBarVisibility="Hidden"
                   Margin="0,0,0,0" DockPanel.Dock="Top" Height="Auto">
             <DataGrid.ContextMenu>
@@ -25,7 +24,18 @@
                 </ContextMenu>
             </DataGrid.ContextMenu>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Name" IsReadOnly="True" Binding="{Binding Name}" Width="2*"/>
+                <DataGridTextColumn Header="Name" IsReadOnly="True" Width="2*">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="{Binding Name}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsRoot}" Value="False">
+                                    <Setter Property="Text" Value="{Binding Name, StringFormat={}     {0}}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
                 <DataGridTextColumn Header="Type" IsReadOnly="True" Binding="{Binding TypeName}"/>
                 <DataGridTextColumn Header="Location" IsReadOnly="True" Binding="{Binding TargetPath}" Width="10*"/>
                 <DataGridTextColumn Header="Engine" IsReadOnly="True" Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstallName)}"/>
