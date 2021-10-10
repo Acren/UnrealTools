@@ -47,7 +47,7 @@ namespace UnrealAutomationCommon.Unreal
                 string projectPath = Path.GetFullPath(Path.Combine(TargetDirectory,@"..\..\..\")); // Up 3 levels
                 if (ProjectPaths.Instance.IsTargetDirectory(projectPath))
                 {
-                    return new Project(projectPath);
+                    return new Project(ProjectPaths.Instance.FindTargetFile(projectPath));
                 }
 
                 return null;
