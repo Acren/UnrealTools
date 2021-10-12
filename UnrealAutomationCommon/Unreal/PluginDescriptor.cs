@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
@@ -15,7 +16,14 @@ namespace UnrealAutomationCommon.Unreal
         public static PluginDescriptor Load(string uPluginPath)
         {
             FileUtils.WaitForFileReadable(uPluginPath);
-            return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
+            try
+            {
+                return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
+            }
+            catch (Exception e)
+            {
+                return null;
+            }
         }
 
     }

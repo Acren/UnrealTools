@@ -35,7 +35,17 @@ namespace UnrealAutomationCommon.Unreal
                     _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uPluginPath));
                     _watcher.Changed += (Sender, Args) =>
                     {
-                        if (Args.FullPath == UPluginPath) LoadDescriptor();
+                        if (Args.FullPath == UPluginPath)
+                        {
+                            try
+                            {
+                                LoadDescriptor();
+                            }
+                            catch (Exception)
+                            {
+                                // Ignore on exception, old descriptor will be preserved
+                            }
+                        }
                     };
                     _watcher.EnableRaisingEvents = true;
                 }

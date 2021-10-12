@@ -367,23 +367,24 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Delete top-level files other than uplugin
                 FileUtils.DeleteFilesWithoutExtension(pluginSubmissionPath, allowedPluginFileExtensions);
 
-                // Check uplugin has correct engine version
-                Plugin submissionPlugin = new (pluginSubmissionPath);
-                JObject submissionPluginDescriptor = JObject.Parse(File.ReadAllText(submissionPlugin.UPluginPath));
-                EngineInstallVersion desiredEngineMajorMinorVersion = engineVersion.WithPatch(0);
-                if (!submissionPluginDescriptor.ContainsKey("EngineVersion"))
+                // Update .uplugin
                 {
-                    // Add EngineVersion
-                    submissionPluginDescriptor.Add("EngineVersion", desiredEngineMajorMinorVersion.ToString());
-                    File.WriteAllText(submissionPlugin.UPluginPath, submissionPluginDescriptor.ToString()); 
-                }
-                else
-                {
-                    // EngineVersion already exists, check it matches
-                    string upluginEngineVersion = submissionPluginDescriptor["EngineVersion"].ToString();
-                    if (upluginEngineVersion != desiredEngineMajorMinorVersion.ToString())
+                    Plugin submissionPlugin = new(pluginSubmissionPath);
+                    JObject submissionPluginDescriptor = JObject.Parse(File.ReadAllText(submissionPlugin.UPluginPath));
+                    bool modified = false;
+
+                    EngineInstallVersion desiredEngineMajorMinorVersion = engineVersion.WithPatch(0);
+
+                    // Check version name
+                    string desiredVersionName = $"{pluginVersionString}-{desiredEngineMajorMinorVersion.MajorMinorString}";
+                    modified |= submissionPluginDescriptor.Set("VersionName", desiredVersionName);
+
+                    // Check engine version
+                    modified |= submissionPluginDescriptor.Set("EngineVersion", desiredEngineMajorMinorVersion.ToString());
+
+                    if (modified)
                     {
-                        throw new Exception($"Submission .uplugin EngineVersion '{upluginEngineVersion}' does not match desired '{desiredEngineMajorMinorVersion}");
+                        File.WriteAllText(submissionPlugin.UPluginPath, submissionPluginDescriptor.ToString());
                     }
                 }
 
