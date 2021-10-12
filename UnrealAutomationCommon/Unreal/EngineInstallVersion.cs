@@ -34,6 +34,8 @@ namespace UnrealAutomationCommon.Unreal
         public int MinorVersion { get; set; }
         public int PatchVersion { get; set; }
 
+        public string MajorMinorString => $"{MajorVersion}.{MinorVersion}";
+            
         public override string ToString()
         {
             return $"{MajorVersion}.{MinorVersion}.{PatchVersion}";
