@@ -25,6 +25,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (!projectDescriptor.HasPluginEnabled(plugin.Name)) throw new Exception("Host project must have plugin enabled");
 
+            EngineInstallVersion engineVersion = plugin.EngineInstall.Version;
+            Logger.Log($"Engine version: {engineVersion}");
+
             string branchName = VersionControlUtils.GetBranchName(hostProject.GetProjectPath());
             // Use the version if on any of these branches
             string[] standardBranchNames = { "master", "develop", "development" };
@@ -32,29 +35,35 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             bool bStandardBranch = standardBranchNames.Contains(branchName, StringComparer.InvariantCultureIgnoreCase);
             if (!bStandardBranch)
+            {
                 foreach (string prefix in standardBranchPrefixes)
+                {
                     if (branchName.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase))
                     {
                         bStandardBranch = true;
                         break;
                     }
+                }
+            }
+
+            string pluginAndEngineVersion = $"{pluginDescriptor.VersionName}-{engineVersion.MajorMinorString}";
 
             Logger.Log("On branch '" + branchName + "'");
             string archiveVersionName;
             if (pluginDescriptor.VersionName.Contains(branchName))
             {
                 Logger.Log("Branch is contained in version name");
-                archiveVersionName = pluginDescriptor.VersionName;
+                archiveVersionName = pluginAndEngineVersion;
             }
             else if (!bStandardBranch)
             {
                 Logger.Log("Branch isn't a version or standard branch");
-                archiveVersionName = $"{pluginDescriptor.VersionName}-{branchName.Replace("/", "-")}";
+                archiveVersionName = $"{pluginAndEngineVersion}-{branchName.Replace("/", "-")}";
             }
             else
             {
                 Logger.Log("Branch is a version or standard branch");
-                archiveVersionName = pluginDescriptor.VersionName;
+                archiveVersionName = pluginAndEngineVersion;
             }
 
             string archivePrefix;
@@ -274,6 +283,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (!demoExePackageOperationResult.Success) throw new Exception("Example project build failed");
 
+            // Can't test package in shipping
             //OperationParameters demoTestParams = new OperationParameters()
             //{
             //    Target = new Package(Path.Combine(demoExePath, plugin.EngineInstall.GetWindowsPlatformName()))
