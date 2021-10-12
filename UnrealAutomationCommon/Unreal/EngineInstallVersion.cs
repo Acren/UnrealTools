@@ -8,6 +8,7 @@ namespace UnrealAutomationCommon.Unreal
     {
         public EngineInstallVersion()
         {
+
         }
 
         public EngineInstallVersion(string versionString)
@@ -15,11 +16,16 @@ namespace UnrealAutomationCommon.Unreal
             string[] verStrings = versionString.Split('.');
 
             MajorVersion = int.Parse(verStrings[0]);
+            MinorVersion = 0;
+            PatchVersion = 0;
 
             if (verStrings.Length >= 1)
             {
                 MinorVersion = int.Parse(verStrings[1]);
-                if (verStrings.Length >= 2) PatchVersion = int.Parse(verStrings[2]);
+                if (verStrings.Length >= 2)
+                {
+                    PatchVersion = int.Parse(verStrings[2]);
+                }
             }
         }
 
@@ -35,7 +41,7 @@ namespace UnrealAutomationCommon.Unreal
         public int PatchVersion { get; set; }
 
         public string MajorMinorString => $"{MajorVersion}.{MinorVersion}";
-            
+
         public override string ToString()
         {
             return $"{MajorVersion}.{MinorVersion}.{PatchVersion}";
@@ -51,5 +57,17 @@ namespace UnrealAutomationCommon.Unreal
         {
             return MajorVersion == other.MajorVersion && MinorVersion == other.MinorVersion;
         }
+
+        public EngineInstallVersion WithPatch(int patchVersion)
+        {
+            EngineInstallVersion newVersion = new ()
+            {
+                MajorVersion = MajorVersion,
+                MinorVersion = MinorVersion,
+                PatchVersion = patchVersion
+            };
+            return newVersion;
+        }
+
     }
 }

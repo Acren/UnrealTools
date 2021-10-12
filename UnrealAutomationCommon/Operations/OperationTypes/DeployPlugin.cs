@@ -29,6 +29,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Logger.Log($"Engine version: {engineVersion}");
 
             string branchName = VersionControlUtils.GetBranchName(hostProject.GetProjectPath());
+            Logger.Log($"Branch: {branchName}");
             // Use the version if on any of these branches
             string[] standardBranchNames = { "master", "develop", "development" };
             string[] standardBranchPrefixes = { "version/", "release/" };
@@ -46,37 +47,36 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            string pluginAndEngineVersion = $"{pluginDescriptor.VersionName}-{engineVersion.MajorMinorString}";
+            string archivePrefix = plugin.Name;
 
-            Logger.Log("On branch '" + branchName + "'");
-            string archiveVersionName;
-            if (pluginDescriptor.VersionName.Contains(branchName))
-            {
-                Logger.Log("Branch is contained in version name");
-                archiveVersionName = pluginAndEngineVersion;
-            }
-            else if (!bStandardBranch)
-            {
-                Logger.Log("Branch isn't a version or standard branch");
-                archiveVersionName = $"{pluginAndEngineVersion}-{branchName.Replace("/", "-")}";
-            }
-            else
-            {
-                Logger.Log("Branch is a version or standard branch");
-                archiveVersionName = pluginAndEngineVersion;
-            }
-
-            string archivePrefix;
             bool beta = pluginDescriptor.IsBetaVersion;
             if (beta)
             {
                 Logger.Log("Plugin is marked as beta version");
-                archivePrefix = $"{plugin.Name}_beta_{archiveVersionName}";
+                archivePrefix += "_beta";
+            }
+
+            string pluginVersionString = pluginDescriptor.VersionName;
+            string fullPluginVersionString;
+            if (pluginDescriptor.VersionName.Contains(branchName))
+            {
+                Logger.Log("Branch is contained in version name");
+                fullPluginVersionString = pluginVersionString;
+            }
+            else if (!bStandardBranch)
+            {
+                Logger.Log("Branch isn't a version or standard branch");
+                fullPluginVersionString = $"{pluginVersionString}-{branchName.Replace("/", "-")}";
             }
             else
             {
-                archivePrefix = $"{plugin.Name}_{archiveVersionName}";
+                Logger.Log("Branch is a version or standard branch");
+                fullPluginVersionString = pluginVersionString;
             }
+
+            archivePrefix += $"_{fullPluginVersionString}";
+            archivePrefix += $"_{engineVersion.MajorMinorString}";
+            archivePrefix += "_";
 
             Logger.Log($"Archive name prefix is '{archivePrefix}'");
 
@@ -331,6 +331,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
                 string[] allowedPluginFileExtensions = { ".uplugin" };
                 foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
+                {
                     if (exampleProjectPlugin.Name == plugin.Name)
                     {
                         // Delete target plugin from example project
@@ -342,6 +343,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
                         FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, allowedPluginFileExtensions);
                     }
+                }
 
                 // Delete debug files recursive
                 FileUtils.DeleteFilesWithExtension(exampleProjectBuildPath, new[] { ".pdb" }, SearchOption.AllDirectories);
@@ -362,8 +364,28 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string[] allowedPluginSubmissionSubDirectoryNames = { "Source", "Resources", "Content", "Config" };
                 FileUtils.DeleteOtherSubdirectories(pluginSubmissionPath, allowedPluginSubmissionSubDirectoryNames);
 
-                // Delete top-level files other than uproject
+                // Delete top-level files other than uplugin
                 FileUtils.DeleteFilesWithoutExtension(pluginSubmissionPath, allowedPluginFileExtensions);
+
+                // Check uplugin has correct engine version
+                Plugin submissionPlugin = new (pluginSubmissionPath);
+                JObject submissionPluginDescriptor = JObject.Parse(File.ReadAllText(submissionPlugin.UPluginPath));
+                EngineInstallVersion desiredEngineMajorMinorVersion = engineVersion.WithPatch(0);
+                if (!submissionPluginDescriptor.ContainsKey("EngineVersion"))
+                {
+                    // Add EngineVersion
+                    submissionPluginDescriptor.Add("EngineVersion", desiredEngineMajorMinorVersion.ToString());
+                    File.WriteAllText(submissionPlugin.UPluginPath, submissionPluginDescriptor.ToString()); 
+                }
+                else
+                {
+                    // EngineVersion already exists, check it matches
+                    string upluginEngineVersion = submissionPluginDescriptor["EngineVersion"].ToString();
+                    if (upluginEngineVersion != desiredEngineMajorMinorVersion.ToString())
+                    {
+                        throw new Exception($"Submission .uplugin EngineVersion '{upluginEngineVersion}' does not match desired '{desiredEngineMajorMinorVersion}");
+                    }
+                }
 
                 string pluginSubmissionZipPath = Path.Combine(archivePath, archivePrefix + "PluginSubmission.zip");
                 FileUtils.DeleteFileIfExists(pluginSubmissionZipPath);
