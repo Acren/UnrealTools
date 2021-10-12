@@ -10,17 +10,7 @@ namespace UnrealAutomationCommon.Unreal
         public bool IsBetaVersion { get; set; }
         public string EngineVersion { get; set; }
 
-        public EngineInstall EngineInstall
-        {
-            get
-            {
-                if (EngineVersion == null) return EngineInstallFinder.GetDefaultEngineInstall();
-
-                EngineInstallVersion version = new(EngineVersion);
-
-                return EngineInstallFinder.GetEngineInstall(version);
-            }
-        }
+        public EngineInstallVersion EngineInstallVersion => string.IsNullOrEmpty(EngineVersion) ? null : new(EngineVersion);
 
         public static PluginDescriptor Load(string uPluginPath)
         {
@@ -28,14 +18,5 @@ namespace UnrealAutomationCommon.Unreal
             return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
         }
 
-        public string GetEngineInstallDirectory()
-        {
-            return EngineInstall.InstallDirectory;
-        }
-
-        public string GetRunUATPath()
-        {
-            return EngineInstall.GetRunUATPath();
-        }
     }
 }

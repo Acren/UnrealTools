@@ -18,7 +18,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             buildPluginArguments.SetKeyValue("TargetPlatforms", "Win64"); // Specify Win64 only to avoid Win32 being compiled
             if (operationParameters.RequestOptions<PluginBuildOptions>().StrictIncludes) buildPluginArguments.SetFlag("StrictIncludes");
             buildPluginArguments.AddAdditionalArguments(operationParameters);
-            return new Command(GetTarget(operationParameters).PluginDescriptor.GetRunUATPath(), buildPluginArguments);
+            return new Command(GetTarget(operationParameters).EngineInstall.GetRunUATPath(), buildPluginArguments);
         }
 
         protected override string GetOperationName()

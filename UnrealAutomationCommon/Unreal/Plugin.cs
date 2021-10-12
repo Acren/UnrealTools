@@ -89,7 +89,27 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public EngineInstall EngineInstall => PluginDescriptor?.EngineInstall;
+        public EngineInstall EngineInstall
+        {
+            get
+            {
+                // If plugin descriptor has an engine version, find engine install using that
+                EngineInstallVersion descriptorVersion = PluginDescriptor?.EngineInstallVersion;
+                if (descriptorVersion != null)
+                {
+                    return EngineInstallFinder.GetEngineInstall(descriptorVersion);
+                }
+
+                // Use host project version
+                if (HostProject != null)
+                {
+                    return HostProject.EngineInstall;
+                }
+
+                // No descriptor version and no host project, fall back to default
+                return EngineInstallFinder.GetDefaultEngineInstall();
+            }
+        }
 
         public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : PluginDescriptor?.EngineVersion;
 
