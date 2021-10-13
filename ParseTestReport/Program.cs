@@ -47,7 +47,8 @@ namespace ParseTestReport
                 {
                     if (entry.Event.Type != TestEventType.Info)
                     {
-                        Console.WriteLine("".PadRight(9) + " - " + entry.Event.Message);
+                        string typeString = entry.Event.Type == TestEventType.Error ? "[ERROR]" : "[WARNING]";
+                        Console.WriteLine($"{string.Empty,-11} - {typeString,-9} - {entry.Event.Message}");
                     }
                 }
             }
