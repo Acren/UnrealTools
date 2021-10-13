@@ -30,8 +30,8 @@ namespace UnrealCommander
             IOperationTarget targetX = x as IOperationTarget;
             IOperationTarget targetY = y as IOperationTarget;
 
-            string xName = targetX.RootTarget.Name;
-            string yName = targetY.RootTarget.Name;
+            string xName = targetX.RootTarget.DisplayName;
+            string yName = targetY.RootTarget.DisplayName;
             int rootNameComp = string.Compare(xName, yName, StringComparison.Ordinal);
             if (rootNameComp != 0) return rootNameComp;
 
