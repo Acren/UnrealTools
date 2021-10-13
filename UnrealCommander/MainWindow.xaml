@@ -26,7 +26,7 @@
                 <DataGridTextColumn Header="Name" IsReadOnly="True" Width="2*">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
-                            <Setter Property="Text" Value="{Binding Name}" />
+                            <Setter Property="Text" Value="{Binding DisplayName}" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsRoot}" Value="False">
                                     <Setter Property="Text" Value="{Binding Name, StringFormat={}      {0}}" />

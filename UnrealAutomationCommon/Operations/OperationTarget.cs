@@ -9,6 +9,7 @@ namespace UnrealAutomationCommon.Operations
     public interface IOperationTarget : INotifyPropertyChanged
     {
         public string Name { get; }
+        public string DisplayName { get; }
         public string TargetPath { get; }
         public string TargetDirectory { get; }
 
@@ -50,6 +51,7 @@ namespace UnrealAutomationCommon.Operations
     {
         private string _testName = string.Empty;
         public abstract string Name { get; }
+        public virtual string DisplayName => Name;
         public abstract string TargetPath { get; }
 
         public virtual IOperationTarget ParentTarget => null;

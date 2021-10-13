@@ -58,7 +58,8 @@ namespace UnrealAutomationCommon.Unreal
 
         public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : ProjectDescriptor?.EngineAssociation;
 
-        public override string Name => DirectoryName; //Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+        public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
+        public override string DisplayName => DirectoryName;
 
         public override string TargetPath => UProjectPath;
 
