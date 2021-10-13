@@ -22,6 +22,8 @@
             return true;
         }
 
+        public bool SupportsTestReports => Version >= new EngineInstallVersion(4, 25);
+
         public string GetWindowsPlatformName()
         {
             if (Version.MajorVersion >= 5) return "Windows";

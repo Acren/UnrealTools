@@ -11,6 +11,13 @@ namespace UnrealAutomationCommon.Unreal
 
         }
 
+        public EngineInstallVersion(int majorVersion, int minorVersion, int patchVersion = 0)
+        {
+            MajorVersion = majorVersion;
+            MinorVersion = minorVersion;
+            PatchVersion = patchVersion;
+        }
+
         public EngineInstallVersion(string versionString)
         {
             string[] verStrings = versionString.Split('.');
@@ -60,7 +67,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public EngineInstallVersion WithPatch(int patchVersion)
         {
-            EngineInstallVersion newVersion = new ()
+            EngineInstallVersion newVersion = new()
             {
                 MajorVersion = MajorVersion,
                 MinorVersion = MinorVersion,
@@ -69,5 +76,58 @@ namespace UnrealAutomationCommon.Unreal
             return newVersion;
         }
 
+        public static bool operator ==(EngineInstallVersion a, EngineInstallVersion b)
+        {
+            bool aNull = ReferenceEquals(a, null);
+            bool bNull = ReferenceEquals(b, null);
+            if (aNull && bNull)
+            {
+                return true;
+            }
+
+            if (aNull || bNull)
+            {
+                return false;
+            }
+
+            return a.MajorVersion == b.MajorVersion
+            && a.MinorVersion == b.MinorVersion
+            && a.PatchVersion == b.PatchVersion;
+        }
+
+        public static bool operator !=(EngineInstallVersion a, EngineInstallVersion b)
+        {
+            return !(a == b);
+        }
+
+        public static bool operator <(EngineInstallVersion a, EngineInstallVersion b)
+        {
+            if (a.MajorVersion != b.MajorVersion)
+            {
+                return a.MajorVersion < b.MajorVersion;
+            }
+
+            if (a.MinorVersion != b.MinorVersion)
+            {
+                return a.MinorVersion < b.MinorVersion;
+            }
+
+            return a.PatchVersion < b.PatchVersion;
+        }
+
+        public static bool operator >(EngineInstallVersion a, EngineInstallVersion b)
+        {
+            return b < a;
+        }
+
+        public static bool operator <=(EngineInstallVersion a, EngineInstallVersion b)
+        {
+            return a < b || a == b;
+        }
+
+        public static bool operator >=(EngineInstallVersion a, EngineInstallVersion b)
+        {
+            return a > b || a == b;
+        }
     }
 }
