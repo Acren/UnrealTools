@@ -39,16 +39,16 @@ namespace UnrealAutomationCommon.Unreal
             {
                 string testNameOverride = automationOpts.TestNameOverride;
                 string testName = !string.IsNullOrEmpty(testNameOverride) ? testNameOverride : operationParameters.Target.TestName;
-                string execCmds = "Automation RunTests " + testName;
+                string execCmds = $"Automation RunTests {testName};Quit";
                 arguments.SetKeyValue("ExecCmds", execCmds);
                 arguments.SetKeyPath("ReportExportPath", OutputPaths.GetTestReportPath(outputhPath));
-                arguments.SetKeyValue("testexit", "Automation Test Queue Empty");
                 if (automationOpts.Headless)
                 {
                     // Run tests as unattended and headless
                     arguments.SetFlag("unattended");
                     arguments.SetFlag("nullrhi");
-                    arguments.SetFlag("server");
+                    // Disable tutorial to prevent crash from nullrhi
+                    arguments.SetFlag("ini:EditorSettings:[/Script/IntroTutorials.EditorTutorialSettings]:StartupTutorial=");
                 }
                 else
                 {
