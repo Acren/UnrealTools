@@ -60,7 +60,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string fullPluginVersionString;
             if (pluginDescriptor.VersionName.Contains(branchName))
             {
-                Logger.Log("Branch is contained in version name");
+                Logger.Log("Branch is contained in plugin version name");
+                fullPluginVersionString = pluginVersionString;
+            }
+            else if (engineVersion.ToString().Contains(branchName))
+            {
+                Logger.Log("Branch is contained in engine version");
                 fullPluginVersionString = pluginVersionString;
             }
             else if (!bStandardBranch)
