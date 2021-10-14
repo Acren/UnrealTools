@@ -238,7 +238,7 @@ namespace UnrealCommander
             }
         }
 
-        public bool IsRunningOperation => RunningOperation != null;
+        public bool IsRunningOperation => RunningOperation is { IsRunning: true };
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -257,55 +257,54 @@ namespace UnrealCommander
 
         private void Execute(object sender, RoutedEventArgs e)
         {
+            _ = ExecuteAsync();
+        }
+
+        private async Task ExecuteAsync()
+        {
             // Create a new operation instance of the selected one
             Operation newOperation = Operation.CreateOperation(Operation.GetType());
 
-            if (newOperation.RequirementsSatisfied(PersistentState.OperationParameters))
+            if (!newOperation.RequirementsSatisfied(PersistentState.OperationParameters)) return;
+
+            if (IsRunningOperation)
             {
-                if (IsRunningOperation)
+                MessageBoxResult result = MessageBox.Show("Operation is running. Terminate it?", "Terminate operation", MessageBoxButton.YesNoCancel);
+                switch (result)
                 {
-                    MessageBoxResult result = MessageBox.Show("Process is running. Terminate it?", "Terminate process", MessageBoxButton.YesNoCancel);
-                    switch (result)
-                    {
-                        case MessageBoxResult.Yes:
-                            RunningOperation.Cancel();
-                            break;
-                        case MessageBoxResult.No:
-                            break;
-                        case MessageBoxResult.Cancel:
-                            return;
-                    }
+                    case MessageBoxResult.Yes:
+                        await RunningOperation.Cancel();
+                        break;
+                    case MessageBoxResult.No:
+                        break;
+                    case MessageBoxResult.Cancel:
+                        return;
                 }
-
-                AddOutputLine($"User started operation '{newOperation.OperationName}'");
-
-                OperationRunner newRunner = new(newOperation, PersistentState.OperationParameters);
-                newRunner.Output += (S, verbosity) =>
-                {
-                    // Output handler
-                    Dispatcher.Invoke(() =>
-                    {
-                        // Prepend line numbers to each line of the output.
-                        if (!string.IsNullOrEmpty(S)) AddOutputLine(S, verbosity);
-                    });
-                };
-
-                _ = RunOperation(newRunner);
             }
-        }
 
-        private async Task RunOperation(OperationRunner runner)
-        {
-            if (RunningOperation != null)
+            if (IsRunningOperation)
             {
                 AddOutputLine("Already running an operation", LogVerbosity.Error);
                 return;
             }
 
-            RunningOperation = runner;
+            AddOutputLine($"User started operation '{newOperation.OperationName}'");
+
+            OperationRunner newRunner = new(newOperation, PersistentState.OperationParameters);
+            newRunner.Output += (S, verbosity) =>
+            {
+                // Output handler
+                Dispatcher.Invoke(() =>
+                {
+                    // Prepend line numbers to each line of the output.
+                    if (!string.IsNullOrEmpty(S)) AddOutputLine(S, verbosity);
+                });
+            };
+
+            RunningOperation = newRunner;
             try
             {
-                Task task = runner.Run();
+                Task task = newRunner.Run();
                 await task;
             }
             catch (Exception e)
@@ -314,7 +313,6 @@ namespace UnrealCommander
             }
 
             FlashWindow.Flash(Process.GetCurrentProcess().MainWindowHandle);
-            RunningOperation = null;
         }
 
         private void Terminate(object sender, RoutedEventArgs e)
