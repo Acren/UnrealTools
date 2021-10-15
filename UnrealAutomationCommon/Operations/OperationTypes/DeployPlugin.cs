@@ -269,15 +269,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Logger.Log("Packaging host project for demo");
 
-            string demoExePath = Path.Combine(workingTempPath, @"DemoExe");
+            string demoPackagePath = Path.Combine(workingTempPath, @"DemoExe");
 
-            FileUtils.DeleteDirectoryIfExists(demoExePath);
+            FileUtils.DeleteDirectoryIfExists(demoPackagePath);
 
             PackageProject demoPackageOperation = new();
             OperationParameters demoPackageParams = new()
             {
                 Target = new Project(exampleProjectBuildUProjectPath),
-                OutputPathOverride = demoExePath
+                OutputPathOverride = demoPackagePath
             };
 
             // Set options for demo exe
@@ -311,51 +311,64 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 // Archive plugin build
 
-                Logger.Log("Archiving plugin build");
                 string pluginBuildZipPath = Path.Combine(archivePath, archivePrefix + "PluginBuild.zip");
-                FileUtils.DeleteFileIfExists(pluginBuildZipPath);
-                ZipFile.CreateFromDirectory(pluginBuildPath, pluginBuildZipPath, CompressionLevel.Optimal, true);
+                bool archivePluginBuild = OperationParameters.RequestOptions<PluginDeployOptions>().ArchivePluginBuild;
+                if (archivePluginBuild)
+                {
+                    Logger.Log("Archiving plugin build");
+                    FileUtils.DeleteFileIfExists(pluginBuildZipPath);
+                    ZipFile.CreateFromDirectory(pluginBuildPath, pluginBuildZipPath, CompressionLevel.Optimal, true);
+                }
 
                 // Archive demo exe
 
-                Logger.Log("Archiving demo");
+                string demoPackageZipPath = Path.Combine(archivePath, archivePrefix + "DemoPackage.zip");
+                bool archiveDemoPackage = OperationParameters.RequestOptions<PluginDeployOptions>().ArchiveDemoPackage;
+                if (archiveDemoPackage)
+                {
+                    Logger.Log("Archiving demo");
 
-                string demoExeZipPath = Path.Combine(archivePath, archivePrefix + "DemoExe.zip");
-                FileUtils.DeleteFileIfExists(demoExeZipPath);
-                ZipFile.CreateFromDirectory(Path.Combine(demoExePath, plugin.EngineInstall.GetWindowsPlatformName()), demoExeZipPath);
+                    FileUtils.DeleteFileIfExists(demoPackageZipPath);
+                    ZipFile.CreateFromDirectory(Path.Combine(demoPackagePath, plugin.EngineInstall.GetWindowsPlatformName()), demoPackageZipPath);
+                }
 
                 // Archive example project
 
-                Logger.Log("Archiving example project");
-
-                // First delete any extra directories
-                string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
-                FileUtils.DeleteOtherSubdirectories(exampleProjectBuildPath, allowedExampleProjectSubDirectoryNames);
-
-                var exampleProjectPlugins = exampleProjectBuild.GetPlugins();
-                string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
                 string[] allowedPluginFileExtensions = { ".uplugin" };
-                foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
-                {
-                    if (exampleProjectPlugin.Name == plugin.Name)
-                    {
-                        // Delete target plugin from example project
-                        FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
-                    }
-                    else
-                    {
-                        // Secondary plugins will be included, strip out unwanted files
-                        FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
-                        FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, allowedPluginFileExtensions);
-                    }
-                }
-
-                // Delete debug files recursive
-                FileUtils.DeleteFilesWithExtension(exampleProjectBuildPath, new[] { ".pdb" }, SearchOption.AllDirectories);
-
                 string exampleProjectZipPath = Path.Combine(archivePath, archivePrefix + "ExampleProject.zip");
-                FileUtils.DeleteFileIfExists(exampleProjectZipPath);
-                ZipFile.CreateFromDirectory(exampleProjectBuildPath, exampleProjectZipPath);
+                bool archiveExampleProject = OperationParameters.RequestOptions<PluginDeployOptions>().ArchiveExampleProject;
+
+                if (archiveExampleProject)
+                {
+                    Logger.Log("Archiving example project");
+
+                    // First delete any extra directories
+                    string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
+                    FileUtils.DeleteOtherSubdirectories(exampleProjectBuildPath, allowedExampleProjectSubDirectoryNames);
+
+                    var exampleProjectPlugins = exampleProjectBuild.GetPlugins();
+                    string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
+                    foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
+                    {
+                        if (exampleProjectPlugin.Name == plugin.Name)
+                        {
+                            // Delete target plugin from example project
+                            FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
+                        }
+                        else
+                        {
+                            // Secondary plugins will be included, strip out unwanted files
+                            FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
+                            FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, allowedPluginFileExtensions);
+                        }
+                    }
+
+                    // Delete debug files recursive
+                    FileUtils.DeleteFilesWithExtension(exampleProjectBuildPath, new[] { ".pdb" }, SearchOption.AllDirectories);
+
+                    FileUtils.DeleteFileIfExists(exampleProjectZipPath);
+                    ZipFile.CreateFromDirectory(exampleProjectBuildPath, exampleProjectZipPath);
+                }
 
                 // Archive plugin for submission
 
@@ -403,8 +416,24 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     Logger.Log("Copying to archive output path");
                     Directory.CreateDirectory(archiveOutputPath);
                     if (!Directory.Exists(archiveOutputPath)) throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
-                    FileUtils.CopyFile(exampleProjectZipPath, archiveOutputPath, true, true);
+
                     FileUtils.CopyFile(pluginSubmissionZipPath, archiveOutputPath, true, true);
+
+                    if (archivePluginBuild)
+                    {
+                        FileUtils.CopyFile(pluginBuildZipPath, archiveOutputPath, true, true);
+                    }
+
+                    if (archiveExampleProject)
+                    {
+                        FileUtils.CopyFile(exampleProjectZipPath, archiveOutputPath, true, true);
+                    }
+
+                    if (archiveDemoPackage)
+                    {
+                        FileUtils.CopyFile(demoPackageZipPath, archiveOutputPath, true, true);
+                    }
+
                 }
 
                 Logger.Log("Finished archiving");

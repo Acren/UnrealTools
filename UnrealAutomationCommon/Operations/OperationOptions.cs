@@ -41,15 +41,10 @@ namespace UnrealAutomationCommon.Operations
 
     public class OperationOptions : INotifyPropertyChanged
     {
-        //protected Option<T> AddOption<T>()
-        //{
-        //    Option<T> option = new Option<T>();
-        //    option.PropertyChanged += (sender, args) =>
-        //    {
-        //        OnPropertyChanged();
-        //    };
-        //    return option;
-        //}
+        protected Option<T> AddOption<T>(T defaultValue)
+        {
+            return new Option<T>(OptionChanged, defaultValue);
+        }
 
         public virtual string Name
         {
