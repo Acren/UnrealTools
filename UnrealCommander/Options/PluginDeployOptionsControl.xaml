@@ -21,5 +21,9 @@
                   VerticalContentAlignment="Center">
             <TextBlock Text="Archive Demo Package" VerticalAlignment="Center" />
         </CheckBox>
+        <CheckBox IsChecked="{Binding Path=TestPackage.Value, Mode=TwoWay}" VerticalAlignment="Center"
+                  VerticalContentAlignment="Center">
+            <TextBlock Text="Test Package" VerticalAlignment="Center" />
+        </CheckBox>
     </StackPanel>
 </local:OptionsUserControl>

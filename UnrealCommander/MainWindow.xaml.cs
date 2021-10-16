@@ -420,7 +420,7 @@ namespace UnrealCommander
             if (SelectedTarget is Plugin)
             {
                 Plugin plugin = SelectedTarget as Plugin;
-                menu.Items.Add(new MenuItem { Header = $"Open {plugin.HostProject.Name} with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), plugin.HostProject.UProjectPath.AddQuotesIfContainsSpace()); }) });
+                menu.Items.Add(new MenuItem { Header = $"Open {plugin.HostProject.DisplayName} with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), plugin.HostProject.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 
             menu.Items.Add(new Separator());

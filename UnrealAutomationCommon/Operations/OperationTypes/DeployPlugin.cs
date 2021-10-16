@@ -243,7 +243,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Test the package
 
-            if (automationOpts.RunTests)
+            if (automationOpts.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestPackage)
             {
                 OperationParameters testInstalledPluginBuildParams = new()
                 {
