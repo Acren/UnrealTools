@@ -130,7 +130,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            // Launch and test host project editor
+            // Build host project editor
 
             Logger.Log("Building host project editor");
 
@@ -141,6 +141,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (!(await new BuildEditor().Execute(buildEditorParams, Logger, token)).Success) throw new Exception("Failed to build host project");
 
+            // Launch and test host project editor
+
             AutomationOptions automationOpts = OperationParameters.FindOptions<AutomationOptions>();
             automationOpts.TestNameOverride = plugin.TestName;
 
@@ -148,10 +150,28 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 Logger.Log("Launching and testing host project editor");
 
-                OperationParameters launchEditorParams = buildEditorParams;
+                OperationParameters launchEditorParams = new()
+                {
+                    Target = hostProject
+                };
                 launchEditorParams.SetOptions(automationOpts);
 
                 if (!(await new LaunchEditor().Execute(launchEditorParams, Logger, token)).Success) throw new Exception("Failed to launch host project");
+            }
+
+            // Launch and test standalone
+
+            if (automationOpts.RunTests)
+            {
+                Logger.Log("Launching and testing standalone");
+
+                OperationParameters launchStandaloneParams = new()
+                {
+                    Target = hostProject
+                };
+                launchStandaloneParams.SetOptions(automationOpts);
+
+                if (!(await new LaunchStandalone().Execute(launchStandaloneParams, Logger, token)).Success) throw new Exception("Failed to launch standalone");
             }
 
             // Build plugin
