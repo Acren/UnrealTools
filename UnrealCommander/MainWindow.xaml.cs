@@ -305,12 +305,15 @@ namespace UnrealCommander
             try
             {
                 Task task = newRunner.Run();
+                OnPropertyChanged(nameof(IsRunningOperation));
                 await task;
             }
             catch (Exception e)
             {
                 AddOutputLine(e.ToString(), LogVerbosity.Error);
             }
+
+            OnPropertyChanged(nameof(IsRunningOperation));
 
             FlashWindow.Flash(Process.GetCurrentProcess().MainWindowHandle);
         }
