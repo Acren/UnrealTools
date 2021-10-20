@@ -161,7 +161,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Launch and test standalone
 
-            if (automationOpts.RunTests)
+            if (automationOpts.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestStandalone)
             {
                 Logger.Log("Launching and testing standalone");
 

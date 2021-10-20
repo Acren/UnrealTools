@@ -7,6 +7,14 @@
                           mc:Ignorable="d"
                           d:DesignHeight="450" d:DesignWidth="800">
     <StackPanel>
+        <CheckBox IsChecked="{Binding Path=TestStandalone.Value, Mode=TwoWay}" VerticalAlignment="Center"
+                  VerticalContentAlignment="Center">
+            <TextBlock Text="Test Standalone" VerticalAlignment="Center" />
+        </CheckBox>
+        <CheckBox IsChecked="{Binding Path=TestPackage.Value, Mode=TwoWay}" VerticalAlignment="Center"
+                  VerticalContentAlignment="Center">
+            <TextBlock Text="Test Package" VerticalAlignment="Center" />
+        </CheckBox>
         <TextBlock>Archive Path:</TextBlock>
         <TextBox Text="{Binding Path=ArchivePath.Value}" />
         <CheckBox IsChecked="{Binding Path=ArchivePluginBuild.Value, Mode=TwoWay}" VerticalAlignment="Center"
@@ -20,10 +28,6 @@
         <CheckBox IsChecked="{Binding Path=ArchiveDemoPackage.Value, Mode=TwoWay}" VerticalAlignment="Center"
                   VerticalContentAlignment="Center">
             <TextBlock Text="Archive Demo Package" VerticalAlignment="Center" />
-        </CheckBox>
-        <CheckBox IsChecked="{Binding Path=TestPackage.Value, Mode=TwoWay}" VerticalAlignment="Center"
-                  VerticalContentAlignment="Center">
-            <TextBlock Text="Test Package" VerticalAlignment="Center" />
         </CheckBox>
     </StackPanel>
 </local:OptionsUserControl>
