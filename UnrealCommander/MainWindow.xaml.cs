@@ -269,7 +269,7 @@ namespace UnrealCommander
 
             if (IsRunningOperation)
             {
-                MessageBoxResult result = MessageBox.Show("Operation is running. Terminate it?", "Terminate operation", MessageBoxButton.YesNoCancel);
+                MessageBoxResult result = MessageBox.Show($"Operation '{RunningOperation.Operation.OperationName}' is running. Terminate it?", "Terminate operation", MessageBoxButton.YesNoCancel);
                 switch (result)
                 {
                     case MessageBoxResult.Yes:
