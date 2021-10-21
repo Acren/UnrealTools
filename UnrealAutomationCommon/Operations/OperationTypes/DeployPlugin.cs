@@ -368,16 +368,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                     var exampleProjectPlugins = exampleProjectBuild.GetPlugins();
                     string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
+                    string[] excludePlugins = OperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ","").Split(",");
                     foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
                     {
-                        if (exampleProjectPlugin.Name == plugin.Name)
+                        if (exampleProjectPlugin.Name == plugin.Name || excludePlugins.Contains(exampleProjectPlugin.Name))
                         {
-                            // Delete target plugin from example project
+                            // Delete target or excluded plugin from example project
                             FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
                         }
                         else
                         {
-                            // Secondary plugins will be included, strip out unwanted files
+                            // Other plugins will be included, strip out unwanted files
                             FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
                             FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, allowedPluginFileExtensions);
                         }

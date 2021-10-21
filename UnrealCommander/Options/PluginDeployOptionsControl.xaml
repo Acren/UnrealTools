@@ -15,6 +15,8 @@
                   VerticalContentAlignment="Center">
             <TextBlock Text="Test Package" VerticalAlignment="Center" />
         </CheckBox>
+        <TextBlock>Exclude Plugins:</TextBlock>
+        <TextBox Text="{Binding Path=ExcludePlugins.Value}" />
         <TextBlock>Archive Path:</TextBlock>
         <TextBox Text="{Binding Path=ArchivePath.Value}" />
         <CheckBox IsChecked="{Binding Path=ArchivePluginBuild.Value, Mode=TwoWay}" VerticalAlignment="Center"
