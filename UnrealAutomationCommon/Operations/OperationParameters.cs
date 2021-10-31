@@ -55,8 +55,12 @@ namespace UnrealAutomationCommon.Operations
         public T FindOptions<T>() where T : OperationOptions
         {
             foreach (OperationOptions options in OptionsInstances)
+            {
                 if (options.GetType() == typeof(T))
-                    return (T)options;
+                {
+                    return (T)options.Clone();
+                }
+            }
 
             return null;
         }
@@ -65,11 +69,14 @@ namespace UnrealAutomationCommon.Operations
         {
             T options = FindOptions<T>();
 
-            if (options != null) return options;
+            if (options != null)
+            {
+                return options;
+            }
 
-            options = (T)Activator.CreateInstance(typeof(T));
-            OptionsInstances.Add(options);
-            return options;
+            T newOptions = (T)Activator.CreateInstance(typeof(T));
+            OptionsInstances.Add(newOptions);
+            return (T)newOptions.Clone();
         }
 
         public void SetOptions<T>(T options) where T : OperationOptions

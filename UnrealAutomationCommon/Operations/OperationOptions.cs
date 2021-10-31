@@ -58,6 +58,11 @@ namespace UnrealAutomationCommon.Operations
 
         public event PropertyChangedEventHandler PropertyChanged;
 
+        public OperationOptions Clone()
+        {
+            return (OperationOptions)MemberwiseClone();
+        }
+
         protected void OptionChanged()
         {
             OnPropertyChanged();
