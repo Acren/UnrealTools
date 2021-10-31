@@ -12,7 +12,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     {
         public string OperationName => GetOperationName();
 
-        protected bool Cancelled { get; private set; }
+        public bool Cancelled { get; private set; }
         protected IOperationLogger Logger { get; private set; }
         protected OperationParameters OperationParameters { get; private set; }
 

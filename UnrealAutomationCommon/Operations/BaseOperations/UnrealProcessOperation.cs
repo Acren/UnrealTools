@@ -12,7 +12,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         {
             // Report test results
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
-            if (result.Success && automationOptions is { RunTests: { Value: true } })
+            if (!Cancelled && automationOptions is { RunTests: { Value: true } })
             {
                 IEngineInstallProvider engineInstallProvider = OperationParameters.Target as IEngineInstallProvider;
                 if (engineInstallProvider == null)
