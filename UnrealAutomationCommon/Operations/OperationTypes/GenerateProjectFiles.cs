@@ -13,6 +13,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetFlag("game");
             args.SetFlag("rocket");
             args.SetFlag("progress");
+            args.AddAdditionalArguments(operationParameters);
             return new Command(GetTarget(operationParameters).EngineInstall.GetUBTExe(), args);
         }
     }
