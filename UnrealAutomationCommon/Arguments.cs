@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using Microsoft.CodeAnalysis;
 
 namespace UnrealAutomationCommon
 {
@@ -42,6 +44,11 @@ namespace UnrealAutomationCommon
 
         private void UpdateArgument(Argument argument, bool updateExisting)
         {
+            if (String.IsNullOrEmpty(argument.Key))
+            {
+                throw new Exception("Invalid key");
+            }
+
             Argument existingArgument = _arguments.SingleOrDefault(a => a.Key.Equals(argument.Key, StringComparison.InvariantCulture));
 
             if (existingArgument != null)
@@ -110,9 +117,51 @@ namespace UnrealAutomationCommon
             }, updateExisting);
         }
 
-        public void AddRawArgsString(string args)
+        public void AddRawArgsString(string rawArgsString)
         {
-            CommandUtils.CombineArgs(ref _rawArgs, args);
+            foreach (string argString in CommandLineParser.SplitCommandLineIntoArguments(rawArgsString, false))
+            {
+                Argument parsedArgument = new();
+                bool inQuote = false;
+                bool inValue = false;
+                for (int i = 0; i < argString.Length; i++)
+                {
+                    char character = argString[i];
+                    if (i == 0 && character == '-')
+                    {
+                        parsedArgument.DashPrefix = true;
+                        continue;
+                    }
+
+                    if (character == '"')
+                    {
+                        inQuote = !inQuote;
+                        continue;
+                    }
+
+                    if (!inQuote && !inValue && character == '=')
+                    {
+                        inValue = true;
+                        continue;
+                    }
+
+                    if (inValue)
+                    {
+                        parsedArgument.Value += character;
+                    }
+                    else
+                    {
+                        parsedArgument.Key += character;
+                    }
+
+                }
+
+                if (!string.IsNullOrEmpty(parsedArgument.Key))
+                {
+                    UpdateArgument(parsedArgument, true);
+                }
+
+            }
         }
 
         public override string ToString()
@@ -126,5 +175,6 @@ namespace UnrealAutomationCommon
             CommandUtils.CombineArgs(ref builtCommandString, _rawArgs);
             return builtCommandString;
         }
+
     }
 }
