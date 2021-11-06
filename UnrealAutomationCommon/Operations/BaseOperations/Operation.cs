@@ -12,6 +12,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     {
         public string OperationName => GetOperationName();
 
+        public bool Executing { get; private set; }
         public bool Cancelled { get; private set; }
         protected IOperationLogger Logger { get; private set; }
         protected OperationParameters OperationParameters { get; private set; }
@@ -53,7 +54,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
                 OperationParameters = operationParameters;
 
+                Executing = true;
                 var mainTask = OnExecuted(token);
+                Executing = false;
 
                 OperationResult result = await mainTask;
 
@@ -85,6 +88,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             }
             catch (Exception e)
             {
+                Executing = false;
                 throw new Exception($"Exception encountered running operation '{OperationName}'", e);
             }
         }

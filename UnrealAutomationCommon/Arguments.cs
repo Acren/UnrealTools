@@ -49,7 +49,7 @@ namespace UnrealAutomationCommon
                 throw new Exception("Invalid key");
             }
 
-            Argument existingArgument = _arguments.SingleOrDefault(a => a.Key.Equals(argument.Key, StringComparison.InvariantCulture));
+            Argument existingArgument = _arguments.SingleOrDefault(a => a.Key.Equals(argument.Key, StringComparison.InvariantCultureIgnoreCase));
 
             if (existingArgument != null)
             {
@@ -65,6 +65,11 @@ namespace UnrealAutomationCommon
             {
                 _arguments.Add(argument);
             }
+        }
+
+        public Argument GetArgument(string key)
+        {
+            return _arguments.Find(a => a.Key.Equals(key, StringComparison.InvariantCultureIgnoreCase));
         }
 
         // args {argument}

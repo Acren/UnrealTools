@@ -7,7 +7,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            return new Command(GetTarget(operationParameters).EngineInstall.GetRunUATPath(), UATArguments.MakeArguments(operationParameters));
+            Arguments args = UATArguments.MakeArguments(operationParameters);
+            if (args.GetArgument("ubtargs") != null)
+            {
+                if (Executing)
+                {
+                    Logger.Log("BuildCookRun editor targets do not respect UbtArgs argument - consider direct UBT usage instead", LogVerbosity.Warning);
+                }
+            }
+            return new Command(GetTarget(operationParameters).EngineInstall.GetRunUATPath(), args);
         }
 
         protected override string GetOperationName()
