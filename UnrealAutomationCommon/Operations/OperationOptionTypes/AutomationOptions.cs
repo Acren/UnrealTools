@@ -2,14 +2,8 @@
 {
     public class AutomationOptions : OperationOptions
     {
-        public AutomationOptions()
-        {
-            RunTests = new Option<bool>(OptionChanged, false);
-            Headless = new Option<bool>(OptionChanged, true);
-        }
-
-        public Option<bool> RunTests { get; }
-        public Option<bool> Headless { get; }
+        public Option<bool> RunTests { get; } = false;
+        public Option<bool> Headless { get; } = true;
 
         public string TestNameOverride { get; set; }
     }

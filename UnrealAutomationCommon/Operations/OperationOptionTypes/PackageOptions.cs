@@ -2,11 +2,6 @@
 {
     public class PackageOptions : OperationOptions
     {
-        public PackageOptions()
-        {
-            NoDebugInfo = new Option<bool>(OptionChanged, false);
-        }
-
-        public Option<bool> NoDebugInfo { get; }
+        public Option<bool> NoDebugInfo { get; } = false;
     }
 }
