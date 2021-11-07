@@ -34,7 +34,14 @@ namespace UnrealAutomationCommon
 
         public void Execute(object parameter)
         {
-            _execute(parameter);
+            try
+            {
+                _execute(parameter);
+            }
+            catch (Exception e)
+            {
+                AppLogger.Instance.Log(e.ToString(), LogVerbosity.Error);
+            }
         }
 
         public void RaiseCanExecuteChanged()

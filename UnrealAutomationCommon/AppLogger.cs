@@ -1,9 +1,6 @@
-﻿using UnrealAutomationCommon;
-using UnrealAutomationCommon.Operations;
-
-namespace UnrealCommander
+﻿namespace UnrealAutomationCommon
 {
-    class AppLogger : SingletonBase<AppLogger>, ILogger
+    public class AppLogger : SingletonBase<AppLogger>, ILogger
     {
         public void Log(string line, LogVerbosity verbosity = LogVerbosity.Log)
         {

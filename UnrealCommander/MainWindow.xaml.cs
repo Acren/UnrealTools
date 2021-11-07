@@ -98,6 +98,8 @@ namespace UnrealCommander
             IOperationTarget target = SelectedTarget;
             SelectedTarget = null;
             SelectedTarget = target;
+
+            AppLogger.Instance.Log("App initialized");
         }
 
         public IOperationTarget SelectedTarget
