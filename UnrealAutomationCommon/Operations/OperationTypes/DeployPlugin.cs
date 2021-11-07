@@ -371,7 +371,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     string[] excludePlugins = OperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ", "").Split(",");
                     foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
                     {
-                        if (exampleProjectPlugin.Name == plugin.Name || excludePlugins.Contains(exampleProjectPlugin.Name))
+                        if (exampleProjectPlugin.Name == plugin.Name || !OperationParameters.RequestOptions<PluginDeployOptions>().IncludeOtherPlugins || excludePlugins.Contains(exampleProjectPlugin.Name))
                         {
                             // Delete target or excluded plugin from example project
                             FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
