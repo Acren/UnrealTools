@@ -90,21 +90,34 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             if (split.Length > 1)
             {
                 if (split[0] == "ERROR")
+                {
                     // UBT error format
                     // "ERROR: Some message"
                     verbosity = LogVerbosity.Error;
+                }
                 else if (split[1] == "Error")
+                {
                     // Unreal error format
                     // "LogCategory: Error: Some message"
                     verbosity = LogVerbosity.Error;
+                }
                 else if (split[1] == "Warning")
+                {
                     // Unreal warning format
                     verbosity = LogVerbosity.Warning;
+                }
             }
 
-            if (line.Contains("): warning "))
-                // MSBuild warning format
+            if (line.Contains("): error"))
+            {
+                // Compiler error
+                verbosity = LogVerbosity.Error;
+            } 
+            else if (line.Contains("): warning"))
+            {
+                // Compiler warning
                 verbosity = LogVerbosity.Warning;
+            }
 
             Logger.Log(line, verbosity);
         }
