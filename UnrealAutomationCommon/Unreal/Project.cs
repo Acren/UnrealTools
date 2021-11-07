@@ -14,7 +14,10 @@ namespace UnrealAutomationCommon.Unreal
         [JsonConstructor]
         public Project(string uProjectPath)
         {
-            if (ProjectPaths.Instance.IsTargetFile(uProjectPath)) UProjectPath = uProjectPath;
+            if (ProjectPaths.Instance.IsTargetFile(uProjectPath))
+            {
+                UProjectPath = uProjectPath;
+            }
         }
 
         [JsonProperty]
@@ -32,7 +35,10 @@ namespace UnrealAutomationCommon.Unreal
                     _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uProjectPath));
                     _watcher.Changed += (Sender, Args) =>
                     {
-                        if (Args.FullPath == UProjectPath) LoadDescriptor();
+                        if (Args.FullPath == UProjectPath)
+                        {
+                            LoadDescriptor();
+                        }
                     };
                     _watcher.EnableRaisingEvents = true;
 
@@ -67,7 +73,10 @@ namespace UnrealAutomationCommon.Unreal
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
-            if (EngineInstall == null) return false;
+            if (EngineInstall == null)
+            {
+                return false;
+            }
 
             return EngineInstall.SupportsConfiguration(configuration);
         }

@@ -7,7 +7,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            Arguments arguments = UATArguments.MakeArguments(operationParameters);
+            Arguments arguments = UATArguments.MakeBuildArguments(operationParameters);
             arguments.SetFlag("cook");
             arguments.SetFlag("stage");
             arguments.SetFlag("pak");

@@ -31,12 +31,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             if(buildLinux)
                 platformsValue.Add("Linux");
 
-            buildPluginArguments.SetKeyValue("TargetPlatforms", string.Join('+', platformsValue)); 
+            buildPluginArguments.SetKeyValue("TargetPlatforms", string.Join('+', platformsValue));
 
             if (operationParameters.RequestOptions<PluginBuildOptions>().StrictIncludes)
             {
                 buildPluginArguments.SetFlag("StrictIncludes");
             }
+
+            buildPluginArguments.ApplyCommonUATArguments(operationParameters);
 
             buildPluginArguments.AddAdditionalArguments(operationParameters);
             return new Command(GetTarget(operationParameters).EngineInstall.GetRunUATPath(), buildPluginArguments);

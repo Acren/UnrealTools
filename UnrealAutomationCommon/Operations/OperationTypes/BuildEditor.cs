@@ -7,7 +7,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
-            Arguments args = UATArguments.MakeArguments(operationParameters);
+            Arguments args = UATArguments.MakeBuildArguments(operationParameters);
             if (args.GetArgument("ubtargs") != null)
             {
                 if (Executing)
