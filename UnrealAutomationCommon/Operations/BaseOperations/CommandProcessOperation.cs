@@ -112,7 +112,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             {
                 // Compiler error
                 verbosity = LogVerbosity.Error;
-            } 
+            }
             else if (line.Contains("): warning"))
             {
                 // Compiler warning

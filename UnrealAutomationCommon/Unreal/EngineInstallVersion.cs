@@ -1,6 +1,6 @@
-﻿using System.Diagnostics;
+﻿using Newtonsoft.Json;
+using System.Diagnostics;
 using System.IO;
-using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
 {

@@ -1,11 +1,11 @@
-﻿using System;
+﻿using Newtonsoft.Json.Linq;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
@@ -368,7 +368,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                     var exampleProjectPlugins = exampleProjectBuild.GetPlugins();
                     string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
-                    string[] excludePlugins = OperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ","").Split(",");
+                    string[] excludePlugins = OperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ", "").Split(",");
                     foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
                     {
                         if (exampleProjectPlugin.Name == plugin.Name || excludePlugins.Contains(exampleProjectPlugin.Name))
