@@ -14,7 +14,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         public bool Executing { get; private set; }
         public bool Cancelled { get; private set; }
-        protected IOperationLogger Logger { get; private set; }
+        protected ILogger Logger { get; private set; }
         protected OperationParameters OperationParameters { get; private set; }
 
         public static Operation CreateOperation(Type operationType)
@@ -28,7 +28,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return CreateOperation(operationType).SupportsTarget(target);
         }
 
-        public async Task<OperationResult> Execute(OperationParameters operationParameters, IOperationLogger logger, CancellationToken token)
+        public async Task<OperationResult> Execute(OperationParameters operationParameters, ILogger logger, CancellationToken token)
         {
             try
             {

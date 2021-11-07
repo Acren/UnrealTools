@@ -55,12 +55,14 @@ namespace UnrealCommander
         private Operation _operation;
         private PersistentData _persistentState = new();
 
-        private OperationRunner _runningOperation;
+        private Runner _running;
 
         public MainWindow()
         {
             PersistentState = PersistentData.Load();
             InitializeComponent();
+
+            AppLogger.Instance.Output += AddLogToOutputViewer;
 
             TargetGrid.Sorting += (sender, e) =>
             {
@@ -224,21 +226,21 @@ namespace UnrealCommander
 
         private int LineCount { get; set; }
 
-        public OperationRunner RunningOperation
+        public Runner Running
         {
-            get => _runningOperation;
+            get => _running;
             set
             {
-                if (_runningOperation != value)
+                if (_running != value)
                 {
-                    _runningOperation = value;
+                    _running = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(IsRunningOperation));
                 }
             }
         }
 
-        public bool IsRunningOperation => RunningOperation is { IsRunning: true };
+        public bool IsRunningOperation => Running is { IsRunning: true };
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -269,11 +271,11 @@ namespace UnrealCommander
 
             if (IsRunningOperation)
             {
-                MessageBoxResult result = MessageBox.Show($"Operation '{RunningOperation.Operation.OperationName}' is running. Terminate it?", "Terminate operation", MessageBoxButton.YesNoCancel);
+                MessageBoxResult result = MessageBox.Show($"Operation '{Running.Operation.OperationName}' is running. Terminate it?", "Terminate operation", MessageBoxButton.YesNoCancel);
                 switch (result)
                 {
                     case MessageBoxResult.Yes:
-                        await RunningOperation.Cancel();
+                        await Running.Cancel();
                         break;
                     case MessageBoxResult.No:
                         break;
@@ -284,24 +286,24 @@ namespace UnrealCommander
 
             if (IsRunningOperation)
             {
-                AddOutputLine("Already running an operation", LogVerbosity.Error);
+                AppLogger.Instance.Log("Already running an operation", LogVerbosity.Error);
                 return;
             }
 
-            AddOutputLine($"User started operation '{newOperation.OperationName}'");
+            AppLogger.Instance.Log($"User started operation '{newOperation.OperationName}'");
 
-            OperationRunner newRunner = new(newOperation, PersistentState.OperationParameters);
+            Runner newRunner = new(newOperation, PersistentState.OperationParameters);
             newRunner.Output += (S, verbosity) =>
             {
                 // Output handler
                 Dispatcher.Invoke(() =>
                 {
                     // Prepend line numbers to each line of the output.
-                    if (!string.IsNullOrEmpty(S)) AddOutputLine(S, verbosity);
+                    if (!string.IsNullOrEmpty(S)) AppLogger.Instance.Log(S, verbosity);
                 });
             };
 
-            RunningOperation = newRunner;
+            Running = newRunner;
             try
             {
                 Task task = newRunner.Run();
@@ -310,7 +312,7 @@ namespace UnrealCommander
             }
             catch (Exception e)
             {
-                AddOutputLine(e.ToString(), LogVerbosity.Error);
+                AppLogger.Instance.Log(e.ToString(), LogVerbosity.Error);
             }
 
             OnPropertyChanged(nameof(IsRunningOperation));
@@ -320,10 +322,10 @@ namespace UnrealCommander
 
         private void Terminate(object sender, RoutedEventArgs e)
         {
-            if (RunningOperation != null) RunningOperation.Cancel();
+            if (Running != null) Running.Cancel();
         }
 
-        private void AddOutputLine(string line, LogVerbosity verbosity = LogVerbosity.Log)
+        private void AddLogToOutputViewer(string line, LogVerbosity verbosity = LogVerbosity.Log)
         {
             LineCount++;
             string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\r";
@@ -376,7 +378,7 @@ namespace UnrealCommander
                         // Check is running again, because it may have finished while the message box was open
                         if (IsRunningOperation)
                         {
-                            RunningOperation.Cancel();
+                            Running.Cancel();
 
                             // Small sleep so that dispatch invokes triggered by termination don't crash
                             Thread.Sleep(1);

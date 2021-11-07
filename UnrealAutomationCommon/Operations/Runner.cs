@@ -6,9 +6,7 @@ using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Operations
 {
-    public delegate void OperationOutputEventHandler(string output, LogVerbosity verbosity);
-
-    public class OperationRunner : IOperationLogger
+    public class Runner : ILogger
     {
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly OperationParameters _operationParameters;
@@ -17,7 +15,7 @@ namespace UnrealAutomationCommon.Operations
         //public event Action Ended;
         private Task<OperationResult> _currentTask = null;
 
-        public OperationRunner(Operation operation, OperationParameters operationParameters)
+        public Runner(Operation operation, OperationParameters operationParameters)
         {
             Operation = operation;
             _operationParameters = operationParameters;
@@ -27,7 +25,7 @@ namespace UnrealAutomationCommon.Operations
 
         public Operation Operation { get; }
 
-        public event OperationOutputEventHandler Output;
+        public event LogEventHandler Output;
 
         public void Log(string line, LogVerbosity verbosity)
         {
