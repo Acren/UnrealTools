@@ -62,7 +62,7 @@ namespace UnrealAutomationCommon.Unreal
             return TestState.Success;
         }
 
-        public XmlDocument ToJUnit(bool includeWarnings)
+        public XmlDocument ToJUnit(bool includeWarnings, string testSuiteName = null)
         {
             XmlDocument doc = new();
             XmlElement testSuites = doc.CreateElement("testsuites");
@@ -72,6 +72,10 @@ namespace UnrealAutomationCommon.Unreal
             testSuites.SetAttribute("failures", Failed.ToString());
             XmlElement testSuite = doc.CreateElement("testsuite");
             testSuites.AppendChild(testSuite);
+            if(testSuiteName != null)
+            {
+                testSuite.SetAttribute("name", testSuiteName);
+            }
             testSuite.SetAttribute("tests", TotalNumTests.ToString());
             testSuite.SetAttribute("failures", Failed.ToString());
             foreach (Test test in Tests)

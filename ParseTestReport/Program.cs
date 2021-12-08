@@ -26,6 +26,17 @@ namespace ParseTestReport
                 Environment.Exit(3);
             }
 
+            string context = null;
+            if(args.Length >= 2)
+            {
+                context = args[1];
+                Console.WriteLine($"Context is '{context}'");
+            }
+            else
+            {
+                Console.WriteLine($"No context label provided");
+            }
+
             TestReport report = null;
 
             try
@@ -59,7 +70,7 @@ namespace ParseTestReport
 
                 string directory = Path.GetDirectoryName(path);
                 string jUnitPath = Path.Combine(directory, "junit.xml");
-                XmlDocument jUnit = report.ToJUnit(!noWarnings);
+                XmlDocument jUnit = report.ToJUnit(!noWarnings, context);
 
                 XmlWriterSettings settings = new();
                 settings.Indent = true;
