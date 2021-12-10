@@ -9,17 +9,19 @@ namespace ParseTestReport
 {
     internal class Program
     {
-        private static void Main(string[] args)
+        private static void Main(string[] argStrings)
         {
             Console.WriteLine("ParseTestReport for parsing Unreal test results");
 
-            if (args.Length < 1)
+            Arguments args = new Arguments(argStrings);
+
+            if (argStrings.Length < 1)
             {
                 Console.WriteLine("No arguments - first argument must be path of test report");
                 Environment.Exit(2);
             }
 
-            string path = args[0];
+            string path = argStrings[0];
             if (!File.Exists(path))
             {
                 Console.WriteLine("File " + path + " does not exist");
@@ -27,9 +29,9 @@ namespace ParseTestReport
             }
 
             string context = null;
-            if(args.Length >= 2)
+            if(args.HasArgument("context"))
             {
-                context = args[1];
+                context = args.GetArgument("context").Value;
                 Console.WriteLine($"Context is '{context}'");
             }
             else
@@ -64,9 +66,9 @@ namespace ParseTestReport
                 }
             }
 
-            if (args.Contains("-junit"))
+            if (args.HasArgument("junit"))
             {
-                bool noWarnings = args.Contains("-nowarnings");
+                bool noWarnings = args.HasArgument("nowarnings");
 
                 string directory = Path.GetDirectoryName(path);
                 string jUnitPath = Path.Combine(directory, "junit.xml");
