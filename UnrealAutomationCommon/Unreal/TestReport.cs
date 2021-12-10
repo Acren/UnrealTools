@@ -62,7 +62,7 @@ namespace UnrealAutomationCommon.Unreal
             return TestState.Success;
         }
 
-        public XmlDocument ToJUnit(bool includeWarnings, string testSuiteName = null)
+        public XmlDocument ToJUnit(bool includeWarnings, string contextLabel = null)
         {
             XmlDocument doc = new();
             XmlElement testSuites = doc.CreateElement("testsuites");
@@ -72,9 +72,9 @@ namespace UnrealAutomationCommon.Unreal
             testSuites.SetAttribute("failures", Failed.ToString());
             XmlElement testSuite = doc.CreateElement("testsuite");
             testSuites.AppendChild(testSuite);
-            if(testSuiteName != null)
+            if(contextLabel != null)
             {
-                testSuite.SetAttribute("name", testSuiteName);
+                testSuite.SetAttribute("name", contextLabel);
             }
             testSuite.SetAttribute("tests", TotalNumTests.ToString());
             testSuite.SetAttribute("failures", Failed.ToString());
@@ -82,8 +82,7 @@ namespace UnrealAutomationCommon.Unreal
             {
                 XmlElement testCase = doc.CreateElement("testcase");
                 testSuite.AppendChild(testCase);
-                testCase.SetAttribute("classname", test.FullTestPath);
-                testCase.SetAttribute("name", test.TestDisplayName);
+                testCase.SetAttribute("name", $"{test.FullTestPath}");
 
                 TestEventType mostSevere = TestEventType.Info;
                 var failureLines = new List<string>();
