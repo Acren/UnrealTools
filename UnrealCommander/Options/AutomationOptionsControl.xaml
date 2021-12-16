@@ -9,13 +9,11 @@
                           d:DesignHeight="450" d:DesignWidth="800">
     <StackPanel>
         <CheckBox IsChecked="{Binding RunTests.Value}" VerticalAlignment="Center" VerticalContentAlignment="Center">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Run tests:" VerticalAlignment="Center" Margin="0,0,5,0" />
-                <TextBox
-                    Text="{Binding PersistentState.OperationParameters.Target.TestName, RelativeSource={RelativeSource AncestorType=unrealCommander:MainWindow}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
-                    MinWidth="50" />
-            </StackPanel>
+            <TextBlock Text="Run tests:" VerticalAlignment="Center" Margin="0,0,5,0" />
         </CheckBox>
+        <TextBox
+            Text="{Binding PersistentState.OperationParameters.Target.TestName, RelativeSource={RelativeSource AncestorType=unrealCommander:MainWindow}, NotifyOnSourceUpdated=True, NotifyOnTargetUpdated=True, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+            MinWidth="50" />
         <CheckBox IsChecked="{Binding Headless.Value}">
             <TextBlock Text="Headless" VerticalAlignment="Center" />
         </CheckBox>
