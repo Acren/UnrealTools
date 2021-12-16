@@ -10,11 +10,17 @@ namespace UnrealCommander
     {
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
-            if (!(values[0] is Type)) return false;
+            if (!(values[0] is Type))
+            {
+                return false;
+            }
 
             Type operationType = values[0] as Type;
 
-            if (values[1] is OperationTarget target && !Operation.OperationTypeSupportsTarget(operationType, target)) return false;
+            if (values[1] is OperationTarget target && !Operation.OperationTypeSupportsTarget(operationType, target))
+            {
+                return false;
+            }
 
             return true;
         }

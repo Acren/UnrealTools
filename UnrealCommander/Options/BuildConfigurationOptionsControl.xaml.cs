@@ -18,7 +18,10 @@ namespace UnrealCommander.Options
         {
             DataContextChanged += (sender, args) =>
             {
-                if (DataContext == null) return;
+                if (DataContext == null)
+                {
+                    return;
+                }
             };
             InitializeComponent();
         }

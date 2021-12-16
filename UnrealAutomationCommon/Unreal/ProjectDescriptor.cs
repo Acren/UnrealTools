@@ -21,9 +21,15 @@ namespace UnrealAutomationCommon.Unreal
         {
             get
             {
-                if (IsEngineInstalled()) return EngineAssociation;
+                if (IsEngineInstalled())
+                {
+                    return EngineAssociation;
+                }
 
-                if (EngineInstall == null) return EngineAssociation;
+                if (EngineInstall == null)
+                {
+                    return EngineAssociation;
+                }
 
                 return EngineInstall.InstallDirectory;
             }

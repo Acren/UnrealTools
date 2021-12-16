@@ -41,8 +41,13 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 Logger.Output += (output, verbosity) =>
                 {
                     if (verbosity == LogVerbosity.Error)
+                    {
                         errors++;
-                    else if (verbosity == LogVerbosity.Warning) warnings++;
+                    }
+                    else if (verbosity == LogVerbosity.Warning)
+                    {
+                        warnings++;
+                    }
                 };
 
                 string requirementsError = CheckRequirementsSatisfied(operationParameters);
@@ -61,9 +66,13 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 OperationResult result = await mainTask;
 
                 if (Cancelled)
+                {
                     Logger.Log($"Operation '{OperationName}' terminated by user", LogVerbosity.Warning);
+                }
                 else
+                {
                     Logger.Log($"Operation '{OperationName}' completed - {errors} error(s), {warnings} warning(s)");
+                }
 
                 if (result.Success)
                 {
@@ -97,7 +106,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         public IEnumerable<Command> GetCommands(OperationParameters operationParameters)
         {
-            if (!RequirementsSatisfied(operationParameters)) return new List<Command>();
+            if (!RequirementsSatisfied(operationParameters))
+            {
+                return new List<Command>();
+            }
 
             return BuildCommands(operationParameters);
         }
@@ -109,7 +121,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         public string GetOutputPath(OperationParameters operationParameters)
         {
-            if (operationParameters.OutputPathOverride != null) return operationParameters.OutputPathOverride;
+            if (operationParameters.OutputPathOverride != null)
+            {
+                return operationParameters.OutputPathOverride;
+            }
 
             string path = Path.Combine(operationParameters.Target.OutputDirectory, OperationName.Replace(" ", ""));
             return path;
@@ -122,7 +137,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         public EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
         {
-            if (GetTarget(operationParameters) is not IEngineInstallProvider) return null;
+            if (GetTarget(operationParameters) is not IEngineInstallProvider)
+            {
+                return null;
+            }
 
             IEngineInstallProvider engineInstallProvider = GetTarget(operationParameters) as IEngineInstallProvider;
             return engineInstallProvider?.EngineInstall;
@@ -130,12 +148,19 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         public HashSet<Type> GetRequiredOptionSetTypes(IOperationTarget target)
         {
-            if (target == null) return new HashSet<Type>();
+            if (target == null)
+            {
+                return new HashSet<Type>();
+            }
+
             HashSet<Type> result = new();
             OperationParameters dummyParams = new();
             dummyParams.Target = target;
 
-            if (!RequirementsSatisfied(dummyParams)) return new HashSet<Type>();
+            if (!RequirementsSatisfied(dummyParams))
+            {
+                return new HashSet<Type>();
+            }
 
             BuildCommands(dummyParams);
 
@@ -156,21 +181,39 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         public virtual string CheckRequirementsSatisfied(OperationParameters operationParameters)
         {
-            if (operationParameters.Target == null) return "Target not specified";
+            if (operationParameters.Target == null)
+            {
+                return "Target not specified";
+            }
 
-            if (!SupportsTarget(operationParameters.Target)) return $"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not supported";
+            if (!SupportsTarget(operationParameters.Target))
+            {
+                return $"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not supported";
+            }
 
-            if (!operationParameters.Target.IsValid) return $"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not valid";
+            if (!operationParameters.Target.IsValid)
+            {
+                return $"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not valid";
+            }
 
-            if (TargetProvidesEngineInstall(operationParameters) && GetRelevantEngineInstall(operationParameters) == null) return "Engine install not found";
+            if (TargetProvidesEngineInstall(operationParameters) && GetRelevantEngineInstall(operationParameters) == null)
+            {
+                return "Engine install not found";
+            }
 
             BuildConfigurationOptions options = operationParameters.FindOptions<BuildConfigurationOptions>();
 
             if (options != null)
             {
-                if (!SupportsConfiguration(options.Configuration)) return "Configuration is not supported";
+                if (!SupportsConfiguration(options.Configuration))
+                {
+                    return "Configuration is not supported";
+                }
 
-                if (TargetProvidesEngineInstall(operationParameters) && !GetRelevantEngineInstall(operationParameters).SupportsConfiguration(options.Configuration)) return "Engine install does not support configuration";
+                if (TargetProvidesEngineInstall(operationParameters) && !GetRelevantEngineInstall(operationParameters).SupportsConfiguration(options.Configuration))
+                {
+                    return "Engine install does not support configuration";
+                }
             }
 
             return null;

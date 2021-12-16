@@ -19,15 +19,23 @@ namespace UnrealAutomationCommon.Unreal
             directoryWatcher.Filter = project.Name + "*.log";
             directoryWatcher.Created += (Sender, Args) =>
             {
-                if (ShouldRegisterLogFile(Args.FullPath)) RegisterLogFile(Args.FullPath);
+                if (ShouldRegisterLogFile(Args.FullPath))
+                {
+                    RegisterLogFile(Args.FullPath);
+                }
             };
             directoryWatcher.Changed += (Sender, Args) =>
             {
-                if (ShouldRegisterLogFile(Args.FullPath)) RegisterLogFile(Args.FullPath);
+                if (ShouldRegisterLogFile(Args.FullPath))
+                {
+                    RegisterLogFile(Args.FullPath);
+                }
 
                 if (Args.FullPath != _registeredLogFile)
                     // Ignore logs other than the registered one
+                {
                     return;
+                }
 
                 ReadToEnd();
             };
@@ -57,7 +65,11 @@ namespace UnrealAutomationCommon.Unreal
             while (!_reader.EndOfStream)
             {
                 string line = _reader.ReadLine();
-                if (UnrealLogUtils.IsTimestampedLog(line)) line = UnrealLogUtils.RemoveTimestamp(line);
+                if (UnrealLogUtils.IsTimestampedLog(line))
+                {
+                    line = UnrealLogUtils.RemoveTimestamp(line);
+                }
+
                 LineLogged?.Invoke(line);
             }
         }

@@ -15,9 +15,13 @@ namespace UnrealAutomationCommon.Unreal
         public Plugin([JsonProperty("UPluginPath")] string path)
         {
             if (IsPluginFile(path))
+            {
                 UPluginPath = path;
+            }
             else
+            {
                 UPluginPath = FindUPlugin(path);
+            }
         }
 
         [JsonProperty]
@@ -87,7 +91,10 @@ namespace UnrealAutomationCommon.Unreal
 
                 while (uProjectFiles.Length < 1)
                 {
-                    if (Path.GetPathRoot(projectPath) == projectPath) throw new Exception("No .uproject found in " + projectPath);
+                    if (Path.GetPathRoot(projectPath) == projectPath)
+                    {
+                        throw new Exception("No .uproject found in " + projectPath);
+                    }
 
                     projectPath = Path.GetFullPath(Path.Combine(projectPath, @"..\")); // Up 1 level
                     uProjectFiles = Directory.GetFiles(projectPath, "*.uproject");
@@ -135,7 +142,10 @@ namespace UnrealAutomationCommon.Unreal
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
-            if (EngineInstall == null) return false;
+            if (EngineInstall == null)
+            {
+                return false;
+            }
 
             return EngineInstall.SupportsConfiguration(configuration);
         }
@@ -147,12 +157,17 @@ namespace UnrealAutomationCommon.Unreal
 
         public static string FindUPlugin(string path)
         {
-            if (!Directory.Exists(path)) return null;
+            if (!Directory.Exists(path))
+            {
+                return null;
+            }
 
             string[] files = Directory.GetFiles(path);
             foreach (string file in files)
                 if (Path.GetExtension(file).Equals(".uplugin", StringComparison.InvariantCultureIgnoreCase))
+                {
                     return file;
+                }
 
             return null;
         }

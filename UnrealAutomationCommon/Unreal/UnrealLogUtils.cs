@@ -14,7 +14,10 @@
                 {
                     string[] closeSplit = split[2].Split(']');
                     int Result;
-                    if (int.TryParse(closeSplit[0], out Result)) return true;
+                    if (int.TryParse(closeSplit[0], out Result))
+                    {
+                        return true;
+                    }
                 }
             }
 

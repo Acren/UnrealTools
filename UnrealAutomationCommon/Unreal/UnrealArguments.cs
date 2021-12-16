@@ -10,7 +10,10 @@ namespace UnrealAutomationCommon.Unreal
         {
             Arguments arguments = new();
 
-            if (uProjectPath && operationParameters.Target is Project project) arguments.SetPath(project.UProjectPath);
+            if (uProjectPath && operationParameters.Target is Project project)
+            {
+                arguments.SetPath(project.UProjectPath);
+            }
 
             arguments.SetFlag("stdout");
             arguments.SetFlag("FullStdOutLogOutput");
@@ -25,14 +28,23 @@ namespace UnrealAutomationCommon.Unreal
 
                 arguments.SetKeyValue("trace", string.Join(",", traceChannels));
 
-                if (traceChannels.Contains("cpu")) arguments.SetFlag("statnamedevents");
+                if (traceChannels.Contains("cpu"))
+                {
+                    arguments.SetFlag("statnamedevents");
+                }
 
                 arguments.SetKeyValue("tracehost", "127.0.0.1");
             }
 
-            if (operationParameters.RequestOptions<FlagOptions>().StompMalloc) arguments.SetFlag("stompmalloc");
+            if (operationParameters.RequestOptions<FlagOptions>().StompMalloc)
+            {
+                arguments.SetFlag("stompmalloc");
+            }
 
-            if (operationParameters.RequestOptions<FlagOptions>().WaitForAttach) arguments.SetFlag("waitforattach");
+            if (operationParameters.RequestOptions<FlagOptions>().WaitForAttach)
+            {
+                arguments.SetFlag("waitforattach");
+            }
 
             AutomationOptions automationOpts = operationParameters.RequestOptions<AutomationOptions>();
             if (automationOpts.RunTests)

@@ -51,13 +51,20 @@ namespace UnrealAutomationCommon.Unreal
 
         public static TestReport Load(string filePath)
         {
-            if (!File.Exists(filePath)) return null;
+            if (!File.Exists(filePath))
+            {
+                return null;
+            }
+
             return JsonConvert.DeserializeObject<TestReport>(File.ReadAllText(filePath));
         }
 
         public TestState GetState()
         {
-            if (Failed > 0) return TestState.Fail;
+            if (Failed > 0)
+            {
+                return TestState.Fail;
+            }
 
             return TestState.Success;
         }
@@ -93,7 +100,10 @@ namespace UnrealAutomationCommon.Unreal
                     if (includeEvent)
                     {
                         failureLines.Add(EnumUtils.GetName(testEntry.Event.Type) + ": " + testEntry.Event.Message);
-                        if (testEntry.Event.Type > mostSevere) mostSevere = testEntry.Event.Type;
+                        if (testEntry.Event.Type > mostSevere)
+                        {
+                            mostSevere = testEntry.Event.Type;
+                        }
                     }
                 }
 

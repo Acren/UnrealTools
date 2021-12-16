@@ -16,7 +16,9 @@
             if (configuration == BuildConfiguration.Debug
                 || configuration == BuildConfiguration.Test)
                 // Only support Debug and Test in source builds
+            {
                 return IsSourceBuild;
+            }
 
             // Always support DebugGame, Development, Shipping
             return true;
@@ -26,7 +28,10 @@
 
         public string GetWindowsPlatformName()
         {
-            if (Version.MajorVersion >= 5) return "Windows";
+            if (Version.MajorVersion >= 5)
+            {
+                return "Windows";
+            }
 
             return "WindowsNoEditor";
         }

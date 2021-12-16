@@ -18,7 +18,10 @@ namespace UnrealAutomationCommon.Unreal
             RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
 
             RegistryKey localMachineUnrealEngine = localMachine.OpenSubKey(@"Software\EpicGames\Unreal Engine");
-            if (localMachineUnrealEngine == null) return new List<EngineInstall>();
+            if (localMachineUnrealEngine == null)
+            {
+                return new List<EngineInstall>();
+            }
 
             string[] subKeys = localMachineUnrealEngine.GetSubKeyNames();
 
@@ -29,12 +32,14 @@ namespace UnrealAutomationCommon.Unreal
                 RegistryKey engineVersionKey = localMachineUnrealEngine.OpenSubKey(subKeyString);
                 var directory = (string)engineVersionKey.GetValue("InstalledDirectory");
                 if (IsEngineInstallDirectory(directory))
+                {
                     result.Add(new EngineInstall
                     {
                         Key = subKeyString,
                         InstallDirectory = directory,
                         IsSourceBuild = false
                     });
+                }
             }
 
             RegistryKey currentUser = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
@@ -44,15 +49,21 @@ namespace UnrealAutomationCommon.Unreal
             foreach (string buildName in buildValueNames)
             {
                 var buildPath = (string)currentUserBuilds.GetValue(buildName);
-                if (buildPath == null) continue;
+                if (buildPath == null)
+                {
+                    continue;
+                }
+
                 buildPath = buildPath.Replace('/', '\\');
                 if (IsEngineInstallDirectory(buildPath))
+                {
                     result.Add(new EngineInstall
                     {
                         Key = buildName,
                         InstallDirectory = buildPath,
                         IsSourceBuild = true
                     });
+                }
             }
 
             return result;
@@ -64,9 +75,13 @@ namespace UnrealAutomationCommon.Unreal
 
             if (engineAssociation.Contains("."))
                 // It's a launcher version
+            {
                 if (engineAssociation.Count(c => c == '.') > 1)
                     // Trim patch from version number
+                {
                     engineAssociation = engineAssociation.Remove(engineAssociation.LastIndexOf('.'));
+                }
+            }
 
             return GetEngineInstallsFromRegistry().Find(x => x.Key == engineAssociation);
         }
@@ -110,18 +125,27 @@ namespace UnrealAutomationCommon.Unreal
 
         public static EngineInstall GetEngineInstall(string engineKey)
         {
-            if (engineKey == null) return GetDefaultEngineInstall();
+            if (engineKey == null)
+            {
+                return GetDefaultEngineInstall();
+            }
 
             // Check Contains so that engine with "5.0EA" satisfies search for "5.0"
             EngineInstall engineInstall = GetEngineInstalls().Find(x => x.Key.Contains(engineKey));
-            if (engineInstall != null) return engineInstall;
+            if (engineInstall != null)
+            {
+                return engineInstall;
+            }
 
             throw new Exception("Could not find Engine installation based on EngineKey: + " + engineKey);
         }
 
         public static EngineInstall GetEngineInstall(EngineInstallVersion version)
         {
-            if (version == null) throw new Exception("Invalid version");
+            if (version == null)
+            {
+                throw new Exception("Invalid version");
+            }
 
             return GetEngineInstalls().Find(x => x.Version.MinorVersionEquals(version));
         }

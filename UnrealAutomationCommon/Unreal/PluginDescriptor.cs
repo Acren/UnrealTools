@@ -20,7 +20,7 @@ namespace UnrealAutomationCommon.Unreal
             {
                 return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 return null;
             }

@@ -23,7 +23,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Project hostProject = plugin.HostProject;
             ProjectDescriptor projectDescriptor = hostProject.ProjectDescriptor;
 
-            if (!projectDescriptor.HasPluginEnabled(plugin.Name)) throw new Exception("Host project must have plugin enabled");
+            if (!projectDescriptor.HasPluginEnabled(plugin.Name))
+            {
+                throw new Exception("Host project must have plugin enabled");
+            }
 
             EngineInstallVersion engineVersion = plugin.EngineInstall.Version;
             Logger.Log($"Engine version: {engineVersion}");
@@ -120,10 +123,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     var lines = File.ReadAllLines(file).ToList();
                     if (firstLine.StartsWith("//"))
                         // Replace existing comment with expected comment
+                    {
                         lines[0] = expectedComment;
+                    }
                     else
                         // Insert expected comment
+                    {
                         lines.Insert(0, expectedComment);
+                    }
+
                     File.WriteAllLines(file, lines);
                     string relativePath = Path.GetRelativePath(sourcePath, file);
                     Logger.Log($"Updated copyright notice: {relativePath}");
@@ -139,7 +147,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Target = hostProject
             };
 
-            if (!(await new BuildEditor().Execute(buildEditorParams, Logger, token)).Success) throw new Exception("Failed to build host project");
+            if (!(await new BuildEditor().Execute(buildEditorParams, Logger, token)).Success)
+            {
+                throw new Exception("Failed to build host project");
+            }
 
             // Launch and test host project editor
 
@@ -156,7 +167,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 };
                 launchEditorParams.SetOptions(automationOpts);
 
-                if (!(await new LaunchEditor().Execute(launchEditorParams, Logger, token)).Success) throw new Exception("Failed to launch host project");
+                if (!(await new LaunchEditor().Execute(launchEditorParams, Logger, token)).Success)
+                {
+                    throw new Exception("Failed to launch host project");
+                }
             }
 
             // Launch and test standalone
@@ -171,7 +185,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 };
                 launchStandaloneParams.SetOptions(automationOpts);
 
-                if (!(await new LaunchStandalone().Execute(launchStandaloneParams, Logger, token)).Success) throw new Exception("Failed to launch standalone");
+                if (!(await new LaunchStandalone().Execute(launchStandaloneParams, Logger, token)).Success)
+                {
+                    throw new Exception("Failed to launch standalone");
+                }
             }
 
             // Build plugin
@@ -221,14 +238,19 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.CopySubdirectory(hostProject.GetProjectPath(), exampleProjectBuildPath, "Config");
 
             string projectIcon = projectName + ".png";
-            if (File.Exists(projectIcon)) FileUtils.CopyFile(hostProject.GetProjectPath(), exampleProjectBuildPath, projectIcon);
+            if (File.Exists(projectIcon))
+            {
+                FileUtils.CopyFile(hostProject.GetProjectPath(), exampleProjectBuildPath, projectIcon);
+            }
 
             // Copy other plugins
 
             var sourcePlugins = hostProject.GetPlugins();
             foreach (Plugin sourcePlugin in sourcePlugins)
                 if (!sourcePlugin.Equals(plugin))
+                {
                     FileUtils.CopyDirectory(sourcePlugin.TargetDirectory, Path.Combine(exampleProjectBuildPath, "Plugins"), true);
+                }
 
             // Copy uproject 
             JObject uProjectContents = JObject.Parse(File.ReadAllText(hostProject.UProjectPath));
@@ -259,7 +281,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             OperationResult installedPluginPackageOperationResult = await installedPluginPackageOperation.Execute(installedPluginPackageParams, Logger, token);
 
-            if (!installedPluginPackageOperationResult.Success) throw new Exception("Example project build with installed plugin failed");
+            if (!installedPluginPackageOperationResult.Success)
+            {
+                throw new Exception("Example project build with installed plugin failed");
+            }
 
             // Test the package
 
@@ -273,7 +298,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 OperationResult testResult = await new LaunchStagedPackage().Execute(testInstalledPluginBuildParams, Logger, token);
 
-                if (!testResult.Success) throw new Exception("Launch and test with installed plugin failed");
+                if (!testResult.Success)
+                {
+                    throw new Exception("Launch and test with installed plugin failed");
+                }
             }
 
             // Uninstall plugin from engine because test has completed
@@ -306,7 +334,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, Logger, token);
 
-            if (!demoExePackageOperationResult.Success) throw new Exception("Example project build failed");
+            if (!demoExePackageOperationResult.Success)
+            {
+                throw new Exception("Example project build failed");
+            }
 
             // Can't test package in shipping
             //OperationParameters demoTestParams = new OperationParameters()
@@ -436,7 +467,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     Logger.Log("Copying to archive output path");
                     Directory.CreateDirectory(archiveOutputPath);
-                    if (!Directory.Exists(archiveOutputPath)) throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
+                    if (!Directory.Exists(archiveOutputPath))
+                    {
+                        throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
+                    }
 
                     FileUtils.CopyFile(pluginSubmissionZipPath, archiveOutputPath, true, true);
 

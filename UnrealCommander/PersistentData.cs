@@ -41,10 +41,16 @@ namespace UnrealCommander
                 if (_operationParameters != value)
                 {
                     if (_operationParameters != null)
+                    {
                         _operationParameters.PropertyChanged -= OperationParametersChanged;
+                    }
+
                     _operationParameters = value;
                     if (_operationParameters != null)
+                    {
                         _operationParameters.PropertyChanged += OperationParametersChanged;
+                    }
+
                     OperationParametersChanged(this, null);
                 }
 
@@ -86,7 +92,10 @@ namespace UnrealCommander
                 _instance = serializer.Deserialize<PersistentData>(reader);
             }
 
-            if (_instance == null) _instance = new PersistentData();
+            if (_instance == null)
+            {
+                _instance = new PersistentData();
+            }
 
             _instance._hasFinishedLoading = true;
 
@@ -109,13 +118,22 @@ namespace UnrealCommander
         {
             IOperationTarget target;
             if (ProjectPaths.Instance.IsTargetFile(path))
+            {
                 target = new Project(path);
+            }
             else if (PluginPaths.Instance.IsTargetFile(path))
+            {
                 target = new Plugin(path);
+            }
             else if (PackagePaths.Instance.IsTargetFile(path))
+            {
                 target = new Package(path);
+            }
             else
+            {
                 throw new Exception("Path is not a target");
+            }
+
             Targets.Add(target);
             return target;
         }
@@ -129,7 +147,11 @@ namespace UnrealCommander
         [NotifyPropertyChangedInvocator]
         protected virtual void OnPropertyChanged([CallerMemberName] string PropertyName = null)
         {
-            if (_hasFinishedLoading) Save();
+            if (_hasFinishedLoading)
+            {
+                Save();
+            }
+
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(PropertyName));
         }
     }

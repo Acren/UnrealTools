@@ -12,7 +12,9 @@ namespace UnrealAutomationCommon.Unreal
         {
             if (line.StartsWith("+") || line.StartsWith("-"))
                 // Ignore arrays for now
+            {
                 return;
+            }
 
             string[] split = line.Split(new[] { '=' }, 2);
             _values.Add(split[0], split[1]);
@@ -38,7 +40,10 @@ namespace UnrealAutomationCommon.Unreal
             {
                 string line = reader.ReadLine();
 
-                if (string.IsNullOrEmpty(line)) continue;
+                if (string.IsNullOrEmpty(line))
+                {
+                    continue;
+                }
 
                 if (line.StartsWith("["))
                 {
@@ -50,7 +55,10 @@ namespace UnrealAutomationCommon.Unreal
                 }
                 else
                 {
-                    if (currentSection == null) throw new Exception("Text before first section");
+                    if (currentSection == null)
+                    {
+                        throw new Exception("Text before first section");
+                    }
 
                     currentSection.AddLine(line);
                 }

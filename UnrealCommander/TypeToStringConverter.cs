@@ -11,7 +11,10 @@ namespace UnrealCommander
         {
             Type type = value as Type;
 
-            if (type == null) return string.Empty;
+            if (type == null)
+            {
+                return string.Empty;
+            }
 
             return type.Name.SplitWordsByUppercase();
         }

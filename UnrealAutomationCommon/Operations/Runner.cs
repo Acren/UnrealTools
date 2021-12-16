@@ -45,7 +45,10 @@ namespace UnrealAutomationCommon.Operations
             _currentTask = Operation.Execute(_operationParameters, this, _cancellationTokenSource.Token);
 
             FlagOptions flagOptions = _operationParameters.FindOptions<FlagOptions>();
-            if (flagOptions is { WaitForAttach: true }) Output?.Invoke("-WaitForAttach was specified, attach now", LogVerbosity.Log);
+            if (flagOptions is { WaitForAttach: true })
+            {
+                Output?.Invoke("-WaitForAttach was specified, attach now", LogVerbosity.Log);
+            }
 
             OperationResult result = await _currentTask;
             Output?.Invoke($"'{Operation.OperationName}' task ended", LogVerbosity.Log);
@@ -74,7 +77,10 @@ namespace UnrealAutomationCommon.Operations
 
         private void OutputLine(string line, LogVerbosity verbosity)
         {
-            if (string.IsNullOrEmpty(line)) return;
+            if (string.IsNullOrEmpty(line))
+            {
+                return;
+            }
 
             _lineCount++;
             Output?.Invoke("[" + _lineCount + "]: " + line, verbosity);

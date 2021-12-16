@@ -39,7 +39,9 @@ namespace UnrealCommander.Options
 
             foreach (TraceChannelOption option in TraceChannelOptions)
                 if (option.Enabled)
+                {
                     Options.TraceChannels.Add(option.TraceChannel);
+                }
         }
 
         private void UpdateOptionsFromChannels()

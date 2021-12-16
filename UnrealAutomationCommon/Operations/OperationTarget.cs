@@ -32,9 +32,13 @@ namespace UnrealAutomationCommon.Operations
                 {
                     IOperationTarget parent = currentRoot.ParentTarget;
                     if (parent != null)
+                    {
                         currentRoot = parent;
+                    }
                     else
+                    {
                         break;
+                    }
                 }
 
                 return currentRoot;
@@ -93,7 +97,10 @@ namespace UnrealAutomationCommon.Operations
 
         public override bool Equals(object other)
         {
-            if (other == null || other.GetType() != GetType()) return false;
+            if (other == null || other.GetType() != GetType())
+            {
+                return false;
+            }
 
             return (other as OperationTarget).TargetPath == TargetPath;
         }

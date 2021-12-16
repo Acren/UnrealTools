@@ -30,9 +30,15 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             Logger.Log("Running command: " + command);
 
-            if (command == null) throw new Exception("No command");
+            if (command == null)
+            {
+                throw new Exception("No command");
+            }
 
-            if (!File.Exists(command.File)) throw new Exception("File " + command.File + " not found");
+            if (!File.Exists(command.File))
+            {
+                throw new Exception("File " + command.File + " not found");
+            }
 
             ProcessStartInfo startInfo = new()
             {
@@ -83,7 +89,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         private void HandleLogLine(string line)
         {
-            if (string.IsNullOrEmpty(line)) return;
+            if (string.IsNullOrEmpty(line))
+            {
+                return;
+            }
 
             string[] split = line.Split(new[] { ": " }, StringSplitOptions.None);
             LogVerbosity verbosity = LogVerbosity.Log;

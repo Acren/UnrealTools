@@ -28,16 +28,24 @@ namespace UnrealAutomationCommon.Unreal
             string exeName;
             BuildConfigurationOptions buildOptions = operationParameters.RequestOptions<BuildConfigurationOptions>();
             if (buildOptions is { Configuration: BuildConfiguration.DebugGame })
+            {
                 exeName = mainEditorName + "-Win64-DebugGame.exe";
+            }
             else
+            {
                 exeName = mainEditorName + ".exe";
+            }
 
             return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", exeName);
         }
 
         public static string GetUBTExe(this EngineInstall EngineInstall)
         {
-            if (EngineInstall.Version.MajorVersion >= 5) return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool", "UnrealBuildTool.exe");
+            if (EngineInstall.Version.MajorVersion >= 5)
+            {
+                return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool", "UnrealBuildTool.exe");
+            }
+
             return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool.exe");
         }
     }

@@ -33,15 +33,24 @@ namespace UnrealCommander
             string xName = targetX.RootTarget.DisplayName;
             string yName = targetY.RootTarget.DisplayName;
             int rootNameComp = string.Compare(xName, yName, StringComparison.Ordinal);
-            if (rootNameComp != 0) return rootNameComp;
+            if (rootNameComp != 0)
+            {
+                return rootNameComp;
+            }
 
             int rootPathComp = string.Compare(targetX.RootTarget.TargetDirectory, targetY.RootTarget.TargetDirectory, StringComparison.Ordinal);
-            if (rootPathComp != 0) return rootPathComp;
+            if (rootPathComp != 0)
+            {
+                return rootPathComp;
+            }
 
             bool xRoot = targetX.RootTarget.Equals(targetX);
             bool yRoot = targetY.RootTarget.Equals(targetY);
             int rootComp = xRoot.CompareTo(yRoot);
-            if (rootComp != 0) return rootComp * -1;
+            if (rootComp != 0)
+            {
+                return rootComp * -1;
+            }
 
             return 0;
         }
@@ -124,10 +133,16 @@ namespace UnrealCommander
                 if (_persistentState != value)
                 {
                     if (_persistentState != null)
+                    {
                         _persistentState.PropertyChanged -= PersistentStateChanged;
+                    }
+
                     _persistentState = value;
                     if (_persistentState != null)
+                    {
                         _persistentState.PropertyChanged += PersistentStateChanged;
+                    }
+
                     PersistentStateChanged(this, null);
                 }
 
@@ -142,15 +157,20 @@ namespace UnrealCommander
 
                     if (!Operation.OperationTypeSupportsTarget(PersistentState.OperationType,
                         PersistentState.OperationParameters.Target))
+                    {
                         foreach (Type operationType in OperationTypes)
                             if (Operation.OperationTypeSupportsTarget(operationType,
-                                PersistentState.OperationParameters.Target))
+                                    PersistentState.OperationParameters.Target))
                             {
                                 PersistentState.OperationType = operationType;
                                 break;
                             }
+                    }
 
-                    if (Operation == null || Operation.GetType() != PersistentState.OperationType) Operation = Operation.CreateOperation(PersistentState.OperationType);
+                    if (Operation == null || Operation.GetType() != PersistentState.OperationType)
+                    {
+                        Operation = Operation.CreateOperation(PersistentState.OperationType);
+                    }
                 }
             }
         }
@@ -184,7 +204,10 @@ namespace UnrealCommander
         {
             get
             {
-                if (OperationTarget == null) return new AllowedBuildConfigurations();
+                if (OperationTarget == null)
+                {
+                    return new AllowedBuildConfigurations();
+                }
 
                 return new AllowedBuildConfigurations
                 {
@@ -203,7 +226,10 @@ namespace UnrealCommander
         {
             get
             {
-                if (SelectedTarget != null) return $"Selected {SelectedTarget.TypeName} {SelectedTarget.Name}";
+                if (SelectedTarget != null)
+                {
+                    return $"Selected {SelectedTarget.TypeName} {SelectedTarget.Name}";
+                }
 
                 return "Select a project or plugin";
             }
@@ -215,12 +241,18 @@ namespace UnrealCommander
         {
             get
             {
-                if (Operation == null) return "No operation";
+                if (Operation == null)
+                {
+                    return "No operation";
+                }
 
                 var commandStrings = new List<string>();
                 foreach (Command command in Operation.GetCommands(PersistentState.OperationParameters)) commandStrings.Add(command.ToString());
 
-                if (commandStrings.Count > 0) return string.Join("\n", commandStrings);
+                if (commandStrings.Count > 0)
+                {
+                    return string.Join("\n", commandStrings);
+                }
 
                 return "No command";
             }
@@ -250,8 +282,10 @@ namespace UnrealCommander
         {
             if (AllowedBuildConfigurations.Configurations.Count > 0 && !AllowedBuildConfigurations.Configurations.Contains(PersistentState.OperationParameters
                 .RequestOptions<BuildConfigurationOptions>().Configuration))
+            {
                 PersistentState.OperationParameters.RequestOptions<BuildConfigurationOptions>().Configuration =
                     AllowedBuildConfigurations.Configurations[0];
+            }
         }
 
         private void OnPropertyChanged([CallerMemberName] string name = null)
@@ -269,7 +303,10 @@ namespace UnrealCommander
             // Create a new operation instance of the selected one
             Operation newOperation = Operation.CreateOperation(Operation.GetType());
 
-            if (!newOperation.RequirementsSatisfied(PersistentState.OperationParameters)) return;
+            if (!newOperation.RequirementsSatisfied(PersistentState.OperationParameters))
+            {
+                return;
+            }
 
             if (IsRunningOperation)
             {
@@ -301,7 +338,10 @@ namespace UnrealCommander
                 Dispatcher.Invoke(() =>
                 {
                     // Prepend line numbers to each line of the output.
-                    if (!string.IsNullOrEmpty(S)) AppLogger.Instance.Log(S, verbosity);
+                    if (!string.IsNullOrEmpty(S))
+                    {
+                        AppLogger.Instance.Log(S, verbosity);
+                    }
                 });
             };
 
@@ -324,7 +364,10 @@ namespace UnrealCommander
 
         private void Terminate(object sender, RoutedEventArgs e)
         {
-            if (Running != null) Running.Cancel();
+            if (Running != null)
+            {
+                _ = Running.Cancel();
+            }
         }
 
         private void AddLogToOutputViewer(string line, LogVerbosity verbosity = LogVerbosity.Log)
@@ -354,7 +397,10 @@ namespace UnrealCommander
 
             tr.ApplyPropertyValue(TextElement.ForegroundProperty, new SolidColorBrush(color));
 
-            if (OutputScrollViewer.VerticalOffset == OutputScrollViewer.ScrollableHeight) OutputScrollViewer.ScrollToEnd();
+            if (OutputScrollViewer.VerticalOffset == OutputScrollViewer.ScrollableHeight)
+            {
+                OutputScrollViewer.ScrollToEnd();
+            }
         }
 
         private void CopyCommand(object sender, RoutedEventArgs e)

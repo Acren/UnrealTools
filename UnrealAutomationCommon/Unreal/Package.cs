@@ -17,11 +17,17 @@ namespace UnrealAutomationCommon.Unreal
         public Package([JsonProperty("ExecutablePath")] string path)
         {
             if (PackagePaths.Instance.IsTargetFile(path))
+            {
                 ExecutablePath = path;
+            }
             else if (PackagePaths.Instance.IsTargetDirectory(path))
+            {
                 ExecutablePath = PackagePaths.Instance.FindTargetFile(path);
+            }
             else
+            {
                 ExecutablePath = path;
+            }
 
             Name = Path.GetFileNameWithoutExtension(ExecutablePath);
         }

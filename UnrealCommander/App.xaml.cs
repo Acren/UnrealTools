@@ -12,7 +12,7 @@ namespace UnrealCommander
             Initialize();
         }
 
-        private async void Initialize()
+        private void Initialize()
         {
 
         }

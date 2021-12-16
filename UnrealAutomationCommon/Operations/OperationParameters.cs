@@ -27,9 +27,17 @@ namespace UnrealAutomationCommon.Operations
             {
                 if (_target != value)
                 {
-                    if (_target != null) _target.PropertyChanged -= TargetChanged;
+                    if (_target != null)
+                    {
+                        _target.PropertyChanged -= TargetChanged;
+                    }
+
                     _target = value;
-                    if (_target != null) _target.PropertyChanged += TargetChanged;
+                    if (_target != null)
+                    {
+                        _target.PropertyChanged += TargetChanged;
+                    }
+
                     OnPropertyChanged();
                 }
 
@@ -81,7 +89,11 @@ namespace UnrealAutomationCommon.Operations
 
         public void SetOptions<T>(T options) where T : OperationOptions
         {
-            if (FindOptions<T>() != null) throw new Exception("Parameters already has options of this type");
+            if (FindOptions<T>() != null)
+            {
+                throw new Exception("Parameters already has options of this type");
+            }
+
             OptionsInstances.Add(options);
         }
 

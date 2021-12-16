@@ -27,9 +27,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             List<string> platformsValue = new List<string>();
             if(buildWin64)
+            {
                 platformsValue.Add("Win64");
+            }
+
             if(buildLinux)
+            {
                 platformsValue.Add("Linux");
+            }
 
             buildPluginArguments.SetKeyValue("TargetPlatforms", string.Join('+', platformsValue));
 
