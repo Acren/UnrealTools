@@ -16,6 +16,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
+            OperationResult result = await DeployForEngine(null, token);
+
+            return result;
+        }
+
+        private async Task<OperationResult> DeployForEngine(EngineInstall engine, CancellationToken token)
+        {
             Logger.Log("Preparing plugin");
 
             Plugin plugin = GetTarget(OperationParameters);
@@ -122,12 +129,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     var lines = File.ReadAllLines(file).ToList();
                     if (firstLine.StartsWith("//"))
-                        // Replace existing comment with expected comment
+                    // Replace existing comment with expected comment
                     {
                         lines[0] = expectedComment;
                     }
                     else
-                        // Insert expected comment
+                    // Insert expected comment
                     {
                         lines.Insert(0, expectedComment);
                     }
