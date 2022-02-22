@@ -5,28 +5,9 @@ using System.IO;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public class EngineInstallVersion
+    [JsonObject(MemberSerialization.OptIn)]
+    public class EngineInstallVersion : IEquatable<EngineInstallVersion>
     {
-        public override bool Equals(object obj)
-        {
-            if (ReferenceEquals(null, obj))
-            {
-                return false;
-            }
-
-            if (ReferenceEquals(this, obj))
-            {
-                return true;
-            }
-
-            if (obj.GetType() != this.GetType())
-            {
-                return false;
-            }
-
-            return Equals((EngineInstallVersion)obj);
-        }
-
         public override int GetHashCode()
         {
             return HashCode.Combine(MajorVersion, MinorVersion, PatchVersion);
@@ -69,8 +50,11 @@ namespace UnrealAutomationCommon.Unreal
             PatchVersion = fileVersion.FileBuildPart;
         }
 
+        [JsonProperty]
         public int MajorVersion { get; set; }
+        [JsonProperty]
         public int MinorVersion { get; set; }
+        [JsonProperty]
         public int PatchVersion { get; set; }
 
         public string MajorMinorString => $"{MajorVersion}.{MinorVersion}";
@@ -108,28 +92,17 @@ namespace UnrealAutomationCommon.Unreal
 
         public static bool operator ==(EngineInstallVersion a, EngineInstallVersion b)
         {
-            bool aNull = ReferenceEquals(a, null);
-            bool bNull = ReferenceEquals(b, null);
-            if (aNull && bNull)
+            if (a is null)
             {
-                return true;
+                return b is null;
             }
-
-            if (aNull || bNull)
-            {
-                return false;
-            }
-
-            return a.MajorVersion == b.MajorVersion
-            && a.MinorVersion == b.MinorVersion
-            && a.PatchVersion == b.PatchVersion;
+            return a.Equals(b);
         }
 
         public static bool operator !=(EngineInstallVersion a, EngineInstallVersion b)
         {
             return !(a == b);
         }
-
         public static bool operator <(EngineInstallVersion a, EngineInstallVersion b)
         {
             if (a.MajorVersion != b.MajorVersion)
@@ -158,6 +131,41 @@ namespace UnrealAutomationCommon.Unreal
         public static bool operator >=(EngineInstallVersion a, EngineInstallVersion b)
         {
             return a > b || a == b;
+        }
+
+        public bool Equals(EngineInstallVersion other)
+        {
+            if (ReferenceEquals(null, other))
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(this, other))
+            {
+                return true;
+            }
+
+            return MajorVersion == other.MajorVersion && MinorVersion == other.MinorVersion && PatchVersion == other.PatchVersion;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj))
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(this, obj))
+            {
+                return true;
+            }
+
+            if (obj.GetType() != this.GetType())
+            {
+                return false;
+            }
+
+            return Equals((EngineInstallVersion)obj);
         }
     }
 }

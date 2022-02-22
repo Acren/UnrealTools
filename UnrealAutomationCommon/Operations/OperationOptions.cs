@@ -2,6 +2,7 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Newtonsoft.Json;
 using UnrealAutomationCommon.Annotations;
 
 namespace UnrealAutomationCommon.Operations
@@ -54,6 +55,8 @@ namespace UnrealAutomationCommon.Operations
 
     public class OperationOptions : INotifyPropertyChanged, IComparable<OperationOptions>
     {
+        private IOperationTarget _operationTarget = null;
+
         public OperationOptions()
         {
             PropertyInfo[] properties = GetType().GetProperties();
@@ -70,8 +73,10 @@ namespace UnrealAutomationCommon.Operations
         }
 
         // Options index for ordering
+        [JsonIgnore]
         public virtual int Index => 0;
 
+        [JsonIgnore]
         public virtual string Name
         {
             get
@@ -79,6 +84,17 @@ namespace UnrealAutomationCommon.Operations
                 string name = GetType().Name;
                 name = name.Replace("Options", "");
                 return name.SplitWordsByUppercase();
+            }
+        }
+
+        [JsonIgnore]
+        public IOperationTarget OperationTarget
+        {
+            get => _operationTarget;
+            set
+            {
+                _operationTarget = value;
+                OnPropertyChanged();
             }
         }
 

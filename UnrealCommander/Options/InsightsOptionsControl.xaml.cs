@@ -13,7 +13,10 @@ namespace UnrealCommander.Options
         {
             InitializeComponent();
 
-            foreach (TraceChannel channel in TraceChannels.Channels) TraceChannelOptions.Add(new TraceChannelOption { TraceChannel = channel, Enabled = false });
+            foreach (TraceChannel channel in TraceChannels.Channels)
+            {
+                TraceChannelOptions.Add(new TraceChannelOption { TraceChannel = channel, Enabled = false });
+            }
 
             TraceChannelOptions.ListChanged += TraceChannelOptions_ListChanged;
         }
@@ -38,10 +41,12 @@ namespace UnrealCommander.Options
             Options.TraceChannels.Clear();
 
             foreach (TraceChannelOption option in TraceChannelOptions)
+            {
                 if (option.Enabled)
                 {
                     Options.TraceChannels.Add(option.TraceChannel);
                 }
+            }
         }
 
         private void UpdateOptionsFromChannels()

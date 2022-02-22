@@ -8,55 +8,28 @@
                           xmlns:unreal="clr-namespace:UnrealAutomationCommon.Unreal;assembly=UnrealAutomationCommon"
                           mc:Ignorable="d"
                           d:DesignHeight="450" d:DesignWidth="800">
-    <StackPanel VerticalAlignment="Center">
-        <ListBox
-            ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=local:EngineVersionOptionsControl}, Path=BuildConfigurations}"
-            SelectedItem="{Binding Path= Configuration, Mode=TwoWay}"
-            BorderThickness="0" BorderBrush="Transparent" Background="Transparent">
-            <ListBox.Resources>
-                <unrealCommander:EnumToStringConverter x:Key="EnumToStringConverter" />
-                <unrealCommander:ContainsConverter x:Key="ContainsConverter" />
-            </ListBox.Resources>
-            <ListBox.ItemContainerStyle>
-                <!-- Style to get rid of the selection visual -->
-                <Style TargetType="{x:Type ListBoxItem}">
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="{x:Type ListBoxItem}">
-                                <ContentPresenter />
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </ListBox.ItemContainerStyle>
-            <ListBox.ItemTemplate>
-                <DataTemplate DataType="{x:Type unreal:BuildConfiguration}">
-                    <RadioButton Content="{Binding Converter={StaticResource EnumToStringConverter}}"
-                                 GroupName="Configurations">
-                        <!-- Binding IsChecked to IsSelected requires no support code -->
-                        <RadioButton.IsChecked>
-                            <Binding Path="IsSelected"
-                                     RelativeSource="{RelativeSource AncestorType=ListBoxItem}"
-                                     Mode="TwoWay" />
-                        </RadioButton.IsChecked>
-                        <RadioButton.IsEnabled>
-                            <MultiBinding Converter="{StaticResource ContainsConverter}">
-                                <Binding RelativeSource="{RelativeSource AncestorType=unrealCommander:MainWindow}"
-                                         Path="AllowedBuildConfigurations.Configurations" />
-                                <Binding />
-                            </MultiBinding>
-                        </RadioButton.IsEnabled>
-                        <RadioButton.Style>
-                            <Style TargetType="RadioButton">
-                                <Setter Property="Focusable"
-                                        Value="{Binding RelativeSource={RelativeSource Mode=Self}, Path=IsEnabled }" />
-                                <Setter Property="IsHitTestVisible"
-                                        Value="{Binding RelativeSource={RelativeSource Mode=Self}, Path=IsEnabled }" />
-                            </Style>
-                        </RadioButton.Style>
-                    </RadioButton>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
-    </StackPanel>
+    <ListBox
+        ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=local:EngineVersionOptionsControl}, Path=EngineVersionOptions}"
+        BorderThickness="0" BorderBrush="Transparent" Background="Transparent">
+        <ListBox.ItemContainerStyle>
+            <!-- Style to get rid of the selection visual -->
+            <Style TargetType="{x:Type ListBoxItem}">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                            <ContentPresenter />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ListBox.ItemContainerStyle>
+        <ListBox.ItemTemplate>
+            <DataTemplate DataType="local:EngineVersionOption">
+                <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" VerticalAlignment="Center"
+                          VerticalContentAlignment="Center">
+                    <TextBlock Text="{Binding EngineVersion.MajorMinorString}" VerticalAlignment="Center" />
+                </CheckBox>
+            </DataTemplate>
+        </ListBox.ItemTemplate>
+    </ListBox>
 </local:OptionsUserControl>

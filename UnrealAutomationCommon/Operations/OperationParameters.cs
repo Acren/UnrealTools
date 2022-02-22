@@ -34,6 +34,8 @@ namespace UnrealAutomationCommon.Operations
                 _optionsInstances = new BindingList<OperationOptions>(initialOptions);
 
                 OptionsInstances.ListChanged += (sender, args) => OnPropertyChanged(nameof(OptionsInstances));
+
+                UpdateOptionsTarget();
             }
         }
 
@@ -54,6 +56,9 @@ namespace UnrealAutomationCommon.Operations
                     {
                         _target.PropertyChanged += TargetChanged;
                     }
+
+                    // Notify options about new target
+                    UpdateOptionsTarget();
 
                     OnPropertyChanged();
                 }
@@ -123,12 +128,22 @@ namespace UnrealAutomationCommon.Operations
                 desiredIndex++;
             }
 
+            options.OperationTarget = Target;
+
             OptionsInstances.Insert(desiredIndex, options);
         }
 
         public void ResetOptions()
         {
             OptionsInstances.Clear();
+        }
+
+        private void UpdateOptionsTarget()
+        {
+            foreach (OperationOptions options in OptionsInstances)
+            {
+                options.OperationTarget = Target;
+            }
         }
 
         private void OnPropertyChanged([CallerMemberName] string name = null)

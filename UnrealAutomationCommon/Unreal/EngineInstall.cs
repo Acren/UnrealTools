@@ -1,9 +1,16 @@
-﻿namespace UnrealAutomationCommon.Unreal
+﻿using Newtonsoft.Json;
+
+namespace UnrealAutomationCommon.Unreal
 {
+    [JsonObject(MemberSerialization.OptIn)]
     public class EngineInstall
     {
+        [JsonProperty]
         public bool IsSourceBuild = false;
+
+        [JsonProperty]
         public string Key { get; set; }
+        [JsonProperty]
         public string InstallDirectory { get; set; }
 
         public string DisplayName => Version.ToString();

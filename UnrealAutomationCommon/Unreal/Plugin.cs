@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnrealAutomationCommon.Operations;
 
@@ -9,6 +10,8 @@ namespace UnrealAutomationCommon.Unreal
     {
         private PluginDescriptor _pluginDescriptor;
         private string _uPluginPath;
+        private List<EngineInstallVersion> _targetEngineVersions;
+
         private FileSystemWatcher _watcher;
 
         [JsonConstructor]
@@ -56,6 +59,17 @@ namespace UnrealAutomationCommon.Unreal
 
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(Name));
+            }
+        }
+
+        [JsonProperty]
+        public List<EngineInstallVersion> TargetEngineVersions
+        {
+            get => _targetEngineVersions;
+            set
+            {
+                _targetEngineVersions = value;
+                OnPropertyChanged();
             }
         }
 

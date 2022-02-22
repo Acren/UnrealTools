@@ -35,7 +35,14 @@ namespace UnrealCommander.Options
             }
         }
 
+        public OperationOptions Options => DataContext as OperationOptions;
+
         public event PropertyChangedEventHandler PropertyChanged;
+
+        public T GetOptions<T>() where T : OperationOptions
+        {
+            return Options as T;
+        }
 
         //private T _options = null;
 
@@ -50,9 +57,9 @@ namespace UnrealCommander.Options
         //    }
         //}
 
-        protected virtual void OptionsChanged()
-        {
-        }
+        //protected virtual void OptionsChanged()
+        //{
+        //}
 
         [NotifyPropertyChangedInvocator]
         protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
