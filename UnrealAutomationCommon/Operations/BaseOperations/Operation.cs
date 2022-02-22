@@ -135,8 +135,14 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return GetTarget(operationParameters) is IEngineInstallProvider;
         }
 
-        public EngineInstall GetRelevantEngineInstall(OperationParameters operationParameters)
+        public EngineInstall GetTargetEngineInstall(OperationParameters operationParameters)
         {
+            // Return engine install override if there is one
+            if (operationParameters.EngineOverride != null)
+            {
+                return operationParameters.EngineOverride;
+            }
+
             if (GetTarget(operationParameters) is not IEngineInstallProvider)
             {
                 return null;
@@ -196,7 +202,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 return $"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not valid";
             }
 
-            if (TargetProvidesEngineInstall(operationParameters) && GetRelevantEngineInstall(operationParameters) == null)
+            if (TargetProvidesEngineInstall(operationParameters) && GetTargetEngineInstall(operationParameters) == null)
             {
                 return "Engine install not found";
             }
@@ -210,7 +216,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                     return "Configuration is not supported";
                 }
 
-                if (TargetProvidesEngineInstall(operationParameters) && !GetRelevantEngineInstall(operationParameters).SupportsConfiguration(options.Configuration))
+                if (TargetProvidesEngineInstall(operationParameters) && !GetTargetEngineInstall(operationParameters).SupportsConfiguration(options.Configuration))
                 {
                     return "Engine install does not support configuration";
                 }

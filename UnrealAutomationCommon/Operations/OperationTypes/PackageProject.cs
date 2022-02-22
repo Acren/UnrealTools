@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             arguments.SetFlag("nocompileeditor");
             arguments.SetFlag("archive");
             arguments.SetKeyPath("archivedirectory", GetOutputPath(operationParameters));
-            return new Command(GetTarget(operationParameters).EngineInstall.GetRunUATPath(), arguments);
+            return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), arguments);
         }
 
         protected override string GetOperationName()

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {
@@ -20,7 +21,11 @@ namespace UnrealAutomationCommon.Operations
             OptionsInstances = new BindingList<OperationOptions>();
         }
 
-        [JsonIgnore] public string OutputPathOverride { get; set; }
+        [JsonIgnore]
+        public string OutputPathOverride { get; set; }
+
+        [JsonIgnore]
+        public EngineInstall EngineOverride { get; set; }
 
         [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
         public BindingList<OperationOptions> OptionsInstances

@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     Logger.Log("BuildCookRun editor targets do not respect UbtArgs argument - consider direct UBT usage instead", LogVerbosity.Warning);
                 }
             }
-            return new Command(GetTarget(operationParameters).EngineInstall.GetRunUATPath(), args);
+            return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), args);
         }
 
         protected override string GetOperationName()

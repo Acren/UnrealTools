@@ -16,13 +16,31 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
-            OperationResult result = await DeployForEngine(null, token);
+            Plugin plugin = GetTarget(OperationParameters);
 
-            return result;
+            foreach (EngineInstallVersion engineVersion in plugin.TargetEngineVersions)
+            {
+                EngineInstall engineInstall = EngineInstallFinder.GetEngineInstall(engineVersion);
+                if (engineInstall == null)
+                {
+                    throw new Exception("Engine not found");
+                }
+                OperationResult result = await DeployForEngine(engineInstall, token);
+                if (!result.Success)
+                {
+                    // Failure
+                    return result;
+                }
+            }
+
+            return new OperationResult(true);
         }
 
         private async Task<OperationResult> DeployForEngine(EngineInstall engine, CancellationToken token)
         {
+            EngineInstallVersion engineVersion = engine.Version;
+            Logger.Log($"Deploying plugin for {engineVersion.MajorMinorString}");
+
             Logger.Log("Preparing plugin");
 
             Plugin plugin = GetTarget(OperationParameters);
@@ -35,7 +53,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Host project must have plugin enabled");
             }
 
-            EngineInstallVersion engineVersion = plugin.EngineInstall.Version;
             Logger.Log($"Engine version: {engineVersion}");
 
             string branchName = VersionControlUtils.GetBranchName(hostProject.GetProjectPath());
@@ -97,7 +114,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Get engine path
 
-            string enginePath = projectDescriptor.EngineInstall.InstallDirectory;
+            string enginePath = engine.InstallDirectory;
 
             string enginePluginsMarketplacePath = Path.Combine(enginePath, @"Engine\Plugins\Marketplace");
             string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, plugin.Name);
@@ -151,7 +168,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             OperationParameters buildEditorParams = new()
             {
-                Target = hostProject
+                Target = hostProject,
+                EngineOverride = engine
             };
 
             if (!(await new BuildEditor().Execute(buildEditorParams, Logger, token)).Success)
@@ -170,7 +188,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 OperationParameters launchEditorParams = new()
                 {
-                    Target = hostProject
+                    Target = hostProject,
+                    EngineOverride = engine
                 };
                 launchEditorParams.SetOptions(automationOpts);
 
@@ -188,7 +207,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 OperationParameters launchStandaloneParams = new()
                 {
-                    Target = hostProject
+                    Target = hostProject,
+                    EngineOverride = engine
                 };
                 launchStandaloneParams.SetOptions(automationOpts);
 
@@ -208,6 +228,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             OperationParameters buildPluginParams = new()
             {
                 Target = plugin,
+                EngineOverride = engine,
                 OutputPathOverride = pluginBuildPath
             };
             buildPluginParams.SetOptions(OperationParameters.RequestOptions<PluginBuildOptions>());
@@ -283,6 +304,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             OperationParameters installedPluginPackageParams = new()
             {
                 Target = exampleProjectBuild,
+                EngineOverride = engine,
                 OutputPathOverride = exampleProjectBuildPath
             };
 
@@ -299,7 +321,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 OperationParameters testInstalledPluginBuildParams = new()
                 {
-                    Target = exampleProjectBuild
+                    Target = exampleProjectBuild,
+                    EngineOverride = engine
                 };
                 testInstalledPluginBuildParams.SetOptions(automationOpts);
 
@@ -332,6 +355,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             OperationParameters demoPackageParams = new()
             {
                 Target = new Project(exampleProjectBuildUProjectPath),
+                EngineOverride = engine,
                 OutputPathOverride = demoPackagePath
             };
 
@@ -387,7 +411,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     Logger.Log("Archiving demo");
 
                     FileUtils.DeleteFileIfExists(demoPackageZipPath);
-                    ZipFile.CreateFromDirectory(Path.Combine(demoPackagePath, plugin.EngineInstall.GetWindowsPlatformName()), demoPackageZipPath);
+                    ZipFile.CreateFromDirectory(Path.Combine(demoPackagePath, engine.GetWindowsPlatformName()), demoPackageZipPath);
                 }
 
                 // Archive example project
@@ -500,6 +524,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 Logger.Log("Finished archiving");
             }
+
+            Logger.Log($"Finished deploying plugin for {engineVersion.MajorMinorString}");
 
             return new OperationResult(true);
         }

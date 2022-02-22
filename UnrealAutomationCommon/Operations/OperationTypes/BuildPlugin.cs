@@ -46,7 +46,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             buildPluginArguments.ApplyCommonUATArguments(operationParameters);
 
             buildPluginArguments.AddAdditionalArguments(operationParameters);
-            return new Command(GetTarget(operationParameters).EngineInstall.GetRunUATPath(), buildPluginArguments);
+            return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), buildPluginArguments);
         }
 
         protected override string GetOperationName()
