@@ -65,6 +65,9 @@
                                                 Style="{StaticResource OptionsContainer}">
                             <StackPanel VerticalAlignment="Center">
                                 <StackPanel.Resources>
+                                    <DataTemplate DataType="{x:Type operationOptionTypes:EngineVersionOptions}">
+                                        <options:EngineVersionOptionsControl DataContext="{Binding}" />
+                                    </DataTemplate>
                                     <DataTemplate DataType="{x:Type operationOptionTypes:BuildConfigurationOptions}">
                                         <options:BuildConfigurationOptionsControl DataContext="{Binding}" />
                                     </DataTemplate>

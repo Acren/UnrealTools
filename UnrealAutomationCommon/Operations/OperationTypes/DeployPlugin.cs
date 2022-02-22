@@ -506,6 +506,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
         {
+            operationParameters.RequestOptions<EngineVersionOptions>();
             operationParameters.RequestOptions<AutomationOptions>();
             operationParameters.RequestOptions<PluginBuildOptions>();
             operationParameters.RequestOptions<PluginDeployOptions>();

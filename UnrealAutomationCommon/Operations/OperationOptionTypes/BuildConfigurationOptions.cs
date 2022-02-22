@@ -6,6 +6,8 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
     {
         private BuildConfiguration _configuration = BuildConfiguration.Development;
 
+        public override int Index => 20;
+
         public BuildConfiguration Configuration
         {
             get => _configuration;

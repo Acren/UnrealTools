@@ -20,12 +20,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Update="Options\EngineVersionOptionsControl.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Update="Options\PluginDeployOptionsControl.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
   </ItemGroup>
 
   <ItemGroup>
+    <Page Update="Options\EngineVersionOptionsControl.xaml">
+      <XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Update="Options\PluginDeployOptionsControl.xaml">
       <XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
       <SubType>Designer</SubType>

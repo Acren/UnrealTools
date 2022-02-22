@@ -52,7 +52,7 @@ namespace UnrealAutomationCommon.Operations
         }
     }
 
-    public class OperationOptions : INotifyPropertyChanged
+    public class OperationOptions : INotifyPropertyChanged, IComparable<OperationOptions>
     {
         public OperationOptions()
         {
@@ -69,10 +69,8 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
-        //protected Option<T> AddOption<T>(T defaultValue)
-        //{
-        //    return new Option<T>(OptionChanged, defaultValue);
-        //}
+        // Options index for ordering
+        public virtual int Index => 0;
 
         public virtual string Name
         {
@@ -100,6 +98,18 @@ namespace UnrealAutomationCommon.Operations
         protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        public int CompareTo(OperationOptions other)
+        {
+            // First try compare by index
+            if (Index != other.Index)
+            {
+                return Index.CompareTo(other.Index);
+            }
+
+            // Then by name
+            return String.Compare(Name, other.Name, StringComparison.Ordinal);
         }
     }
 }

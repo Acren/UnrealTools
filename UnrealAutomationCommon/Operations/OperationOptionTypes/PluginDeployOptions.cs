@@ -2,6 +2,8 @@
 {
     public class PluginDeployOptions : OperationOptions
     {
+        public override int Index => 80;
+
         public Option<bool> TestStandalone { get; } = true;
         public Option<bool> TestPackage { get; } = true;
         public Option<string> ArchivePath { get; } = "";

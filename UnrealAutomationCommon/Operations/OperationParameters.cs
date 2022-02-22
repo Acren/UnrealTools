@@ -1,6 +1,8 @@
 ﻿using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace UnrealAutomationCommon.Operations
@@ -11,14 +13,29 @@ namespace UnrealAutomationCommon.Operations
 
         private IOperationTarget _target;
 
+        private BindingList<OperationOptions> _optionsInstances;
+
         public OperationParameters()
         {
-            OptionsInstances.ListChanged += (sender, args) => OnPropertyChanged(nameof(OptionsInstances));
+            OptionsInstances = new BindingList<OperationOptions>();
         }
 
         [JsonIgnore] public string OutputPathOverride { get; set; }
 
-        public BindingList<OperationOptions> OptionsInstances { get; } = new();
+        [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+        public BindingList<OperationOptions> OptionsInstances
+        {
+            get => _optionsInstances;
+            set
+            {
+                // Sort initial options - note this creates a new BindingList instance
+                List<OperationOptions> initialOptions = value.ToList();
+                initialOptions.Sort();
+                _optionsInstances = new BindingList<OperationOptions>(initialOptions);
+
+                OptionsInstances.ListChanged += (sender, args) => OnPropertyChanged(nameof(OptionsInstances));
+            }
+        }
 
         public IOperationTarget Target
         {
@@ -83,7 +100,7 @@ namespace UnrealAutomationCommon.Operations
             }
 
             T newOptions = (T)Activator.CreateInstance(typeof(T));
-            OptionsInstances.Add(newOptions);
+            SetOptions(newOptions);
             return (T)newOptions.Clone();
         }
 
@@ -94,7 +111,19 @@ namespace UnrealAutomationCommon.Operations
                 throw new Exception("Parameters already has options of this type");
             }
 
-            OptionsInstances.Add(options);
+            // Find index to insert at
+            int desiredIndex = 0;
+            foreach (OperationOptions optionsInstance in OptionsInstances)
+            {
+                if (options.CompareTo(optionsInstance) > 0)
+                {
+                    break;
+                }
+
+                desiredIndex++;
+            }
+
+            OptionsInstances.Insert(desiredIndex, options);
         }
 
         public void ResetOptions()
