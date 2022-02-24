@@ -50,9 +50,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string pluginVersionName = plugin.PluginDescriptor.VersionName;
             string installedPluginVersionName = installedPlugin.PluginDescriptor.VersionName;
 
-            if (pluginVersionName != installedPluginVersionName)
+            if (!installedPluginVersionName.Contains(pluginVersionName))
             {
-                throw new Exception($"Installed plugin version {installedPluginVersionName} does not match reference version {pluginVersionName}");
+                throw new Exception($"Installed plugin version {installedPluginVersionName} does not include reference version {pluginVersionName}");
             }
 
             string exampleProjects = OperationParameters.FindOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
@@ -89,6 +89,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             string temp = GetOperationTempPath();
             string exampleProjectTestPath = Path.Combine(temp, "ExampleProject");
+
+            FileUtils.DeleteDirectoryIfExists(exampleProjectTestPath);
             ZipFile.ExtractToDirectory(exampleProjectZip, exampleProjectTestPath);
 
             Project exampleProject = new Project(exampleProjectTestPath);
@@ -142,6 +144,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Package example project and test
 
             string packageOutput = Path.Combine(temp, "Package");
+
+            FileUtils.DeleteDirectoryIfExists(packageOutput);
 
             PackageProject packageExampleProject = new();
             OperationParameters packageExampleProjectParams = new()
