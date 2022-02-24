@@ -21,7 +21,9 @@ namespace UnrealCommander
                 typeof(LaunchStandalone),
                 typeof(PackageProject),
                 typeof(LaunchStagedPackage),
-                typeof(BuildPlugin)
+                typeof(BuildPlugin),
+                typeof(DeployPlugin),
+                typeof(VerifyDeployment)
             };
 
             // Add any others to the end

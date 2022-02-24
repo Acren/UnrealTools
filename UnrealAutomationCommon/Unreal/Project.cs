@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using System;
+using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
 using UnrealAutomationCommon.Operations;
@@ -12,11 +13,15 @@ namespace UnrealAutomationCommon.Unreal
         private FileSystemWatcher _watcher;
 
         [JsonConstructor]
-        public Project(string uProjectPath)
+        public Project([JsonProperty("UProjectPath")] string path)
         {
-            if (ProjectPaths.Instance.IsTargetFile(uProjectPath))
+            if (ProjectPaths.Instance.IsTargetFile(path))
             {
-                UProjectPath = uProjectPath;
+                UProjectPath = path;
+            }
+            else
+            {
+                UProjectPath = ProjectPaths.Instance.FindTargetFile(path);
             }
         }
 
@@ -129,5 +134,6 @@ namespace UnrealAutomationCommon.Unreal
 
             return plugins;
         }
+
     }
 }

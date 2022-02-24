@@ -17,13 +17,13 @@ namespace UnrealAutomationCommon.Unreal
         [JsonConstructor]
         public Plugin([JsonProperty("UPluginPath")] string path)
         {
-            if (IsPluginFile(path))
+            if (PluginPaths.Instance.IsTargetFile(path))
             {
                 UPluginPath = path;
             }
             else
             {
-                UPluginPath = FindUPlugin(path);
+                UPluginPath = PluginPaths.Instance.FindTargetFile(path);
             }
         }
 
@@ -164,26 +164,5 @@ namespace UnrealAutomationCommon.Unreal
             return EngineInstall.SupportsConfiguration(configuration);
         }
 
-        public static bool IsPluginFile(string path)
-        {
-            return FileUtils.HasExtension(path, ".uplugin");
-        }
-
-        public static string FindUPlugin(string path)
-        {
-            if (!Directory.Exists(path))
-            {
-                return null;
-            }
-
-            string[] files = Directory.GetFiles(path);
-            foreach (string file in files)
-                if (Path.GetExtension(file).Equals(".uplugin", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    return file;
-                }
-
-            return null;
-        }
     }
 }
