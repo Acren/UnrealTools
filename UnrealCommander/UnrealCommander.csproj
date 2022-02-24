@@ -23,6 +23,9 @@
     <Compile Update="Options\EngineVersionOptionsControl.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Update="Options\VerifyDeploymentOptionsControl.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Update="Options\PluginDeployOptionsControl.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
@@ -30,6 +33,10 @@
 
   <ItemGroup>
     <Page Update="Options\EngineVersionOptionsControl.xaml">
+      <XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Update="Options\VerifyDeploymentOptionsControl.xaml">
       <XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
       <SubType>Designer</SubType>
     </Page>

@@ -55,7 +55,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception($"Installed plugin version {installedPluginVersionName} does not match reference version {pluginVersionName}");
             }
 
-            string exampleProjects = @"J:\My Drive\MarketplacePublic"; // todo expose path option
+            string exampleProjects = OperationParameters.FindOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
             string extension = "*.zip";
             string[] zipPaths = Directory.GetFiles(exampleProjects, extension, SearchOption.AllDirectories);
 
@@ -186,6 +186,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             operationParameters.RequestOptions<EngineVersionOptions>();
             operationParameters.RequestOptions<AutomationOptions>();
+            operationParameters.RequestOptions<VerifyDeploymentOptions>();
             return new List<Command>();
         }
     }
