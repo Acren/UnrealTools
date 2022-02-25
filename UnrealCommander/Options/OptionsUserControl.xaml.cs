@@ -10,7 +10,7 @@ namespace UnrealCommander.Options
     /// <summary>
     ///     Interaction logic for OptionsUserControl.xaml
     /// </summary>
-    public class OptionsUserControl /*<T>*/ : UserControl, INotifyPropertyChanged /*where T : OperationOptions*/
+    public partial class OptionsUserControl /*<T>*/ : UserControl, INotifyPropertyChanged /*where T : OperationOptions*/
     {
         private Operation _operation;
         private OperationTarget _operationTarget;
