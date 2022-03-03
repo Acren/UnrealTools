@@ -474,7 +474,7 @@ namespace UnrealCommander
             if (SelectedTarget is Project)
             {
                 Project project = SelectedTarget as Project;
-                menu.Items.Add(new MenuItem { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath()); }) });
+                menu.Items.Add(new MenuItem { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath(project.EngineInstall)); }) });
                 menu.Items.Add(new MenuItem { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), project.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 

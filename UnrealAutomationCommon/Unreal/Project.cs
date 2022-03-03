@@ -74,7 +74,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public override string TargetPath => UProjectPath;
 
-        public Package ProvidedPackage => GetStagedPackage();
+        public Package GetProvidedPackage(EngineInstall engineContext) => GetStagedPackage(engineContext);
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
@@ -102,20 +102,20 @@ namespace UnrealAutomationCommon.Unreal
             return Path.Combine(GetProjectPath(), "Saved", "StagedBuilds");
         }
 
-        public string GetStagedBuildWindowsPath()
+        public string GetStagedBuildWindowsPath(EngineInstall engineContext)
         {
-            return Path.Combine(GetStagedBuildsPath(), EngineInstall.GetWindowsPlatformName());
+            return Path.Combine(GetStagedBuildsPath(), (engineContext ?? EngineInstall).GetWindowsPlatformName());
         }
 
-        public Package GetStagedPackage()
+        public Package GetStagedPackage(EngineInstall engineContext)
         {
-            string path = GetStagedBuildWindowsPath();
+            string path = GetStagedBuildWindowsPath(engineContext);
             return PackagePaths.Instance.IsTargetDirectory(path) ? new Package(path) : null;
         }
 
-        public string GetStagedPackageExecutablePath()
+        public string GetStagedPackageExecutablePath(EngineInstall engineContext)
         {
-            return Path.Combine(GetStagedBuildWindowsPath(), Name + ".exe");
+            return Path.Combine(GetStagedBuildWindowsPath(engineContext), Name + ".exe");
         }
 
         public string GetLogsPath()

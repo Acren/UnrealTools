@@ -8,7 +8,7 @@ namespace UnrealAutomationCommon.Unreal
 {
     public interface IPackageProvider : IOperationTarget
     {
-        public Package ProvidedPackage { get; }
+        public Package GetProvidedPackage(EngineInstall engineContext);
     }
 
     public class Package : OperationTarget, IPackageProvider, IEngineInstallProvider
@@ -56,7 +56,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : EngineVersion?.ToString();
 
-        public Package ProvidedPackage => this;
+        public Package GetProvidedPackage(EngineInstall engineContext) => this;
 
         public override string TargetPath => ExecutablePath;
         public override string Name { get; }

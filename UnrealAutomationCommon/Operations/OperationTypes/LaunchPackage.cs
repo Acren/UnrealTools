@@ -18,7 +18,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 return baseError;
             }
 
-            if (GetTarget(operationParameters).ProvidedPackage == null)
+            if (GetTarget(operationParameters).GetProvidedPackage(operationParameters.EngineInstall) == null)
             {
                 return "Provided package is null";
             }
@@ -32,7 +32,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetFlag("windowed");
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
-            return new Command(GetTarget(operationParameters).ProvidedPackage.ExecutablePath, args);
+            return new Command(GetTarget(operationParameters).GetProvidedPackage(operationParameters.EngineInstall).ExecutablePath, args);
         }
 
         protected override async Task<OperationResult> OnExecuted(CancellationToken token)
@@ -45,7 +45,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 var reportTemplateName = "Report-Template.html";
                 var reportTemplateSubdir = "Engine/Content/Automation";
                 string reportTemplateSubpath = Path.Combine(reportTemplateSubdir, reportTemplateName);
-                string packageDir = GetTarget(OperationParameters).ProvidedPackage.TargetDirectory;
+                string packageDir = GetTarget(OperationParameters).GetProvidedPackage(OperationParameters.EngineInstall).TargetDirectory;
                 string reportTemplateDir = Path.Combine(packageDir, reportTemplateSubdir);
                 string reportTemplatePath = Path.Combine(packageDir, reportTemplateSubpath);
                 if (!File.Exists(reportTemplatePath))
@@ -71,7 +71,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         public override string GetLogsPath(OperationParameters operationParameters)
         {
-            return GetTarget(operationParameters).ProvidedPackage.LogsPath;
+            return GetTarget(operationParameters).GetProvidedPackage(operationParameters.EngineInstall).LogsPath;
         }
     }
 
