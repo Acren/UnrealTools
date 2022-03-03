@@ -125,7 +125,7 @@ namespace UnrealAutomationCommon.Operations
             int desiredIndex = 0;
             foreach (OperationOptions optionsInstance in OptionsInstances)
             {
-                if (options.CompareTo(optionsInstance) > 0)
+                if (options.CompareTo(optionsInstance) < 0)
                 {
                     break;
                 }
