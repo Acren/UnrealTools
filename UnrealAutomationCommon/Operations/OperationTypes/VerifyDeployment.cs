@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -56,36 +57,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             string exampleProjects = OperationParameters.FindOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
-            string extension = "*.zip";
-            string[] zipPaths = Directory.GetFiles(exampleProjects, extension, SearchOption.AllDirectories);
-
-            string exampleProjectZip = null; 
-            foreach (string zipPath in zipPaths)
-            {
-                string zipName = Path.GetFileNameWithoutExtension(zipPath);
-                if (!zipName.Contains(plugin.Name))
-                {
-                    continue;
-                }
-
-                if (!zipName.Contains("ExampleProject"))
-                {
-                    continue;
-                }
-
-                if (!zipName.Contains(pluginVersionName))
-                {
-                    continue;
-                }
-
-                exampleProjectZip = zipPath;
-                break;
-            }
-
+            string exampleProjectZip = FindExampleProjectZip(plugin, exampleProjects, engine);
             if (exampleProjectZip == null)
             {
                 throw new Exception($"Could not find example project zip in {exampleProjects}");
             }
+
+            Logger.Log($"Identified {exampleProjectZip} as best example project");
 
             string temp = GetOperationTempPath();
             string exampleProjectTestPath = Path.Combine(temp, "ExampleProject");
@@ -192,6 +170,76 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             operationParameters.RequestOptions<AutomationOptions>();
             operationParameters.RequestOptions<VerifyDeploymentOptions>();
             return new List<Command>();
+        }
+
+        private string FindExampleProjectZip(Plugin plugin, string exampleProjectsPath, EngineInstall engine)
+        {
+            string pluginVersionName = plugin.PluginDescriptor.VersionName;
+            string exampleProjects = exampleProjectsPath;
+            string extension = "*.zip";
+            string[] zipPaths = Directory.GetFiles(exampleProjects, extension, SearchOption.AllDirectories);
+            List<string> validZipPaths = new();
+
+            foreach (string zipPath in zipPaths)
+            {
+                string zipName = Path.GetFileNameWithoutExtension(zipPath);
+                if (!zipName.Contains(plugin.Name))
+                {
+                    continue;
+                }
+
+                if (!zipName.Contains("ExampleProject"))
+                {
+                    continue;
+                }
+
+                validZipPaths.Add(zipPath);
+            }
+
+            if (validZipPaths.Count == 0)
+            {
+                throw new Exception("No valid zips");
+            }
+
+            if (validZipPaths.Count == 1)
+            {
+                return validZipPaths[0];
+            }
+
+            List<string> zipPathsWithExactVersion = new();
+            foreach (string zipName in validZipPaths)
+            {
+                if (!zipName.Contains(pluginVersionName))
+                {
+                    continue;
+                }
+                zipPathsWithExactVersion.Add(zipName);
+            }
+
+            if (zipPathsWithExactVersion.Count == 1)
+            {
+                return zipPathsWithExactVersion[0];
+            }
+
+            List<string> candidateZips;
+            if (zipPathsWithExactVersion.Count == 0)
+            {
+                candidateZips = validZipPaths;
+            }
+            else
+            {
+                candidateZips = zipPathsWithExactVersion;
+            }
+
+            foreach (string zipName in candidateZips)
+            {
+                if (zipName.Contains(engine.Version.MajorMinorString))
+                {
+                    return zipName;
+                }
+            }
+
+            return candidateZips[0];
         }
     }
 }
