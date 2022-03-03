@@ -21,7 +21,7 @@ namespace UnrealCommander.Options
             TraceChannelOptions.ListChanged += TraceChannelOptions_ListChanged;
         }
 
-        private InsightsOptions Options => DataContext as InsightsOptions;
+        private InsightsOptions InsightsOptions => DataContext as InsightsOptions;
 
         public BindingList<TraceChannelOption> TraceChannelOptions { get; set; } = new();
 
@@ -38,13 +38,13 @@ namespace UnrealCommander.Options
 
         private void TraceChannelOptions_ListChanged(object sender, ListChangedEventArgs e)
         {
-            Options.TraceChannels.Clear();
+            InsightsOptions.TraceChannels.Clear();
 
             foreach (TraceChannelOption option in TraceChannelOptions)
             {
                 if (option.Enabled)
                 {
-                    Options.TraceChannels.Add(option.TraceChannel);
+                    InsightsOptions.TraceChannels.Add(option.TraceChannel);
                 }
             }
         }
@@ -53,7 +53,7 @@ namespace UnrealCommander.Options
         {
             TraceChannelOptions.RaiseListChangedEvents = false;
 
-            foreach (TraceChannelOption option in TraceChannelOptions) option.Enabled = Options.TraceChannels.Contains(option.TraceChannel);
+            foreach (TraceChannelOption option in TraceChannelOptions) option.Enabled = InsightsOptions.TraceChannels.Contains(option.TraceChannel);
 
             TraceChannelOptions.RaiseListChangedEvents = true;
         }
