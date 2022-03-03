@@ -426,7 +426,7 @@ namespace UnrealCommander
                         // Check is running again, because it may have finished while the message box was open
                         if (IsRunningOperation)
                         {
-                            Running.Cancel();
+                            Running.Cancel().Wait();
 
                             // Small sleep so that dispatch invokes triggered by termination don't crash
                             Thread.Sleep(1);
