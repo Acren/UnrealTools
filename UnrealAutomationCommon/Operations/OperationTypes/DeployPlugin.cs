@@ -182,7 +182,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (!(await new BuildEditor().Execute(buildEditorParams, Logger, token)).Success)
             {
-                throw new Exception("Failed to build host project");
+                throw new Exception("Failed to build host project editor");
             }
 
             // Launch and test host project editor

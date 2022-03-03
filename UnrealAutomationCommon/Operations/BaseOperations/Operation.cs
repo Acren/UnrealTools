@@ -137,19 +137,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         public EngineInstall GetTargetEngineInstall(OperationParameters operationParameters)
         {
-            // Return engine install override if there is one
-            if (operationParameters.EngineOverride != null)
-            {
-                return operationParameters.EngineOverride;
-            }
-
-            if (GetTarget(operationParameters) is not IEngineInstallProvider)
-            {
-                return null;
-            }
-
-            IEngineInstallProvider engineInstallProvider = GetTarget(operationParameters) as IEngineInstallProvider;
-            return engineInstallProvider?.EngineInstall;
+            return operationParameters.EngineInstall;
         }
 
         public HashSet<Type> GetRequiredOptionSetTypes(IOperationTarget target)

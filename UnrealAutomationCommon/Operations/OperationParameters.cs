@@ -82,6 +82,26 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
+        public EngineInstall EngineInstall
+        {
+            get
+            {
+                // Return engine install override if there is one
+                if (EngineOverride != null)
+                {
+                    return EngineOverride;
+                }
+
+                if (Target is not IEngineInstallProvider)
+                {
+                    return null;
+                }
+
+                IEngineInstallProvider engineInstallProvider = Target as IEngineInstallProvider;
+                return engineInstallProvider?.EngineInstall;
+            }
+        }
+
         public string AdditionalArguments
         {
             get => _additionalArguments;
