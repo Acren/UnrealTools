@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Polly;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
@@ -120,7 +121,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, plugin.Name);
 
             // Delete plugin from engine if installed version exists
-            FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath);
+            Policy policy = Policy
+                .Handle<UnauthorizedAccessException>()
+                .RetryForever((ex, retryAttempt, ctx) =>
+                {
+                    Logger.Log(ex.ToString());
+                    OperationParameters.RetryHandler(ex);
+                });
+            policy.Execute(() => { FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath); });
 
             string workingTempPath = GetOperationTempPath();
 

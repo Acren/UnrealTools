@@ -8,6 +8,8 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
 {
+    public delegate void RetryHandler(Exception ex);
+
     public class OperationParameters : INotifyPropertyChanged
     {
         private string _additionalArguments;
@@ -20,6 +22,11 @@ namespace UnrealAutomationCommon.Operations
         {
             OptionsInstances = new BindingList<OperationOptions>();
         }
+
+        // Delegate used to determine if failed action should be retried or cancelled
+        // Useful for triggering "retry?" message boxes
+        [JsonIgnore]
+        public RetryHandler RetryHandler { get; set; }
 
         [JsonIgnore]
         public string OutputPathOverride { get; set; }

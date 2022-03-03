@@ -69,6 +69,14 @@ namespace UnrealCommander
         public MainWindow()
         {
             PersistentState = PersistentData.Load();
+            PersistentState.OperationParameters.RetryHandler = (Exception ex) =>
+            {
+                MessageBoxResult result = MessageBox.Show($"Encountered {ex.GetType().Name}:\n\n'{ex.Message}'\n\nRetry?", "Error", MessageBoxButton.YesNo);
+                if (result == MessageBoxResult.No)
+                {
+                    throw new OperationCanceledException();
+                }
+            };
             InitializeComponent();
 
             AppLogger.Instance.Output += AddLogToOutputViewer;
