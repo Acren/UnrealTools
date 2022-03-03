@@ -4,7 +4,7 @@
     {
         public override int Index => 50;
 
-        public Option<bool> RunTests { get; } = false;
+        public Option<bool> RunTests { get; } = true;
         public Option<bool> Headless { get; } = true;
 
         public string TestNameOverride { get; set; }

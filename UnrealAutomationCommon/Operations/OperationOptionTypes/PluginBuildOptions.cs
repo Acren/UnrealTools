@@ -5,7 +5,7 @@
         public override int Index => 70;
 
         public Option<bool> BuildWin64 { get; } = true;
-        public Option<bool> BuildLinux { get; } = false;
-        public Option<bool> StrictIncludes { get; } = false;
+        public Option<bool> BuildLinux { get; } = true;
+        public Option<bool> StrictIncludes { get; } = true;
     }
 }
