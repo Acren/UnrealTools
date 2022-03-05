@@ -1,4 +1,5 @@
 ﻿using UnrealAutomationCommon.Operations.BaseOperations;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
@@ -15,6 +16,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             arguments.SetFlag("nocompileeditor");
             arguments.SetFlag("archive");
             arguments.SetKeyPath("archivedirectory", GetOutputPath(operationParameters));
+
+            // Set cooker exe
+            BuildConfiguration cookerConfiguration = operationParameters.RequestOptions<CookOptions>().CookerConfiguration;
+            if (cookerConfiguration != BuildConfiguration.Development)
+            {
+                string unrealExe = operationParameters.EngineInstall.GetEditorCmdExe(cookerConfiguration);
+                arguments.SetKeyPath("unrealexe", unrealExe);
+            }
+
             return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), arguments);
         }
 

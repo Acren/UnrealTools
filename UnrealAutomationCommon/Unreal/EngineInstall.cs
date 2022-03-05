@@ -20,6 +20,8 @@ namespace UnrealAutomationCommon.Unreal
         public string DisplayName => Version.ToString();
         public string LocationString => IsSourceBuild ? InstallDirectory : "Launcher";
 
+        public string BaseEditorName => Version.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
+
         public EngineInstallVersion Version => EngineInstallVersion.Load(this.GetBuildVersionPath());
 
         public bool SupportsConfiguration(BuildConfiguration configuration)
