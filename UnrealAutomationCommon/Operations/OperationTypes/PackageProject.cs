@@ -25,6 +25,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 arguments.SetKeyPath("unrealexe", unrealExe);
             }
 
+            if (operationParameters.RequestOptions<CookOptions>().WaitForAttach)
+            {
+                arguments.SetKeyValue("additionalcookeroptions","-waitforattach");
+            }
+
             return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), arguments);
         }
 

@@ -7,6 +7,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
         private BuildConfiguration _cookerConfiguration = BuildConfiguration.Development;
 
         public override int Index => 30;
+        public override string Name => "Cooker";
 
         public BuildConfiguration CookerConfiguration
         {
@@ -17,5 +18,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
                 OnPropertyChanged();
             }
         }
+
+        public Option<bool> WaitForAttach { get; } = false;
     }
 }

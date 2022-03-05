@@ -58,5 +58,9 @@
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
+        <CheckBox IsChecked="{Binding WaitForAttach.Value, Mode=TwoWay}" VerticalAlignment="Center"
+                  VerticalContentAlignment="Center">
+            <TextBlock Text="Wait for Attach" VerticalAlignment="Center" />
+        </CheckBox>
     </StackPanel>
 </local:OptionsUserControl>
