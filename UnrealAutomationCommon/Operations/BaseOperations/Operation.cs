@@ -11,6 +11,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     public abstract class Operation
     {
         public string OperationName => GetOperationName();
+        public bool SupportsMultipleEngines => false;
 
         public bool Executing { get; private set; }
         public bool Cancelled { get; private set; }

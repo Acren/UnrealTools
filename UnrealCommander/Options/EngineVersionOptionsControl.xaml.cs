@@ -90,28 +90,31 @@ namespace UnrealCommander.Options
                     }
                 }
 
-                if ((DataContext as EngineVersionOptions)?.OperationTarget is Plugin plugin)
-                {
-                    plugin.TargetEngineVersions = enabledVersions;
-                }
+                (Options as EngineVersionOptions).EnabledVersions.Value = enabledVersions;
+
+                //if ((DataContext as EngineVersionOptions)?.OperationTarget is Plugin plugin)
+                //{
+                //    plugin.TargetEngineVersions = enabledVersions;
+                //}
             };
 
             //UpdateOptionsEnabled();
+        }
+
+        public override void EndInit()
+        {
+            UpdateOptionsEnabled();
+            base.EndInit();
         }
 
         public BindingList<EngineVersionOption> EngineVersionOptions { get; set; } = new();
 
         private void UpdateOptionsEnabled()
         {
-            if (Options.OperationTarget is not Plugin plugin)
-            {
-                return;
-            }
-
             EngineVersionOptions.RaiseListChangedEvents = false;
             foreach (EngineVersionOption version in EngineVersionOptions)
             {
-                version.Enabled = plugin.TargetEngineVersions.Contains(version.EngineVersion);
+                version.Enabled = (Options as EngineVersionOptions).EnabledVersions.Value.Contains(version.EngineVersion);
             }
             EngineVersionOptions.RaiseListChangedEvents = true;
         }

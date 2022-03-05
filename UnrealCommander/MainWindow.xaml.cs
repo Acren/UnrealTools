@@ -198,9 +198,12 @@ namespace UnrealCommander
                     OnPropertyChanged(nameof(AllowedBuildConfigurations));
                     OnPropertyChanged(nameof(EnabledOptionSetTypes));
                     OnPropertyChanged(nameof(EnabledOptionSets));
+                    OnPropertyChanged(nameof(OperationSupportsMultipleEngines));
                 }
             }
         }
+
+        public bool OperationSupportsMultipleEngines => Operation.SupportsMultipleEngines;
 
         public IOperationTarget OperationTarget => PersistentState.OperationParameters.Target;
 

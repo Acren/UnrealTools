@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations
@@ -45,7 +46,11 @@ namespace UnrealAutomationCommon.Operations
                 initialOptions.Sort();
                 _optionsInstances = new BindingList<OperationOptions>(initialOptions);
 
-                OptionsInstances.ListChanged += (sender, args) => OnPropertyChanged(nameof(OptionsInstances));
+                OptionsInstances.ListChanged += (sender, args) =>
+                {
+                    OnPropertyChanged(nameof(OptionsInstances));
+                    OnPropertyChanged(nameof(EngineInstall));
+                };
 
                 UpdateOptionsTarget();
             }
@@ -90,6 +95,15 @@ namespace UnrealAutomationCommon.Operations
                 if (EngineOverride != null)
                 {
                     return EngineOverride;
+                }
+
+                if (RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Count > 0)
+                {
+                    EngineInstallVersion version = RequestOptions<EngineVersionOptions>().EnabledVersions.Value[0];
+                    if (version != null)
+                    {
+                        return EngineInstallFinder.GetEngineInstall(version);
+                    }
                 }
 
                 if (Target is not IEngineInstallProvider)

@@ -10,7 +10,7 @@ namespace UnrealAutomationCommon.Unreal
     {
         private PluginDescriptor _pluginDescriptor;
         private string _uPluginPath;
-        private List<EngineInstallVersion> _targetEngineVersions;
+        //private List<EngineInstallVersion> _targetEngineVersions;
 
         private FileSystemWatcher _watcher;
 
@@ -62,16 +62,16 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        [JsonProperty]
-        public List<EngineInstallVersion> TargetEngineVersions
-        {
-            get => _targetEngineVersions;
-            set
-            {
-                _targetEngineVersions = value;
-                OnPropertyChanged();
-            }
-        }
+        //[JsonProperty]
+        //public List<EngineInstallVersion> TargetEngineVersions
+        //{
+        //    get => _targetEngineVersions;
+        //    set
+        //    {
+        //        _targetEngineVersions = value;
+        //        OnPropertyChanged();
+        //    }
+        //}
 
         public Project HostProject => new(HostProjectUProjectPath);
 
