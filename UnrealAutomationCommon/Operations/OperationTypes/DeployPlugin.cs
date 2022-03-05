@@ -253,7 +253,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Copy plugin into engine where the marketplace installs it
 
-            Logger.Log("Copying to Engine/Plugins/Marketplace");
+            Logger.Log($"Copying plugin to {enginePluginsMarketplacePluginPath}");
 
             FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath);
 
