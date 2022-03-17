@@ -65,9 +65,31 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public EngineInstall EngineInstall => ProjectDescriptor?.EngineInstall;
+        public EngineInstall EngineInstall
+        {
+            get
+            {
+                if (ProjectDescriptor is { EngineInstall: { } })
+                {
+                    return ProjectDescriptor.EngineInstall;
+                }
 
-        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : ProjectDescriptor?.EngineAssociation;
+                return null;
+            }
+        }
+
+        public string EngineInstallName
+        {
+            get
+            {
+                if (EngineInstall != null)
+                {
+                    return EngineInstall.DisplayName;
+                }
+
+                return "None";
+            }
+        }
 
         public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
         public override string DisplayName => DirectoryName;

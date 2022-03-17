@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using System;
+using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -35,7 +36,20 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public EngineInstall EngineInstall => EngineInstallFinder.GetEngineInstall(EngineAssociation);
+        public EngineInstall EngineInstall
+        {
+            get
+            {
+                try
+                {
+                    return EngineInstallFinder.GetEngineInstall(EngineAssociation);
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+            }
+        }
 
         public static ProjectDescriptor Load(string uProjectPath)
         {

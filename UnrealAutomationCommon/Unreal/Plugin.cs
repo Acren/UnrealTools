@@ -142,7 +142,18 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : PluginDescriptor?.EngineVersion;
+        public string EngineInstallName
+        {
+            get
+            {
+                if (EngineInstall != null)
+                {
+                    return EngineInstall.DisplayName;
+                }
+
+                return "None";
+            }
+        }
 
         public override void LoadDescriptor()
         {
