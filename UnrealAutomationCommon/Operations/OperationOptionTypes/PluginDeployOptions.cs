@@ -5,7 +5,8 @@
         public override int Index => 80;
 
         public Option<bool> TestStandalone { get; } = true;
-        public Option<bool> TestPackage { get; } = true;
+        public Option<bool> TestPackageWithProjectPlugin { get; } = true;
+        public Option<bool> TestPackageWithEnginePlugin { get; } = true;
         public Option<string> ArchivePath { get; } = "";
         public Option<bool> ArchivePluginBuild { get; } = false;
         public Option<bool> ArchiveExampleProject { get; } = true;

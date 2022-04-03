@@ -43,7 +43,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             EngineInstallVersion engineVersion = engine.Version;
             Logger.Log($"Deploying plugin for {engineVersion.MajorMinorString}");
 
-            Logger.Log("Preparing plugin");
+            Logger.LogSectionHeader("Preparing plugin");
 
             Plugin plugin = GetTarget(OperationParameters);
             PluginDescriptor pluginDescriptor = plugin.PluginDescriptor;
@@ -57,7 +57,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Logger.Log($"Engine version: {engineVersion}");
 
-            string branchName = VersionControlUtils.GetBranchName(hostProject.GetProjectPath());
+            string branchName = VersionControlUtils.GetBranchName(hostProject.ProjectPath);
             Logger.Log($"Branch: {branchName}");
             // Use the version if on any of these branches
             string[] standardBranchNames = { "master", "develop", "development" };
@@ -173,7 +173,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Build host project editor
 
-            Logger.Log("Building host project editor");
+            Logger.LogSectionHeader("Building host project editor");
 
             OperationParameters buildEditorParams = new()
             {
@@ -193,7 +193,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (automationOpts.RunTests)
             {
-                Logger.Log("Launching and testing host project editor");
+                Logger.LogSectionHeader("Launching and testing host project editor");
 
                 OperationParameters launchEditorParams = new()
                 {
@@ -212,7 +212,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (automationOpts.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestStandalone)
             {
-                Logger.Log("Launching and testing standalone");
+                Logger.LogSectionHeader("Launching and testing standalone");
 
                 OperationParameters launchStandaloneParams = new()
                 {
@@ -229,7 +229,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Build plugin
 
-            Logger.Log("Building plugin");
+            Logger.LogSectionHeader("Building plugin");
 
             string pluginBuildPath = Path.Combine(workingTempPath, @"PluginBuild", plugin.Name);
             FileUtils.DeleteDirectoryIfExists(pluginBuildPath);
@@ -252,7 +252,109 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Logger.Log("Plugin build complete");
 
+            // Set up host project
+
+            Logger.LogSectionHeader("Preparing host project");
+
+            string uProjectFilename = Path.GetFileName(hostProject.UProjectPath);
+            string projectName = Path.GetFileNameWithoutExtension(hostProject.UProjectPath);
+
+            string exampleProjectPath = Path.Combine(workingTempPath, @"ExampleProject");
+
+            FileUtils.DeleteDirectoryIfExists(exampleProjectPath);
+
+            FileUtils.CopySubdirectory(hostProject.ProjectPath, exampleProjectPath, "Content");
+            FileUtils.CopySubdirectory(hostProject.ProjectPath, exampleProjectPath, "Config");
+            FileUtils.CopySubdirectory(hostProject.ProjectPath, exampleProjectPath, "Source");
+
+            string projectIcon = projectName + ".png";
+            if (File.Exists(projectIcon))
+            {
+                FileUtils.CopyFile(hostProject.ProjectPath, exampleProjectPath, projectIcon);
+            }
+
+            // Copy uproject 
+            JObject uProjectContents = JObject.Parse(File.ReadAllText(hostProject.UProjectPath));
+
+            string exampleProjectBuildUProjectPath = Path.Combine(exampleProjectPath, uProjectFilename);
+
+            File.WriteAllText(exampleProjectBuildUProjectPath, uProjectContents.ToString());
+
+            Project exampleProject = new(exampleProjectPath);
+
+            // Copy other plugins
+
+            var sourcePlugins = hostProject.Plugins;
+            foreach (Plugin sourcePlugin in sourcePlugins)
+            {
+                if (!sourcePlugin.Equals(plugin))
+                {
+                    exampleProject.AddPlugin(sourcePlugin);
+                }
+            }
+
+            // Copy main plugin to example project
+            exampleProject.AddPlugin(pluginBuildPath);
+
+            Logger.Log("Building example project with modules");
+            // Note: Modules and source are required to build any code plugins that are used for testing
+
+            OperationParameters buildExampleProjectParams = new()
+            {
+                Target = exampleProject,
+                EngineOverride = engine
+            };
+            OperationResult exampleProjectBuildResult = await new BuildEditor().Execute(buildExampleProjectParams, Logger, token);
+            if (!exampleProjectBuildResult.Success)
+            {
+                throw new Exception($"Failed to build example project with modules");
+            }
+
+            // Package code example project with plugin inside project
+
+            Logger.LogSectionHeader("Packaging code example project with plugin inside project");
+
+            string projectPluginPackagePath = Path.Combine(workingTempPath, @"ProjectPluginPackage");
+            FileUtils.DeleteDirectoryIfExists(projectPluginPackagePath);
+
+            OperationParameters packageWithPluginParams = new()
+            {
+                Target = exampleProject,
+                EngineOverride = engine,
+                OutputPathOverride = projectPluginPackagePath
+            };
+
+            OperationResult buildWithProjectPluginResult = await new PackageProject().Execute(packageWithPluginParams, Logger, token);
+
+            if (!buildWithProjectPluginResult.Success)
+            {
+                throw new Exception("Package project with included plugin failed");
+            }
+
+            if (automationOpts.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestPackageWithProjectPlugin)
+            {
+                Logger.LogSectionHeader("Testing code project package with project plugin");
+
+                Package projectPluginPackage = new (Path.Combine(projectPluginPackagePath, engine.GetWindowsPlatformName()));
+
+                OperationParameters testProjectPluginPackageParams = new()
+                {
+                    Target = projectPluginPackage,
+                    EngineOverride = engine
+                };
+                testProjectPluginPackageParams.SetOptions(automationOpts);
+
+                OperationResult testResult = await new LaunchPackage().Execute(testProjectPluginPackageParams, Logger, token);
+
+                if (!testResult.Success)
+                {
+                    throw new Exception("Launch and test with project plugin failed");
+                }
+            }
+
             // Copy plugin into engine where the marketplace installs it
+
+            Logger.LogSectionHeader("Preparing to package example project with installed plugin");
 
             Logger.Log($"Copying plugin to {enginePluginsMarketplacePluginPath}");
 
@@ -260,87 +362,75 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             FileUtils.CopyDirectory(pluginBuildPath, enginePluginsMarketplacePluginPath);
 
-            // Set up host project
-
-            Logger.Log("Preparing host project");
-
-            string uProjectFilename = Path.GetFileName(hostProject.UProjectPath);
-            string projectName = Path.GetFileNameWithoutExtension(hostProject.UProjectPath);
-
-            string exampleProjectBuildPath = Path.Combine(workingTempPath, @"ExampleProject");
-
-            FileUtils.DeleteDirectoryIfExists(exampleProjectBuildPath);
-
-            FileUtils.CopySubdirectory(hostProject.GetProjectPath(), exampleProjectBuildPath, "Content");
-            FileUtils.CopySubdirectory(hostProject.GetProjectPath(), exampleProjectBuildPath, "Config");
-
-            string projectIcon = projectName + ".png";
-            if (File.Exists(projectIcon))
-            {
-                FileUtils.CopyFile(hostProject.GetProjectPath(), exampleProjectBuildPath, projectIcon);
-            }
-
-            // Copy other plugins
-
-            var sourcePlugins = hostProject.GetPlugins();
-            foreach (Plugin sourcePlugin in sourcePlugins)
-                if (!sourcePlugin.Equals(plugin))
-                {
-                    FileUtils.CopyDirectory(sourcePlugin.TargetDirectory, Path.Combine(exampleProjectBuildPath, "Plugins"), true);
-                }
-
-            // Copy uproject 
-            JObject uProjectContents = JObject.Parse(File.ReadAllText(hostProject.UProjectPath));
-
-            // Remove modules property, which makes it a Blueprint-only project
-            uProjectContents.Remove("Modules");
-
-            string exampleProjectBuildUProjectPath = Path.Combine(exampleProjectBuildPath, uProjectFilename);
-
-            File.WriteAllText(exampleProjectBuildUProjectPath, uProjectContents.ToString());
-
-            // Build example project without archiving to test that it can package with plugin installed to engine
+            // Package code example project with plugin installed to engine
             // It's worth doing this to test for build or packaging issues that might only happen using installed plugin
 
-            Logger.Log("Building example project with installed plugin");
+            Logger.LogSectionHeader("Packaging code example project with installed plugin");
 
-            string installedPluginTestBuildArchivePath = Path.Combine(workingTempPath, @"InstalledPluginTestBuild");
-            FileUtils.DeleteDirectoryIfExists(installedPluginTestBuildArchivePath);
+            // Remove the plugin in the project because it should only be in the engine
+            exampleProject.RemovePlugin(plugin.Name);
 
-            Project exampleProjectBuild = new(exampleProjectBuildUProjectPath);
+            string enginePluginPackagePath = Path.Combine(workingTempPath, @"EnginePluginPackage");
+            FileUtils.DeleteDirectoryIfExists(enginePluginPackagePath);
 
-            PackageProject installedPluginPackageOperation = new();
             OperationParameters installedPluginPackageParams = new()
             {
-                Target = exampleProjectBuild,
+                Target = exampleProject,
                 EngineOverride = engine,
-                OutputPathOverride = exampleProjectBuildPath
+                OutputPathOverride = enginePluginPackagePath
             };
 
-            OperationResult installedPluginPackageOperationResult = await installedPluginPackageOperation.Execute(installedPluginPackageParams, Logger, token);
+            OperationResult installedPluginPackageOperationResult = await new PackageProject().Execute(installedPluginPackageParams, Logger, token);
 
             if (!installedPluginPackageOperationResult.Success)
             {
-                throw new Exception("Example project build with installed plugin failed");
+                throw new Exception("Package project with engine plugin failed");
             }
 
             // Test the package
 
-            if (automationOpts.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestPackage)
+            if (automationOpts.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestPackageWithEnginePlugin)
             {
-                OperationParameters testInstalledPluginBuildParams = new()
+                Logger.LogSectionHeader("Testing code project package with installed plugin");
+
+                Package enginePluginPackage = new Package(Path.Combine(enginePluginPackagePath, engine.GetWindowsPlatformName()));
+
+                OperationParameters testEnginePluginPackageParams = new()
                 {
-                    Target = exampleProjectBuild,
+                    Target = enginePluginPackage,
                     EngineOverride = engine
                 };
-                testInstalledPluginBuildParams.SetOptions(automationOpts);
+                testEnginePluginPackageParams.SetOptions(automationOpts);
 
-                OperationResult testResult = await new LaunchStagedPackage().Execute(testInstalledPluginBuildParams, Logger, token);
+                OperationResult testResult = await new LaunchPackage().Execute(testEnginePluginPackageParams, Logger, token);
 
                 if (!testResult.Success)
                 {
                     throw new Exception("Launch and test with installed plugin failed");
                 }
+            }
+
+            // Package blueprint-only example project with plugin installed to engine
+
+            Logger.LogSectionHeader("Packaging blueprint-only example project");
+
+            exampleProject.ConvertToBlueprintOnly();
+
+            string blueprintOnlyPackagePath = Path.Combine(workingTempPath, @"BlueprintOnlyPackage");
+            FileUtils.DeleteDirectoryIfExists(blueprintOnlyPackagePath);
+
+            OperationParameters blueprintOnlyPackageParams = new()
+            {
+                Target = exampleProject,
+                EngineOverride = engine,
+                OutputPathOverride = blueprintOnlyPackagePath
+            };
+
+            OperationResult blueprintOnlyPackageOperationResult = await new PackageProject().Execute(blueprintOnlyPackageParams, Logger, token);
+
+            if (!blueprintOnlyPackageOperationResult.Success)
+            {
+                throw new Exception("Package blueprint-only project failed");
             }
 
             // Uninstall plugin from engine because test has completed
@@ -350,11 +440,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath);
 
-            // Copy plugin to example project to prepare for package
-            string exampleProjectPluginPath = Path.Combine(exampleProjectBuildPath, "Plugins", Path.GetFileName(plugin.GetPluginPath()));
+            // Copy plugin to example project to prepare the demo package
+            string exampleProjectPluginPath = Path.Combine(exampleProjectPath, "Plugins", Path.GetFileName(plugin.PluginPath));
             FileUtils.CopyDirectory(pluginBuildPath, exampleProjectPluginPath);
 
-            Logger.Log("Packaging host project for demo");
+            Logger.LogSectionHeader("Packaging host project for demo");
 
             string demoPackagePath = Path.Combine(workingTempPath, @"DemoExe");
 
@@ -379,22 +469,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Example project build failed");
             }
 
-            // Can't test package in shipping
-            //OperationParameters demoTestParams = new OperationParameters()
-            //{
-            //    Target = new Package(Path.Combine(demoExePath, plugin.EngineInstall.GetWindowsPlatformName()))
-            //};
-            //demoTestParams.SetOptions(automationOpts);
-
-            //if (!(await new LaunchPackage().Execute(demoTestParams, Logger)).Success)
-            //{
-            //    throw new Exception("Launch and test demo exe failed");
-            //}
+            // Can't test the demo package in shipping
 
             {
                 // Archiving
 
-                Logger.Log("Archiving");
+                Logger.LogSectionHeader("Archiving");
 
                 string archivePath = Path.Combine(GetOutputPath(OperationParameters), "Archives");
 
@@ -435,9 +515,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                     // First delete any extra directories
                     string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
-                    FileUtils.DeleteOtherSubdirectories(exampleProjectBuildPath, allowedExampleProjectSubDirectoryNames);
+                    FileUtils.DeleteOtherSubdirectories(exampleProjectPath, allowedExampleProjectSubDirectoryNames);
 
-                    var exampleProjectPlugins = exampleProjectBuild.GetPlugins();
+                    var exampleProjectPlugins = exampleProject.Plugins;
                     string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
                     string[] excludePlugins = OperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ", "").Split(",");
                     foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
@@ -456,10 +536,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     }
 
                     // Delete debug files recursive
-                    FileUtils.DeleteFilesWithExtension(exampleProjectBuildPath, new[] { ".pdb" }, SearchOption.AllDirectories);
+                    FileUtils.DeleteFilesWithExtension(exampleProjectPath, new[] { ".pdb" }, SearchOption.AllDirectories);
 
                     FileUtils.DeleteFileIfExists(exampleProjectZipPath);
-                    ZipFile.CreateFromDirectory(exampleProjectBuildPath, exampleProjectZipPath);
+                    ZipFile.CreateFromDirectory(exampleProjectPath, exampleProjectZipPath);
                 }
 
                 // Archive plugin for submission
@@ -469,7 +549,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Copy plugin to submission folder so that we can prepare archive for submission without altering the original
                 string pluginSubmissionPath = Path.Combine(workingTempPath, @"PluginSubmission", plugin.Name);
                 FileUtils.DeleteDirectoryIfExists(pluginSubmissionPath);
-                FileUtils.CopyDirectory(plugin.GetPluginPath(), pluginSubmissionPath);
+                FileUtils.CopyDirectory(plugin.PluginPath, pluginSubmissionPath);
 
                 string[] allowedPluginSubmissionSubDirectoryNames = { "Source", "Resources", "Content", "Config" };
                 FileUtils.DeleteOtherSubdirectories(pluginSubmissionPath, allowedPluginSubmissionSubDirectoryNames);

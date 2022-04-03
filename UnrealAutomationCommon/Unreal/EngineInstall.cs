@@ -24,6 +24,8 @@ namespace UnrealAutomationCommon.Unreal
 
         public EngineInstallVersion Version => EngineInstallVersion.Load(this.GetBuildVersionPath());
 
+        public string PluginsPath => Path.Combine(InstallDirectory, "Engine", "Plugins");
+
         public bool SupportsConfiguration(BuildConfiguration configuration)
         {
             if (configuration == BuildConfiguration.Debug

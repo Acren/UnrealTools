@@ -6,6 +6,14 @@
     {
         public void Log(string line, LogVerbosity verbosity = LogVerbosity.Log);
 
+        public void LogSectionHeader(string header)
+        {
+            Log("");
+            Log("####################################");
+            Log($"# {header}");
+            Log("####################################");
+        }
+
         public event LogEventHandler Output;
     }
 }

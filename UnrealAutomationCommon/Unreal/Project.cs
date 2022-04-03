@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json.Linq;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
@@ -96,6 +97,37 @@ namespace UnrealAutomationCommon.Unreal
 
         public override string TargetPath => UProjectPath;
 
+        public override bool IsValid => ProjectPaths.Instance.IsTargetFile(TargetPath);
+
+        public string ProjectPath => Path.GetDirectoryName(_uProjectPath);
+
+        public string LogsPath => Path.Combine(ProjectPath, "Saved", "Logs");
+
+        public string StagedBuildsPath => Path.Combine(ProjectPath, "Saved", "StagedBuilds");
+
+        public string PluginsPath => Path.Combine(ProjectPath, "Plugins");
+
+        public string SourcePath => Path.Combine(ProjectPath, "Source");
+
+        public List<Plugin> Plugins
+        {
+            get
+            {
+                var plugins = new List<Plugin>();
+                foreach (string pluginPath in Directory.GetDirectories(Path.Combine(ProjectPath, "Plugins")))
+                {
+                    // Check it's a valid plugin directory, there might be empty directories lying around
+                    if (PluginPaths.Instance.IsTargetDirectory(pluginPath))
+                    {
+                        Plugin plugin = new(pluginPath);
+                        plugins.Add(plugin);
+                    }
+                }
+
+                return plugins;
+            }
+        }
+
         public Package GetProvidedPackage(EngineInstall engineContext) => GetStagedPackage(engineContext);
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
@@ -114,19 +146,9 @@ namespace UnrealAutomationCommon.Unreal
             ProjectDescriptor = ProjectDescriptor.Load(UProjectPath);
         }
 
-        public string GetProjectPath()
-        {
-            return Path.GetDirectoryName(_uProjectPath);
-        }
-
-        public string GetStagedBuildsPath()
-        {
-            return Path.Combine(GetProjectPath(), "Saved", "StagedBuilds");
-        }
-
         public string GetStagedBuildWindowsPath(EngineInstall engineContext)
         {
-            return Path.Combine(GetStagedBuildsPath(), (engineContext ?? EngineInstall).GetWindowsPlatformName());
+            return Path.Combine(StagedBuildsPath, (engineContext ?? EngineInstall).GetWindowsPlatformName());
         }
 
         public Package GetStagedPackage(EngineInstall engineContext)
@@ -140,21 +162,39 @@ namespace UnrealAutomationCommon.Unreal
             return Path.Combine(GetStagedBuildWindowsPath(engineContext), Name + ".exe");
         }
 
-        public string GetLogsPath()
+        // Copy the plugin into this project
+        public void AddPlugin(string pluginPath)
         {
-            return Path.Combine(GetProjectPath(), "Saved", "Logs");
+            FileUtils.CopyDirectory(pluginPath, PluginsPath, true);
         }
 
-        public List<Plugin> GetPlugins()
+        // Copy the plugin into this project
+        public void AddPlugin(Plugin plugin)
         {
-            var plugins = new List<Plugin>();
-            foreach (string pluginPath in Directory.GetDirectories(Path.Combine(GetProjectPath(), "Plugins")))
-            {
-                Plugin plugin = new(pluginPath);
-                plugins.Add(plugin);
-            }
+            AddPlugin(plugin.PluginPath);
+        }
 
-            return plugins;
+        public void RemovePlugin(string pluginName)
+        {
+            foreach (Plugin plugin in Plugins)
+            {
+                if (plugin.Name == pluginName)
+                {
+                    FileUtils.DeleteDirectory(plugin.PluginPath);
+                }
+            }
+        }
+
+        public void ConvertToBlueprintOnly()
+        {
+            // Remove source folder
+            FileUtils.DeleteDirectoryIfExists(SourcePath);
+
+            // Remove modules property
+            JObject uProjectContents = JObject.Parse(File.ReadAllText(UProjectPath));
+            uProjectContents.Remove("Modules");
+
+            File.WriteAllText(UProjectPath, uProjectContents.ToString());
         }
 
     }

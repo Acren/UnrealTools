@@ -9,7 +9,7 @@ namespace UnrealAutomationCommon.Unreal
         private StreamReader _reader;
         private string _registeredLogFile;
 
-        public LogWatcher(Project project) : this(project, project.GetLogsPath())
+        public LogWatcher(Project project) : this(project, project.LogsPath)
         {
         }
 

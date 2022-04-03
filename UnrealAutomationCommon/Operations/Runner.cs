@@ -77,9 +77,9 @@ namespace UnrealAutomationCommon.Operations
 
         private void OutputLine(string line, LogVerbosity verbosity)
         {
-            if (string.IsNullOrEmpty(line))
+            if (line == null)
             {
-                return;
+                throw new Exception("Null line");
             }
 
             _lineCount++;

@@ -11,9 +11,13 @@
                   VerticalContentAlignment="Center">
             <TextBlock Text="Test Standalone" VerticalAlignment="Center" />
         </CheckBox>
-        <CheckBox IsChecked="{Binding Path=TestPackage.Value, Mode=TwoWay}" VerticalAlignment="Center"
+        <CheckBox IsChecked="{Binding Path=TestPackageWithProjectPlugin.Value, Mode=TwoWay}" VerticalAlignment="Center"
                   VerticalContentAlignment="Center">
-            <TextBlock Text="Test Package" VerticalAlignment="Center" />
+            <TextBlock Text="Test Package (Project Plugin)" VerticalAlignment="Center" />
+        </CheckBox>
+        <CheckBox IsChecked="{Binding Path=TestPackageWithEnginePlugin.Value, Mode=TwoWay}" VerticalAlignment="Center"
+                  VerticalContentAlignment="Center">
+            <TextBlock Text="Test Package (Engine Plugin)" VerticalAlignment="Center" />
         </CheckBox>
         <TextBlock>Archive Path:</TextBlock>
         <TextBox Text="{Binding Path=ArchivePath.Value}" />

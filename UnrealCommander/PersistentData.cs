@@ -1,9 +1,14 @@
 ﻿using Newtonsoft.Json;
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
+using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
@@ -25,9 +30,23 @@ namespace UnrealCommander
         public PersistentData()
         {
             Targets = new ObservableCollection<IOperationTarget>();
-            Targets.CollectionChanged += (sender, args) => OnPropertyChanged(nameof(Targets));
+            Targets.CollectionChanged += (sender, args) =>
+            {
+                OnPropertyChanged(nameof(Targets));
+            };
             OperationParameters = new OperationParameters();
             OperationType = typeof(LaunchEditor);
+        }
+
+        [OnDeserialized]
+        internal void OnDeserializedMethod(StreamingContext context)
+        {
+            IEnumerable<IOperationTarget> invalidTargets = Targets.Where(x => !x.IsValid).ToList();
+            foreach (IOperationTarget target in invalidTargets)
+            {
+                AppLogger.Instance.Log($"Removing invalid target '{target.TargetPath}'", LogVerbosity.Warning);
+                Targets.Remove(target);
+            }
         }
 
         public ObservableCollection<IOperationTarget> Targets { get; private set; }

@@ -33,7 +33,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         {
             try
             {
-                logger.Log($"Running operation '{OperationName}'");
+                logger.LogSectionHeader($"Running operation '{OperationName}'");
 
                 var warnings = 0;
                 var errors = 0;

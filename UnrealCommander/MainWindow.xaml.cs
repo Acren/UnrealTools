@@ -349,10 +349,7 @@ namespace UnrealCommander
                 Dispatcher.Invoke(() =>
                 {
                     // Prepend line numbers to each line of the output.
-                    if (!string.IsNullOrEmpty(S))
-                    {
-                        AppLogger.Instance.Log(S, verbosity);
-                    }
+                    AppLogger.Instance.Log(S, verbosity);
                 });
             };
 

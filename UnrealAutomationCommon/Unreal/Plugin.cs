@@ -80,6 +80,8 @@ namespace UnrealAutomationCommon.Unreal
         public override string Name => DirectoryName; // Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
         public override string TargetPath => UPluginPath;
 
+        public override bool IsValid => PluginPaths.Instance.IsTargetFile(TargetPath);
+
         public PluginDescriptor PluginDescriptor
         {
             get => _pluginDescriptor;
@@ -92,7 +94,9 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public string HostProjectPath => Path.GetFullPath(Path.Combine(GetPluginPath(), @"..\..\")); // Up 2 levels
+        public string PluginPath => Path.GetDirectoryName(_uPluginPath);
+
+        public string HostProjectPath => Path.GetFullPath(Path.Combine(PluginPath, @"..\..\")); // Up 2 levels
 
         public string HostProjectUProjectPath
         {
@@ -107,7 +111,8 @@ namespace UnrealAutomationCommon.Unreal
                 {
                     if (Path.GetPathRoot(projectPath) == projectPath)
                     {
-                        throw new Exception("No .uproject found in " + projectPath);
+                        // No .uproject found, plugin is probably in an engine
+                        return null;
                     }
 
                     projectPath = Path.GetFullPath(Path.Combine(projectPath, @"..\")); // Up 1 level
@@ -158,11 +163,6 @@ namespace UnrealAutomationCommon.Unreal
         public override void LoadDescriptor()
         {
             PluginDescriptor = PluginDescriptor.Load(UPluginPath);
-        }
-
-        public string GetPluginPath()
-        {
-            return Path.GetDirectoryName(_uPluginPath);
         }
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)

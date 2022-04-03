@@ -53,7 +53,13 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             _process = new Process { StartInfo = startInfo };
             _process.EnableRaisingEvents = true;
             _process.OutputDataReceived += (sender, args) => { HandleLogLine(args.Data); };
-            _process.ErrorDataReceived += (sender, args) => { Logger.Log(args.Data, LogVerbosity.Error); };
+            _process.ErrorDataReceived += (sender, args) =>
+            {
+                if (args.Data != null)
+                {
+                    Logger.Log(args.Data, LogVerbosity.Error);
+                }
+            };
             _process.Start();
             _process.BeginOutputReadLine();
             _process.BeginErrorReadLine();
