@@ -59,6 +59,8 @@ namespace UnrealAutomationCommon.Unreal
                     // Run tests as unattended and headless
                     arguments.SetFlag("unattended");
                     arguments.SetFlag("nullrhi");
+                    // Disable splash
+                    arguments.SetFlag("nosplash");
                     // Disable tutorial to prevent crash from nullrhi
                     arguments.SetFlag("ini:EditorSettings:[/Script/IntroTutorials.EditorTutorialSettings]:StartupTutorial=");
                 }
