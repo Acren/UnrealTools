@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -12,8 +13,9 @@ namespace UnrealAutomationCommon.Operations
         private readonly OperationParameters _operationParameters;
         private int _lineCount;
 
-        //public event Action Ended;
         private Task<OperationResult> _currentTask = null;
+        private List<string> _errors = new();
+        private List<string> _warnings = new();
 
         public Runner(Operation operation, OperationParameters operationParameters)
         {
@@ -53,6 +55,27 @@ namespace UnrealAutomationCommon.Operations
             OperationResult result = await _currentTask;
             Output?.Invoke($"'{Operation.OperationName}' task ended", LogVerbosity.Log);
             _currentTask = null;
+
+            // Log error and warning summary
+
+            if (_warnings.Count > 0)
+            {
+                Output?.Invoke("Warnings:", LogVerbosity.Warning);
+                foreach (string warning in _warnings)
+                {
+                    Output?.Invoke(warning, LogVerbosity.Warning);
+                }
+            }
+
+            if (_errors.Count > 0)
+            {
+                Output?.Invoke("Errors:", LogVerbosity.Error);
+                foreach (string error in _errors)
+                {
+                    Output?.Invoke(error, LogVerbosity.Error);
+                }
+            }
+
             return result;
         }
 
@@ -64,9 +87,6 @@ namespace UnrealAutomationCommon.Operations
             }
 
             Output?.Invoke($"Cancelling operation '{Operation.OperationName}'", LogVerbosity.Warning);
-
-            //TaskCompletionSource<bool> tcs = new();
-            //Ended += () => tcs.TrySetResult(true);
 
             _cancellationTokenSource.Cancel();
 
@@ -84,6 +104,20 @@ namespace UnrealAutomationCommon.Operations
 
             _lineCount++;
             Output?.Invoke("[" + _lineCount + "]: " + line, verbosity);
+
+            switch (verbosity)
+            {
+                case LogVerbosity.Error:
+                {
+                    _errors.Add(line);
+                    break;
+                }
+                case LogVerbosity.Warning:
+                {
+                    _warnings.Add(line);
+                    break;
+                }
+            }
         }
     }
 }
