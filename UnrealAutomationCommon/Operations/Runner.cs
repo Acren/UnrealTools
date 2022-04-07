@@ -76,6 +76,8 @@ namespace UnrealAutomationCommon.Operations
                 }
             }
 
+            Output?.Invoke($"'{Operation.OperationName}' finished running", LogVerbosity.Log);
+
             return result;
         }
 
