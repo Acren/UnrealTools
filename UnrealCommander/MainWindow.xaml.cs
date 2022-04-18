@@ -486,6 +486,21 @@ namespace UnrealCommander
 
             menu.Items.Add(new Separator());
 
+            if (SelectedTarget is Project or Plugin)
+            {
+                menu.Items.Add(new MenuItem { Header = "Add Code Module", Command = new DelegateCommand(o =>
+                {
+                    TextInputDialog dialog = new("Enter module name");
+                    if (dialog.ShowDialog() == true)
+                    {
+                        string name = dialog.InputValue;
+                        SelectedTarget.AddCodeModule(name);
+                    }
+                }) });
+            }
+
+            menu.Items.Add(new Separator());
+
             menu.Items.Add(new MenuItem { Header = "Remove", Command = new DelegateCommand(o => { PersistentData.Get().RemoveTarget(SelectedTarget); }) });
         }
     }

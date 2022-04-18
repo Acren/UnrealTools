@@ -136,10 +136,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Directory.CreateDirectory(workingTempPath);
 
             // Check copyright notice
-
-            string hostProjectDefaultGameConfig = Path.Combine(hostProject.TargetDirectory, "Config", "DefaultGame.ini");
-            UnrealConfig config = new(hostProjectDefaultGameConfig);
-            string copyrightNotice = config.GetSection("/Script/EngineSettings.GeneralProjectSettings").GetValue("CopyrightNotice");
+            string copyrightNotice = hostProject.GetCopyrightNotice();
 
             string sourcePath = Path.Combine(plugin.TargetDirectory, "Source");
             var expectedComment = $"// {copyrightNotice}";
