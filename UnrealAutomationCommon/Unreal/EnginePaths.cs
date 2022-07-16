@@ -25,15 +25,28 @@ namespace UnrealAutomationCommon.Unreal
         {
             string mainEditorName = EngineInstall.BaseEditorName;
 
-            string exeName;
-            if (configuration == BuildConfiguration.DebugGame)
+            string exeSuffix;
+
+            switch (configuration)
             {
-                exeName = mainEditorName + "-Win64-DebugGame-Cmd.exe";
+                case BuildConfiguration.Debug:
+                {
+                    exeSuffix = "-Win64-Debug-Cmd.exe";
+                    break;
+                }
+                case BuildConfiguration.DebugGame:
+                {
+                    exeSuffix = "-Win64-DebugGame-Cmd.exe";
+                    break;
+                }
+                default:
+                {
+                    exeSuffix = "-Cmd.exe";
+                    break;
+                }
             }
-            else
-            {
-                exeName = mainEditorName + "-Cmd.exe";
-            }
+
+            string exeName = mainEditorName + exeSuffix;
 
             return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", exeName);
         }

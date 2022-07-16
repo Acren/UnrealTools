@@ -21,6 +21,11 @@ namespace UnrealCommander.Options
             InitializeComponent();
         }
 
-        public List<BuildConfiguration> CookerConfigurations => new() {BuildConfiguration.DebugGame, BuildConfiguration.Development};
+        public List<BuildConfiguration> CookerConfigurations => new()
+        {
+            BuildConfiguration.Debug,
+            BuildConfiguration.DebugGame,
+            BuildConfiguration.Development
+        };
     }
 }
