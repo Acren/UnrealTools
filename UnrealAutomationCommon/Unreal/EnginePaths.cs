@@ -21,52 +21,63 @@ namespace UnrealAutomationCommon.Unreal
             return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Build", "BatchFiles", "Build.bat");
         }
 
-        public static string GetEditorCmdExe(this EngineInstall EngineInstall, BuildConfiguration configuration)
+        public static string GetExeConfigurationModifier(BuildConfiguration configuration)
         {
-            string mainEditorName = EngineInstall.BaseEditorName;
-
-            string exeSuffix;
-
             switch (configuration)
             {
                 case BuildConfiguration.Debug:
                 {
-                    exeSuffix = "-Win64-Debug-Cmd.exe";
-                    break;
+                    return "-Win64-Debug";
                 }
                 case BuildConfiguration.DebugGame:
                 {
-                    exeSuffix = "-Win64-DebugGame-Cmd.exe";
-                    break;
+                    return "-Win64-DebugGame";
+                }
+                case BuildConfiguration.Test:
+                {
+                    return "-Win64-Test";
+                }
+                case BuildConfiguration.Shipping:
+                {
+                    return "-Win64-Shipping";
                 }
                 default:
                 {
-                    exeSuffix = "-Cmd.exe";
-                    break;
+                    return "";
                 }
             }
+        }
 
-            string exeName = mainEditorName + exeSuffix;
+        public static string GetEditorExe(this EngineInstall EngineInstall, BuildConfiguration configuration, bool Cmd = false)
+        {
+            string editorExe = EngineInstall.BaseEditorName;
 
-            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", exeName);
+            editorExe += GetExeConfigurationModifier(configuration);
+
+            if (Cmd)
+            {
+                editorExe += "-Cmd";
+            }
+
+            editorExe += ".exe";
+
+            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", editorExe);
+        }
+
+        public static string GetEditorCmdExe(this EngineInstall EngineInstall, BuildConfiguration configuration)
+        {
+            return GetEditorExe(EngineInstall, configuration, true);
         }
 
         public static string GetEditorExe(this EngineInstall EngineInstall, OperationParameters operationParameters)
         {
-            string mainEditorName = EngineInstall.BaseEditorName;
-
-            string exeName;
             BuildConfigurationOptions buildOptions = operationParameters.RequestOptions<BuildConfigurationOptions>();
-            if (buildOptions is { Configuration: BuildConfiguration.DebugGame })
+            if (buildOptions == null)
             {
-                exeName = mainEditorName + "-Win64-DebugGame.exe";
-            }
-            else
-            {
-                exeName = mainEditorName + ".exe";
+                return null;
             }
 
-            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", exeName);
+            return GetEditorExe(EngineInstall, buildOptions.Configuration);
         }
 
         public static string GetUBTExe(this EngineInstall EngineInstall)
