@@ -118,6 +118,19 @@ namespace UnrealAutomationCommon.Unreal
             return installs;
         }
 
+        public static List<EngineInstallVersion> GetLauncherEngineInstallVersions()
+        {
+            List<EngineInstallVersion> versions = new();
+            foreach(EngineInstall engine in GetEngineInstalls())
+            {
+                if (!engine.IsSourceBuild && !versions.Contains(engine.Version))
+                {
+                    versions.Add(engine.Version);
+                }
+            }
+            return versions;
+        }
+
         public static EngineInstall GetDefaultEngineInstall()
         {
             return GetEngineInstalls().Last();

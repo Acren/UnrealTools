@@ -65,19 +65,18 @@ namespace UnrealCommander.Options
                 {
                     UpdateOptionsEnabled();
                 }
-
+                
                 UpdateOptionsEnabled();
             };
 
             InitializeComponent();
 
-            // todo construct dynamically
-            EngineVersionOptions.Add(new EngineVersionOption() { Enabled = false, EngineVersion = new EngineInstallVersion(4, 23) });
-            EngineVersionOptions.Add(new EngineVersionOption() { Enabled = false, EngineVersion = new EngineInstallVersion(4, 24) });
-            EngineVersionOptions.Add(new EngineVersionOption() { Enabled = false, EngineVersion = new EngineInstallVersion(4, 25) });
-            EngineVersionOptions.Add(new EngineVersionOption() { Enabled = false, EngineVersion = new EngineInstallVersion(4, 26) });
-            EngineVersionOptions.Add(new EngineVersionOption() { Enabled = false, EngineVersion = new EngineInstallVersion(4, 27) });
-            EngineVersionOptions.Add(new EngineVersionOption() { Enabled = false, EngineVersion = new EngineInstallVersion(5, 0) });
+            // Find installed engine versions
+            List<EngineInstallVersion> versions = EngineInstallFinder.GetLauncherEngineInstallVersions();
+            foreach (var version in versions)
+            {
+                EngineVersionOptions.Add(new EngineVersionOption() { Enabled = false, EngineVersion = version });
+            }
 
             EngineVersionOptions.ListChanged += (sender, args) =>
             {
