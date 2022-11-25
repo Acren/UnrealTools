@@ -97,9 +97,10 @@ namespace UnrealAutomationCommon.Operations
                     return EngineOverride;
                 }
 
-                if (RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Count > 0)
+                var VersionOptions = RequestOptions<EngineVersionOptions>();
+                if (VersionOptions != null && VersionOptions.EnabledVersions.Value.Count > 0)
                 {
-                    EngineInstallVersion version = RequestOptions<EngineVersionOptions>().EnabledVersions.Value[0];
+                    EngineInstallVersion version = VersionOptions.EnabledVersions.Value[0];
                     if (version != null)
                     {
                         return EngineInstallFinder.GetEngineInstall(version);

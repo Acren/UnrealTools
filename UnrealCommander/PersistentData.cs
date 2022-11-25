@@ -27,6 +27,8 @@ namespace UnrealCommander
 
         private Type _operationType;
 
+        private bool _isSaving = false;
+
         public PersistentData()
         {
             Targets = new ObservableCollection<IOperationTarget>();
@@ -121,8 +123,14 @@ namespace UnrealCommander
             return _instance;
         }
 
-        private static void Save()
+        private void Save()
         {
+            if(_isSaving)
+            {
+                throw new Exception("Already saving");
+            }
+
+            _isSaving = true;
             using StreamWriter sw = new(dataFilePath);
             using JsonTextWriter writer = new(sw) { Formatting = Formatting.Indented };
             JsonSerializer serializer = new()
@@ -130,7 +138,8 @@ namespace UnrealCommander
                 PreserveReferencesHandling = PreserveReferencesHandling.All,
                 TypeNameHandling = TypeNameHandling.Auto
             };
-            serializer.Serialize(writer, _instance);
+            serializer.Serialize(writer, this);
+            _isSaving = false;
         }
 
         public IOperationTarget AddTarget(string path)
@@ -166,7 +175,7 @@ namespace UnrealCommander
         [NotifyPropertyChangedInvocator]
         protected virtual void OnPropertyChanged([CallerMemberName] string PropertyName = null)
         {
-            if (_hasFinishedLoading)
+            if (_hasFinishedLoading && !_isSaving)
             {
                 Save();
             }

@@ -45,6 +45,11 @@ namespace UnrealAutomationCommon.Unreal
             RegistryKey currentUser = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
             RegistryKey currentUserBuilds = currentUser.OpenSubKey(@"SOFTWARE\Epic Games\Unreal Engine\Builds");
 
+            if(currentUserBuilds == null)
+            {
+                return result;
+            }
+
             string[] buildValueNames = currentUserBuilds.GetValueNames();
             foreach (string buildName in buildValueNames)
             {
