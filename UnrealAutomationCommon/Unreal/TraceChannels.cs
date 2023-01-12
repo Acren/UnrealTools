@@ -18,17 +18,18 @@ namespace UnrealAutomationCommon.Unreal
     {
         public static readonly List<TraceChannel> Channels = new()
         {
-            new TraceChannel { Key = "log", Label = "Log" },
+            new TraceChannel { Key = "bookmark", Label = "Bookmark" },
             new TraceChannel { Key = "counters", Label = "Counters" },
             new TraceChannel { Key = "cpu", Label = "CPU" },
             new TraceChannel { Key = "frame", Label = "Frame" },
-            new TraceChannel { Key = "bookmark", Label = "Bookmark" },
             new TraceChannel { Key = "file", Label = "File" },
-            new TraceChannel { Key = "loadtime", Label = "Load Time" },
             new TraceChannel { Key = "gpu", Label = "GPU" },
-            new TraceChannel { Key = "rhicommands", Label = "RHI Commands" },
+            new TraceChannel { Key = "log", Label = "Log" },
+            new TraceChannel { Key = "loadtime", Label = "Load Time" },
+            new TraceChannel { Key = "memory", Label = "Memory" },
+            new TraceChannel { Key = "object", Label = "Object" },
             new TraceChannel { Key = "rendercommands", Label = "Render Commands" },
-            new TraceChannel { Key = "object", Label = "Object" }
+            new TraceChannel { Key = "rhicommands", Label = "RHI Commands" }
         };
     }
 }
