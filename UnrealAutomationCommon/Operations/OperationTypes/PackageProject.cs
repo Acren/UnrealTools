@@ -14,8 +14,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             arguments.SetFlag("pak");
             arguments.SetFlag("package");
             arguments.SetFlag("nocompileeditor");
-            arguments.SetFlag("archive");
-            arguments.SetKeyPath("archivedirectory", GetOutputPath(operationParameters));
+
+            // Archive
+            if (operationParameters.RequestOptions<PackageOptions>().Archive)
+            {
+                arguments.SetFlag("archive");
+                arguments.SetKeyPath("archivedirectory", GetOutputPath(operationParameters));
+            }
 
             // Set cooker exe
             BuildConfiguration cookerConfiguration = operationParameters.RequestOptions<CookOptions>().CookerConfiguration;
