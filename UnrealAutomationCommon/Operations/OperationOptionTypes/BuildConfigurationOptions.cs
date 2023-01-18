@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
     {
         private BuildConfiguration _configuration = BuildConfiguration.Development;
 
-        public override int Index => 20;
+        public override int SortIndex => 20;
 
         public BuildConfiguration Configuration
         {

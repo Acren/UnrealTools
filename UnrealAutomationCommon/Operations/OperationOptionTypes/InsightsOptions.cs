@@ -13,7 +13,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
             TraceChannels.RaiseListChangedEvents = true;
         }
 
-        public override int Index => 30;
+        public override int SortIndex => 30;
 
         public BindingList<TraceChannel> TraceChannels
         {

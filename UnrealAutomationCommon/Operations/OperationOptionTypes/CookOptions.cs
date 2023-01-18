@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
     {
         private BuildConfiguration _cookerConfiguration = BuildConfiguration.Development;
 
-        public override int Index => 30;
+        public override int SortIndex => 30;
         public override string Name => "Cooker";
 
         public BuildConfiguration CookerConfiguration

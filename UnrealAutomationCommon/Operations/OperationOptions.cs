@@ -74,7 +74,7 @@ namespace UnrealAutomationCommon.Operations
 
         // Options index for ordering
         [JsonIgnore]
-        public virtual int Index => 0;
+        public virtual int SortIndex => 0;
 
         [JsonIgnore]
         public virtual string Name
@@ -119,9 +119,9 @@ namespace UnrealAutomationCommon.Operations
         public int CompareTo(OperationOptions other)
         {
             // First try compare by index
-            if (Index != other.Index)
+            if (SortIndex != other.SortIndex)
             {
-                return Index.CompareTo(other.Index);
+                return SortIndex.CompareTo(other.SortIndex);
             }
 
             // Then by name

@@ -5,7 +5,7 @@
         private bool _stompMalloc;
         private bool _waitForAttach;
 
-        public override int Index => 40;
+        public override int SortIndex => 40;
         public override string Name => "Flags";
 
         public bool StompMalloc

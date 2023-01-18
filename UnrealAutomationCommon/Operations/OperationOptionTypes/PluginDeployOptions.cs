@@ -2,7 +2,7 @@
 {
     public class PluginDeployOptions : OperationOptions
     {
-        public override int Index => 80;
+        public override int SortIndex => 80;
 
         public Option<bool> TestStandalone { get; } = true;
         public Option<bool> TestPackageWithProjectPlugin { get; } = true;
