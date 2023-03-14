@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
@@ -11,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
@@ -269,6 +271,7 @@ namespace UnrealCommander
             }
         }
 
+        public ObservableCollection<LogEntry> LogLines { get; set; } = new();
         private int LineCount { get; set; }
 
         public Runner Running
@@ -381,33 +384,17 @@ namespace UnrealCommander
         private void AddLogToOutputViewer(string line, LogVerbosity verbosity = LogVerbosity.Log)
         {
             LineCount++;
-            string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line + "\r";
+            string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line;
 
-            TextRange tr = new(OutputTextBox.Document.ContentEnd, OutputTextBox.Document.ContentEnd);
-            tr.Text = finalLine;
+            ScrollViewer scrollViewer = ScrollViewerFinder.GetScrollViewer(OutputDataGrid);
 
-            Color color;
+            bool isScrolledToEnd = scrollViewer == null || scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 2;
 
-            switch (verbosity)
+            LogLines.Add(new LogEntry { Message = finalLine, Verbosity = verbosity });
+
+            if (scrollViewer != null && isScrolledToEnd)
             {
-                case LogVerbosity.Log:
-                    color = Colors.White;
-                    break;
-                case LogVerbosity.Warning:
-                    color = Color.FromRgb(230, 230, 10);
-                    break;
-                case LogVerbosity.Error:
-                    color = Color.FromRgb(255, 80, 80);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(verbosity), verbosity, null);
-            }
-
-            tr.ApplyPropertyValue(TextElement.ForegroundProperty, new SolidColorBrush(color));
-
-            if (OutputScrollViewer.VerticalOffset == OutputScrollViewer.ScrollableHeight)
-            {
-                OutputScrollViewer.ScrollToEnd();
+                OutputDataGrid.ScrollIntoView(LogLines.Last());
             }
         }
 
@@ -420,7 +407,7 @@ namespace UnrealCommander
 
         private void LogClear(object Sender, RoutedEventArgs E)
         {
-            OutputTextBox.Document.Blocks.Clear();
+            LogLines.Clear();
         }
 
         private void Window_Closing(object sender, CancelEventArgs e)
@@ -503,5 +490,6 @@ namespace UnrealCommander
 
             menu.Items.Add(new MenuItem { Header = "Remove", Command = new DelegateCommand(o => { PersistentData.Get().RemoveTarget(SelectedTarget); }) });
         }
+
     }
 }
