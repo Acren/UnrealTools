@@ -126,12 +126,14 @@
                     Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}" />
             </GroupBox>
             <GroupBox Header="Output" Grid.Row="2" Margin="0,5" Padding="10">
-                <DataGrid Name="OutputDataGrid" IsReadOnly="True" ItemsSource="{Binding Path=LogLines, UpdateSourceTrigger=PropertyChanged}" AutoGenerateColumns="False"
+                <DataGrid Name="OutputDataGrid" IsReadOnly="True" ItemsSource="{Binding Path=LogLines, UpdateSourceTrigger=PropertyChanged}"
+                          AutoGenerateColumns="False"
                           EnableRowVirtualization="True"
                           VirtualizingPanel.IsVirtualizingWhenGrouping="True"
                           VirtualizingPanel.VirtualizationMode="Recycling"
                           VirtualizingPanel.IsVirtualizing="True"
                           ScrollViewer.CanContentScroll="True"
+                          CanUserResizeRows="False"
                           VerticalScrollBarVisibility="Visible"
                           HorizontalScrollBarVisibility="Disabled"
                           HeadersVisibility="None"
