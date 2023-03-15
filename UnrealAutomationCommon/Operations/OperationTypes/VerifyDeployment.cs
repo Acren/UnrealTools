@@ -50,7 +50,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             string pluginVersionName = plugin.PluginDescriptor.VersionName;
+            Logger.Log($"Source plugin version: {pluginVersionName}");
             string installedPluginVersionName = installedPlugin.PluginDescriptor.VersionName;
+            Logger.Log($"Installed plugin version: {pluginVersionName}");
 
             if (!installedPluginVersionName.Contains(pluginVersionName))
             {
