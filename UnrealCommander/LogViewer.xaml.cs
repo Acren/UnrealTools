@@ -26,6 +26,10 @@ namespace UnrealCommander
             System.Windows.Threading.DispatcherTimer dispatcherTimer = new System.Windows.Threading.DispatcherTimer();
             dispatcherTimer.Tick += (sender, args) =>
             {
+                if (LogLinesBuffer.Count == 0)
+                {
+                    return;
+                }
                 foreach (LogEntry Entry in LogLinesBuffer)
                 {
                     LogLines.Add(Entry);
