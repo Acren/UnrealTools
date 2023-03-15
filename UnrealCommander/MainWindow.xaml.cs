@@ -271,8 +271,8 @@ namespace UnrealCommander
             }
         }
 
-        public ObservableCollection<LogEntry> LogLines { get; set; } = new();
-        private int LineCount { get; set; }
+        //public ObservableCollection<LogEntry> LogLines { get; set; } = new();
+        //private int LineCount { get; set; }
 
         public Runner Running
         {
@@ -383,19 +383,7 @@ namespace UnrealCommander
 
         private void AddLogToOutputViewer(string line, LogVerbosity verbosity = LogVerbosity.Log)
         {
-            LineCount++;
-            string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + line;
-
-            ScrollViewer scrollViewer = ScrollViewerFinder.GetScrollViewer(OutputDataGrid);
-
-            bool isScrolledToEnd = scrollViewer == null || scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 2;
-
-            LogLines.Add(new LogEntry { Message = finalLine, Verbosity = verbosity });
-
-            if (scrollViewer != null && isScrolledToEnd)
-            {
-                OutputDataGrid.ScrollIntoView(LogLines.Last());
-            }
+            OutputLogViewer.WriteLog(line, verbosity);
         }
 
         private void CopyCommand(object sender, RoutedEventArgs e)
@@ -403,11 +391,6 @@ namespace UnrealCommander
             Clipboard.SetDataObject(Operation.GetCommands(PersistentState.OperationParameters).First().ToString());
             CommandTextBox.Focus();
             CommandTextBox.SelectAll();
-        }
-
-        private void LogClear(object Sender, RoutedEventArgs E)
-        {
-            LogLines.Clear();
         }
 
         private void Window_Closing(object sender, CancelEventArgs e)

@@ -126,49 +126,7 @@
                     Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}" />
             </GroupBox>
             <GroupBox Header="Output" Grid.Row="2" Margin="0,5" Padding="10">
-                <DataGrid Name="OutputDataGrid" IsReadOnly="True" ItemsSource="{Binding Path=LogLines, UpdateSourceTrigger=PropertyChanged}"
-                          AutoGenerateColumns="False"
-                          EnableRowVirtualization="True"
-                          VirtualizingPanel.IsVirtualizingWhenGrouping="True"
-                          VirtualizingPanel.VirtualizationMode="Recycling"
-                          VirtualizingPanel.IsVirtualizing="True"
-                          ScrollViewer.CanContentScroll="True"
-                          CanUserResizeRows="False"
-                          VerticalScrollBarVisibility="Visible"
-                          HorizontalScrollBarVisibility="Disabled"
-                          HeadersVisibility="None"
-                          GridLinesVisibility="None"
-                          Background="#202020"
-                          Foreground="#EEEEEE"
-                          FontFamily="Consolas">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn IsReadOnly="True" Binding="{Binding Message }" Width="*" >
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style>
-                                        <Setter Property="TextBlock.TextWrapping" Value="WrapWithOverflow" />
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
-                        </DataGrid.Columns>
-                        <DataGrid.RowStyle>
-                            <Style TargetType="DataGridRow">
-                                <Setter Property="Background" Value="Transparent"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Verbosity}" Value="Error">
-                                    <Setter Property="Foreground" Value="#e65050"></Setter>
-                                    </DataTrigger>
-                                <DataTrigger Binding="{Binding Verbosity}" Value="Warning">
-                                    <Setter Property="Foreground" Value="#e6e60a"></Setter>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </DataGrid.RowStyle>
-                    <DataGrid.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Clear" Click="LogClear" />
-                            </ContextMenu>
-                        </DataGrid.ContextMenu>
-                </DataGrid>
+                <local:LogViewer x:Name="OutputLogViewer"></local:LogViewer>
             </GroupBox>
             <GroupBox Header="Command" Grid.Row="3" Margin="0,5" Padding="10">
                 <TextBox Name="CommandTextBox" IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"
