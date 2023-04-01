@@ -61,7 +61,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Logger.Log($"Branch: {branchName}");
             // Use the version if on any of these branches
             string[] standardBranchNames = { "master", "develop", "development" };
-            string[] standardBranchPrefixes = { "version/", "release/" };
+            string[] standardBranchPrefixes = { "version/", "release/", "hotfix/" };
 
             bool bStandardBranch = standardBranchNames.Contains(branchName, StringComparer.InvariantCultureIgnoreCase);
             if (!bStandardBranch)
