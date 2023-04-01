@@ -175,74 +175,89 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new List<Command>();
         }
 
+        public readonly struct ExampleProjectZipInfo
+        {
+            public readonly string Path;
+            public readonly string PluginName;
+            public readonly string PluginVersion;
+            public readonly string EngineVersion;
+            public readonly bool IsExampleProject;
+
+            public ExampleProjectZipInfo(string path)
+            {
+                Path = path;
+                string zipName = System.IO.Path.GetFileNameWithoutExtension(path);
+
+                // Expect zip to be named PluginName_PluginVersion_EngineVersion_ExampleProject.zip
+                string[] split = zipName.Split('_');
+                PluginName = split[0];
+                PluginVersion = split.Length > 1 ? split[1] : null;
+                EngineVersion = split.Length > 2 ? split[2] : null;
+                IsExampleProject = split.Length > 3 && split[3] == "ExampleProject";
+            }
+        }
+
         private string FindExampleProjectZip(Plugin plugin, string exampleProjectsPath, EngineInstall engine)
         {
             string pluginVersionName = plugin.PluginDescriptor.VersionName;
             string exampleProjects = exampleProjectsPath;
             string extension = "*.zip";
             string[] zipPaths = Directory.GetFiles(exampleProjects, extension, SearchOption.AllDirectories);
-            List<string> validZipPaths = new();
+            List<ExampleProjectZipInfo> validZips = new();
 
             foreach (string zipPath in zipPaths)
             {
-                string zipName = Path.GetFileNameWithoutExtension(zipPath);
-                if (!zipName.Contains(plugin.Name))
+                ExampleProjectZipInfo zipInfo = new (zipPath);
+                if (zipInfo.IsExampleProject && zipInfo.PluginName == plugin.Name)
                 {
-                    continue;
+                    validZips.Add(zipInfo);
                 }
-
-                if (!zipName.Contains("ExampleProject"))
-                {
-                    continue;
-                }
-
-                validZipPaths.Add(zipPath);
             }
 
-            if (validZipPaths.Count == 0)
+            if (validZips.Count == 0)
             {
                 throw new Exception("No valid zips");
             }
 
-            if (validZipPaths.Count == 1)
+            if (validZips.Count == 1)
             {
-                return validZipPaths[0];
+                return validZips[0].Path;
             }
 
-            List<string> zipPathsWithExactVersion = new();
-            foreach (string zipName in validZipPaths)
+            List<ExampleProjectZipInfo> zipPathsWithExactVersion = new();
+            foreach (ExampleProjectZipInfo zip in validZips)
             {
-                if (!zipName.Contains(pluginVersionName))
+                if (zip.PluginVersion != pluginVersionName)
                 {
                     continue;
                 }
-                zipPathsWithExactVersion.Add(zipName);
+                zipPathsWithExactVersion.Add(zip);
             }
 
             if (zipPathsWithExactVersion.Count == 1)
             {
-                return zipPathsWithExactVersion[0];
+                return zipPathsWithExactVersion[0].Path;
             }
 
-            List<string> candidateZips;
+            List<ExampleProjectZipInfo> candidateZips;
             if (zipPathsWithExactVersion.Count == 0)
             {
-                candidateZips = validZipPaths;
+                candidateZips = validZips;
             }
             else
             {
                 candidateZips = zipPathsWithExactVersion;
             }
 
-            foreach (string zipName in candidateZips)
+            foreach (ExampleProjectZipInfo zip in candidateZips)
             {
-                if (zipName.Contains(engine.Version.MajorMinorString))
+                if (zip.EngineVersion == engine.Version.MajorMinorString)
                 {
-                    return zipName;
+                    return zip.Path;
                 }
             }
 
-            return candidateZips[0];
+            return candidateZips[0].Path;
         }
     }
 }
