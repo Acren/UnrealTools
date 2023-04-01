@@ -46,7 +46,7 @@ namespace UnrealAutomationCommon.Unreal
                 }
                 catch (Exception)
                 {
-                    return null;
+                    return EngineInstallFinder.GetDefaultEngineInstall();
                 }
             }
         }
