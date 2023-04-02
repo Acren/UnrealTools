@@ -14,7 +14,17 @@ namespace UnrealAutomationCommon.Unreal
 
     public class ProjectDescriptor
     {
-        public string EngineAssociation { get; set; }
+        private string _engineAssociation;
+
+        public string EngineAssociation
+        {
+            get => _engineAssociation;
+            set
+            {
+                _engineAssociation = value;
+                EngineInstall = EngineInstallFinder.GetEngineInstall(EngineAssociation, true);
+            }
+        }
 
         public List<ProjectPluginDependency> Plugins { get; set; }
 
@@ -36,20 +46,7 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public EngineInstall EngineInstall
-        {
-            get
-            {
-                try
-                {
-                    return EngineInstallFinder.GetEngineInstall(EngineAssociation);
-                }
-                catch (Exception)
-                {
-                    return EngineInstallFinder.GetDefaultEngineInstall();
-                }
-            }
-        }
+        public EngineInstall EngineInstall { get; private set; }
 
         public static ProjectDescriptor Load(string uProjectPath)
         {

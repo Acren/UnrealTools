@@ -141,7 +141,7 @@ namespace UnrealAutomationCommon.Unreal
             return GetEngineInstalls().Last();
         }
 
-        public static EngineInstall GetEngineInstall(string engineKey)
+        public static EngineInstall GetEngineInstall(string engineKey, bool defaultIfNotFound = false)
         {
             if (engineKey == null)
             {
@@ -153,6 +153,11 @@ namespace UnrealAutomationCommon.Unreal
             if (engineInstall != null)
             {
                 return engineInstall;
+            }
+
+            if (defaultIfNotFound)
+            {
+                return GetDefaultEngineInstall();
             }
 
             throw new Exception("Could not find Engine installation based on EngineKey: + " + engineKey);
