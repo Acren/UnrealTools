@@ -40,6 +40,8 @@ namespace UnrealCommander
                 if (scrollViewer != null && scrollToEnd)
                 {
                     DataGrid.ScrollIntoView(LogLines.Last());
+                    // UpdateLayout here appears to fix the scroll-to-end state being incorrectly lost
+                    DataGrid.UpdateLayout();
                 }
             };
             dispatcherTimer.Interval = TimeSpan.FromMilliseconds(100);
