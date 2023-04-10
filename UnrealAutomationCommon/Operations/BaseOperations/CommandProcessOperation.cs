@@ -123,12 +123,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 }
             }
 
-            if (line.Contains("): error"))
+            if (line.Contains("): error") || line.Contains(" : error "))
             {
                 // Compiler error
                 verbosity = LogVerbosity.Error;
             }
-            else if (line.Contains("): warning"))
+            else if (line.Contains("): warning") || line.Contains(" : warning "))
             {
                 // Compiler warning
                 verbosity = LogVerbosity.Warning;
