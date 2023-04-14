@@ -35,6 +35,7 @@ namespace UnrealAutomationCommon.Unreal
         public string TestDisplayName { get; set; }
         public string FullTestPath { get; set; }
         public TestState State { get; set; }
+        public float Duration { get; set; }
         public List<TestEntry> Entries { get; set; }
     }
 
@@ -74,7 +75,7 @@ namespace UnrealAutomationCommon.Unreal
             XmlDocument doc = new();
             XmlElement testSuites = doc.CreateElement("testsuites");
             doc.AppendChild(testSuites);
-            testSuites.SetAttribute("duration", TotalDuration.ToString());
+            testSuites.SetAttribute("time", TotalDuration.ToString());
             testSuites.SetAttribute("tests", TotalNumTests.ToString());
             testSuites.SetAttribute("failures", Failed.ToString());
             XmlElement testSuite = doc.CreateElement("testsuite");
@@ -85,11 +86,13 @@ namespace UnrealAutomationCommon.Unreal
             }
             testSuite.SetAttribute("tests", TotalNumTests.ToString());
             testSuite.SetAttribute("failures", Failed.ToString());
+            testSuite.SetAttribute("time", TotalDuration.ToString());
             foreach (Test test in Tests)
             {
                 XmlElement testCase = doc.CreateElement("testcase");
                 testSuite.AppendChild(testCase);
                 testCase.SetAttribute("name", $"{test.FullTestPath}");
+                testCase.SetAttribute("time", $"{test.Duration}");
 
                 TestEventType mostSevere = TestEventType.Info;
                 var failureLines = new List<string>();
