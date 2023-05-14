@@ -539,45 +539,45 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     ZipFile.CreateFromDirectory(exampleProjectPath, exampleProjectZipPath);
                 }
 
-                // Archive plugin for submission
+                // Archive plugin source for submission
 
-                Logger.Log("Archiving plugin");
+                Logger.Log("Archiving plugin source");
 
-                // Copy plugin to submission folder so that we can prepare archive for submission without altering the original
-                string pluginSubmissionPath = Path.Combine(workingTempPath, @"PluginSubmission", plugin.Name);
-                FileUtils.DeleteDirectoryIfExists(pluginSubmissionPath);
-                FileUtils.CopyDirectory(plugin.PluginPath, pluginSubmissionPath);
+                // Copy plugin to working folder so that we can prepare archive without altering the original
+                string pluginSourcePath = Path.Combine(workingTempPath, @"PluginSource", plugin.Name);
+                FileUtils.DeleteDirectoryIfExists(pluginSourcePath);
+                FileUtils.CopyDirectory(plugin.PluginPath, pluginSourcePath);
 
-                string[] allowedPluginSubmissionSubDirectoryNames = { "Source", "Resources", "Content", "Config" };
-                FileUtils.DeleteOtherSubdirectories(pluginSubmissionPath, allowedPluginSubmissionSubDirectoryNames);
+                string[] allowedPluginSourceArchiveSubDirectoryNames = { "Source", "Resources", "Content", "Config" };
+                FileUtils.DeleteOtherSubdirectories(pluginSourcePath, allowedPluginSourceArchiveSubDirectoryNames);
 
                 // Delete top-level files other than uplugin
-                FileUtils.DeleteFilesWithoutExtension(pluginSubmissionPath, allowedPluginFileExtensions);
+                FileUtils.DeleteFilesWithoutExtension(pluginSourcePath, allowedPluginFileExtensions);
 
                 // Update .uplugin
                 {
-                    Plugin submissionPlugin = new(pluginSubmissionPath);
-                    JObject submissionPluginDescriptor = JObject.Parse(File.ReadAllText(submissionPlugin.UPluginPath));
+                    Plugin sourceArchivePlugin = new(pluginSourcePath);
+                    JObject sourceArchivePluginDescriptor = JObject.Parse(File.ReadAllText(sourceArchivePlugin.UPluginPath));
                     bool modified = false;
 
                     EngineInstallVersion desiredEngineMajorMinorVersion = engineVersion.WithPatch(0);
 
                     // Check version name
                     string desiredVersionName = $"{pluginVersionString}-{desiredEngineMajorMinorVersion.MajorMinorString}";
-                    modified |= submissionPluginDescriptor.Set("VersionName", desiredVersionName);
+                    modified |= sourceArchivePluginDescriptor.Set("VersionName", desiredVersionName);
 
                     // Check engine version
-                    modified |= submissionPluginDescriptor.Set("EngineVersion", desiredEngineMajorMinorVersion.ToString());
+                    modified |= sourceArchivePluginDescriptor.Set("EngineVersion", desiredEngineMajorMinorVersion.ToString());
 
                     if (modified)
                     {
-                        File.WriteAllText(submissionPlugin.UPluginPath, submissionPluginDescriptor.ToString());
+                        File.WriteAllText(sourceArchivePlugin.UPluginPath, sourceArchivePluginDescriptor.ToString());
                     }
                 }
 
-                string pluginSubmissionZipPath = Path.Combine(archivePath, archivePrefix + "PluginSubmission.zip");
-                FileUtils.DeleteFileIfExists(pluginSubmissionZipPath);
-                ZipFile.CreateFromDirectory(pluginSubmissionPath, pluginSubmissionZipPath, CompressionLevel.Optimal, true);
+                string pluginSourceArchiveZipPath = Path.Combine(archivePath, archivePrefix + "PluginSource.zip");
+                FileUtils.DeleteFileIfExists(pluginSourceArchiveZipPath);
+                ZipFile.CreateFromDirectory(pluginSourcePath, pluginSourceArchiveZipPath, CompressionLevel.Optimal, true);
 
                 string archiveOutputPath = OperationParameters.RequestOptions<PluginDeployOptions>().ArchivePath;
                 if (!string.IsNullOrEmpty(archiveOutputPath))
@@ -589,7 +589,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
                     }
 
-                    FileUtils.CopyFile(pluginSubmissionZipPath, archiveOutputPath, true, true);
+                    FileUtils.CopyFile(pluginSourceArchiveZipPath, archiveOutputPath, true, true);
 
                     if (archivePluginBuild)
                     {
