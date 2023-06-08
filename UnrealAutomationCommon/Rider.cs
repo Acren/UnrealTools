@@ -9,6 +9,31 @@ namespace UnrealAutomationCommon
     {
         public static string FindPath()
         {
+            string ToolboxRiderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JetBrains\\Toolbox\\apps\\Rider\\ch-0");
+
+            if(Directory.Exists(ToolboxRiderPath))
+            {
+                string[] SubDirs = Directory.GetDirectories(ToolboxRiderPath);
+                Version LatestVersion = null;
+                string LatestVersionPath = null;
+                foreach(string SubDir in SubDirs)
+                {
+                    string DirName = Path.GetFileName(SubDir);
+                    Version Version;
+                    bool IsVersion = Version.TryParse(DirName, out Version);
+                    if(!IsVersion)
+                    { 
+                        continue;
+                    }
+                    if(LatestVersion == null || Version > LatestVersion)
+                    {
+                        LatestVersion = Version;
+                        LatestVersionPath = SubDir;
+                    }
+                }
+                return LatestVersionPath;
+            }
+
             RegistryKey riderVersionKey = GetRiderVersionKey("Rider for Unreal Engine");
 
             if (riderVersionKey is null)
