@@ -2,14 +2,31 @@
 using Microsoft.Win32;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon
 {
     public static class Rider
     {
+        private class ToolboxSettingsFile
+        {
+            [JsonProperty(PropertyName = "install_location")]
+            public string InstallLocation;
+        }
+
         public static string FindPath()
         {
-            string ToolboxRiderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JetBrains\\Toolbox\\apps\\Rider\\ch-0");
+            string ToolboxPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JetBrains\\Toolbox");
+            string ToolboxSettingsPath = Path.Combine(ToolboxPath, ".settings.json");
+            ToolboxSettingsFile SettingsFile = JsonConvert.DeserializeObject<ToolboxSettingsFile>(File.ReadAllText(ToolboxSettingsPath));
+
+            string ToolboxInstallLocation = ToolboxPath;
+            if (!string.IsNullOrEmpty(SettingsFile.InstallLocation))
+            {
+                ToolboxInstallLocation = SettingsFile.InstallLocation;
+            }
+
+            string ToolboxRiderPath = Path.Combine(ToolboxInstallLocation, "apps\\Rider\\ch-0");
 
             if(Directory.Exists(ToolboxRiderPath))
             {
