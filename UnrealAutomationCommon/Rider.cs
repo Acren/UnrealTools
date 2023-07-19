@@ -16,6 +16,30 @@ namespace UnrealAutomationCommon
 
         public static string FindPath()
         {
+            string installationPath = FindInstallationFromToolbox();
+
+            if (installationPath != null)
+            {
+                return installationPath;
+            }
+
+            installationPath = FindInstallationFromRegistry();
+
+            if (installationPath != null)
+            {
+                return installationPath;
+            }
+
+            throw new Exception("Couldn't find Rider installation in Jetbrains Toolbox or registry");
+        }
+
+        public static string FindExePath()
+        {
+            return Path.Combine(FindPath(), "bin", "rider64.exe");
+        }
+
+        private static string FindInstallationFromToolbox()
+        {
             string ToolboxPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JetBrains\\Toolbox");
             string ToolboxSettingsPath = Path.Combine(ToolboxPath, ".settings.json");
             ToolboxSettingsFile SettingsFile = JsonConvert.DeserializeObject<ToolboxSettingsFile>(File.ReadAllText(ToolboxSettingsPath));
@@ -26,31 +50,45 @@ namespace UnrealAutomationCommon
                 ToolboxInstallLocation = SettingsFile.InstallLocation;
             }
 
-            string ToolboxRiderPath = Path.Combine(ToolboxInstallLocation, "apps\\Rider\\ch-0");
+            string ToolboxRiderPath = Path.Combine(ToolboxInstallLocation, "apps\\Rider");
 
-            if(Directory.Exists(ToolboxRiderPath))
+            if (!Directory.Exists(ToolboxRiderPath))
             {
-                string[] SubDirs = Directory.GetDirectories(ToolboxRiderPath);
-                Version LatestVersion = null;
-                string LatestVersionPath = null;
-                foreach(string SubDir in SubDirs)
+                return null;
+            }
+
+            Version LatestVersion = null;
+            string LatestVersionPath = null;
+
+            string[] ToolboxRiderInstallations = Directory.GetDirectories(ToolboxRiderPath);
+            // Iterate over "ch-0" "ch-1" directories
+            foreach (string Installation in ToolboxRiderInstallations)
+            {
+                // Iterate over version subdirectories
+                string[] SubDirs = Directory.GetDirectories(Installation);
+                foreach (string SubDir in SubDirs)
                 {
                     string DirName = Path.GetFileName(SubDir);
                     Version Version;
                     bool IsVersion = Version.TryParse(DirName, out Version);
-                    if(!IsVersion)
-                    { 
+                    if (!IsVersion)
+                    {
                         continue;
                     }
-                    if(LatestVersion == null || Version > LatestVersion)
+
+                    if (LatestVersion == null || Version > LatestVersion)
                     {
                         LatestVersion = Version;
                         LatestVersionPath = SubDir;
                     }
                 }
-                return LatestVersionPath;
             }
 
+            return LatestVersionPath;
+        }
+
+        private static string FindInstallationFromRegistry()
+        {
             RegistryKey riderVersionKey = GetRiderVersionKey("Rider for Unreal Engine");
 
             if (riderVersionKey is null)
@@ -69,12 +107,12 @@ namespace UnrealAutomationCommon
                 {
                     RegistryKey subKey = rider.OpenSubKey(subKeyName);
                     string installDir = subKey.GetValue("InstallDir") as string;
-                    if(installDir == null)
+                    if (installDir == null)
                     {
                         continue;
                     }
                     int productVersion = int.Parse(subKey.GetValue("ProductVersion") as string);
-                    if(installDir != null && productVersion > bestProductVersion)
+                    if (installDir != null && productVersion > bestProductVersion)
                     {
                         bestInstallDir = installDir;
                         bestProductVersion = productVersion;
@@ -90,11 +128,6 @@ namespace UnrealAutomationCommon
 
             var path = riderVersionKey.GetValue(null) as string;
             return path;
-        }
-
-        public static string FindExePath()
-        {
-            return Path.Combine(FindPath(), "bin", "rider64.exe");
         }
 
         private static RegistryKey GetRiderVersionKey(string riderKeyName)
