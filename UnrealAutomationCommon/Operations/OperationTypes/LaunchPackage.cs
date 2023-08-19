@@ -50,7 +50,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string reportTemplatePath = Path.Combine(packageDir, reportTemplateSubpath);
                 if (!File.Exists(reportTemplatePath))
                 {
-                    string engineReportTemplate = Path.Combine(GetTargetEngineInstall(OperationParameters).InstallDirectory, reportTemplateSubpath);
+                    string engineReportTemplate = Path.Combine(GetTargetEngineInstall(OperationParameters).TargetPath, reportTemplateSubpath);
                     if (!File.Exists(engineReportTemplate))
                     {
                         throw new Exception("Expected engine report template");

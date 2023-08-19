@@ -9,30 +9,30 @@ namespace UnrealAutomationCommon.Unreal
     public class Engine : OperationTarget, IEngineInstanceProvider
     {
         [JsonProperty]
-        public bool IsSourceBuild = false;
-
-        [JsonProperty]
         public string Key { get; set; }
 
         // Path of the engine instance location. Output path does not include the /Engine sub-directory.
         [JsonProperty]
-        public string InstallDirectory { get; set; }
+        public override string TargetPath { get; }
 
-        public override string Name => DisplayName;
-        public override string DisplayName => Version.ToString();
-        public override string TargetPath => InstallDirectory;
-        public string LocationString => IsSourceBuild ? InstallDirectory : "Launcher";
+        public bool IsSourceBuild { get; private set; }
+
+        public override string Name => $"{Version.ToString()} {EngineType}";
+        public override string DisplayName => Name ;
+
+        public string EngineType => IsSourceBuild ? "Custom" : "Launcher";
 
         public string BaseEditorName => Version.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
 
         public EngineVersion Version => EngineVersion.Load(this.GetBuildVersionPath());
 
-        public string PluginsPath => Path.Combine(InstallDirectory, "Engine", "Plugins");
+        public string PluginsPath => Path.Combine(TargetPath, "Engine", "Plugins");
 
         [JsonConstructor]
-        public Engine(string enginePath)
+        public Engine(string targetPath)
         {
-            InstallDirectory = enginePath;
+            TargetPath = targetPath;
+            IsSourceBuild = File.Exists(Path.Combine(TargetPath, "Default.uprojectdirs"));
         }
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
@@ -67,7 +67,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public Plugin FindInstalledPlugin(string pluginName)
         {
-            string plugins = Path.Combine(InstallDirectory, "Engine", "Plugins");
+            string plugins = Path.Combine(TargetPath, "Engine", "Plugins");
             string extension = "*.uplugin";
             string[] upluginPaths = Directory.GetFiles(plugins, extension, SearchOption.AllDirectories);
             foreach (string upluginPath in upluginPaths)

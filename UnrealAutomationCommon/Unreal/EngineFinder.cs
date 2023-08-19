@@ -35,8 +35,7 @@ namespace UnrealAutomationCommon.Unreal
                 {
                     result.Add(new Engine(directory)
                     {
-                        Key = subKeyString,
-                        IsSourceBuild = false
+                        Key = subKeyString
                     });
                 }
             }
@@ -63,8 +62,7 @@ namespace UnrealAutomationCommon.Unreal
                 {
                     result.Add(new Engine(buildPath)
                     {
-                        Key = buildName,
-                        IsSourceBuild = true
+                        Key = buildName
                     });
                 }
             }
@@ -100,8 +98,7 @@ namespace UnrealAutomationCommon.Unreal
                     string trimmedName = app.AppName.Replace("UE_", "");
                     result.Add(new Engine(app.InstallLocation)
                     {
-                        Key = trimmedName,
-                        IsSourceBuild = false
+                        Key = trimmedName
                     });
                 }
 

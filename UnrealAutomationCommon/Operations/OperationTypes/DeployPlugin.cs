@@ -116,7 +116,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Get engine path
 
-            string enginePath = engine.InstallDirectory;
+            string enginePath = engine.TargetPath;
 
             string enginePluginsMarketplacePath = Path.Combine(enginePath, @"Engine\Plugins\Marketplace");
             string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, plugin.Name);

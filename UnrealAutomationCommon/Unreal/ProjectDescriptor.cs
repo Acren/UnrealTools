@@ -49,12 +49,12 @@ namespace UnrealAutomationCommon.Unreal
                     return EngineAssociation;
                 }
 
-                return Engine.InstallDirectory;
+                return Engine.TargetPath;
             }
         }
 
         public Engine Engine { get; private set; }
-
+            
         public string EditorTargetName
         {
             get

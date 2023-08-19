@@ -8,17 +8,17 @@ namespace UnrealAutomationCommon.Unreal
     {
         public static string GetBuildVersionPath(this Engine engine)
         {
-            return Path.Combine(engine.InstallDirectory, "Engine", "Build", "Build.version");
+            return Path.Combine(engine.TargetPath, "Engine", "Build", "Build.version");
         }
 
         public static string GetRunUATPath(this Engine engine)
         {
-            return Path.Combine(engine.InstallDirectory, "Engine", "Build", "BatchFiles", "RunUAT.bat");
+            return Path.Combine(engine.TargetPath, "Engine", "Build", "BatchFiles", "RunUAT.bat");
         }
 
         public static string GetBuildPath(this Engine engine)
         {
-            return Path.Combine(engine.InstallDirectory, "Engine", "Build", "BatchFiles", "Build.bat");
+            return Path.Combine(engine.TargetPath, "Engine", "Build", "BatchFiles", "Build.bat");
         }
 
         public static string GetExeConfigurationModifier(BuildConfiguration configuration)
@@ -61,7 +61,7 @@ namespace UnrealAutomationCommon.Unreal
 
             editorExe += ".exe";
 
-            return Path.Combine(engine.InstallDirectory, "Engine", "Binaries", "Win64", editorExe);
+            return Path.Combine(engine.TargetPath, "Engine", "Binaries", "Win64", editorExe);
         }
 
         public static string GetEditorCmdExe(this Engine engine, BuildConfiguration configuration)
@@ -84,10 +84,10 @@ namespace UnrealAutomationCommon.Unreal
         {
             if (engine.Version.MajorVersion >= 5)
             {
-                return Path.Combine(engine.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool", "UnrealBuildTool.exe");
+                return Path.Combine(engine.TargetPath, "Engine", "Binaries", "DotNET", "UnrealBuildTool", "UnrealBuildTool.exe");
             }
 
-            return Path.Combine(engine.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool.exe");
+            return Path.Combine(engine.TargetPath, "Engine", "Binaries", "DotNET", "UnrealBuildTool.exe");
         }
     }
 }

@@ -46,7 +46,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (installedPlugin is null)
             {
-                throw new Exception($"Could not find plugin {plugin.Name} in engine located at {engine.InstallDirectory}");
+                throw new Exception($"Could not find plugin {plugin.Name} in engine located at {engine.TargetPath}");
             }
 
             string pluginVersionName = plugin.PluginDescriptor.VersionName;
