@@ -33,10 +33,9 @@ namespace UnrealAutomationCommon.Unreal
                 var directory = (string)engineVersionKey.GetValue("InstalledDirectory");
                 if (IsEngineInstallDirectory(directory))
                 {
-                    result.Add(new EngineInstall
+                    result.Add(new EngineInstall(directory)
                     {
                         Key = subKeyString,
-                        InstallDirectory = directory,
                         IsSourceBuild = false
                     });
                 }
@@ -62,10 +61,9 @@ namespace UnrealAutomationCommon.Unreal
                 buildPath = buildPath.Replace('/', '\\');
                 if (IsEngineInstallDirectory(buildPath))
                 {
-                    result.Add(new EngineInstall
+                    result.Add(new EngineInstall(buildPath)
                     {
                         Key = buildName,
-                        InstallDirectory = buildPath,
                         IsSourceBuild = true
                     });
                 }
@@ -100,10 +98,9 @@ namespace UnrealAutomationCommon.Unreal
                 {
                     // It's an engine install
                     string trimmedName = app.AppName.Replace("UE_", "");
-                    result.Add(new EngineInstall
+                    result.Add(new EngineInstall(app.InstallLocation)
                     {
                         Key = trimmedName,
-                        InstallDirectory = app.InstallLocation,
                         IsSourceBuild = false
                     });
                 }

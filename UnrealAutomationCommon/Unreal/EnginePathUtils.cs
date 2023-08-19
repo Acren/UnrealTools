@@ -4,7 +4,7 @@ using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public static class EnginePaths
+    public static class EnginePathUtils
     {
         public static string GetBuildVersionPath(this EngineInstall EngineInstall)
         {

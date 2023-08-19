@@ -1,11 +1,12 @@
 ﻿using System;
 using System.IO;
 using Newtonsoft.Json;
+using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
     [JsonObject(MemberSerialization.OptIn)]
-    public class EngineInstall
+    public class EngineInstall : OperationTarget, IEngineInstallProvider
     {
         [JsonProperty]
         public bool IsSourceBuild = false;
@@ -17,7 +18,9 @@ namespace UnrealAutomationCommon.Unreal
         [JsonProperty]
         public string InstallDirectory { get; set; }
 
-        public string DisplayName => Version.ToString();
+        public override string Name => DisplayName;
+        public override string DisplayName => Version.ToString();
+        public override string TargetPath => InstallDirectory;
         public string LocationString => IsSourceBuild ? InstallDirectory : "Launcher";
 
         public string BaseEditorName => Version.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
@@ -26,7 +29,13 @@ namespace UnrealAutomationCommon.Unreal
 
         public string PluginsPath => Path.Combine(InstallDirectory, "Engine", "Plugins");
 
-        public bool SupportsConfiguration(BuildConfiguration configuration)
+        [JsonConstructor]
+        public EngineInstall(string enginePath)
+        {
+            InstallDirectory = enginePath;
+        }
+
+        public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
             if (configuration == BuildConfiguration.Debug
                 || configuration == BuildConfiguration.Test)
@@ -37,6 +46,11 @@ namespace UnrealAutomationCommon.Unreal
 
             // Always support DebugGame, Development, Shipping
             return true;
+        }
+
+        public override void LoadDescriptor()
+        {
+            throw new NotImplementedException();
         }
 
         public bool SupportsTestReports => Version >= new EngineInstallVersion(4, 25);
@@ -66,5 +80,8 @@ namespace UnrealAutomationCommon.Unreal
 
             return null;
         }
+
+        public EngineInstall EngineInstallInstance => this;
+        public string EngineInstallName { get; }
     }
 }

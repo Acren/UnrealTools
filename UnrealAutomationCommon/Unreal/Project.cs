@@ -61,12 +61,12 @@ namespace UnrealAutomationCommon.Unreal
             {
                 _projectDescriptor = value;
                 OnPropertyChanged();
-                OnPropertyChanged(nameof(EngineInstall));
+                OnPropertyChanged(nameof(EngineInstallInstance));
                 OnPropertyChanged(nameof(EngineInstallName));
             }
         }
 
-        public EngineInstall EngineInstall
+        public EngineInstall EngineInstallInstance
         {
             get
             {
@@ -83,9 +83,9 @@ namespace UnrealAutomationCommon.Unreal
         {
             get
             {
-                if (EngineInstall != null)
+                if (EngineInstallInstance != null)
                 {
-                    return EngineInstall.DisplayName;
+                    return EngineInstallInstance.DisplayName;
                 }
 
                 return "None";
@@ -132,12 +132,12 @@ namespace UnrealAutomationCommon.Unreal
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
-            if (EngineInstall == null)
+            if (EngineInstallInstance == null)
             {
                 return false;
             }
 
-            return EngineInstall.SupportsConfiguration(configuration);
+            return EngineInstallInstance.SupportsConfiguration(configuration);
         }
 
         public override void LoadDescriptor()
@@ -148,7 +148,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public string GetStagedBuildWindowsPath(EngineInstall engineContext)
         {
-            return Path.Combine(StagedBuildsPath, (engineContext ?? EngineInstall).GetWindowsPlatformName());
+            return Path.Combine(StagedBuildsPath, (engineContext ?? EngineInstallInstance).GetWindowsPlatformName());
         }
 
         public Package GetStagedPackage(EngineInstall engineContext)

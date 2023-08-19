@@ -10,7 +10,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Arguments args = new();
             Project project = GetTarget(operationParameters);
-            string editorModuleName = project.ProjectDescriptor.EditorModule.Name;
+            string editorModuleName = project.ProjectDescriptor.EditorTargetName;
             args.SetArgument(editorModuleName);
             args.SetArgument("Win64");
             args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString());

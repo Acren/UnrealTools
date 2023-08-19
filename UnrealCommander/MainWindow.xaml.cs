@@ -211,7 +211,7 @@ namespace UnrealCommander
 
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
 
-        public EngineInstall SelectedEngineInstall => (SelectedTarget as IEngineInstallProvider)?.EngineInstall;
+        public EngineInstall SelectedEngineInstall => (SelectedTarget as IEngineInstallProvider)?.EngineInstallInstance;
 
         public AllowedBuildConfigurations AllowedBuildConfigurations
         {
@@ -422,10 +422,10 @@ namespace UnrealCommander
 
         private void AddTarget(object sender, RoutedEventArgs e)
         {
-            OpenFileDialog openFileDialog = new();
-            if (openFileDialog.ShowDialog() == true)
+            var dialog = new Ookii.Dialogs.Wpf.VistaFolderBrowserDialog();
+            if (dialog.ShowDialog() == true)
             {
-                string selectedPath = openFileDialog.FileName;
+                string selectedPath = dialog.SelectedPath;
                 PersistentData.Get().AddTarget(selectedPath);
             }
         }
@@ -444,7 +444,7 @@ namespace UnrealCommander
             if (SelectedTarget is Project)
             {
                 Project project = SelectedTarget as Project;
-                menu.Items.Add(new MenuItem { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath(project.EngineInstall)); }) });
+                menu.Items.Add(new MenuItem { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath(project.EngineInstallInstance)); }) });
                 menu.Items.Add(new MenuItem { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), project.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 

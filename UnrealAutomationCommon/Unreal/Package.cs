@@ -52,9 +52,9 @@ namespace UnrealAutomationCommon.Unreal
 
         private EngineInstallVersion EngineVersion => IsValid ? new EngineInstallVersion(FileVersionInfo.GetVersionInfo(ExecutablePath)) : null;
 
-        public EngineInstall EngineInstall => EngineVersion != null ? EngineInstallFinder.GetEngineInstall(EngineVersion) : null;
+        public EngineInstall EngineInstallInstance => EngineVersion != null ? EngineInstallFinder.GetEngineInstall(EngineVersion) : null;
 
-        public string EngineInstallName => EngineInstall != null ? EngineInstall.DisplayName : EngineVersion?.ToString();
+        public string EngineInstallName => EngineInstallInstance != null ? EngineInstallInstance.DisplayName : EngineVersion?.ToString();
 
         public Package GetProvidedPackage(EngineInstall engineContext) => this;
 

@@ -40,7 +40,7 @@
                 <DataGridTextColumn Header="Engine" IsReadOnly="True"
                                     Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstallName)}" />
                 <DataGridTextColumn Header="Engine Location" IsReadOnly="True"
-                                    Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstall).LocationString}" />
+                                    Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstallInstance).LocationString}" />
             </DataGrid.Columns>
         </DataGrid>
         <DockPanel DockPanel.Dock="Top" Margin="10,10,10,0">

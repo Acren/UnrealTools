@@ -55,7 +55,21 @@ namespace UnrealAutomationCommon.Unreal
 
         public EngineInstall EngineInstall { get; private set; }
 
-        public ProjectModule EditorModule => Modules.Find(m => m.Type == "Editor");
+        public string EditorTargetName
+        {
+            get
+            {
+                // Try find an editor module
+                var editorModule = Modules.Find(m => m.Type == "Editor");
+                if (editorModule != null)
+                {
+                    return editorModule.Name;
+                }
+
+                // If there is no explicitly defined editor module, append "Editor" to the first module
+                return Modules[0].Name + "Editor";
+            }
+        }
 
         public static ProjectDescriptor Load(string uProjectPath)
         {

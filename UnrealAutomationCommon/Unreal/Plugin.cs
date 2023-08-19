@@ -89,7 +89,7 @@ namespace UnrealAutomationCommon.Unreal
             {
                 _pluginDescriptor = value;
                 OnPropertyChanged();
-                OnPropertyChanged(nameof(EngineInstall));
+                OnPropertyChanged(nameof(EngineInstallInstance));
                 OnPropertyChanged(nameof(EngineInstallName));
             }
         }
@@ -125,7 +125,7 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public EngineInstall EngineInstall
+        public EngineInstall EngineInstallInstance
         {
             get
             {
@@ -139,7 +139,7 @@ namespace UnrealAutomationCommon.Unreal
                 // Use host project version
                 if (HostProject != null)
                 {
-                    return HostProject.EngineInstall;
+                    return HostProject.EngineInstallInstance;
                 }
 
                 // No descriptor version and no host project, fall back to default
@@ -151,9 +151,9 @@ namespace UnrealAutomationCommon.Unreal
         {
             get
             {
-                if (EngineInstall != null)
+                if (EngineInstallInstance != null)
                 {
-                    return EngineInstall.DisplayName;
+                    return EngineInstallInstance.DisplayName;
                 }
 
                 return "None";
@@ -167,12 +167,12 @@ namespace UnrealAutomationCommon.Unreal
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
-            if (EngineInstall == null)
+            if (EngineInstallInstance == null)
             {
                 return false;
             }
 
-            return EngineInstall.SupportsConfiguration(configuration);
+            return EngineInstallInstance.SupportsConfiguration(configuration);
         }
 
     }

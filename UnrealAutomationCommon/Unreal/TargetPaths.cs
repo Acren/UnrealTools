@@ -11,7 +11,7 @@ namespace UnrealAutomationCommon.Unreal
             return FileUtils.HasExtension(filePath, TargetFileExtension);
         }
 
-        public string FindTargetFile(string directoryPath)
+        public virtual string FindTargetFile(string directoryPath)
         {
             if (!Directory.Exists(directoryPath))
             {
@@ -49,5 +49,20 @@ namespace UnrealAutomationCommon.Unreal
     public class PackagePaths : TargetPaths<PackagePaths>
     {
         public override string TargetFileExtension => ".exe";
+    }
+
+    public class EnginePaths : TargetPaths<EnginePaths>
+    {
+        public override string TargetFileExtension => ".exe";
+
+        public override string FindTargetFile(string directoryPath)
+        {
+            if (!Directory.Exists(directoryPath))
+            {
+                return null;
+            }
+
+            return Path.Combine(directoryPath, "Engine/Binaries/UnrealEditor.exe");
+        }
     }
 }

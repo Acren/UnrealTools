@@ -113,7 +113,7 @@ namespace UnrealAutomationCommon.Operations
                 }
 
                 IEngineInstallProvider engineInstallProvider = Target as IEngineInstallProvider;
-                return engineInstallProvider?.EngineInstall;
+                return engineInstallProvider?.EngineInstallInstance;
             }
         }
 

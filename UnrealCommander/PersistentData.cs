@@ -145,17 +145,21 @@ namespace UnrealCommander
         public IOperationTarget AddTarget(string path)
         {
             IOperationTarget target;
-            if (ProjectPaths.Instance.IsTargetFile(path))
+            if (ProjectPaths.Instance.IsTargetDirectory(path))
             {
                 target = new Project(path);
             }
-            else if (PluginPaths.Instance.IsTargetFile(path))
+            else if (PluginPaths.Instance.IsTargetDirectory(path))
             {
                 target = new Plugin(path);
             }
-            else if (PackagePaths.Instance.IsTargetFile(path))
+            else if (PackagePaths.Instance.IsTargetDirectory(path))
             {
                 target = new Package(path);
+            }
+            else if (EnginePaths.Instance.IsTargetDirectory(path))
+            {
+                target = new EngineInstall(path);
             }
             else
             {

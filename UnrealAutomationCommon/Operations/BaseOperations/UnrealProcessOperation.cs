@@ -19,7 +19,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 {
                     throw new Exception("Target does not provide engine install");
                 }
-                bool engineSupportsReports = engineInstallProvider.EngineInstall.SupportsTestReports;
+                bool engineSupportsReports = engineInstallProvider.EngineInstallInstance.SupportsTestReports;
                 if (!engineSupportsReports)
                 {
                     Logger.Log("Engine version does not support test reports, so results cannot be checked", LogVerbosity.Warning);
