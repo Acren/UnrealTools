@@ -6,7 +6,7 @@ using UnrealAutomationCommon.Operations;
 namespace UnrealAutomationCommon.Unreal
 {
     [JsonObject(MemberSerialization.OptIn)]
-    public class EngineInstall : OperationTarget, IEngineInstallProvider
+    public class Engine : OperationTarget, IEngineInstanceProvider
     {
         [JsonProperty]
         public bool IsSourceBuild = false;
@@ -25,12 +25,12 @@ namespace UnrealAutomationCommon.Unreal
 
         public string BaseEditorName => Version.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
 
-        public EngineInstallVersion Version => EngineInstallVersion.Load(this.GetBuildVersionPath());
+        public EngineVersion Version => EngineVersion.Load(this.GetBuildVersionPath());
 
         public string PluginsPath => Path.Combine(InstallDirectory, "Engine", "Plugins");
 
         [JsonConstructor]
-        public EngineInstall(string enginePath)
+        public Engine(string enginePath)
         {
             InstallDirectory = enginePath;
         }
@@ -53,7 +53,7 @@ namespace UnrealAutomationCommon.Unreal
             throw new NotImplementedException();
         }
 
-        public bool SupportsTestReports => Version >= new EngineInstallVersion(4, 25);
+        public bool SupportsTestReports => Version >= new EngineVersion(4, 25);
 
         public string GetWindowsPlatformName()
         {
@@ -81,7 +81,7 @@ namespace UnrealAutomationCommon.Unreal
             return null;
         }
 
-        public EngineInstall EngineInstallInstance => this;
-        public string EngineInstallName { get; }
+        public Engine EngineInstance => this;
+        public string EngineInstanceName { get; }
     }
 }

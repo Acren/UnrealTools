@@ -33,7 +33,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public static void ApplyCommonUATArguments(this Arguments arguments, OperationParameters operationParameters)
         {
-            if (operationParameters.EngineInstall.Version >= new EngineInstallVersion(5, 0))
+            if (operationParameters.Engine.Version >= new EngineVersion(5, 0))
             {
                 // Prevent turnkey errors in UE5
                 arguments.SetFlag("noturnkeyvariables");

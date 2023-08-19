@@ -6,19 +6,19 @@ namespace UnrealAutomationCommon.Unreal
 {
     public static class EnginePathUtils
     {
-        public static string GetBuildVersionPath(this EngineInstall EngineInstall)
+        public static string GetBuildVersionPath(this Engine engine)
         {
-            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Build", "Build.version");
+            return Path.Combine(engine.InstallDirectory, "Engine", "Build", "Build.version");
         }
 
-        public static string GetRunUATPath(this EngineInstall EngineInstall)
+        public static string GetRunUATPath(this Engine engine)
         {
-            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Build", "BatchFiles", "RunUAT.bat");
+            return Path.Combine(engine.InstallDirectory, "Engine", "Build", "BatchFiles", "RunUAT.bat");
         }
 
-        public static string GetBuildPath(this EngineInstall EngineInstall)
+        public static string GetBuildPath(this Engine engine)
         {
-            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Build", "BatchFiles", "Build.bat");
+            return Path.Combine(engine.InstallDirectory, "Engine", "Build", "BatchFiles", "Build.bat");
         }
 
         public static string GetExeConfigurationModifier(BuildConfiguration configuration)
@@ -48,9 +48,9 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public static string GetEditorExe(this EngineInstall EngineInstall, BuildConfiguration configuration, bool Cmd = false)
+        public static string GetEditorExe(this Engine engine, BuildConfiguration configuration, bool Cmd = false)
         {
-            string editorExe = EngineInstall.BaseEditorName;
+            string editorExe = engine.BaseEditorName;
 
             editorExe += GetExeConfigurationModifier(configuration);
 
@@ -61,15 +61,15 @@ namespace UnrealAutomationCommon.Unreal
 
             editorExe += ".exe";
 
-            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "Win64", editorExe);
+            return Path.Combine(engine.InstallDirectory, "Engine", "Binaries", "Win64", editorExe);
         }
 
-        public static string GetEditorCmdExe(this EngineInstall EngineInstall, BuildConfiguration configuration)
+        public static string GetEditorCmdExe(this Engine engine, BuildConfiguration configuration)
         {
-            return GetEditorExe(EngineInstall, configuration, true);
+            return GetEditorExe(engine, configuration, true);
         }
 
-        public static string GetEditorExe(this EngineInstall EngineInstall, OperationParameters operationParameters)
+        public static string GetEditorExe(this Engine engine, OperationParameters operationParameters)
         {
             BuildConfigurationOptions buildOptions = operationParameters.RequestOptions<BuildConfigurationOptions>();
             if (buildOptions == null)
@@ -77,17 +77,17 @@ namespace UnrealAutomationCommon.Unreal
                 return null;
             }
 
-            return GetEditorExe(EngineInstall, buildOptions.Configuration);
+            return GetEditorExe(engine, buildOptions.Configuration);
         }
 
-        public static string GetUBTExe(this EngineInstall EngineInstall)
+        public static string GetUBTExe(this Engine engine)
         {
-            if (EngineInstall.Version.MajorVersion >= 5)
+            if (engine.Version.MajorVersion >= 5)
             {
-                return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool", "UnrealBuildTool.exe");
+                return Path.Combine(engine.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool", "UnrealBuildTool.exe");
             }
 
-            return Path.Combine(EngineInstall.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool.exe");
+            return Path.Combine(engine.InstallDirectory, "Engine", "Binaries", "DotNET", "UnrealBuildTool.exe");
         }
     }
 }

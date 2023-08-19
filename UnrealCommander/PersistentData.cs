@@ -159,7 +159,7 @@ namespace UnrealCommander
             }
             else if (EnginePaths.Instance.IsTargetDirectory(path))
             {
-                target = new EngineInstall(path);
+                target = new Engine(path);
             }
             else
             {

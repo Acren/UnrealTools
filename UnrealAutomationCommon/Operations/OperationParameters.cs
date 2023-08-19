@@ -33,7 +33,7 @@ namespace UnrealAutomationCommon.Operations
         public string OutputPathOverride { get; set; }
 
         [JsonIgnore]
-        public EngineInstall EngineOverride { get; set; }
+        public Engine EngineOverride { get; set; }
 
         [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
         public BindingList<OperationOptions> OptionsInstances
@@ -49,7 +49,7 @@ namespace UnrealAutomationCommon.Operations
                 OptionsInstances.ListChanged += (sender, args) =>
                 {
                     OnPropertyChanged(nameof(OptionsInstances));
-                    OnPropertyChanged(nameof(EngineInstall));
+                    OnPropertyChanged(nameof(Engine));
                 };
 
                 UpdateOptionsTarget();
@@ -87,7 +87,7 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
-        public EngineInstall EngineInstall
+        public Engine Engine
         {
             get
             {
@@ -100,20 +100,20 @@ namespace UnrealAutomationCommon.Operations
                 var VersionOptions = RequestOptions<EngineVersionOptions>();
                 if (VersionOptions != null && VersionOptions.EnabledVersions.Value.Count > 0)
                 {
-                    EngineInstallVersion version = VersionOptions.EnabledVersions.Value[0];
+                    EngineVersion version = VersionOptions.EnabledVersions.Value[0];
                     if (version != null)
                     {
-                        return EngineInstallFinder.GetEngineInstall(version);
+                        return EngineFinder.GetEngineInstall(version);
                     }
                 }
 
-                if (Target is not IEngineInstallProvider)
+                if (Target is not IEngineInstanceProvider)
                 {
                     return null;
                 }
 
-                IEngineInstallProvider engineInstallProvider = Target as IEngineInstallProvider;
-                return engineInstallProvider?.EngineInstallInstance;
+                IEngineInstanceProvider engineInstanceProvider = Target as IEngineInstanceProvider;
+                return engineInstanceProvider?.EngineInstance;
             }
         }
 

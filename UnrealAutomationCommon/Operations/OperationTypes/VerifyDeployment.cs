@@ -18,14 +18,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Plugin plugin = GetTarget(OperationParameters);
 
             Logger.Log($"Versions: {string.Join(", ", OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
-            foreach (EngineInstallVersion engineVersion in OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
+            foreach (EngineVersion engineVersion in OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
             {
-                EngineInstall engineInstall = EngineInstallFinder.GetEngineInstall(engineVersion);
-                if (engineInstall == null)
+                Engine engine = EngineFinder.GetEngineInstall(engineVersion);
+                if (engine == null)
                 {
                     throw new Exception("Engine not found");
                 }
-                OperationResult result = await VerifyForEngine(engineInstall, token);
+                OperationResult result = await VerifyForEngine(engine, token);
                 if (!result.Success)
                 {
                     // Failure
@@ -36,10 +36,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new OperationResult(true);
         }
 
-        private async Task<OperationResult> VerifyForEngine(EngineInstall engine, CancellationToken token)
+        private async Task<OperationResult> VerifyForEngine(Engine engine, CancellationToken token)
         {
             Plugin plugin = GetTarget(OperationParameters);
-            EngineInstallVersion engineVersion = engine.Version;
+            EngineVersion engineVersion = engine.Version;
             Logger.Log($"Verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
 
             Plugin installedPlugin = engine.FindInstalledPlugin(plugin.Name);
@@ -197,7 +197,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
 
-        private string FindExampleProjectZip(Plugin plugin, string exampleProjectsPath, EngineInstall engine)
+        private string FindExampleProjectZip(Plugin plugin, string exampleProjectsPath, Engine engine)
         {
             string pluginVersionName = plugin.PluginDescriptor.VersionName;
             string exampleProjects = exampleProjectsPath;

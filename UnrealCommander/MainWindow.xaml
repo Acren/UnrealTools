@@ -38,9 +38,9 @@
                 <DataGridTextColumn Header="Type" IsReadOnly="True" Binding="{Binding TypeName}" />
                 <DataGridTextColumn Header="Location" IsReadOnly="True" Binding="{Binding TargetPath}" Width="10*" />
                 <DataGridTextColumn Header="Engine" IsReadOnly="True"
-                                    Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstallName)}" />
+                                    Binding="{Binding Path=(Unreal:IEngineInstanceProvider.EngineInstanceName)}" />
                 <DataGridTextColumn Header="Engine Location" IsReadOnly="True"
-                                    Binding="{Binding Path=(Unreal:IEngineInstallProvider.EngineInstallInstance).LocationString}" />
+                                    Binding="{Binding Path=(Unreal:IEngineInstanceProvider.EngineInstance).LocationString}" />
             </DataGrid.Columns>
         </DataGrid>
         <DockPanel DockPanel.Dock="Top" Margin="10,10,10,0">

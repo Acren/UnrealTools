@@ -14,12 +14,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
             if (!Cancelled && automationOptions is { RunTests: { Value: true } })
             {
-                IEngineInstallProvider engineInstallProvider = OperationParameters.Target as IEngineInstallProvider;
-                if (engineInstallProvider == null)
+                IEngineInstanceProvider engineInstanceProvider = OperationParameters.Target as IEngineInstanceProvider;
+                if (engineInstanceProvider == null)
                 {
                     throw new Exception("Target does not provide engine install");
                 }
-                bool engineSupportsReports = engineInstallProvider.EngineInstallInstance.SupportsTestReports;
+                bool engineSupportsReports = engineInstanceProvider.EngineInstance.SupportsTestReports;
                 if (!engineSupportsReports)
                 {
                     Logger.Log("Engine version does not support test reports, so results cannot be checked", LogVerbosity.Warning);

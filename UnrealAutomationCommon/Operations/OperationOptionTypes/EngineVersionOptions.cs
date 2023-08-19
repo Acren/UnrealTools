@@ -7,6 +7,6 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
     {
         public override int SortIndex => 10;
 
-        public Option<List<EngineInstallVersion>> EnabledVersions { get; } = new(new());
+        public Option<List<EngineVersion>> EnabledVersions { get; } = new(new());
     }
 }

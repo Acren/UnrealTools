@@ -7,7 +7,7 @@ using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public class Project : OperationTarget, IPackageProvider, IEngineInstallProvider
+    public class Project : OperationTarget, IPackageProvider, IEngineInstanceProvider
     {
         private ProjectDescriptor _projectDescriptor;
         private string _uProjectPath;
@@ -61,31 +61,31 @@ namespace UnrealAutomationCommon.Unreal
             {
                 _projectDescriptor = value;
                 OnPropertyChanged();
-                OnPropertyChanged(nameof(EngineInstallInstance));
-                OnPropertyChanged(nameof(EngineInstallName));
+                OnPropertyChanged(nameof(EngineInstance));
+                OnPropertyChanged(nameof(EngineInstanceName));
             }
         }
 
-        public EngineInstall EngineInstallInstance
+        public Engine EngineInstance
         {
             get
             {
-                if (ProjectDescriptor is { EngineInstall: { } })
+                if (ProjectDescriptor is { Engine: { } })
                 {
-                    return ProjectDescriptor.EngineInstall;
+                    return ProjectDescriptor.Engine;
                 }
 
                 return null;
             }
         }
 
-        public string EngineInstallName
+        public string EngineInstanceName
         {
             get
             {
-                if (EngineInstallInstance != null)
+                if (EngineInstance != null)
                 {
-                    return EngineInstallInstance.DisplayName;
+                    return EngineInstance.DisplayName;
                 }
 
                 return "None";
@@ -128,16 +128,16 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public Package GetProvidedPackage(EngineInstall engineContext) => GetStagedPackage(engineContext);
+        public Package GetProvidedPackage(Engine engineContext) => GetStagedPackage(engineContext);
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
-            if (EngineInstallInstance == null)
+            if (EngineInstance == null)
             {
                 return false;
             }
 
-            return EngineInstallInstance.SupportsConfiguration(configuration);
+            return EngineInstance.SupportsConfiguration(configuration);
         }
 
         public override void LoadDescriptor()
@@ -146,18 +146,18 @@ namespace UnrealAutomationCommon.Unreal
             ProjectDescriptor = ProjectDescriptor.Load(UProjectPath);
         }
 
-        public string GetStagedBuildWindowsPath(EngineInstall engineContext)
+        public string GetStagedBuildWindowsPath(Engine engineContext)
         {
-            return Path.Combine(StagedBuildsPath, (engineContext ?? EngineInstallInstance).GetWindowsPlatformName());
+            return Path.Combine(StagedBuildsPath, (engineContext ?? EngineInstance).GetWindowsPlatformName());
         }
 
-        public Package GetStagedPackage(EngineInstall engineContext)
+        public Package GetStagedPackage(Engine engineContext)
         {
             string path = GetStagedBuildWindowsPath(engineContext);
             return PackagePaths.Instance.IsTargetDirectory(path) ? new Package(path) : null;
         }
 
-        public string GetStagedPackageExecutablePath(EngineInstall engineContext)
+        public string GetStagedPackageExecutablePath(Engine engineContext)
         {
             return Path.Combine(GetStagedBuildWindowsPath(engineContext), Name + ".exe");
         }

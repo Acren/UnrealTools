@@ -26,7 +26,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             BuildConfiguration cookerConfiguration = operationParameters.RequestOptions<CookOptions>().CookerConfiguration;
             if (cookerConfiguration != BuildConfiguration.Development)
             {
-                string unrealExe = operationParameters.EngineInstall.GetEditorCmdExe(cookerConfiguration);
+                string unrealExe = operationParameters.Engine.GetEditorCmdExe(cookerConfiguration);
                 arguments.SetKeyPath("unrealexe", unrealExe);
             }
 

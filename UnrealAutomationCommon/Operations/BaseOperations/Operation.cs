@@ -133,12 +133,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         public bool TargetProvidesEngineInstall(OperationParameters operationParameters)
         {
-            return GetTarget(operationParameters) is IEngineInstallProvider;
+            return GetTarget(operationParameters) is IEngineInstanceProvider;
         }
 
-        public EngineInstall GetTargetEngineInstall(OperationParameters operationParameters)
+        public Engine GetTargetEngineInstall(OperationParameters operationParameters)
         {
-            return operationParameters.EngineInstall;
+            return operationParameters.Engine;
         }
 
         public HashSet<Type> GetRequiredOptionSetTypes(IOperationTarget target)

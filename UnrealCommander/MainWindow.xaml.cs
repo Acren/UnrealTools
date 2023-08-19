@@ -16,6 +16,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Threading;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -70,6 +71,17 @@ namespace UnrealCommander
 
         public MainWindow()
         {
+            Dispatcher.UnhandledException += (sender, args) =>
+            {
+                if (!Debugger.IsAttached)
+                {
+                    args.Handled = true;
+                    MessageBox.Show(args.Exception.ToString(), "Unhandled Exception");
+                }
+
+                Application.Current.Shutdown();
+            };
+
             PersistentState = PersistentData.Load();
             PersistentState.OperationParameters.RetryHandler = (Exception ex) =>
             {
@@ -211,7 +223,7 @@ namespace UnrealCommander
 
         public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
 
-        public EngineInstall SelectedEngineInstall => (SelectedTarget as IEngineInstallProvider)?.EngineInstallInstance;
+        public Engine SelectedEngine => (SelectedTarget as IEngineInstanceProvider)?.EngineInstance;
 
         public AllowedBuildConfigurations AllowedBuildConfigurations
         {
@@ -444,7 +456,7 @@ namespace UnrealCommander
             if (SelectedTarget is Project)
             {
                 Project project = SelectedTarget as Project;
-                menu.Items.Add(new MenuItem { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath(project.EngineInstallInstance)); }) });
+                menu.Items.Add(new MenuItem { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath(project.EngineInstance)); }) });
                 menu.Items.Add(new MenuItem { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), project.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 

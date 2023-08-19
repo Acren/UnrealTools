@@ -8,10 +8,10 @@ namespace UnrealAutomationCommon.Unreal
 {
     public interface IPackageProvider : IOperationTarget
     {
-        public Package GetProvidedPackage(EngineInstall engineContext);
+        public Package GetProvidedPackage(Engine engineContext);
     }
 
-    public class Package : OperationTarget, IPackageProvider, IEngineInstallProvider
+    public class Package : OperationTarget, IPackageProvider, IEngineInstanceProvider
     {
         [JsonConstructor]
         public Package([JsonProperty("ExecutablePath")] string path)
@@ -50,13 +50,13 @@ namespace UnrealAutomationCommon.Unreal
 
         public string LogsPath => Path.Combine(TargetDirectory, Name, "Saved", "Logs");
 
-        private EngineInstallVersion EngineVersion => IsValid ? new EngineInstallVersion(FileVersionInfo.GetVersionInfo(ExecutablePath)) : null;
+        private EngineVersion EngineVersion => IsValid ? new EngineVersion(FileVersionInfo.GetVersionInfo(ExecutablePath)) : null;
 
-        public EngineInstall EngineInstallInstance => EngineVersion != null ? EngineInstallFinder.GetEngineInstall(EngineVersion) : null;
+        public Engine EngineInstance => EngineVersion != null ? EngineFinder.GetEngineInstall(EngineVersion) : null;
 
-        public string EngineInstallName => EngineInstallInstance != null ? EngineInstallInstance.DisplayName : EngineVersion?.ToString();
+        public string EngineInstanceName => EngineInstance != null ? EngineInstance.DisplayName : EngineVersion?.ToString();
 
-        public Package GetProvidedPackage(EngineInstall engineContext) => this;
+        public Package GetProvidedPackage(Engine engineContext) => this;
 
         public override string TargetPath => ExecutablePath;
         public override string Name { get; }

@@ -6,7 +6,7 @@ using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public class Plugin : OperationTarget, IEngineInstallProvider
+    public class Plugin : OperationTarget, IEngineInstanceProvider
     {
         private PluginDescriptor _pluginDescriptor;
         private string _uPluginPath;
@@ -89,8 +89,8 @@ namespace UnrealAutomationCommon.Unreal
             {
                 _pluginDescriptor = value;
                 OnPropertyChanged();
-                OnPropertyChanged(nameof(EngineInstallInstance));
-                OnPropertyChanged(nameof(EngineInstallName));
+                OnPropertyChanged(nameof(EngineInstance));
+                OnPropertyChanged(nameof(EngineInstanceName));
             }
         }
 
@@ -125,35 +125,35 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public EngineInstall EngineInstallInstance
+        public Engine EngineInstance
         {
             get
             {
                 // If plugin descriptor has an engine version, find engine install using that
-                EngineInstallVersion descriptorVersion = PluginDescriptor?.EngineInstallVersion;
+                EngineVersion descriptorVersion = PluginDescriptor?.EngineVersion;
                 if (descriptorVersion != null)
                 {
-                    return EngineInstallFinder.GetEngineInstall(descriptorVersion);
+                    return EngineFinder.GetEngineInstall(descriptorVersion);
                 }
 
                 // Use host project version
                 if (HostProject != null)
                 {
-                    return HostProject.EngineInstallInstance;
+                    return HostProject.EngineInstance;
                 }
 
                 // No descriptor version and no host project, fall back to default
-                return EngineInstallFinder.GetDefaultEngineInstall();
+                return EngineFinder.GetDefaultEngineInstall();
             }
         }
 
-        public string EngineInstallName
+        public string EngineInstanceName
         {
             get
             {
-                if (EngineInstallInstance != null)
+                if (EngineInstance != null)
                 {
-                    return EngineInstallInstance.DisplayName;
+                    return EngineInstance.DisplayName;
                 }
 
                 return "None";
@@ -167,12 +167,12 @@ namespace UnrealAutomationCommon.Unreal
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)
         {
-            if (EngineInstallInstance == null)
+            if (EngineInstance == null)
             {
                 return false;
             }
 
-            return EngineInstallInstance.SupportsConfiguration(configuration);
+            return EngineInstance.SupportsConfiguration(configuration);
         }
 
     }

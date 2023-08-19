@@ -12,9 +12,9 @@ namespace UnrealCommander.Options
     public class EngineVersionOption : INotifyPropertyChanged
     {
         private bool _enabled;
-        private EngineInstallVersion _engineVersion;
+        private EngineVersion _engineVersion;
 
-        public EngineInstallVersion EngineVersion
+        public EngineVersion EngineVersion
         {
             get => _engineVersion;
             set
@@ -72,7 +72,7 @@ namespace UnrealCommander.Options
             InitializeComponent();
 
             // Find installed engine versions
-            List<EngineInstallVersion> versions = EngineInstallFinder.GetLauncherEngineInstallVersions();
+            List<EngineVersion> versions = EngineFinder.GetLauncherEngineInstallVersions();
             foreach (var version in versions)
             {
                 EngineVersionOptions.Add(new EngineVersionOption() { Enabled = false, EngineVersion = version });
@@ -80,7 +80,7 @@ namespace UnrealCommander.Options
 
             EngineVersionOptions.ListChanged += (sender, args) =>
             {
-                List<EngineInstallVersion> enabledVersions = new();
+                List<EngineVersion> enabledVersions = new();
                 foreach (EngineVersionOption version in EngineVersionOptions)
                 {
                     if (version.Enabled)

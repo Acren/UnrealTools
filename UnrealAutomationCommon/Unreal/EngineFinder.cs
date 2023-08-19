@@ -6,26 +6,26 @@ using System.Linq;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public static class EngineInstallFinder
+    public static class EngineFinder
     {
         public static bool IsEngineInstallDirectory(string path)
         {
             return Directory.Exists(path);
         }
 
-        public static List<EngineInstall> GetEngineInstallsFromRegistry()
+        public static List<Engine> GetEngineInstallsFromRegistry()
         {
             RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
 
             RegistryKey localMachineUnrealEngine = localMachine.OpenSubKey(@"Software\EpicGames\Unreal Engine");
             if (localMachineUnrealEngine == null)
             {
-                return new List<EngineInstall>();
+                return new List<Engine>();
             }
 
             string[] subKeys = localMachineUnrealEngine.GetSubKeyNames();
 
-            var result = new List<EngineInstall>();
+            var result = new List<Engine>();
 
             foreach (string subKeyString in subKeys)
             {
@@ -33,7 +33,7 @@ namespace UnrealAutomationCommon.Unreal
                 var directory = (string)engineVersionKey.GetValue("InstalledDirectory");
                 if (IsEngineInstallDirectory(directory))
                 {
-                    result.Add(new EngineInstall(directory)
+                    result.Add(new Engine(directory)
                     {
                         Key = subKeyString,
                         IsSourceBuild = false
@@ -61,7 +61,7 @@ namespace UnrealAutomationCommon.Unreal
                 buildPath = buildPath.Replace('/', '\\');
                 if (IsEngineInstallDirectory(buildPath))
                 {
-                    result.Add(new EngineInstall(buildPath)
+                    result.Add(new Engine(buildPath)
                     {
                         Key = buildName,
                         IsSourceBuild = true
@@ -72,7 +72,7 @@ namespace UnrealAutomationCommon.Unreal
             return result;
         }
 
-        public static EngineInstall GetEngineInstallFromRegistry(string engineAssociation)
+        public static Engine GetEngineInstallFromRegistry(string engineAssociation)
         {
             RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
 
@@ -89,16 +89,16 @@ namespace UnrealAutomationCommon.Unreal
             return GetEngineInstallsFromRegistry().Find(x => x.Key == engineAssociation);
         }
 
-        public static List<EngineInstall> GetEngineInstallsFromLauncherManifest()
+        public static List<Engine> GetEngineInstallsFromLauncherManifest()
         {
-            var result = new List<EngineInstall>();
+            var result = new List<Engine>();
             LauncherInstalledEngineManifest manifest = LauncherInstalledEngineManifest.Load();
             foreach (LauncherManifestAppInstallation app in manifest.InstallationList)
                 if (app.AppName.StartsWith("UE_"))
                 {
                     // It's an engine install
                     string trimmedName = app.AppName.Replace("UE_", "");
-                    result.Add(new EngineInstall(app.InstallLocation)
+                    result.Add(new Engine(app.InstallLocation)
                     {
                         Key = trimmedName,
                         IsSourceBuild = false
@@ -108,22 +108,22 @@ namespace UnrealAutomationCommon.Unreal
             return result;
         }
 
-        public static EngineInstall GetEngineInstallFromLauncherManifest(string engineAssociation)
+        public static Engine GetEngineInstallFromLauncherManifest(string engineAssociation)
         {
             return GetEngineInstallsFromLauncherManifest().Find(x => x.Key == engineAssociation);
         }
 
-        public static List<EngineInstall> GetEngineInstalls()
+        public static List<Engine> GetEngineInstalls()
         {
             var installs = GetEngineInstallsFromRegistry();
             installs.AddRange(GetEngineInstallsFromLauncherManifest());
             return installs;
         }
 
-        public static List<EngineInstallVersion> GetLauncherEngineInstallVersions()
+        public static List<EngineVersion> GetLauncherEngineInstallVersions()
         {
-            List<EngineInstallVersion> versions = new();
-            foreach(EngineInstall engine in GetEngineInstalls())
+            List<EngineVersion> versions = new();
+            foreach(Engine engine in GetEngineInstalls())
             {
                 if (!engine.IsSourceBuild && !versions.Contains(engine.Version))
                 {
@@ -133,12 +133,12 @@ namespace UnrealAutomationCommon.Unreal
             return versions;
         }
 
-        public static EngineInstall GetDefaultEngineInstall()
+        public static Engine GetDefaultEngineInstall()
         {
             return GetEngineInstalls().Last();
         }
 
-        public static EngineInstall GetEngineInstall(string engineKey, bool defaultIfNotFound = false)
+        public static Engine GetEngineInstall(string engineKey, bool defaultIfNotFound = false)
         {
             if (engineKey == null)
             {
@@ -146,10 +146,10 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             // Check Contains so that engine with "5.0EA" satisfies search for "5.0"
-            EngineInstall engineInstall = GetEngineInstalls().Find(x => x.Key.Contains(engineKey));
-            if (engineInstall != null)
+            Engine engine = GetEngineInstalls().Find(x => x.Key.Contains(engineKey));
+            if (engine != null)
             {
-                return engineInstall;
+                return engine;
             }
 
             if (defaultIfNotFound)
@@ -160,7 +160,7 @@ namespace UnrealAutomationCommon.Unreal
             throw new Exception("Could not find Engine installation based on EngineKey: + " + engineKey);
         }
 
-        public static EngineInstall GetEngineInstall(EngineInstallVersion version)
+        public static Engine GetEngineInstall(EngineVersion version)
         {
             if (version == null)
             {

@@ -28,7 +28,7 @@ namespace UnrealAutomationCommon.Unreal
             set
             {
                 _engineAssociation = value;
-                EngineInstall = EngineInstallFinder.GetEngineInstall(EngineAssociation, true);
+                Engine = EngineFinder.GetEngineInstall(EngineAssociation, true);
             }
         }
 
@@ -44,16 +44,16 @@ namespace UnrealAutomationCommon.Unreal
                     return EngineAssociation;
                 }
 
-                if (EngineInstall == null)
+                if (Engine == null)
                 {
                     return EngineAssociation;
                 }
 
-                return EngineInstall.InstallDirectory;
+                return Engine.InstallDirectory;
             }
         }
 
-        public EngineInstall EngineInstall { get; private set; }
+        public Engine Engine { get; private set; }
 
         public string EditorTargetName
         {

@@ -20,14 +20,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Plugin plugin = GetTarget(OperationParameters);
 
             Logger.Log($"Versions: {string.Join(", ", OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
-            foreach (EngineInstallVersion engineVersion in OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
+            foreach (EngineVersion engineVersion in OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
             {
-                EngineInstall engineInstall = EngineInstallFinder.GetEngineInstall(engineVersion);
-                if (engineInstall == null)
+                Engine engine = EngineFinder.GetEngineInstall(engineVersion);
+                if (engine == null)
                 {
                     throw new Exception("Engine not found");
                 }
-                OperationResult result = await DeployForEngine(engineInstall, token);
+                OperationResult result = await DeployForEngine(engine, token);
                 if (!result.Success)
                 {
                     // Failure
@@ -38,9 +38,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new OperationResult(true);
         }
 
-        private async Task<OperationResult> DeployForEngine(EngineInstall engine, CancellationToken token)
+        private async Task<OperationResult> DeployForEngine(Engine engine, CancellationToken token)
         {
-            EngineInstallVersion engineVersion = engine.Version;
+            EngineVersion engineVersion = engine.Version;
             Logger.Log($"Deploying plugin for {engineVersion.MajorMinorString}");
 
             Logger.LogSectionHeader("Preparing plugin");
@@ -560,7 +560,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     JObject sourceArchivePluginDescriptor = JObject.Parse(File.ReadAllText(sourceArchivePlugin.UPluginPath));
                     bool modified = false;
 
-                    EngineInstallVersion desiredEngineMajorMinorVersion = engineVersion.WithPatch(0);
+                    EngineVersion desiredEngineMajorMinorVersion = engineVersion.WithPatch(0);
 
                     // Check version name
                     string desiredVersionName = $"{pluginVersionString}-{desiredEngineMajorMinorVersion.MajorMinorString}";
