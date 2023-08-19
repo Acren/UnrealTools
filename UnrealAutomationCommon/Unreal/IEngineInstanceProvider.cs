@@ -6,6 +6,6 @@ namespace UnrealAutomationCommon.Unreal
     {
         [JsonIgnore] public Engine EngineInstance { get; }
 
-        [JsonIgnore] public string EngineInstanceName { get; }
+        [JsonIgnore] public string EngineInstanceName => EngineInstance.Name;
     }
 }

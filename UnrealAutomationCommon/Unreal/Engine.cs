@@ -82,6 +82,5 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         public Engine EngineInstance => this;
-        public string EngineInstanceName { get; }
     }
 }
