@@ -6,6 +6,12 @@ using System.Linq;
 
 namespace UnrealAutomationCommon.Unreal
 {
+    public class ProjectModule
+    {
+        public string Name { get; set; }
+        public string Type { get; set; }
+    }
+
     public class ProjectPluginDependency
     {
         public string Name { get; set; }
@@ -26,6 +32,7 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
+        public List<ProjectModule> Modules { get; set; }
         public List<ProjectPluginDependency> Plugins { get; set; }
 
         public string EngineFriendlyName
@@ -47,6 +54,8 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         public EngineInstall EngineInstall { get; private set; }
+
+        public ProjectModule EditorModule => Modules.Find(m => m.Type == "Editor");
 
         public static ProjectDescriptor Load(string uProjectPath)
         {

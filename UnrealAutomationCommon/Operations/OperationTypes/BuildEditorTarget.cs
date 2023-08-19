@@ -9,7 +9,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
             Arguments args = new();
-            args.SetArgument(GetTargetName(operationParameters) + "Editor");
+            Project project = GetTarget(operationParameters);
+            string editorModuleName = project.ProjectDescriptor.EditorModule.Name;
+            args.SetArgument(editorModuleName);
             args.SetArgument("Win64");
             args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString());
             args.SetPath(GetTarget(operationParameters).UProjectPath);
