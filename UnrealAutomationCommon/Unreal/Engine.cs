@@ -11,10 +11,6 @@ namespace UnrealAutomationCommon.Unreal
         [JsonProperty]
         public string Key { get; set; }
 
-        // Path of the engine instance location. Output path does not include the /Engine sub-directory.
-        [JsonProperty]
-        public override string TargetPath { get; }
-
         public bool IsSourceBuild { get; private set; }
 
         public override string Name => $"{Version.ToString()} {EngineType}";

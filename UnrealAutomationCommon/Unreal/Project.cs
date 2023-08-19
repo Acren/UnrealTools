@@ -10,49 +10,36 @@ namespace UnrealAutomationCommon.Unreal
     public class Project : OperationTarget, IPackageProvider, IEngineInstanceProvider
     {
         private ProjectDescriptor _projectDescriptor;
-        private string _uProjectPath;
         private FileSystemWatcher _watcher;
 
         [JsonConstructor]
-        public Project([JsonProperty("UProjectPath")] string path)
+        public Project(string targetPath)
         {
-            if (ProjectPaths.Instance.IsTargetFile(path))
+            if (!ProjectPaths.Instance.IsTargetDirectory(targetPath))
             {
-                UProjectPath = path;
+                throw new ArgumentException("Does not contain a .uproject",  nameof(targetPath));
             }
-            else
-            {
-                UProjectPath = ProjectPaths.Instance.FindTargetFile(path);
-            }
-        }
 
-        [JsonProperty]
-        public string UProjectPath
-        {
-            get => _uProjectPath;
-            set
+            TargetPath = targetPath;
+
+            LoadDescriptor();
+
+            // Reload descriptor if it changes
+            _watcher = new FileSystemWatcher(TargetPath);
+            _watcher.Changed += (Sender, Args) =>
             {
-                if (_uProjectPath != value)
+                if (Args.FullPath == UProjectPath)
                 {
-                    _uProjectPath = value;
                     LoadDescriptor();
-
-                    // Reload descriptor if it changes
-                    _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uProjectPath));
-                    _watcher.Changed += (Sender, Args) =>
-                    {
-                        if (Args.FullPath == UProjectPath)
-                        {
-                            LoadDescriptor();
-                        }
-                    };
-                    _watcher.EnableRaisingEvents = true;
-
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(Name));
                 }
-            }
+            };
+            _watcher.EnableRaisingEvents = true;
+
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Name));
         }
+
+        public string UProjectPath => ProjectPaths.Instance.FindTargetFile(TargetPath);
 
         public ProjectDescriptor ProjectDescriptor
         {
@@ -95,11 +82,9 @@ namespace UnrealAutomationCommon.Unreal
         public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
         public override string DisplayName => DirectoryName;
 
-        public override string TargetPath => UProjectPath;
+        public override bool IsValid => ProjectPaths.Instance.IsTargetDirectory(TargetPath);
 
-        public override bool IsValid => ProjectPaths.Instance.IsTargetFile(TargetPath);
-
-        public string ProjectPath => Path.GetDirectoryName(_uProjectPath);
+        public string ProjectPath => TargetPath;
 
         public string LogsPath => Path.Combine(ProjectPath, "Saved", "Logs");
 

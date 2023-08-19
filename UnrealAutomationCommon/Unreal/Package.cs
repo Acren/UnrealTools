@@ -14,25 +14,18 @@ namespace UnrealAutomationCommon.Unreal
     public class Package : OperationTarget, IPackageProvider, IEngineInstanceProvider
     {
         [JsonConstructor]
-        public Package([JsonProperty("ExecutablePath")] string path)
+        public Package(string targetPath)
         {
-            if (PackagePaths.Instance.IsTargetFile(path))
+            if (!PackagePaths.Instance.IsTargetDirectory(targetPath))
             {
-                ExecutablePath = path;
-            }
-            else if (PackagePaths.Instance.IsTargetDirectory(path))
-            {
-                ExecutablePath = PackagePaths.Instance.FindTargetFile(path);
-            }
-            else
-            {
-                ExecutablePath = path;
+                throw new ArgumentException("Does not contain executable", nameof(targetPath));
             }
 
+            TargetPath = targetPath;
             Name = Path.GetFileNameWithoutExtension(ExecutablePath);
         }
 
-        [JsonProperty] public string ExecutablePath { get; private set; }
+        public string ExecutablePath => PackagePaths.Instance.FindTargetFile(TargetPath);
 
         public Project HostProject
         {
@@ -41,7 +34,7 @@ namespace UnrealAutomationCommon.Unreal
                 string projectPath = Path.GetFullPath(Path.Combine(TargetDirectory, @"..\..\..\")); // Up 3 levels
                 if (ProjectPaths.Instance.IsTargetDirectory(projectPath))
                 {
-                    return new Project(ProjectPaths.Instance.FindTargetFile(projectPath));
+                    return new Project(projectPath);
                 }
 
                 return null;
@@ -58,7 +51,6 @@ namespace UnrealAutomationCommon.Unreal
 
         public Package GetProvidedPackage(Engine engineContext) => this;
 
-        public override string TargetPath => ExecutablePath;
         public override string Name { get; }
 
         public override IOperationTarget ParentTarget => HostProject;

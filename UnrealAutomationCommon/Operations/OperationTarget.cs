@@ -53,14 +53,16 @@ namespace UnrealAutomationCommon.Operations
     [JsonObject(MemberSerialization.OptIn)]
     public abstract class OperationTarget : IOperationTarget
     {
+        [JsonProperty]
+        public string TargetPath { get; protected set; }
+
         private string _testName = string.Empty;
         public abstract string Name { get; }
         public virtual string DisplayName => Name;
-        public abstract string TargetPath { get; }
 
         public virtual IOperationTarget ParentTarget => null;
 
-        public string TargetDirectory => Path.GetDirectoryName(TargetPath);
+        public string TargetDirectory => TargetPath;
         public string DirectoryName => TargetDirectory != null ? new DirectoryInfo(TargetDirectory).Name : null;
 
         public bool IsRoot => ParentTarget == null;

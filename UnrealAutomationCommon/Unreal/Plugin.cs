@@ -9,78 +9,49 @@ namespace UnrealAutomationCommon.Unreal
     public class Plugin : OperationTarget, IEngineInstanceProvider
     {
         private PluginDescriptor _pluginDescriptor;
-        private string _uPluginPath;
-        //private List<EngineInstallVersion> _targetEngineVersions;
 
         private FileSystemWatcher _watcher;
 
         [JsonConstructor]
-        public Plugin([JsonProperty("UPluginPath")] string path)
+        public Plugin(string targetPath)
         {
-            if (PluginPaths.Instance.IsTargetFile(path))
+            if (!PluginPaths.Instance.IsTargetDirectory(targetPath))
             {
-                UPluginPath = path;
+                throw new ArgumentException("Does not contain a .uplugin",  nameof(targetPath));
             }
-            else
-            {
-                UPluginPath = PluginPaths.Instance.FindTargetFile(path);
-            }
-        }
 
-        [JsonProperty]
-        public string UPluginPath
-        {
-            get => _uPluginPath;
-            set
+            TargetPath = targetPath;
+
+            LoadDescriptor();
+
+            // Reload descriptor if it changes
+            _watcher = new FileSystemWatcher(TargetPath);
+            _watcher.Changed += (Sender, Args) =>
             {
-                _uPluginPath = value;
-                if (_uPluginPath != null)
+                if (Args.FullPath == UPluginPath)
                 {
-                    LoadDescriptor();
-
-                    // Reload descriptor if it changes
-                    _watcher = new FileSystemWatcher(Path.GetDirectoryName(_uPluginPath));
-                    _watcher.Changed += (Sender, Args) =>
+                    try
                     {
-                        if (Args.FullPath == UPluginPath)
-                        {
-                            try
-                            {
-                                LoadDescriptor();
-                            }
-                            catch (Exception)
-                            {
-                                // Ignore on exception, old descriptor will be preserved
-                            }
-                        }
-                    };
-                    _watcher.EnableRaisingEvents = true;
+                        LoadDescriptor();
+                    }
+                    catch (Exception)
+                    {
+                        // Ignore on exception, old descriptor will be preserved
+                    }
                 }
-
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(Name));
-            }
+            };
+            _watcher.EnableRaisingEvents = true;
         }
 
-        //[JsonProperty]
-        //public List<EngineInstallVersion> TargetEngineVersions
-        //{
-        //    get => _targetEngineVersions;
-        //    set
-        //    {
-        //        _targetEngineVersions = value;
-        //        OnPropertyChanged();
-        //    }
-        //}
+        public string UPluginPath => PluginPaths.Instance.FindTargetFile(TargetPath);
 
-        public Project HostProject => new(HostProjectUProjectPath);
+        public Project HostProject => new(HostProjectPath);
 
         public override IOperationTarget ParentTarget => HostProject;
 
-        public override string Name => DirectoryName; // Path.GetFileNameWithoutExtension(UPluginPath) ?? "Invalid";
-        public override string TargetPath => UPluginPath;
+        public override string Name => DirectoryName;
 
-        public override bool IsValid => PluginPaths.Instance.IsTargetFile(TargetPath);
+        public override bool IsValid => PluginPaths.Instance.IsTargetDirectory(TargetPath);
 
         public PluginDescriptor PluginDescriptor
         {
@@ -94,36 +65,9 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public string PluginPath => Path.GetDirectoryName(_uPluginPath);
+        public string PluginPath => TargetPath;
 
         public string HostProjectPath => Path.GetFullPath(Path.Combine(PluginPath, @"..\..\")); // Up 2 levels
-
-        public string HostProjectUProjectPath
-        {
-            get
-            {
-                // Get project path
-                string[] uProjectFiles;
-                string projectPath = HostProjectPath;
-                uProjectFiles = Directory.GetFiles(projectPath, "*.uproject");
-
-                while (uProjectFiles.Length < 1)
-                {
-                    if (Path.GetPathRoot(projectPath) == projectPath)
-                    {
-                        // No .uproject found, plugin is probably in an engine
-                        return null;
-                    }
-
-                    projectPath = Path.GetFullPath(Path.Combine(projectPath, @"..\")); // Up 1 level
-                    uProjectFiles = Directory.GetFiles(projectPath, "*.uproject");
-                }
-
-                string uProjectPath = uProjectFiles[0];
-
-                return uProjectPath;
-            }
-        }
 
         public Engine EngineInstance
         {
