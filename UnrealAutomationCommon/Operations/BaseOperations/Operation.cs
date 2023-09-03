@@ -20,12 +20,22 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         public static Operation CreateOperation(Type operationType)
         {
+            if (operationType == null)
+            {
+                throw new ArgumentNullException(nameof(operationType));
+            }
+
             Operation instance = (Operation)Activator.CreateInstance(operationType);
             return instance;
         }
 
         public static bool OperationTypeSupportsTarget(Type operationType, IOperationTarget target)
         {
+            if (operationType == null)
+            {
+                return false;
+            }
+
             return CreateOperation(operationType).SupportsTarget(target);
         }
 

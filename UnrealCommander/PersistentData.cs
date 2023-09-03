@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
 using UnrealCommander.Annotations;
@@ -82,13 +83,24 @@ namespace UnrealCommander
             }
         }
 
+        public List<Type> AvailableOperationTypes
+        {
+            get
+            {
+                return OperationList.GetOrderedOperationTypes().Where(o => Operation.OperationTypeSupportsTarget(o, OperationParameters.Target)).ToList();
+            }
+        }
+
         public Type OperationType
         {
             get => _operationType;
             set
             {
-                _operationType = value;
-                OnPropertyChanged();
+                if (_operationType != value)
+                {
+                    _operationType = value;
+                    OnPropertyChanged();
+                }
             }
         }
 

@@ -108,6 +108,7 @@
                                                     Style="{StaticResource OptionsContainer}">
                                 <StackPanel VerticalAlignment="Center">
                                     <options:OperationOptionsControl
+                                        OperationTypes="{Binding Path=PersistentState.AvailableOperationTypes}"
                                         SelectedOperationType="{Binding Path=PersistentState.OperationType}" />
                                 </StackPanel>
                             </local:OptionsContainer>
