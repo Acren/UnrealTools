@@ -57,71 +57,75 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <ItemsControl>
-                <ItemsControl.Resources>
-                    <CollectionViewSource x:Key="OptionsCollection" Source="{Binding EnabledOptionSets}" />
-                    <DataTemplate DataType="{x:Type operations:OperationOptions}">
-                        <local:OptionsContainer Header="{Binding Path=Name}" Margin="0,5" Padding="10"
-                                                Style="{StaticResource OptionsContainer}">
-                            <StackPanel VerticalAlignment="Center">
-                                <StackPanel.Resources>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:EngineVersionOptions}">
-                                        <options:EngineVersionOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:BuildConfigurationOptions}">
-                                        <options:BuildConfigurationOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:InsightsOptions}">
-                                        <options:InsightsOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:FlagOptions}">
-                                        <options:FlagOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:AutomationOptions}">
-                                        <options:AutomationOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:PackageOptions}">
-                                        <options:PackageOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:PluginBuildOptions}">
-                                        <options:PluginBuildOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:PluginDeployOptions}">
-                                        <options:PluginDeployOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:VerifyDeploymentOptions}">
-                                        <options:VerifyDeploymentOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                    <DataTemplate DataType="{x:Type operationOptionTypes:CookOptions}">
-                                        <options:CookOptionsControl DataContext="{Binding}" />
-                                    </DataTemplate>
-                                </StackPanel.Resources>
-                                <ContentPresenter Content="{Binding}" />
-                            </StackPanel>
-                        </local:OptionsContainer>
-                    </DataTemplate>
-                </ItemsControl.Resources>
-                <ItemsControl.ItemsSource>
-                    <CompositeCollection>
-                        <StackPanel>
-                            <local:OptionsContainer Header="Operation" Margin="0,5" Padding="10"
-                                                    Style="{StaticResource OptionsContainer}">
-                                <StackPanel VerticalAlignment="Center">
-                                    <options:OperationOptionsControl
-                                        OperationTypes="{Binding Path=PersistentState.AvailableOperationTypes}"
-                                        SelectedOperationType="{Binding Path=PersistentState.OperationType}" />
-                                </StackPanel>
-                            </local:OptionsContainer>
+            <ScrollViewer VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Auto">
+                <StackPanel Orientation="Horizontal">
+                    <local:OptionsContainer Header="Operation" Margin="0,5" Padding="10"
+                            Style="{StaticResource OptionsContainer}">
+                        <StackPanel VerticalAlignment="Center">
+                            <options:OperationOptionsControl
+                OperationTypes="{Binding Path=PersistentState.AvailableOperationTypes}"
+                SelectedOperationType="{Binding Path=PersistentState.OperationType}" />
                         </StackPanel>
-                        <CollectionContainer Collection="{Binding Source={StaticResource OptionsCollection}}" />
-                    </CompositeCollection>
-                </ItemsControl.ItemsSource>
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-            </ItemsControl>
+                    </local:OptionsContainer>
+                    <ItemsControl VerticalAlignment="Stretch">
+                        <ItemsControl.Resources>
+                            <CollectionViewSource x:Key="OptionsCollection" Source="{Binding EnabledOptionSets}" />
+                            <DataTemplate DataType="{x:Type operations:OperationOptions}">
+                                <local:OptionsContainer Header="{Binding Path=Name}"
+                                        VerticalAlignment="Stretch"
+                                        Margin="0,5" Padding="10"
+                                        Style="{StaticResource OptionsContainer}">
+                                    <StackPanel VerticalAlignment="Center">
+                                        <StackPanel.Resources>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:EngineVersionOptions}">
+                                                <options:EngineVersionOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:BuildConfigurationOptions}">
+                                                <options:BuildConfigurationOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:InsightsOptions}">
+                                                <options:InsightsOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:FlagOptions}">
+                                                <options:FlagOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:AutomationOptions}">
+                                                <options:AutomationOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:PackageOptions}">
+                                                <options:PackageOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:PluginBuildOptions}">
+                                                <options:PluginBuildOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:PluginDeployOptions}">
+                                                <options:PluginDeployOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:VerifyDeploymentOptions}">
+                                                <options:VerifyDeploymentOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                            <DataTemplate DataType="{x:Type operationOptionTypes:CookOptions}">
+                                                <options:CookOptionsControl DataContext="{Binding}" />
+                                            </DataTemplate>
+                                        </StackPanel.Resources>
+                                        <ContentPresenter Content="{Binding}" />
+                                    </StackPanel>
+                                </local:OptionsContainer>
+                            </DataTemplate>
+                        </ItemsControl.Resources>
+                        <ItemsControl.ItemsSource>
+                            <CompositeCollection>
+                                <CollectionContainer Collection="{Binding Source={StaticResource OptionsCollection}}" />
+                            </CompositeCollection>
+                        </ItemsControl.ItemsSource>
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
             <GroupBox Header="Additional Arguments" Grid.Row="1" Margin="0,5" Padding="10">
                 <TextBox
                     Text="{Binding PersistentState.OperationParameters.AdditionalArguments, UpdateSourceTrigger=PropertyChanged}" />

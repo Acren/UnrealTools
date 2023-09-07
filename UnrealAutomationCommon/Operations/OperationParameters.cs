@@ -187,7 +187,7 @@ namespace UnrealAutomationCommon.Operations
 
         private void UpdateOptionsTarget()
         {
-            foreach (OperationOptions options in OptionsInstances)
+            foreach (OperationOptions options in OptionsInstances.ToList())
             {
                 options.OperationTarget = Target;
             }

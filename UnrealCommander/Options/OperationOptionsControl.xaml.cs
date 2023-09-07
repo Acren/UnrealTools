@@ -22,8 +22,11 @@ namespace UnrealCommander.Options
             get => (List<Type>)GetValue(OperationTypesProperty);
             set
             {
-                SetValue(OperationTypesProperty, value);
-                OnPropertyChanged();
+                if (value != GetValue(OperationTypesProperty))
+                {
+                    SetValue(OperationTypesProperty, value);
+                    OnPropertyChanged();
+                }
             }
         }
 
@@ -32,8 +35,11 @@ namespace UnrealCommander.Options
             get => (Type)GetValue(SelectedOperationTypeProperty);
             set
             {
-                SetValue(SelectedOperationTypeProperty, value);
-                OnPropertyChanged();
+                if (value != (Type)GetValue(SelectedOperationTypeProperty))
+                {
+                    SetValue(SelectedOperationTypeProperty, value);
+                    OnPropertyChanged();
+                }
             }
         }
 

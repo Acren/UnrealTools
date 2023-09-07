@@ -17,6 +17,7 @@ using UnrealCommander.Annotations;
 
 namespace UnrealCommander
 {
+    [JsonObject(MemberSerialization.OptIn)]
     public class PersistentData : INotifyPropertyChanged
     {
         private static readonly string dataFilePath = "data.json";
@@ -52,6 +53,7 @@ namespace UnrealCommander
             }
         }
 
+        [JsonProperty]
         public ObservableCollection<IOperationTarget> Targets { get; private set; }
 
         [JsonProperty]
@@ -79,6 +81,7 @@ namespace UnrealCommander
                 void OperationParametersChanged(object sender, PropertyChangedEventArgs args)
                 {
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(AvailableOperationTypes));
                 }
             }
         }
@@ -87,10 +90,17 @@ namespace UnrealCommander
         {
             get
             {
-                return OperationList.GetOrderedOperationTypes().Where(o => Operation.OperationTypeSupportsTarget(o, OperationParameters.Target)).ToList();
+                var target = OperationParameters.Target;
+                if (target == null)
+                {
+                    return new();
+                }
+                var availableOperationTypes = OperationList.GetOrderedOperationTypes().Where(o => Operation.OperationTypeSupportsTarget(o, target)).ToList();
+                return availableOperationTypes;
             }
         }
 
+        [JsonProperty]
         public Type OperationType
         {
             get => _operationType;
