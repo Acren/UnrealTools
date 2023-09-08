@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.IO;
 using UnrealAutomationCommon.Unreal;
 
@@ -15,6 +16,11 @@ namespace UnrealAutomationCommon
 
         public static Process Run(string File, string Args)
         {
+            if (File == null)
+            {
+                throw new ArgumentNullException(nameof(File));
+            }
+
             ProcessStartInfo startInfo = new()
             {
                 Arguments = Args,

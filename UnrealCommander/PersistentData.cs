@@ -86,20 +86,6 @@ namespace UnrealCommander
             }
         }
 
-        public List<Type> AvailableOperationTypes
-        {
-            get
-            {
-                var target = OperationParameters.Target;
-                if (target == null)
-                {
-                    return new();
-                }
-                var availableOperationTypes = OperationList.GetOrderedOperationTypes().Where(o => Operation.OperationTypeSupportsTarget(o, target)).ToList();
-                return availableOperationTypes;
-            }
-        }
-
         [JsonProperty]
         public Type OperationType
         {
@@ -111,6 +97,34 @@ namespace UnrealCommander
                     _operationType = value;
                     OnPropertyChanged();
                 }
+            }
+        }
+
+        [JsonProperty]
+        private Dictionary<string, string> ProgramPaths { get; } = new();
+
+        public string GetProgramPath(string programKey)
+        {
+            return ProgramPaths.TryGetValue(programKey, out var path) ? path : null;
+        }
+
+        public void SetProgramPath(string programKey, string path)
+        {
+            ProgramPaths.TryAdd(programKey, path);
+            OnPropertyChanged(nameof(ProgramPaths));
+        }
+
+        public List<Type> AvailableOperationTypes
+        {
+            get
+            {
+                var target = OperationParameters.Target;
+                if (target == null)
+                {
+                    return new();
+                }
+                var availableOperationTypes = OperationList.GetOrderedOperationTypes().Where(o => Operation.OperationTypeSupportsTarget(o, target)).ToList();
+                return availableOperationTypes;
             }
         }
 

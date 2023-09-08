@@ -451,13 +451,16 @@ namespace UnrealCommander
             {
                 Project project = SelectedTarget as Project;
                 menu.Items.Add(new MenuItem { Header = "Open Staged Build", Command = new DelegateCommand(o => { RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath(project.EngineInstance)); }) });
-                menu.Items.Add(new MenuItem { Header = "Open with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), project.UProjectPath.AddQuotesIfContainsSpace()); }) });
+                menu.Items.Add(new MenuItem { Header = "Open with Rider", Command = new DelegateCommand(o =>
+                {
+                    RunProcess.Run(ProgramPathFinder.FindPath("rider"), project.UProjectPath.AddQuotesIfContainsSpace());
+                }) });
             }
 
             if (SelectedTarget is Plugin)
             {
                 Plugin plugin = SelectedTarget as Plugin;
-                menu.Items.Add(new MenuItem { Header = $"Open {plugin.HostProject.DisplayName} with Rider", Command = new DelegateCommand(o => { RunProcess.Run(Rider.FindExePath(), plugin.HostProject.UProjectPath.AddQuotesIfContainsSpace()); }) });
+                menu.Items.Add(new MenuItem { Header = $"Open {plugin.HostProject.DisplayName} with Rider", Command = new DelegateCommand(o => { RunProcess.Run(ProgramPathFinder.FindPath("rider"), plugin.HostProject.UProjectPath.AddQuotesIfContainsSpace()); }) });
             }
 
             menu.Items.Add(new Separator());
