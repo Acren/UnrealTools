@@ -199,7 +199,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 };
                 launchEditorParams.SetOptions(automationOpts);
 
-                if (!(await new LaunchEditor().Execute(launchEditorParams, Logger, token)).Success)
+                if (!(await new LaunchProjectEditor().Execute(launchEditorParams, Logger, token)).Success)
                 {
                     throw new Exception("Failed to launch host project");
                 }
@@ -450,7 +450,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             PackageProject demoPackageOperation = new();
             OperationParameters demoPackageParams = new()
             {
-                Target = new Project(exampleProjectBuildUProjectPath),
+                Target = new Project(exampleProjectPath),
                 EngineOverride = engine,
                 OutputPathOverride = demoPackagePath
             };
@@ -467,7 +467,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             // Can't test the demo package in shipping
-
             {
                 // Archiving
 
