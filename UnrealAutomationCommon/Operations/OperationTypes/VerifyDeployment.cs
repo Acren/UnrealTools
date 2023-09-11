@@ -97,7 +97,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 };
                 launchEditorParams.SetOptions(automationOpts);
 
-                if (!(await new LaunchEditor().Execute(launchEditorParams, Logger, token)).Success)
+                if (!(await new LaunchProjectEditor().Execute(launchEditorParams, Logger, token)).Success)
                 {
                     throw new Exception("Failed to launch example project");
                 }

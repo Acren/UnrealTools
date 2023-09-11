@@ -70,7 +70,7 @@ namespace UnrealAutomationCommon.Unreal
             {
                 if (Path.GetFileNameWithoutExtension(upluginPath).Equals(pluginName, StringComparison.InvariantCultureIgnoreCase))
                 {
-                    return new Plugin(upluginPath);
+                    return new Plugin(Path.GetDirectoryName(upluginPath));
                 }
             }
 
