@@ -2,6 +2,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json.Linq;
+using Semver;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
@@ -117,6 +119,32 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             return EngineInstance.SupportsConfiguration(configuration);
+        }
+
+        public bool UpdateVersionInteger()
+        {
+            SemVersion version = PluginDescriptor.SemVersion;
+            int versionInt = version.ToInt();
+            JObject descriptorJObject = JObject.Parse(File.ReadAllText(UPluginPath));
+            string versionKey = "Version";
+            if (descriptorJObject[versionKey].ToObject<int>() == versionInt)
+            {
+                // Already correct, did not update
+                return false;
+            }
+            descriptorJObject[versionKey] = versionInt;
+
+            using FileStream fs = File.Create(UPluginPath);
+            using StreamWriter sw = new(fs);
+            using JsonTextWriter jtw = new(sw)
+            {
+                Formatting = Formatting.Indented,
+                Indentation = 1,
+                IndentChar = '\t'
+            };
+            (new JsonSerializer()).Serialize(jtw, descriptorJObject);
+
+            return true;
         }
 
     }

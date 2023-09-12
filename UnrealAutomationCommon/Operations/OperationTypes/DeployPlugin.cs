@@ -135,6 +135,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Directory.CreateDirectory(workingTempPath);
 
+            // Update .uplugin version if required
+            int version = plugin.PluginDescriptor.SemVersion.ToInt();
+            Logger.Log($"Version '{plugin.PluginDescriptor.VersionName}' -> {version}");
+            bool updated = plugin.UpdateVersionInteger();
+            Logger.Log(updated ? "Updated .uplugin version from name" : ".uplugin already has correct version");
+
             // Check copyright notice
             string copyrightNotice = hostProject.GetCopyrightNotice();
 

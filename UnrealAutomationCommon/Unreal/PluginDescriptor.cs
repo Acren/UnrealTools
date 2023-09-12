@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.IO;
+using Semver;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -11,6 +12,7 @@ namespace UnrealAutomationCommon.Unreal
         public bool IsBetaVersion { get; set; }
         public string EngineVersionString { get; set; }
 
+        public SemVersion SemVersion => SemVersion.Parse(VersionName, SemVersionStyles.Strict);
         public EngineVersion EngineVersion => string.IsNullOrEmpty(EngineVersionString) ? null : new(EngineVersionString);
 
         public static PluginDescriptor Load(string uPluginPath)
@@ -25,6 +27,5 @@ namespace UnrealAutomationCommon.Unreal
                 return null;
             }
         }
-
     }
 }
