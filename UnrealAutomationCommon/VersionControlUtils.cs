@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon
             startInfo.WorkingDirectory = WorkingDirectory ?? "dir Here";
             startInfo.RedirectStandardInput = true;
             startInfo.RedirectStandardOutput = true;
-            startInfo.Arguments = "rev-parse --abbrev-ref HEAD";
+            startInfo.Arguments = "branch --show-current";
 
             Process process = new();
             process.StartInfo = startInfo;
