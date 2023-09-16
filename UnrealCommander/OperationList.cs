@@ -18,6 +18,7 @@ namespace UnrealCommander
                 typeof(BuildEditorTarget),
                 typeof(BuildEditor),
                 typeof(LaunchEditor),
+                typeof(LaunchProjectEditor),
                 typeof(LaunchStandalone),
                 typeof(PackageProject),
                 typeof(LaunchStagedPackage),
