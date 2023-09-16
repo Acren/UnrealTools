@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
+using System.Text;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -167,14 +168,26 @@ namespace UnrealCommander
             }
 
             _isSaving = true;
-            using StreamWriter sw = new(dataFilePath);
+
+            // Build the entire json string before writing the file
+            // This is so that if we encounter an exception during serialization, we aren't left with a corrupt file
+
+            StringBuilder sb = new ();
+            StringWriter sw = new (sb);
+
             using JsonTextWriter writer = new(sw) { Formatting = Formatting.Indented };
             JsonSerializer serializer = new()
             {
                 PreserveReferencesHandling = PreserveReferencesHandling.All,
                 TypeNameHandling = TypeNameHandling.Auto
             };
+
             serializer.Serialize(writer, this);
+
+            string jsonString = sb.ToString();
+
+            File.WriteAllText(dataFilePath, jsonString);
+
             _isSaving = false;
         }
 
