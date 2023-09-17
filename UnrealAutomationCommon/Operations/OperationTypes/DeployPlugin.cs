@@ -109,7 +109,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             archivePrefix += $"_{fullPluginVersionString}";
-            archivePrefix += $"_{engineVersion.MajorMinorString}";
+            archivePrefix += $"_UE{engineVersion.MajorMinorString}";
             archivePrefix += "_";
 
             Logger.Log($"Archive name prefix is '{archivePrefix}'");
