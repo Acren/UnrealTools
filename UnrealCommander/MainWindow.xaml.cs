@@ -17,6 +17,7 @@ using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 using UnrealCommander.Options;
+using Path = System.IO.Path;
 
 namespace UnrealCommander
 {
@@ -461,6 +462,15 @@ namespace UnrealCommander
             {
                 Plugin plugin = SelectedTarget as Plugin;
                 menu.Items.Add(new MenuItem { Header = $"Open {plugin.HostProject.DisplayName} with Rider", Command = new DelegateCommand(o => { RunProcess.Run(ProgramPathFinder.FindPath("rider"), plugin.HostProject.UProjectPath.AddQuotesIfContainsSpace()); }) });
+            }
+
+            if (SelectedTarget is Engine)
+            {
+                Engine engine = SelectedTarget as Engine;
+                menu.Items.Add(new MenuItem { Header = "Open with Rider", Command = new DelegateCommand(o =>
+                {
+                    RunProcess.Run(ProgramPathFinder.FindPath("rider"), Path.Combine(engine.TargetDirectory, "Default.uprojectdirs").AddQuotesIfContainsSpace());
+                }) });
             }
 
             menu.Items.Add(new Separator());
