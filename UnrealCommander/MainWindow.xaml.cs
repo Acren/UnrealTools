@@ -184,7 +184,7 @@ namespace UnrealCommander
                             }
                     }
 
-                    if (Operation == null || Operation.GetType() != PersistentState.OperationType)
+                    if (PersistentState.OperationType != null && (Operation == null || Operation.GetType() != PersistentState.OperationType))
                     {
                         Operation = Operation.CreateOperation(PersistentState.OperationType);
                     }
@@ -238,7 +238,17 @@ namespace UnrealCommander
             }
         }
 
-        public List<Type> EnabledOptionSetTypes => Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target).ToList();
+        public List<Type> EnabledOptionSetTypes
+        {
+            get
+            {
+                if (Operation == null)
+                {
+                    return new();
+                }
+                return Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target).ToList();
+            }
+        }
 
         public List<OperationOptions> EnabledOptionSets => PersistentState.OperationParameters.OptionsInstances.Where(x => EnabledOptionSetTypes.Contains(x.GetType())).ToList();
 
@@ -255,7 +265,17 @@ namespace UnrealCommander
             }
         }
 
-        public bool CanExecute => Operation.RequirementsSatisfied(PersistentState.OperationParameters);
+        public bool CanExecute
+        {
+            get
+            {
+                if (Operation == null)
+                {
+                    return false;
+                }
+                return Operation.RequirementsSatisfied(PersistentState.OperationParameters);
+            }
+        }
 
         public string VisibleCommand
         {
