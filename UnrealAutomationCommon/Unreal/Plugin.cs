@@ -19,7 +19,8 @@ namespace UnrealAutomationCommon.Unreal
         {
             if (!PluginPaths.Instance.IsTargetDirectory(targetPath))
             {
-                throw new ArgumentException("Does not contain a .uplugin",  nameof(targetPath));
+                AppLogger.Instance.Log($"Package {targetPath} does not contain a .uplugin", LogVerbosity.Error);
+                return;
             }
 
             TargetPath = targetPath;

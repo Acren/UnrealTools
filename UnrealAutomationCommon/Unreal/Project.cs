@@ -17,7 +17,8 @@ namespace UnrealAutomationCommon.Unreal
         {
             if (!ProjectPaths.Instance.IsTargetDirectory(targetPath))
             {
-                throw new ArgumentException("Does not contain a .uproject",  nameof(targetPath));
+                AppLogger.Instance.Log($"Package {targetPath} does not contain a .uproject", LogVerbosity.Error);
+                return;
             }
 
             TargetPath = targetPath;

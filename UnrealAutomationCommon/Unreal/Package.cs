@@ -18,7 +18,8 @@ namespace UnrealAutomationCommon.Unreal
         {
             if (!PackagePaths.Instance.IsTargetDirectory(targetPath))
             {
-                throw new ArgumentException("Does not contain executable", nameof(targetPath));
+                AppLogger.Instance.Log($"Package {targetPath} does not contain executable", LogVerbosity.Error);
+                return;
             }
 
             TargetPath = targetPath;
