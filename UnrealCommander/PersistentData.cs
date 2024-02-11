@@ -147,7 +147,16 @@ namespace UnrealCommander
                     PreserveReferencesHandling = PreserveReferencesHandling.All,
                     TypeNameHandling = TypeNameHandling.Auto
                 };
-                _instance = serializer.Deserialize<PersistentData>(reader);
+
+                try
+                {
+                    _instance = serializer.Deserialize<PersistentData>(reader);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Instance.Log("Failed to load persistent data", LogVerbosity.Error);
+                    AppLogger.Instance.Log(ex.ToString(), LogVerbosity.Error);
+                }
             }
 
             if (_instance == null)
