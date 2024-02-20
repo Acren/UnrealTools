@@ -95,6 +95,10 @@ namespace UnrealAutomationCommon.Unreal
 
         public string SourcePath => Path.Combine(ProjectPath, "Source");
 
+        /**
+         * Plugins contained within the project directory
+         * Does not include referenced plugins installed to the engine
+         */
         public List<Plugin> Plugins
         {
             get
@@ -170,6 +174,12 @@ namespace UnrealAutomationCommon.Unreal
                 }
             }
         }
+
+        /**
+         * Consider the project blueprint-only if it has zero modules
+         * Alternatively it should also be possible to check the absence of a Source folder
+         */
+        public bool IsBlueprintOnly => ProjectDescriptor.Modules.Count == 0;
 
         public void ConvertToBlueprintOnly()
         {

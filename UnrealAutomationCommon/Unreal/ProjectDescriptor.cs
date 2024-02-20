@@ -32,8 +32,8 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public List<ProjectModule> Modules { get; set; }
-        public List<ProjectPluginDependency> Plugins { get; set; }
+        public List<ProjectModule> Modules { get; set; } = new();
+        public List<ProjectPluginDependency> Plugins { get; set; } = new();
 
         public string EngineFriendlyName
         {
