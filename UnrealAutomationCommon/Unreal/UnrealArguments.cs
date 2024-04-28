@@ -69,6 +69,8 @@ namespace UnrealAutomationCommon.Unreal
                     arguments.SetFlag("windowed");
                     arguments.SetKeyValue("resx", "640");
                     arguments.SetKeyValue("resy", "360");
+                    // Disable background throttle, which will otherwise prevent tests starting if window is in background
+                    arguments.SetFlag("ini:EditorSettings:[/Script/UnrealEd.EditorPerformanceSettings]:bThrottleCPUWhenNotForeground=0");
                 }
             }
 
