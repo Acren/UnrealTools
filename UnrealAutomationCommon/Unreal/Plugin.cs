@@ -148,5 +148,10 @@ namespace UnrealAutomationCommon.Unreal
             return true;
         }
 
+        public void DeletePlugin()
+        {
+            FileUtils.DeleteDirectory(PluginPath);
+        }
+
     }
 }

@@ -77,6 +77,23 @@ namespace UnrealAutomationCommon.Unreal
             return null;
         }
 
+        public bool IsPluginInstalled(string pluginName)
+        {
+            return FindInstalledPlugin(pluginName) != null;
+        }
+
+        public void UninstallPlugin(string pluginName)
+        {
+            Plugin targetPlugin = FindInstalledPlugin(pluginName);
+            if (targetPlugin == null)
+            {
+                throw new Exception("Could not find plugin in installed plugins");
+            }
+            // For now, just delete the plugin files
+            // If the plugin was installed via Epic Launcher, the plugin may remain registered there, might be something to improve
+            targetPlugin.DeletePlugin();
+        }
+
         public Engine EngineInstance => this;
     }
 }
