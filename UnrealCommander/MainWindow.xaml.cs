@@ -482,6 +482,18 @@ namespace UnrealCommander
             {
                 Plugin plugin = SelectedTarget as Plugin;
                 menu.Items.Add(new MenuItem { Header = $"Open {plugin.HostProject.DisplayName} with Rider", Command = new DelegateCommand(o => { RunProcess.Run(ProgramPathFinder.FindPath("rider"), plugin.HostProject.UProjectPath.AddQuotesIfContainsSpace()); }) });
+               
+                Engine engine = plugin.EngineInstance;
+                if (engine.IsPluginInstalled(plugin.Name))
+                {
+                    menu.Items.Add(new MenuItem()
+                    {
+                        Header = $"Uninstall {plugin.DisplayName} from {engine.DisplayName}", Command = new DelegateCommand(o =>
+                        {
+                            engine.UninstallPlugin(plugin.Name);
+                        })
+                    });
+                }
             }
 
             if (SelectedTarget is Engine)
