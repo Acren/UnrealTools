@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using Semver;
+using System.Collections.Generic;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -11,6 +12,8 @@ namespace UnrealAutomationCommon.Unreal
         public string FriendlyName { get; set; }
         public bool IsBetaVersion { get; set; }
         public string EngineVersionString { get; set; }
+
+        public List<ModuleDeclaration> Modules { get; set; } = new();
 
         public SemVersion SemVersion => SemVersion.Parse(VersionName, SemVersionStyles.Strict);
         public EngineVersion EngineVersion => string.IsNullOrEmpty(EngineVersionString) ? null : new(EngineVersionString);

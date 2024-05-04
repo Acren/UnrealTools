@@ -68,9 +68,15 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
+        /**
+         * Consider the plugin blueprint-only if it has zero modules
+         * Alternatively it should also be possible to check the absence of a Source folder
+         */
+        public bool IsBlueprintOnly => PluginDescriptor.Modules.Count == 0;
+
         public string PluginPath => TargetPath;
 
-        public string HostProjectPath => Path.GetFullPath(Path.Combine(PluginPath, @"..\..\")); // Up 2 levels
+        public string HostProjectPath => string.IsNullOrEmpty(PluginPath) ? "" : Path.GetFullPath(Path.Combine(PluginPath, @"..\..\")); // Up 2 levels
 
         public Engine EngineInstance
         {

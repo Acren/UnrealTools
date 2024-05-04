@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public class ProjectModule
+    public class ModuleDeclaration
     {
         public string Name { get; set; }
         public string Type { get; set; }
@@ -32,7 +32,7 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public List<ProjectModule> Modules { get; set; } = new();
+        public List<ModuleDeclaration> Modules { get; set; } = new();
         public List<ProjectPluginDependency> Plugins { get; set; } = new();
 
         public string EngineFriendlyName
