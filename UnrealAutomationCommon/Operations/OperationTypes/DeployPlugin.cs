@@ -29,6 +29,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         
         private CancellationToken Token { get; set; }
         
+        private string[] _allowedPluginFileExtensions = { ".uplugin" };
+        
         protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
             Token = token;
@@ -211,7 +213,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Package blueprint-only example project with plugin installed to engine
 
-            await PackageBlueprintExampleProjectWithEnginePlugin();
+            await TestBlueprintExampleProjectWithEnginePlugin(automationOptions);
 
             await PackageDemoExecutable();
 
@@ -477,11 +479,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
 
-        private async Task PackageBlueprintExampleProjectWithEnginePlugin()
+        private async Task TestBlueprintExampleProjectWithEnginePlugin(AutomationOptions automationOptions)
         {
             Logger.LogSectionHeader("Packaging blueprint-only example project");
 
             ExampleProject.ConvertToBlueprintOnly();
+            
+            RemoveExcludedPluginsFromProject(ExampleProject);
 
             string blueprintOnlyPackagePath = Path.Combine(GetOperationTempPath(), @"BlueprintOnlyPackage");
             FileUtils.DeleteDirectoryIfExists(blueprintOnlyPackagePath);
@@ -498,6 +502,28 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             if (!blueprintOnlyPackageOperationResult.Success)
             {
                 throw new Exception("Package blueprint-only project failed");
+            }
+            
+            // Test the package
+            if (automationOptions.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestPackageWithEnginePlugin)
+            {
+                Logger.LogSectionHeader("Testing blueprint project package with installed plugin");
+
+                Package enginePluginPackage = new Package(Path.Combine(blueprintOnlyPackagePath, Engine.GetWindowsPlatformName()));
+
+                OperationParameters testEnginePluginPackageParams = new()
+                {
+                    Target = enginePluginPackage,
+                    EngineOverride = Engine
+                };
+                testEnginePluginPackageParams.SetOptions(automationOptions);
+
+                OperationResult testResult = await new LaunchPackage().Execute(testEnginePluginPackageParams, Logger, Token);
+
+                if (!testResult.Success)
+                {
+                    throw new Exception("Launch and test blueprint project with installed plugin failed");
+                }
             }
         }
 
@@ -548,9 +574,31 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Example project build failed");
             }
 
-            DemoPackage = new Package(demoPackagePath);
+            DemoPackage = new Package(Path.Combine(demoPackagePath, Engine.GetWindowsPlatformName()));
 
             // Can't test the demo package in shipping
+        }
+
+        private void RemoveExcludedPluginsFromProject(Project targetProject)
+        {
+            var exampleProjectPlugins = ExampleProject.Plugins;
+            string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
+            
+            string[] excludePlugins = OperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ", "").Split(",");
+            foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
+            {
+                if (exampleProjectPlugin.Name == Plugin.Name || !OperationParameters.RequestOptions<PluginDeployOptions>().IncludeOtherPlugins || excludePlugins.Contains(exampleProjectPlugin.Name))
+                {
+                    // Delete target or excluded plugin from example project
+                    FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
+                }
+                else
+                {
+                    // Other plugins will be included, strip out unwanted files
+                    FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
+                    FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, _allowedPluginFileExtensions);
+                }
+            }
         }
 
         private async Task ArchiveArtifacts(string archivePrefix)
@@ -581,12 +629,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Logger.Log("Archiving demo");
 
                 FileUtils.DeleteFileIfExists(demoPackageZipPath);
-                ZipFile.CreateFromDirectory(Path.Combine(DemoPackage.TargetPath, Engine.GetWindowsPlatformName()), demoPackageZipPath);
+                ZipFile.CreateFromDirectory(DemoPackage.TargetPath, demoPackageZipPath);
             }
 
             // Archive example project
-
-            string[] allowedPluginFileExtensions = { ".uplugin" };
+            
             string exampleProjectZipPath = Path.Combine(archivePath, archivePrefix + "ExampleProject.zip");
             bool archiveExampleProject = OperationParameters.RequestOptions<PluginDeployOptions>().ArchiveExampleProject;
 
@@ -597,24 +644,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // First delete any extra directories
                 string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
                 FileUtils.DeleteOtherSubdirectories(ExampleProject.ProjectPath, allowedExampleProjectSubDirectoryNames);
-
-                var exampleProjectPlugins = ExampleProject.Plugins;
-                string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
-                string[] excludePlugins = OperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ", "").Split(",");
-                foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
-                {
-                    if (exampleProjectPlugin.Name == Plugin.Name || !OperationParameters.RequestOptions<PluginDeployOptions>().IncludeOtherPlugins || excludePlugins.Contains(exampleProjectPlugin.Name))
-                    {
-                        // Delete target or excluded plugin from example project
-                        FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
-                    }
-                    else
-                    {
-                        // Other plugins will be included, strip out unwanted files
-                        FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
-                        FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, allowedPluginFileExtensions);
-                    }
-                }
+                
+                RemoveExcludedPluginsFromProject(ExampleProject);
 
                 // Delete debug files recursive
                 FileUtils.DeleteFilesWithExtension(ExampleProject.ProjectPath, new[] { ".pdb" }, SearchOption.AllDirectories);
@@ -636,7 +667,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteOtherSubdirectories(pluginSourcePath, allowedPluginSourceArchiveSubDirectoryNames);
 
             // Delete top-level files other than uplugin
-            FileUtils.DeleteFilesWithoutExtension(pluginSourcePath, allowedPluginFileExtensions);
+            FileUtils.DeleteFilesWithoutExtension(pluginSourcePath, _allowedPluginFileExtensions);
 
             // Update .uplugin
             {
