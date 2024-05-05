@@ -88,7 +88,11 @@ namespace UnrealCommander
             };
             InitializeComponent();
 
-            AppLogger.Instance.Output += AddLogToOutputViewer;
+            AppLogger.Instance.Output += (output, verbosity) =>
+            {
+                Console.WriteLine($"{verbosity}: {output}");
+                AddLogToOutputViewer(output, verbosity);
+            };
 
             TargetGrid.Sorting += (sender, e) =>
             {
