@@ -18,7 +18,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             arguments.SetFlag("stage");
             arguments.SetFlag("pak");
             arguments.SetFlag("package");
-            arguments.SetFlag("nocompileeditor");
+            //arguments.SetFlag("nocompileeditor");
 
             // Archive
             if (operationParameters.RequestOptions<PackageOptions>().Archive)
