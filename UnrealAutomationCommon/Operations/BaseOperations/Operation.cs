@@ -39,6 +39,17 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return CreateOperation(operationType).SupportsTarget(target);
         }
 
+        public async Task<OperationResult> ExecuteOnThread(OperationParameters operationParameters, ILogger logger, CancellationToken token)
+        {
+            TaskCompletionSource<OperationResult> tcs = new();
+            ThreadPool.QueueUserWorkItem( async (object state) =>
+            {
+                OperationResult result = await Execute(operationParameters, logger, token);
+                tcs.SetResult(result);
+            });
+            return await tcs.Task.ConfigureAwait(false);
+        }
+
         public async Task<OperationResult> Execute(OperationParameters operationParameters, ILogger logger, CancellationToken token)
         {
             try

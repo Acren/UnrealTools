@@ -44,7 +44,7 @@ namespace UnrealAutomationCommon.Operations
             string outputPath = Operation.GetOutputPath(_operationParameters);
             FileUtils.DeleteDirectoryIfExists(outputPath);
 
-            _currentTask = Operation.Execute(_operationParameters, this, _cancellationTokenSource.Token);
+            _currentTask = Operation.ExecuteOnThread(_operationParameters, this, _cancellationTokenSource.Token);
 
             FlagOptions flagOptions = _operationParameters.FindOptions<FlagOptions>();
             if (flagOptions is { WaitForAttach: true })
