@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using CommunityToolkit.WinUI.Notifications;
 using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
@@ -364,8 +365,8 @@ namespace UnrealCommander
 
             if (IsRunningOperation)
             {
-                MessageBoxResult result = MessageBox.Show($"Operation '{Running.Operation.OperationName}' is running. Terminate it?", "Terminate operation", MessageBoxButton.YesNoCancel);
-                switch (result)
+                MessageBoxResult promptResult = MessageBox.Show($"Operation '{Running.Operation.OperationName}' is running. Terminate it?", "Terminate operation", MessageBoxButton.YesNoCancel);
+                switch (promptResult)
                 {
                     case MessageBoxResult.Yes:
                         await Running.Cancel();
@@ -385,14 +386,17 @@ namespace UnrealCommander
 
             AppLogger.LoggerInstance.LogInformation($"User started operation '{newOperation.OperationName}'");
 
+            string targetName = PersistentState.OperationParameters.Target.DisplayName;
             Runner newRunner = new(newOperation, PersistentState.OperationParameters);
 
             Running = newRunner;
+            bool success = false;
             try
             {
-                Task task = newRunner.Run();
+                Task<OperationResult> task = newRunner.Run();
                 OnPropertyChanged(nameof(IsRunningOperation));
-                await task;
+                OperationResult result = await task;
+                success = result.Success;
             }
             catch (Exception e)
             {
@@ -402,6 +406,14 @@ namespace UnrealCommander
             OnPropertyChanged(nameof(IsRunningOperation));
 
             FlashWindow.Flash(Process.GetCurrentProcess().MainWindowHandle);
+
+            string resultText = success ? "succeeded" : "failed";
+            string toastMessage = $"{newOperation.OperationName} {targetName} {resultText}";
+            new ToastContentBuilder()
+                .SetToastScenario(ToastScenario.Reminder)
+                .SetToastDuration(ToastDuration.Short)
+                .AddText(toastMessage)
+                .Show(toast => { toast.ExpirationTime = DateTime.Now + TimeSpan.FromSeconds(5); });
         }
 
         private void Terminate(object sender, RoutedEventArgs e)
