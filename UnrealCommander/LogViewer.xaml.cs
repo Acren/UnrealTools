@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon;
 
@@ -51,14 +52,17 @@ namespace UnrealCommander
 
         public void WriteLog(string message, LogLevel verbosity)
         {
-            LineCount++;
-            string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + message;
+            Dispatcher.BeginInvoke(() =>
+            {
+                LineCount++;
+                string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + message;
 
-            ScrollViewer scrollViewer = ScrollViewerFinder.GetScrollViewer(DataGrid);
+                ScrollViewer scrollViewer = ScrollViewerFinder.GetScrollViewer(DataGrid);
 
-            scrollToEnd = scrollViewer == null || scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 2;
+                scrollToEnd = scrollViewer == null || scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 2;
 
-            LogLinesBuffer.Add(new LogEntry { Message = finalLine, Verbosity = verbosity });
+                LogLinesBuffer.Add(new LogEntry { Message = finalLine, Verbosity = verbosity });
+            });
         }
 
         private void LogClear(object sender, RoutedEventArgs e)

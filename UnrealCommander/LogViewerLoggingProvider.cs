@@ -22,11 +22,8 @@ public class LogViewerLogger : ILogger
                 {
                     exc = n + exception.GetType() + ": " + exception.Message + n + exception.StackTrace + n;
                 }
-
-                Viewer.Dispatcher.Invoke(() =>
-                {
-                    Viewer.WriteLog(formatter(state, exception) + exc, logLevel);
-                });
+                
+                Viewer.WriteLog(formatter(state, exception) + exc, logLevel);
             }
         }
     }
