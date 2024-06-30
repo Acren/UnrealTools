@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -71,30 +72,39 @@ namespace UnrealAutomationCommon.Operations
             }
 
             OperationResult result = await _currentTask;
-            logger.LogInformation($"'{Operation.OperationName}' task ended");
+            logger.LogDebug($"'{Operation.OperationName}' task ended");
             _currentTask = null;
 
-            // Log error and warning summary
-
-            if (_warnings.Count > 0)
+            if (result.Success)
             {
-                logger.LogWarning("Warnings:");
-                foreach (string warning in _warnings)
-                {
-                    logger.LogWarning(warning);
-                }
-            }
+                // Log error and warning summary
 
-            if (_errors.Count > 0)
+                if (_warnings.Count > 0)
+                {
+                    int numToShow = Math.Min(_warnings.Count(), 50);
+                    logger.LogWarning($"{numToShow} of {_warnings.Count()} warnings:");
+                    foreach (string warning in _warnings.Take(numToShow))
+                    {
+                        logger.LogWarning(warning);
+                    }
+                }
+
+                if (_errors.Count > 0)
+                {
+                    int numToShow = Math.Min(_errors.Count(), 50);
+                    logger.LogWarning($"{numToShow} of {_errors.Count()} errors:");
+                    foreach (string error in _errors.Take(numToShow))
+                    {
+                        logger.LogError(error);
+                    }
+                }
+                
+                logger.LogInformation($"'{Operation.OperationName}' finished with result: success");
+            }
+            else
             {
-                logger.LogError("Errors:");
-                foreach (string error in _errors)
-                {
-                    logger.LogError(error);
-                }
+                logger.LogError($"'{Operation.OperationName}' finished with result: failure");
             }
-
-            logger.LogInformation($"'{Operation.OperationName}' finished running");
 
             return result;
         }

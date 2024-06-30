@@ -73,14 +73,14 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             _process.Exited += (sender, args) =>
             {
-                Logger.LogInformation($"Process '{FileAndProcess}' exited");
+                Logger.LogDebug($"Process '{FileAndProcess}' exited");
                 tcs.TrySetResult(0);
             };
 
             CancellationTokenRegistration registration = token.Register(async () =>
             {
                 // Token cancelled, kill the process
-                Logger.LogWarning($"Operation '{OperationName}' cancelled");
+                Logger.LogDebug($"Process Operation '{OperationName}' cancelled");
                 Logger.LogWarning("Terminating process '" + FileAndProcess + "'");
                 SetCancelled();
                 await Task.Run(() => ProcessUtils.KillProcessAndChildren(_process));
