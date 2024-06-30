@@ -22,7 +22,8 @@ namespace UnrealCommander
     [JsonObject(MemberSerialization.OptIn)]
     public class PersistentData : INotifyPropertyChanged
     {
-        private static readonly string dataFilePath = "data.json";
+        private static readonly string DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UnrealCommander");
+        private static readonly string DataFilePath = Path.Combine(DataFolder, "data.json");
 
         private static PersistentData _instance;
 
@@ -139,9 +140,9 @@ namespace UnrealCommander
 
         public static PersistentData Load()
         {
-            if (File.Exists(dataFilePath))
+            if (File.Exists(DataFilePath))
             {
-                using StreamReader sr = new(dataFilePath);
+                using StreamReader sr = new(DataFilePath);
                 using JsonReader reader = new JsonTextReader(sr);
                 JsonSerializer serializer = new()
                 {
@@ -196,7 +197,8 @@ namespace UnrealCommander
 
             string jsonString = sb.ToString();
 
-            File.WriteAllText(dataFilePath, jsonString);
+            Directory.CreateDirectory(DataFolder);
+            File.WriteAllText(DataFilePath, jsonString);
 
             _isSaving = false;
         }
