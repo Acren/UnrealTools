@@ -4,6 +4,7 @@ using System.Threading;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 using System.IO;
+using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
@@ -16,7 +17,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
-            AppLogger.Instance.Log("Cleaning binaries");
+            Logger.LogInformation("Cleaning binaries");
 
             Project project = GetTarget(OperationParameters);
             Engine engine = project.EngineInstance;
@@ -33,7 +34,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            AppLogger.Instance.Log("Deleting intermediate folders");
+            Logger.LogInformation("Deleting intermediate folders");
 
             // Delete intermediate folders
             foreach (string path in Directory.GetDirectories(project.ProjectPath, "Intermediate", SearchOption.AllDirectories))
@@ -41,7 +42,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 FileUtils.DeleteDirectory(path);
             }
 
-            AppLogger.Instance.Log("Cleaning complete");
+            Logger.LogInformation("Cleaning complete");
 
             return new OperationResult(true);
         }

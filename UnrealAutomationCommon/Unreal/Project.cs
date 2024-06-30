@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using UnrealAutomationCommon.Operations;
 
@@ -17,7 +18,7 @@ namespace UnrealAutomationCommon.Unreal
         {
             if (!ProjectPaths.Instance.IsTargetDirectory(targetPath))
             {
-                AppLogger.Instance.Log($"Package {targetPath} does not contain a .uproject", LogVerbosity.Error);
+                AppLogger.LoggerInstance.LogError($"Package {targetPath} does not contain a .uproject");
                 return;
             }
 

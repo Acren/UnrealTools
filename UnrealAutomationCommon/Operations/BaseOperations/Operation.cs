@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
@@ -59,23 +60,25 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 var warnings = 0;
                 var errors = 0;
 
-                Logger = logger;
-                Logger.Output += (output, verbosity) =>
+                EventLogger eventLogger = new();
+                Logger = eventLogger;
+                eventLogger.Output += (level, output) =>
                 {
-                    if (verbosity == LogVerbosity.Error)
+                    if (level >= LogLevel.Error)
                     {
                         errors++;
                     }
-                    else if (verbosity == LogVerbosity.Warning)
+                    else if (level == LogLevel.Warning)
                     {
                         warnings++;
                     }
+                    logger.Log(level, output);
                 };
 
                 string requirementsError = CheckRequirementsSatisfied(operationParameters);
                 if (requirementsError != null)
                 {
-                    Logger.Log(requirementsError, LogVerbosity.Error);
+                    Logger.LogError(requirementsError);
                     return new OperationResult(false);
                 }
 
@@ -89,27 +92,27 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
                 if (Cancelled)
                 {
-                    Logger.Log($"Operation '{OperationName}' terminated by user", LogVerbosity.Warning);
+                    Logger.LogWarning($"Operation '{OperationName}' terminated by user");
                 }
                 else
                 {
-                    Logger.Log($"Operation '{OperationName}' completed - {errors} error(s), {warnings} warning(s)");
+                    Logger.LogInformation($"Operation '{OperationName}' completed - {errors} error(s), {warnings} warning(s)");
                 }
 
                 if (result.Success)
                 {
                     if (errors > 0)
                     {
-                        Logger.Log($"{errors} error(s) encountered", LogVerbosity.Error);
+                        Logger.LogError($"{errors} error(s) encountered");
                         result.Success = false;
                     }
 
                     if (warnings > 0)
                     {
-                        Logger.Log($"{warnings} warning(s) encountered", LogVerbosity.Warning);
+                        Logger.LogWarning($"{warnings} warning(s) encountered");
                         if (FailOnWarning())
                         {
-                            Logger.Log("Operation fails on warnings", LogVerbosity.Error);
+                            Logger.LogError("Operation fails on warnings");
                             result.Success = false;
                         }
                     }

@@ -9,6 +9,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -49,7 +50,7 @@ namespace UnrealCommander
             IEnumerable<IOperationTarget> invalidTargets = Targets.Where(x => !x.IsValid).ToList();
             foreach (IOperationTarget target in invalidTargets)
             {
-                AppLogger.Instance.Log($"Removing invalid target '{target.TargetPath}'", LogVerbosity.Warning);
+                AppLogger.LoggerInstance.LogWarning($"Removing invalid target '{target.TargetPath}'");
                 Targets.Remove(target);
             }
         }
@@ -154,8 +155,8 @@ namespace UnrealCommander
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Instance.Log("Failed to load persistent data", LogVerbosity.Error);
-                    AppLogger.Instance.Log(ex.ToString(), LogVerbosity.Error);
+                    AppLogger.LoggerInstance.LogError("Failed to load persistent data");
+                    AppLogger.LoggerInstance.LogError(ex.ToString());
                 }
             }
 

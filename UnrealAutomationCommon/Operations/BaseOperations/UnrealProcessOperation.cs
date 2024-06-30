@@ -2,6 +2,7 @@
 using System.Linq;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
+using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.BaseOperations
 {
@@ -22,7 +23,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 bool engineSupportsReports = engineInstanceProvider.EngineInstance.SupportsTestReports;
                 if (!engineSupportsReports)
                 {
-                    Logger.Log("Engine version does not support test reports, so results cannot be checked", LogVerbosity.Warning);
+                    Logger.LogWarning("Engine version does not support test reports, so results cannot be checked");
                 }
                 else
                 {
@@ -41,17 +42,17 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                     {
                         foreach (Test test in result.TestReport.Tests)
                         {
-                            Logger.Log(EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath, test.State == TestState.Success ? LogVerbosity.Log : LogVerbosity.Error);
+                            Logger.Log(test.State == TestState.Success ? LogLevel.Information : LogLevel.Error, EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath);
                             foreach (TestEntry entry in test.Entries)
                                 if (entry.Event.Type != TestEventType.Info)
                                 {
-                                    Logger.Log("".PadRight(9) + " - " + entry.Event.Message, entry.Event.Type == TestEventType.Error ? LogVerbosity.Error : LogVerbosity.Warning);
+                                    Logger.Log(entry.Event.Type == TestEventType.Error ? LogLevel.Error : LogLevel.Warning, "".PadRight(9) + " - " + entry.Event.Message);
                                 }
                         }
 
                         int testsPassed = result.TestReport.Tests.Count(t => t.State == TestState.Success);
                         bool allPassed = testsPassed == result.TestReport.Tests.Count;
-                        Logger.Log(testsPassed + " of " + result.TestReport.Tests.Count + " tests passed", allPassed ? LogVerbosity.Log : LogVerbosity.Error);
+                        Logger.Log(allPassed ? LogLevel.Information : LogLevel.Error, testsPassed + " of " + result.TestReport.Tests.Count + " tests passed");
                     }
 
                     if (report.Failed > 0)

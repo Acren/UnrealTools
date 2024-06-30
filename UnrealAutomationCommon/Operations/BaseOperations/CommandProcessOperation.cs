@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.BaseOperations
 {
@@ -28,7 +29,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             _fileName = Path.GetFileName(command.File);
 
-            Logger.Log("Running command: " + command);
+            Logger.LogInformation("Running command: " + command);
 
             if (command == null)
             {
@@ -57,7 +58,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             {
                 if (args.Data != null)
                 {
-                    Logger.Log(args.Data, LogVerbosity.Error);
+                    Logger.LogError(args.Data);
                 }
             };
             _process.Start();
@@ -66,21 +67,21 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             _processName = _process.ProcessName;
 
-            Logger.Log("Launched process '" + FileAndProcess + "'");
+            Logger.LogInformation("Launched process '" + FileAndProcess + "'");
 
             var tcs = new TaskCompletionSource<int>();
 
             _process.Exited += (sender, args) =>
             {
-                Logger.Log($"Process '{FileAndProcess}' exited");
+                Logger.LogInformation($"Process '{FileAndProcess}' exited");
                 tcs.TrySetResult(0);
             };
 
             CancellationTokenRegistration registration = token.Register(async () =>
             {
                 // Token cancelled, kill the process
-                Logger.Log($"Operation '{OperationName}' cancelled", LogVerbosity.Warning);
-                Logger.Log("Terminating process '" + FileAndProcess + "'", LogVerbosity.Warning);
+                Logger.LogWarning($"Operation '{OperationName}' cancelled");
+                Logger.LogWarning("Terminating process '" + FileAndProcess + "'");
                 SetCancelled();
                 await Task.Run(() => ProcessUtils.KillProcessAndChildren(_process));
             });
@@ -101,40 +102,40 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             }
 
             string[] split = line.Split(new[] { ": " }, StringSplitOptions.None);
-            LogVerbosity verbosity = LogVerbosity.Log;
+            LogLevel level = LogLevel.Information;
             if (split.Length > 1)
             {
                 if (split[0] == "ERROR")
                 {
                     // UBT error format
                     // "ERROR: Some message"
-                    verbosity = LogVerbosity.Error;
+                    level = LogLevel.Error;
                 }
                 else if (split[1] == "Error")
                 {
                     // Unreal error format
                     // "LogCategory: Error: Some message"
-                    verbosity = LogVerbosity.Error;
+                    level = LogLevel.Error;
                 }
                 else if (split[1] == "Warning")
                 {
                     // Unreal warning format
-                    verbosity = LogVerbosity.Warning;
+                    level = LogLevel.Warning;
                 }
             }
 
             if (line.Contains("): error") || line.Contains(" : error ") || line.Contains("): fatal error") || line.Contains(" : fatal error"))
             {
                 // Compiler error
-                verbosity = LogVerbosity.Error;
+                level = LogLevel.Error;
             }
             else if (line.Contains("): warning") || line.Contains(" : warning "))
             {
                 // Compiler warning
-                verbosity = LogVerbosity.Warning;
+                level = LogLevel.Warning;
             }
 
-            Logger.Log(line, verbosity);
+            Logger.Log(level, line);
         }
 
         private OperationResult HandleProcessEnded()
@@ -145,7 +146,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 ExitCode = _process.ExitCode
             };
 
-            Logger.Log("Process '" + FileAndProcess + "' exited with code " + result.ExitCode, success ? LogVerbosity.Log : LogVerbosity.Error);
+            Logger.Log(success ? LogLevel.Information : LogLevel.Error, "Process '" + FileAndProcess + "' exited with code " + result.ExitCode);
 
             OnProcessEnded(result);
 

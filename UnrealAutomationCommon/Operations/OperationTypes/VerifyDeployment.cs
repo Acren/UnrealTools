@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
+using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
@@ -17,7 +18,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Plugin plugin = GetTarget(OperationParameters);
 
-            Logger.Log($"Versions: {string.Join(", ", OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
+            Logger.LogInformation($"Versions: {string.Join(", ", OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
             foreach (EngineVersion engineVersion in OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
             {
                 Engine engine = EngineFinder.GetEngineInstall(engineVersion);
@@ -40,7 +41,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Plugin plugin = GetTarget(OperationParameters);
             EngineVersion engineVersion = engine.Version;
-            Logger.Log($"Verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
+            Logger.LogInformation($"Verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
 
             Plugin installedPlugin = engine.FindInstalledPlugin(plugin.Name);
 
@@ -50,9 +51,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             string pluginVersionName = plugin.PluginDescriptor.VersionName;
-            Logger.Log($"Source plugin version: {pluginVersionName}");
+            Logger.LogInformation($"Source plugin version: {pluginVersionName}");
             string installedPluginVersionName = installedPlugin.PluginDescriptor.VersionName;
-            Logger.Log($"Installed plugin version: {pluginVersionName}");
+            Logger.LogInformation($"Installed plugin version: {pluginVersionName}");
 
             if (!installedPluginVersionName.Contains(pluginVersionName))
             {
@@ -66,7 +67,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception($"Could not find example project zip in {exampleProjects}");
             }
 
-            Logger.Log($"Identified {exampleProjectZip} as best example project");
+            Logger.LogInformation($"Identified {exampleProjectZip} as best example project");
 
             string temp = GetOperationTempPath();
             string exampleProjectTestPath = Path.Combine(temp, "ExampleProject");
@@ -88,7 +89,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (automationOpts.RunTests)
             {
-                Logger.Log("Launching and testing example project editor");
+                Logger.LogInformation("Launching and testing example project editor");
 
                 OperationParameters launchEditorParams = new()
                 {
@@ -107,7 +108,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (automationOpts.RunTests)
             {
-                Logger.Log("Launching and testing standalone");
+                Logger.LogInformation("Launching and testing standalone");
 
                 OperationParameters launchStandaloneParams = new()
                 {
@@ -162,7 +163,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            Logger.Log($"Finished verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
+            Logger.LogInformation($"Finished verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
 
             return new OperationResult(true);
         }

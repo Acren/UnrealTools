@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -87,12 +88,20 @@ namespace UnrealCommander
                 }
             };
             InitializeComponent();
-
-            AppLogger.Instance.Output += (output, verbosity) =>
+            
+            using ILoggerFactory factory = LoggerFactory.Create(builder =>
             {
-                Console.WriteLine($"{verbosity}: {output}");
-                AddLogToOutputViewer(output, verbosity);
-            };
+                builder.AddConsole();
+                builder.AddProvider(new LogViewerLoggingProvider() { Viewer = OutputLogViewer });
+            });
+
+            AppLogger.Instance.Logger = factory.CreateLogger("UnrealCommander");
+            
+            // AppLogger.Instance.Output += (output, verbosity) =>
+            // {
+            //     Console.WriteLine($"{verbosity}: {output}");
+            //     AddLogToOutputViewer(output, verbosity);
+            // };
 
             TargetGrid.Sorting += (sender, e) =>
             {
@@ -129,7 +138,7 @@ namespace UnrealCommander
             SelectedTarget = null;
             SelectedTarget = target;
 
-            AppLogger.Instance.Log("App initialized");
+            AppLogger.LoggerInstance.LogInformation("App initialized");
         }
 
         public IOperationTarget SelectedTarget
@@ -370,22 +379,13 @@ namespace UnrealCommander
 
             if (IsRunningOperation)
             {
-                AppLogger.Instance.Log("Already running an operation", LogVerbosity.Error);
+                AppLogger.LoggerInstance.LogError("Already running an operation");
                 return;
             }
 
-            AppLogger.Instance.Log($"User started operation '{newOperation.OperationName}'");
+            AppLogger.LoggerInstance.LogInformation($"User started operation '{newOperation.OperationName}'");
 
             Runner newRunner = new(newOperation, PersistentState.OperationParameters);
-            newRunner.Output += (S, verbosity) =>
-            {
-                // Output handler
-                Dispatcher.Invoke(() =>
-                {
-                    // Prepend line numbers to each line of the output.
-                    AppLogger.Instance.Log(S, verbosity);
-                });
-            };
 
             Running = newRunner;
             try
@@ -396,7 +396,7 @@ namespace UnrealCommander
             }
             catch (Exception e)
             {
-                AppLogger.Instance.Log(e.ToString(), LogVerbosity.Error);
+                AppLogger.LoggerInstance.LogError(e.ToString());
             }
 
             OnPropertyChanged(nameof(IsRunningOperation));
@@ -412,10 +412,10 @@ namespace UnrealCommander
             }
         }
 
-        private void AddLogToOutputViewer(string line, LogVerbosity verbosity = LogVerbosity.Log)
-        {
-            OutputLogViewer.WriteLog(line, verbosity);
-        }
+        // private void AddLogToOutputViewer(string line, LogVerbosity verbosity = LogVerbosity.Log)
+        // {
+        //     OutputLogViewer.WriteLog(line, verbosity);
+        // }
 
         private void CopyCommand(object sender, RoutedEventArgs e)
         {

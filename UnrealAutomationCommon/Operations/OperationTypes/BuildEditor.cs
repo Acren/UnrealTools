@@ -1,4 +1,5 @@
-﻿using UnrealAutomationCommon.Operations.BaseOperations;
+﻿using Microsoft.Extensions.Logging;
+using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
@@ -12,7 +13,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 if (Executing)
                 {
-                    Logger.Log("BuildCookRun editor targets do not respect UbtArgs argument - consider direct UBT usage instead", LogVerbosity.Warning);
+                    Logger.LogWarning("BuildCookRun editor targets do not respect UbtArgs argument - consider direct UBT usage instead");
                 }
             }
             return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), args);

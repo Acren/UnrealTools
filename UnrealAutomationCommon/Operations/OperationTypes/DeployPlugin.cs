@@ -10,6 +10,7 @@ using Polly;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
+using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
@@ -37,7 +38,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             
             Engine engine = Engine;
             EngineVersion engineVersion = Engine.Version;
-            Logger.Log($"Deploying plugin for {engineVersion.MajorMinorString}");
+            Logger.LogInformation($"Deploying plugin for {engineVersion.MajorMinorString}");
 
             Logger.LogSectionHeader("Preparing plugin");
 
@@ -51,13 +52,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Host project must have plugin enabled");
             }
 
-            Logger.Log($"Engine version: {engineVersion}");
+            Logger.LogInformation($"Engine version: {engineVersion}");
 
             bool bStandardBranch = true;
             string branchName = VersionControlUtils.GetBranchName(HostProject.ProjectPath);
             if (!string.IsNullOrEmpty(branchName))
             {
-                Logger.Log($"Branch: {branchName}");
+                Logger.LogInformation($"Branch: {branchName}");
                 // Use the version if on any of these branches
                 string[] standardBranchNames = { "master", "develop", "development" };
                 string[] standardBranchPrefixes = { "version/", "release/", "hotfix/" };
@@ -81,7 +82,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             bool beta = pluginDescriptor.IsBetaVersion;
             if (beta)
             {
-                Logger.Log("Plugin is marked as beta version");
+                Logger.LogInformation("Plugin is marked as beta version");
                 archivePrefix += "_beta";
             }
 
@@ -92,22 +93,22 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 if (pluginDescriptor.VersionName.Contains(branchName))
                 {
-                    Logger.Log("Branch is contained in plugin version name");
+                    Logger.LogInformation("Branch is contained in plugin version name");
                     fullPluginVersionString = pluginVersionString;
                 }
                 else if (engineVersion.ToString().Contains(branchName))
                 {
-                    Logger.Log("Branch is contained in engine version");
+                    Logger.LogInformation("Branch is contained in engine version");
                     fullPluginVersionString = pluginVersionString;
                 }
                 else if (!bStandardBranch)
                 {
-                    Logger.Log("Branch isn't a version or standard branch");
+                    Logger.LogInformation("Branch isn't a version or standard branch");
                     fullPluginVersionString = $"{pluginVersionString}-{branchName.Replace("/", "-")}";
                 }
                 else
                 {
-                    Logger.Log("Branch is a version or standard branch");
+                    Logger.LogInformation("Branch is a version or standard branch");
                     fullPluginVersionString = pluginVersionString;
                 }
             }
@@ -116,7 +117,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             archivePrefix += $"_UE{engineVersion.MajorMinorString}";
             archivePrefix += "_";
 
-            Logger.Log($"Archive name prefix is '{archivePrefix}'");
+            Logger.LogInformation($"Archive name prefix is '{archivePrefix}'");
 
             // Get engine path
 
@@ -130,7 +131,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 .Handle<UnauthorizedAccessException>()
                 .RetryForever((ex, retryAttempt, ctx) =>
                 {
-                    Logger.Log(ex.ToString());
+                    Logger.LogInformation(ex.ToString());
                     OperationParameters.RetryHandler(ex);
                 });
             policy.Execute(() => { FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath); });
@@ -141,9 +142,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Update .uplugin version if required
             int version = Plugin.PluginDescriptor.SemVersion.ToInt();
-            Logger.Log($"Version '{Plugin.PluginDescriptor.VersionName}' -> {version}");
+            Logger.LogInformation($"Version '{Plugin.PluginDescriptor.VersionName}' -> {version}");
             bool updated = Plugin.UpdateVersionInteger();
-            Logger.Log(updated ? "Updated .uplugin version from name" : ".uplugin already has correct version");
+            Logger.LogInformation(updated ? "Updated .uplugin version from name" : ".uplugin already has correct version");
 
             // Check copyright notice
             string copyrightNotice = HostProject.GetCopyrightNotice();
@@ -174,7 +175,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                     File.WriteAllLines(file, lines);
                     string relativePath = Path.GetRelativePath(sourcePath, file);
-                    Logger.Log($"Updated copyright notice: {relativePath}");
+                    Logger.LogInformation($"Updated copyright notice: {relativePath}");
                 }
             }
             
@@ -220,7 +221,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Archiving
             await ArchiveArtifacts(archivePrefix);
 
-            Logger.Log($"Finished deploying plugin for {engineVersion.MajorMinorString}");
+            Logger.LogInformation($"Finished deploying plugin for {engineVersion.MajorMinorString}");
 
             return new OperationResult(true);
         }
@@ -310,7 +311,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             
             BuiltPlugin = new Plugin(pluginBuildPath);
 
-            Logger.Log("Plugin build complete");
+            Logger.LogInformation("Plugin build complete");
         }
 
         private async Task PrepareExampleProject()
@@ -360,7 +361,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task BuildCodeExampleProject()
         {
-            Logger.Log("Building example project with modules");
+            Logger.LogInformation("Building example project with modules");
             // Note: Modules and source are required to build any code plugins that are used for testing
 
             OperationParameters buildExampleProjectParams = new()
@@ -425,7 +426,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string enginePluginsMarketplacePath = Path.Combine(Engine.TargetPath, @"Engine\Plugins\Marketplace");
             string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, Plugin.Name);
 
-            Logger.Log($"Copying plugin to {enginePluginsMarketplacePluginPath}");
+            Logger.LogInformation($"Copying plugin to {enginePluginsMarketplacePluginPath}");
 
             FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath);
 
@@ -538,7 +539,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Uninstall plugin from engine because test has completed
                 // Now we'll be using the plugin in the project directory instead
 
-                Logger.Log("Uninstall from Engine/Plugins/Marketplace");
+                Logger.LogInformation("Uninstall from Engine/Plugins/Marketplace");
                 
                 Engine.UninstallPlugin(Plugin.Name);
 
@@ -615,7 +616,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             bool archivePluginBuild = OperationParameters.RequestOptions<PluginDeployOptions>().ArchivePluginBuild;
             if (archivePluginBuild)
             {
-                Logger.Log("Archiving plugin build");
+                Logger.LogInformation("Archiving plugin build");
                 FileUtils.DeleteFileIfExists(pluginBuildZipPath);
                 ZipFile.CreateFromDirectory(BuiltPlugin.PluginPath, pluginBuildZipPath, CompressionLevel.Optimal, true);
             }
@@ -626,7 +627,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             bool archiveDemoPackage = OperationParameters.RequestOptions<PluginDeployOptions>().ArchiveDemoPackage;
             if (archiveDemoPackage)
             {
-                Logger.Log("Archiving demo");
+                Logger.LogInformation("Archiving demo");
 
                 FileUtils.DeleteFileIfExists(demoPackageZipPath);
                 ZipFile.CreateFromDirectory(DemoPackage.TargetPath, demoPackageZipPath);
@@ -639,7 +640,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (archiveExampleProject)
             {
-                Logger.Log("Archiving example project");
+                Logger.LogInformation("Archiving example project");
 
                 // First delete any extra directories
                 string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
@@ -656,7 +657,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Archive plugin source for submission
 
-            Logger.Log("Archiving plugin source");
+            Logger.LogInformation("Archiving plugin source");
 
             // Copy plugin to working folder so that we can prepare archive without altering the original
             string pluginSourcePath = Path.Combine(GetOperationTempPath(), @"PluginSource", Plugin.Name);
@@ -697,7 +698,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string archiveOutputPath = OperationParameters.RequestOptions<PluginDeployOptions>().ArchivePath;
             if (!string.IsNullOrEmpty(archiveOutputPath))
             {
-                Logger.Log("Copying to archive output path");
+                Logger.LogInformation("Copying to archive output path");
                 Directory.CreateDirectory(archiveOutputPath);
                 if (!Directory.Exists(archiveOutputPath))
                 {
@@ -723,7 +724,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             }
 
-            Logger.Log("Finished archiving");
+            Logger.LogInformation("Finished archiving");
         }
     }
     
@@ -733,7 +734,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Plugin plugin = GetTarget(OperationParameters);
 
-            Logger.Log($"Versions: {string.Join(", ", OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
+            Logger.LogInformation($"Versions: {string.Join(", ", OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
             foreach (EngineVersion engineVersion in OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
             {
                 Engine engine = EngineFinder.GetEngineInstall(engineVersion);

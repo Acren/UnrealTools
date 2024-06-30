@@ -1,12 +1,11 @@
-﻿namespace UnrealAutomationCommon
-{
-    public class AppLogger : SingletonBase<AppLogger>, ILogger
-    {
-        public void Log(string line, LogVerbosity verbosity = LogVerbosity.Log)
-        {
-            Output?.Invoke(line, verbosity);
-        }
+﻿using Microsoft.Extensions.Logging;
 
-        public event LogEventHandler Output;
+namespace UnrealAutomationCommon
+{
+    public class AppLogger : SingletonBase<AppLogger>
+    {
+        public ILogger Logger { get; set; }
+
+        public static ILogger LoggerInstance => Instance.Logger;
     }
 }

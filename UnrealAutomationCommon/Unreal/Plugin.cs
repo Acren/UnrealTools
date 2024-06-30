@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Semver;
 using UnrealAutomationCommon.Operations;
@@ -19,7 +20,7 @@ namespace UnrealAutomationCommon.Unreal
         {
             if (!PluginPaths.Instance.IsTargetDirectory(targetPath))
             {
-                AppLogger.Instance.Log($"Package {targetPath} does not contain a .uplugin", LogVerbosity.Error);
+                AppLogger.LoggerInstance.LogError($"Package {targetPath} does not contain a .uplugin");
                 return;
             }
 

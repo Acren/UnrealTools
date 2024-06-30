@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon;
 
 namespace UnrealCommander
@@ -48,7 +49,7 @@ namespace UnrealCommander
             dispatcherTimer.Start();
         }
 
-        public void WriteLog(string message, LogVerbosity verbosity)
+        public void WriteLog(string message, LogLevel verbosity)
         {
             LineCount++;
             string finalLine = "[" + $"{DateTime.Now:u}" + "][" + LineCount + @"]: " + message;
