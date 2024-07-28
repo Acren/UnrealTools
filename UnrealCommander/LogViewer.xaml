@@ -36,6 +36,9 @@
             <Style TargetType="DataGridRow">
                 <Setter Property="Background" Value="Transparent"/>
                 <Style.Triggers>
+                    <DataTrigger Binding="{Binding Verbosity}" Value="Critical">
+                        <Setter Property="Foreground" Value="#e65050"></Setter>
+                    </DataTrigger>
                     <DataTrigger Binding="{Binding Verbosity}" Value="Error">
                         <Setter Property="Foreground" Value="#e65050"></Setter>
                     </DataTrigger>
