@@ -43,10 +43,18 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         public async Task<OperationResult> ExecuteOnThread(OperationParameters operationParameters, ILogger logger, CancellationToken token)
         {
             TaskCompletionSource<OperationResult> tcs = new();
-            ThreadPool.QueueUserWorkItem( async (object state) =>
+            ThreadPool.QueueUserWorkItem(async (object state) =>
             {
-                OperationResult result = await Execute(operationParameters, logger, token);
-                tcs.SetResult(result);
+                try
+                {
+                    OperationResult result = await Execute(operationParameters, logger, token);
+                    tcs.SetResult(result);
+                }
+                catch (Exception e)
+                {
+                    logger.LogCritical($"Worker thread encountered exception:\n{e}");
+                    tcs.SetResult(new OperationResult(false));
+                }
             });
             return await tcs.Task.ConfigureAwait(false);
         }
