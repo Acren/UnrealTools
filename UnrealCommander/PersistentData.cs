@@ -113,7 +113,8 @@ namespace UnrealCommander
 
         public void SetProgramPath(string programKey, string path)
         {
-            ProgramPaths.TryAdd(programKey, path);
+            ProgramPaths[programKey] = path;
+
             OnPropertyChanged(nameof(ProgramPaths));
         }
 
