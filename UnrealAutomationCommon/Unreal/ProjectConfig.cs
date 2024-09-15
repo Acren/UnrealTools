@@ -8,7 +8,12 @@ namespace UnrealAutomationCommon.Unreal
         {
             string hostProjectDefaultGameConfig = Path.Combine(project.TargetDirectory, "Config", "DefaultGame.ini");
             UnrealConfig config = new(hostProjectDefaultGameConfig);
-            string copyrightNotice = config.GetSection("/Script/EngineSettings.GeneralProjectSettings").GetValue("CopyrightNotice");
+            ConfigSection section = config.GetSection("/Script/EngineSettings.GeneralProjectSettings");
+            if (section == null)
+            {
+                return null;
+            }
+            string copyrightNotice = section.GetValue("CopyrightNotice");
             return copyrightNotice;
         }
     }

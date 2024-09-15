@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -17,12 +18,20 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             string[] split = line.Split(new[] { '=' }, 2);
-            _values.Add(split[0], split[1]);
+            string key = split[0].TrimEnd();
+
+            // Note: Intentionally overwrite existing values
+            _values[key] = split[1];
         }
 
         public string GetValue(string key)
         {
-            return _values[key];
+            if (_values.ContainsKey(key))
+            {
+                return _values[key];
+            }
+
+            return null;
         }
     }
 
