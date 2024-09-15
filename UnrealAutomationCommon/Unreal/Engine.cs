@@ -16,7 +16,7 @@ namespace UnrealAutomationCommon.Unreal
         public override string Name => $"{Version?.ToString() ?? "Invalid"} {EngineType}";
         public override string DisplayName => Name ;
 
-        public string EngineType => IsSourceBuild ? "Custom" : "Launcher";
+        public string EngineType => IsSourceBuild ? "Source" : "Launcher";
 
         public string BaseEditorName => Version?.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
 
