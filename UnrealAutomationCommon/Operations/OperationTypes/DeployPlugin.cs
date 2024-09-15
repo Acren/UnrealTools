@@ -149,6 +149,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Check copyright notice
             string copyrightNotice = HostProject.GetCopyrightNotice();
 
+            if (copyrightNotice == null)
+            {
+                throw new Exception("Project should have a copyright notice");
+            }
+
             string sourcePath = Path.Combine(Plugin.TargetDirectory, "Source");
             var expectedComment = $"// {copyrightNotice}";
             foreach (string file in Directory.EnumerateFiles(sourcePath, "*.*", SearchOption.AllDirectories))
