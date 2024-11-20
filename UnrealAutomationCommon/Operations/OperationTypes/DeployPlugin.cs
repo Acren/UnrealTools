@@ -669,7 +669,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteDirectoryIfExists(pluginSourcePath);
             FileUtils.CopyDirectory(Plugin.PluginPath, pluginSourcePath);
 
-            string[] allowedPluginSourceArchiveSubDirectoryNames = { "Source", "Resources", "Content", "Config" };
+            string[] allowedPluginSourceArchiveSubDirectoryNames = { "Source", "Resources", "Content", "Config", "Extras" };
             FileUtils.DeleteOtherSubdirectories(pluginSourcePath, allowedPluginSourceArchiveSubDirectoryNames);
 
             // Delete top-level files other than uplugin
