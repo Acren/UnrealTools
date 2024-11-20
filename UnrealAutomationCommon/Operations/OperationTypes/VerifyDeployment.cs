@@ -9,6 +9,7 @@ using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 using Microsoft.Extensions.Logging;
+using Semver;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
@@ -180,8 +181,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             public readonly string Path;
             public readonly string PluginName;
-            public readonly string PluginVersion;
-            public readonly string EngineVersion;
+            public readonly SemVersion PluginVersion;
+            public readonly SemVersion EngineVersion;
             public readonly bool IsExampleProject;
 
             public ExampleProjectZipInfo(string path)
@@ -191,74 +192,46 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 // Expect zip to be named PluginName_PluginVersion_EngineVersion_ExampleProject.zip
                 string[] split = zipName.Split('_');
-                PluginName = split[0];
-                PluginVersion = split.Length > 1 ? split[1] : null;
-                EngineVersion = split.Length > 2 ? split[2] : null;
                 IsExampleProject = split.Length > 3 && split[3] == "ExampleProject";
+                if (!IsExampleProject)
+                {
+                    return;
+                }
+                PluginName = split[0];
+                PluginVersion = split.Length > 1 ? SemVersion.Parse(split[1], SemVersionStyles.Any) : null;
+                EngineVersion = split.Length > 2 ? SemVersion.Parse(split[2].Replace("UE",""), SemVersionStyles.Any) : null;
             }
         }
 
         private string FindExampleProjectZip(Plugin plugin, string exampleProjectsPath, Engine engine)
         {
-            string pluginVersionName = plugin.PluginDescriptor.VersionName;
+            SemVersion pluginVersion = plugin.PluginDescriptor.SemVersion;
             string exampleProjects = exampleProjectsPath;
             string extension = "*.zip";
             string[] zipPaths = Directory.GetFiles(exampleProjects, extension, SearchOption.AllDirectories);
-            List<ExampleProjectZipInfo> validZips = new();
+            List<ExampleProjectZipInfo> pluginExampleProjectZips = new();
 
             foreach (string zipPath in zipPaths)
             {
                 ExampleProjectZipInfo zipInfo = new (zipPath);
                 if (zipInfo.IsExampleProject && zipInfo.PluginName == plugin.Name)
                 {
-                    validZips.Add(zipInfo);
+                    pluginExampleProjectZips.Add(zipInfo);
                 }
             }
 
-            if (validZips.Count == 0)
+            if (pluginExampleProjectZips.Count == 0)
             {
                 throw new Exception("No valid zips");
             }
 
-            if (validZips.Count == 1)
-            {
-                return validZips[0].Path;
-            }
+            ExampleProjectZipInfo selectedZip = pluginExampleProjectZips
+                .Where(z => z.PluginVersion <= pluginVersion && z.EngineVersion <= engine.SemVersion)
+                .OrderByDescending(z => z.PluginVersion)
+                .ThenByDescending(z => z.EngineVersion)
+                .First();
 
-            List<ExampleProjectZipInfo> zipPathsWithExactVersion = new();
-            foreach (ExampleProjectZipInfo zip in validZips)
-            {
-                if (zip.PluginVersion != pluginVersionName)
-                {
-                    continue;
-                }
-                zipPathsWithExactVersion.Add(zip);
-            }
-
-            if (zipPathsWithExactVersion.Count == 1)
-            {
-                return zipPathsWithExactVersion[0].Path;
-            }
-
-            List<ExampleProjectZipInfo> candidateZips;
-            if (zipPathsWithExactVersion.Count == 0)
-            {
-                candidateZips = validZips;
-            }
-            else
-            {
-                candidateZips = zipPathsWithExactVersion;
-            }
-
-            foreach (ExampleProjectZipInfo zip in candidateZips)
-            {
-                if (zip.EngineVersion == engine.Version.MajorMinorString)
-                {
-                    return zip.Path;
-                }
-            }
-
-            return candidateZips[0].Path;
+            return selectedZip.Path;
         }
     }
 }

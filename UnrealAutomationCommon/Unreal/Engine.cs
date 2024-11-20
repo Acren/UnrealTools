@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using Newtonsoft.Json;
+using Semver;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
@@ -21,6 +22,8 @@ namespace UnrealAutomationCommon.Unreal
         public string BaseEditorName => Version?.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
 
         public EngineVersion Version => EngineVersion.Load(this.GetBuildVersionPath());
+        
+        public SemVersion SemVersion => Semver.SemVersion.Parse(Version.ToString(), SemVersionStyles.Any);
 
         public string PluginsPath => Path.Combine(TargetPath, "Engine", "Plugins");
 
