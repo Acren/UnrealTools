@@ -185,19 +185,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
             
             // Update host project version to match plugin version
-            string defaultGameIniPath = Path.Combine(HostProject.TargetDirectory, "Config", "DefaultGame.ini");
-            UnrealConfig config = new(defaultGameIniPath);
-            ConfigSection projectSettings = config.GetSection("/Script/EngineSettings.GeneralProjectSettings");
-            if (projectSettings != null)
-            {
-                projectSettings.SetValue("ProjectVersion", Plugin.PluginDescriptor.VersionName);
-                config.Save();
-                Logger.LogInformation($"Updated host project version to {Plugin.PluginDescriptor.VersionName}");
-            }
-            else
-            {
-                Logger.LogWarning("Could not find GeneralProjectSettings section to update project version");
-            }
+            HostProject.SetProjectVersion(Plugin.PluginDescriptor.VersionName, Logger);
             
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
             automationOptions.TestNameOverride = Plugin.TestName;
@@ -377,6 +365,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Copy built plugin to example project
             ExampleProject.AddPlugin(BuiltPlugin);
+            
+            // Update example project version to match plugin version with engine suffix
+            string exampleProjectVersion = ProjectConfig.BuildVersionWithEnginePrefix(Plugin.PluginDescriptor.VersionName, Engine.Version);
+            ExampleProject.SetProjectVersion(exampleProjectVersion, Logger);
         }
 
         private async Task BuildCodeExampleProject()
@@ -696,13 +688,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 JObject sourceArchivePluginDescriptor = JObject.Parse(File.ReadAllText(sourceArchivePlugin.UPluginPath));
                 bool modified = false;
 
-                EngineVersion desiredEngineMajorMinorVersion = Engine.Version.WithPatch(0);
-
-                // Check version name
-                string desiredVersionName = $"{Plugin.PluginDescriptor.VersionName}-UE{desiredEngineMajorMinorVersion.MajorMinorString}";
+                // Check version name - use same format as example project
+                string desiredVersionName = ProjectConfig.BuildVersionWithEnginePrefix(Plugin.PluginDescriptor.VersionName, Engine.Version);
                 modified |= sourceArchivePluginDescriptor.Set("VersionName", desiredVersionName);
 
                 // Check engine version
+                EngineVersion desiredEngineMajorMinorVersion = Engine.Version.WithPatch(0);
                 modified |= sourceArchivePluginDescriptor.Set("EngineVersion", desiredEngineMajorMinorVersion.ToString());
 
                 if (modified)

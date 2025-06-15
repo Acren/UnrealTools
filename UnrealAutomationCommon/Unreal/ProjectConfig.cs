@@ -16,5 +16,11 @@ namespace UnrealAutomationCommon.Unreal
             string copyrightNotice = section.GetValue("CopyrightNotice");
             return copyrightNotice;
         }
+
+        public static string BuildVersionWithEnginePrefix(string baseVersion, EngineVersion engineVersion)
+        {
+            EngineVersion majorMinorVersion = engineVersion.WithPatch(0);
+            return $"{baseVersion}-UE{majorMinorVersion.MajorMinorString}";
+        }
     }
 }

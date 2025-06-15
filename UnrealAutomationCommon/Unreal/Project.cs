@@ -194,5 +194,22 @@ namespace UnrealAutomationCommon.Unreal
             File.WriteAllText(UProjectPath, uProjectContents.ToString());
         }
 
+        public void SetProjectVersion(string version, ILogger logger)
+        {
+            string defaultGameIniPath = Path.Combine(TargetDirectory, "Config", "DefaultGame.ini");
+            UnrealConfig config = new(defaultGameIniPath);
+            ConfigSection projectSettings = config.GetSection("/Script/EngineSettings.GeneralProjectSettings");
+            if (projectSettings != null)
+            {
+                projectSettings.SetValue("ProjectVersion", version);
+                config.Save();
+                logger.LogInformation($"Updated project version to {version}");
+            }
+            else
+            {
+                logger.LogWarning("Could not find GeneralProjectSettings section to update project version");
+            }
+        }
+
     }
 }
