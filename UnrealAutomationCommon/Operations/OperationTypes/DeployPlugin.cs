@@ -699,7 +699,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 EngineVersion desiredEngineMajorMinorVersion = Engine.Version.WithPatch(0);
 
                 // Check version name
-                string desiredVersionName = $"{Plugin.PluginDescriptor.VersionName}-{desiredEngineMajorMinorVersion.MajorMinorString}";
+                string desiredVersionName = $"{Plugin.PluginDescriptor.VersionName}-UE{desiredEngineMajorMinorVersion.MajorMinorString}";
                 modified |= sourceArchivePluginDescriptor.Set("VersionName", desiredVersionName);
 
                 // Check engine version
