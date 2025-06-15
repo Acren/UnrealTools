@@ -184,6 +184,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
             
+            // Update host project version to match plugin version
+            string defaultGameIniPath = Path.Combine(HostProject.TargetDirectory, "Config", "DefaultGame.ini");
+            UnrealConfig config = new(defaultGameIniPath);
+            ConfigSection projectSettings = config.GetSection("/Script/EngineSettings.GeneralProjectSettings");
+            if (projectSettings != null)
+            {
+                projectSettings.SetValue("ProjectVersion", Plugin.PluginDescriptor.VersionName);
+                config.Save();
+                Logger.LogInformation($"Updated host project version to {Plugin.PluginDescriptor.VersionName}");
+            }
+            else
+            {
+                Logger.LogWarning("Could not find GeneralProjectSettings section to update project version");
+            }
+            
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
             automationOptions.TestNameOverride = Plugin.TestName;
 

@@ -23,7 +23,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public EngineVersion Version => EngineVersion.Load(this.GetBuildVersionPath());
         
-        public SemVersion SemVersion => Semver.SemVersion.Parse(Version.ToString(), SemVersionStyles.Any);
+        public SemVersion SemVersion => Semver.SemVersion.Parse(Version.ToString(), SemVersionStyles.Any); 
 
         public string PluginsPath => Path.Combine(TargetPath, "Engine", "Plugins");
 
