@@ -492,6 +492,53 @@ namespace UnrealCommander
                 {
                     RunProcess.Run(ProgramPathFinder.FindPath("rider"), project.UProjectPath.AddQuotesIfContainsSpace());
                 }) });
+                
+                // Add Convert to Blueprint Only option if project has modules
+                if (!project.IsBlueprintOnly)
+                {
+                    menu.Items.Add(new Separator());
+                    menu.Items.Add(new MenuItem 
+                    { 
+                        Header = "Convert to Blueprint Only", 
+                        Command = new DelegateCommand(o =>
+                        {
+                            var result = MessageBox.Show(
+                                $"Are you sure you want to convert '{project.Name}' to a blueprint-only project?\n\n" +
+                                "This will:\n" +
+                                "• Delete the Source folder and all C++ code\n" +
+                                "• Remove all module references from the .uproject file\n\n" +
+                                "This action cannot be undone!", 
+                                "Convert to Blueprint Only", 
+                                MessageBoxButton.YesNo, 
+                                MessageBoxImage.Warning);
+                            
+                            if (result == MessageBoxResult.Yes)
+                            {
+                                try
+                                {
+                                    project.ConvertToBlueprintOnly();
+                                    MessageBox.Show(
+                                        $"Successfully converted '{project.Name}' to a blueprint-only project.", 
+                                        "Conversion Complete", 
+                                        MessageBoxButton.OK, 
+                                        MessageBoxImage.Information);
+                                    
+                                    // Refresh the project to update UI
+                                    project.LoadDescriptor();
+                                    TargetGrid.Items.Refresh();
+                                }
+                                catch (Exception ex)
+                                {
+                                    MessageBox.Show(
+                                        $"Failed to convert project to blueprint-only:\n\n{ex.Message}", 
+                                        "Conversion Failed", 
+                                        MessageBoxButton.OK, 
+                                        MessageBoxImage.Error);
+                                }
+                            }
+                        })
+                    });
+                }
             }
 
             if (SelectedTarget is Plugin)
