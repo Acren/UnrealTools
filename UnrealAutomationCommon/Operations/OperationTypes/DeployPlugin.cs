@@ -32,6 +32,23 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         
         private string[] _allowedPluginFileExtensions = { ".uplugin" };
         
+        private List<Plugin> GetOtherCodePlugins()
+        {
+            var codePlugins = new List<Plugin>();
+            var sourcePlugins = HostProject.Plugins;
+            
+            foreach (Plugin sourcePlugin in sourcePlugins)
+            {
+                // Get code plugins from the host project, excluding the plugin being deployed
+                if (!sourcePlugin.Equals(Plugin) && !sourcePlugin.IsBlueprintOnly)
+                {
+                    codePlugins.Add(sourcePlugin);
+                }
+            }
+            
+            return codePlugins;
+        }
+        
         protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
             Token = token;
@@ -352,14 +369,50 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             ExampleProject = new(exampleProjectPath);
 
-            // Copy other plugins
+            // Copy other plugins and build code plugins
 
             var sourcePlugins = HostProject.Plugins;
+            var otherCodePlugins = GetOtherCodePlugins();
+            
             foreach (Plugin sourcePlugin in sourcePlugins)
             {
                 if (!sourcePlugin.Equals(Plugin))
                 {
-                    ExampleProject.AddPlugin(sourcePlugin);
+                    // Check if this is a code plugin that needs to be built
+                    if (otherCodePlugins.Contains(sourcePlugin))
+                    {
+                        Logger.LogInformation($"Building code plugin: {sourcePlugin.Name}");
+                        
+                        // Build the code plugin
+                        string codePluginBuildPath = Path.Combine(GetOperationTempPath(), "CodePluginBuilds", sourcePlugin.Name);
+                        FileUtils.DeleteDirectoryIfExists(codePluginBuildPath);
+                        
+                        OperationParameters buildCodePluginParams = new()
+                        {
+                            Target = sourcePlugin,
+                            EngineOverride = Engine,
+                            OutputPathOverride = codePluginBuildPath
+                        };
+                        buildCodePluginParams.SetOptions(OperationParameters.RequestOptions<PluginBuildOptions>());
+                        
+                        OperationResult buildResult = await new BuildPlugin().Execute(buildCodePluginParams, Logger, Token);
+                        
+                        if (!buildResult.Success)
+                        {
+                            throw new Exception($"Failed to build code plugin: {sourcePlugin.Name}");
+                        }
+                        
+                        // Add the built version to the example project
+                        Plugin builtCodePlugin = new Plugin(codePluginBuildPath);
+                        ExampleProject.AddPlugin(builtCodePlugin);
+                        
+                        Logger.LogInformation($"Added built code plugin: {sourcePlugin.Name}");
+                    }
+                    else
+                    {
+                        // Blueprint-only or content-only plugin, copy as-is
+                        ExampleProject.AddPlugin(sourcePlugin);
+                    }
                 }
             }
 
