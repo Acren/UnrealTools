@@ -46,11 +46,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override Task<OperationResult> OnExecuted(CancellationToken token)
         {
             Project targetProject = GetTarget(OperationParameters);
-            List<Plugin> codePlugins = targetProject.Plugins.Where(p => !p.IsBlueprintOnly).ToList();
-            if (targetProject.IsBlueprintOnly && codePlugins.Count > 0)
+            // Only check for plugins with runtime modules, as editor-only plugins won't be included in packaged builds
+            List<Plugin> codePluginsWithRuntimeModules = targetProject.Plugins.Where(p => p.HasRuntimeModules).ToList();
+            if (targetProject.IsBlueprintOnly && codePluginsWithRuntimeModules.Count > 0)
             {
                 // Note: The specific error this causes is "Plugin X failed to load because module Y could not be found" when launching the package
-                throw new Exception($"Blueprint-only project contains {codePlugins.Count} code plugin(s) directly ({string.Join(", ",codePlugins.Select(p => p.Name))}). Although the engine will normally allow this, it will cause errors that are difficult to debug. Install the plugin to the engine instead.");
+                throw new Exception($"Blueprint-only project contains {codePluginsWithRuntimeModules.Count} code plugin(s) with runtime modules directly ({string.Join(", ",codePluginsWithRuntimeModules.Select(p => p.Name))}). Although the engine will normally allow this, it will cause errors that are difficult to debug. Install the plugin to the engine instead.");
             }
 
             return base.OnExecuted(token);
