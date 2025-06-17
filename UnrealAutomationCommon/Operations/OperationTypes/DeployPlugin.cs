@@ -498,7 +498,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             ExampleProject.ConvertToBlueprintOnly();
             
-            RemoveExcludedPluginsFromProject(ExampleProject);
+            PreparePluginsForProject(ExampleProject);
 
             string blueprintOnlyPackagePath = Path.Combine(GetOperationTempPath(), @"BlueprintOnlyPackage");
             FileUtils.DeleteDirectoryIfExists(blueprintOnlyPackagePath);
@@ -592,10 +592,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Can't test the demo package in shipping
         }
 
-        private void RemoveExcludedPluginsFromProject(Project targetProject)
+        private void PreparePluginsForProject(Project targetProject)
         {
             var exampleProjectPlugins = ExampleProject.Plugins;
-            string[] allowedExampleProjectPluginSubDirectoryNames = { "Content", "Config", "Binaries" };
             
             string[] excludePlugins = OperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ", "").Split(",");
             foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
@@ -607,9 +606,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
                 else
                 {
-                    // Other plugins will be included, strip out unwanted files
-                    FileUtils.DeleteOtherSubdirectories(exampleProjectPlugin.TargetDirectory, allowedExampleProjectPluginSubDirectoryNames);
-                    FileUtils.DeleteFilesWithoutExtension(exampleProjectPlugin.TargetDirectory, _allowedPluginFileExtensions);
+                    // Other plugins will be included, just delete Intermediate folder
+                    string intermediateDirectory = Path.Combine(exampleProjectPlugin.TargetDirectory, "Intermediate");
+                    FileUtils.DeleteDirectoryIfExists(intermediateDirectory);
                 }
             }
         }
@@ -658,7 +657,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
                 FileUtils.DeleteOtherSubdirectories(ExampleProject.ProjectPath, allowedExampleProjectSubDirectoryNames);
                 
-                RemoveExcludedPluginsFromProject(ExampleProject);
+                PreparePluginsForProject(ExampleProject);
 
                 // Delete debug files recursive
                 FileUtils.DeleteFilesWithExtension(ExampleProject.ProjectPath, new[] { ".pdb" }, SearchOption.AllDirectories);
