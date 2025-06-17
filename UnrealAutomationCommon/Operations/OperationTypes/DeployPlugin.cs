@@ -32,6 +32,27 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         
         private string[] _allowedPluginFileExtensions = { ".uplugin" };
         
+        private Plugin StagingPlugin { get; set; }
+        
+        private void UpdatePluginDescriptorForArchive(Plugin plugin)
+        {
+            JObject pluginDescriptor = JObject.Parse(File.ReadAllText(plugin.UPluginPath));
+            bool modified = false;
+
+            // Check version name - use same format as example project
+            string desiredVersionName = ProjectConfig.BuildVersionWithEnginePrefix(Plugin.PluginDescriptor.VersionName, Engine.Version);
+            modified |= pluginDescriptor.Set("VersionName", desiredVersionName);
+
+            // Check engine version
+            EngineVersion desiredEngineMajorMinorVersion = Engine.Version.WithPatch(0);
+            modified |= pluginDescriptor.Set("EngineVersion", desiredEngineMajorMinorVersion.ToString());
+
+            if (modified)
+            {
+                File.WriteAllText(plugin.UPluginPath, pluginDescriptor.ToString());
+            }
+        }
+        
         private List<Plugin> GetOtherCodePlugins()
         {
             var codePlugins = new List<Plugin>();
@@ -204,6 +225,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Update host project version to match plugin version
             HostProject.SetProjectVersion(Plugin.PluginDescriptor.VersionName, Logger);
             
+            // Create staging copy of plugin with updated descriptor
+            Logger.LogSectionHeader("Preparing plugin staging copy");
+            string stagingPluginPath = Path.Combine(GetOperationTempPath(), @"PluginStaging", Plugin.Name);
+            FileUtils.DeleteDirectoryIfExists(stagingPluginPath);
+            FileUtils.CopyDirectory(Plugin.PluginPath, stagingPluginPath);
+            
+            StagingPlugin = new Plugin(stagingPluginPath);
+            UpdatePluginDescriptorForArchive(StagingPlugin);
+            Logger.LogInformation($"Updated plugin descriptor for staging: {StagingPlugin.PluginDescriptor.VersionName}");
+            
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
             automationOptions.TestNameOverride = Plugin.TestName;
 
@@ -321,7 +352,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             OperationParameters buildPluginParams = new()
             {
-                Target = Plugin,
+                Target = StagingPlugin,
                 EngineOverride = Engine,
                 OutputPathOverride = pluginBuildPath
             };
@@ -723,36 +754,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Logger.LogInformation("Archiving plugin source");
 
-            // Copy plugin to working folder so that we can prepare archive without altering the original
+            // Use staging plugin which already has updated descriptor
             string pluginSourcePath = Path.Combine(GetOperationTempPath(), @"PluginSource", Plugin.Name);
             FileUtils.DeleteDirectoryIfExists(pluginSourcePath);
-            FileUtils.CopyDirectory(Plugin.PluginPath, pluginSourcePath);
+            FileUtils.CopyDirectory(StagingPlugin.PluginPath, pluginSourcePath);
 
             string[] allowedPluginSourceArchiveSubDirectoryNames = { "Source", "Resources", "Content", "Config", "Extras" };
             FileUtils.DeleteOtherSubdirectories(pluginSourcePath, allowedPluginSourceArchiveSubDirectoryNames);
 
             // Delete top-level files other than uplugin
             FileUtils.DeleteFilesWithoutExtension(pluginSourcePath, _allowedPluginFileExtensions);
-
-            // Update .uplugin
-            {
-                Plugin sourceArchivePlugin = new(pluginSourcePath);
-                JObject sourceArchivePluginDescriptor = JObject.Parse(File.ReadAllText(sourceArchivePlugin.UPluginPath));
-                bool modified = false;
-
-                // Check version name - use same format as example project
-                string desiredVersionName = ProjectConfig.BuildVersionWithEnginePrefix(Plugin.PluginDescriptor.VersionName, Engine.Version);
-                modified |= sourceArchivePluginDescriptor.Set("VersionName", desiredVersionName);
-
-                // Check engine version
-                EngineVersion desiredEngineMajorMinorVersion = Engine.Version.WithPatch(0);
-                modified |= sourceArchivePluginDescriptor.Set("EngineVersion", desiredEngineMajorMinorVersion.ToString());
-
-                if (modified)
-                {
-                    File.WriteAllText(sourceArchivePlugin.UPluginPath, sourceArchivePluginDescriptor.ToString());
-                }
-            }
 
             string pluginSourceArchiveZipPath = Path.Combine(archivePath, archivePrefix + "PluginSource.zip");
             FileUtils.DeleteFileIfExists(pluginSourceArchiveZipPath);
