@@ -165,15 +165,21 @@ namespace UnrealAutomationCommon.Unreal
                             {
                                 if (newLines[i] == $"[{section.Key}]")
                                 {
-                                    // Find the end of this section
+                                    // Find the last non-empty line of this section
                                     int insertIndex = i + 1;
+                                    int lastContentIndex = i + 1;
+                                    
                                     while (insertIndex < newLines.Count && !newLines[insertIndex].StartsWith("["))
                                     {
+                                        if (!string.IsNullOrEmpty(newLines[insertIndex]))
+                                        {
+                                            lastContentIndex = insertIndex + 1;
+                                        }
                                         insertIndex++;
                                     }
                                     
-                                    // Insert before the next section or at the end
-                                    newLines.Insert(insertIndex, $"{kvp.Key}={kvp.Value}");
+                                    // Insert after the last non-empty line, before any trailing empty lines
+                                    newLines.Insert(lastContentIndex, $"{kvp.Key}={kvp.Value}");
                                     break;
                                 }
                             }
