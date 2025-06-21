@@ -79,15 +79,6 @@ namespace UnrealCommander
                 Application.Current.Shutdown();
             };
 
-            PersistentState = PersistentData.Load();
-            PersistentState.OperationParameters.RetryHandler = (Exception ex) =>
-            {
-                MessageBoxResult result = MessageBox.Show($"Encountered {ex.GetType().Name}:\n\n'{ex.Message}'\n\nRetry?", "Error", MessageBoxButton.YesNo);
-                if (result == MessageBoxResult.No)
-                {
-                    throw new OperationCanceledException();
-                }
-            };
             InitializeComponent();
             
             using ILoggerFactory factory = LoggerFactory.Create(builder =>
@@ -97,6 +88,16 @@ namespace UnrealCommander
             });
 
             AppLogger.Instance.Logger = factory.CreateLogger("UnrealCommander");
+
+            PersistentState = PersistentData.Load();
+            PersistentState.OperationParameters.RetryHandler = (Exception ex) =>
+            {
+                MessageBoxResult result = MessageBox.Show($"Encountered {ex.GetType().Name}:\n\n'{ex.Message}'\n\nRetry?", "Error", MessageBoxButton.YesNo);
+                if (result == MessageBoxResult.No)
+                {
+                    throw new OperationCanceledException();
+                }
+            };
             
             // AppLogger.Instance.Output += (output, verbosity) =>
             // {
