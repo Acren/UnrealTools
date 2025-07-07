@@ -29,7 +29,8 @@ namespace UnrealAutomationCommon.Unreal
             new TraceChannel { Key = "memory", Label = "Memory" },
             new TraceChannel { Key = "object", Label = "Object" },
             new TraceChannel { Key = "rendercommands", Label = "Render Commands" },
-            new TraceChannel { Key = "rhicommands", Label = "RHI Commands" }
+            new TraceChannel { Key = "rhicommands", Label = "RHI Commands" },
+            new TraceChannel { Key = "slate", Label = "Slate" }
         };
     }
 }
