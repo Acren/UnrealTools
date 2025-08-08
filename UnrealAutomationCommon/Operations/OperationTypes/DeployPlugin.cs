@@ -52,6 +52,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 File.WriteAllText(plugin.UPluginPath, pluginDescriptor.ToString());
             }
         }
+        
+        private void UpdateProjectDescriptorForArchive(Project project)
+        {
+            JObject projectDescriptor = JObject.Parse(File.ReadAllText(project.UProjectPath));
+            bool modified = false;
+
+            // Check engine association - use major.minor format
+            string desiredEngineAssociation = Engine.Version.MajorMinorString;
+            modified |= projectDescriptor.Set("EngineAssociation", desiredEngineAssociation);
+
+            if (modified)
+            {
+                File.WriteAllText(project.UProjectPath, projectDescriptor.ToString());
+            }
+        }
       
         protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
@@ -382,6 +397,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             File.WriteAllText(exampleProjectBuildUProjectPath, uProjectContents.ToString());
 
             ExampleProject = new(exampleProjectPath);
+            
+            // Update project descriptor for archive
+            UpdateProjectDescriptorForArchive(ExampleProject);
+            Logger.LogInformation($"Updated project descriptor for archive: EngineAssociation = {Engine.Version}");
 
             // Copy other plugins
 
