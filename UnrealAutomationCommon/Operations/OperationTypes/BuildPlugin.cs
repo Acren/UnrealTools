@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -29,29 +28,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 return null;
             }
 
-            // Skip platform validation until the option set exists so the UI can still surface the controls
-            // that let the user fix an unsupported default selection.
-            PluginBuildOptions pluginBuildOptions = operationParameters.FindOptions<PluginBuildOptions>();
-            if (pluginBuildOptions == null)
-            {
-                return null;
-            }
-
-            List<string> requestedPlatforms = GetRequestedTargetPlatforms(BuildPluginArguments(operationParameters, pluginBuildOptions));
-            if (requestedPlatforms.Count == 0)
-            {
-                return null;
-            }
-
-            List<string> unavailablePlatforms = requestedPlatforms.Where(platform => !IsTargetPlatformAvailable(engine, platform)).ToList();
-            if (unavailablePlatforms.Count == 0)
-            {
-                return null;
-            }
-
-            string missingRequirements = string.Join(", ", unavailablePlatforms.SelectMany(platform => GetRequiredTargetFiles(engine, platform)).Distinct());
-            string missingDetails = string.IsNullOrEmpty(missingRequirements) ? "The engine does not advertise support for the requested platform." : $"Missing required engine files: {missingRequirements}.";
-            return $"Requested target platform(s) {string.Join(", ", unavailablePlatforms)} are not available in engine '{engine.DisplayName}'. Unreal BuildPlugin would silently skip them. {missingDetails}";
+            return PluginBuildPlatformValidation.CheckRequirementsSatisfied(operationParameters, engine);
         }
 
         protected override Command BuildCommand(OperationParameters operationParameters)
@@ -59,7 +36,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             //Engine\Build\BatchFiles\RunUAT.bat BuildPlugin -Plugin=[Path to .uplugin file, must be outside engine directory] -Package=[Output directory] -Rocket
             PluginBuildOptions pluginBuildOptions = operationParameters.RequestOptions<PluginBuildOptions>();
             Arguments buildPluginArguments = BuildPluginArguments(operationParameters, pluginBuildOptions);
-            _requestedTargetPlatforms = GetRequestedTargetPlatforms(buildPluginArguments);
+            _requestedTargetPlatforms = PluginBuildPlatformValidation.GetRequestedTargetPlatforms(buildPluginArguments);
             _builtTargetPlatforms = new List<string>();
             return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), buildPluginArguments);
         }
@@ -129,7 +106,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             buildPluginArguments.SetFlag("Rocket");
             buildPluginArguments.SetFlag("VS2019");
 
-            List<string> selectedPlatforms = GetSelectedTargetPlatforms(pluginBuildOptions);
+            List<string> selectedPlatforms = PluginBuildPlatformValidation.GetSelectedTargetPlatforms(pluginBuildOptions);
             buildPluginArguments.SetKeyValue("TargetPlatforms", string.Join('+', selectedPlatforms));
 
             if (pluginBuildOptions.StrictIncludes)
@@ -140,75 +117,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             buildPluginArguments.ApplyCommonUATArguments(operationParameters);
             buildPluginArguments.AddAdditionalArguments(operationParameters);
             return buildPluginArguments;
-        }
-
-        // Keep the current UI options, but convert them into a generic target-platform list for validation.
-        private static List<string> GetSelectedTargetPlatforms(PluginBuildOptions pluginBuildOptions)
-        {
-            bool buildWin64 = pluginBuildOptions.BuildWin64;
-            bool buildLinux = pluginBuildOptions.BuildLinux;
-            if (!buildWin64 && !buildLinux)
-            {
-                // If nothing is selected, specify Win64 only to avoid Win32 being compiled.
-                buildWin64 = true;
-            }
-
-            List<string> selectedPlatforms = new();
-            if (buildWin64)
-            {
-                selectedPlatforms.Add("Win64");
-            }
-
-            if (buildLinux)
-            {
-                selectedPlatforms.Add("Linux");
-            }
-
-            return selectedPlatforms;
-        }
-
-        // Resolve the effective TargetPlatforms after user overrides so checks match the actual command line.
-        private static List<string> GetRequestedTargetPlatforms(Arguments arguments)
-        {
-            Argument targetPlatformsArgument = arguments.GetArgument("TargetPlatforms");
-            if (targetPlatformsArgument == null || string.IsNullOrWhiteSpace(targetPlatformsArgument.Value))
-            {
-                return new List<string>();
-            }
-
-            return targetPlatformsArgument.Value
-                .Split(new[] { '+' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(platform => platform.Trim())
-                .Where(platform => !string.IsNullOrWhiteSpace(platform))
-                .Distinct(StringComparer.InvariantCultureIgnoreCase)
-                .ToList();
-        }
-
-        // Installed engines advertise code-platform support through required target files, so check those generically.
-        private static bool IsTargetPlatformAvailable(Engine engine, string platform)
-        {
-            List<string> requiredFiles = GetRequiredTargetFiles(engine, platform);
-            if (requiredFiles.Count == 0)
-            {
-                return true;
-            }
-
-            return requiredFiles.All(File.Exists);
-        }
-
-        // Mirror Unreal's installed-engine gate by checking the per-platform UnrealGame target files Unreal expects.
-        private static List<string> GetRequiredTargetFiles(Engine engine, string platform)
-        {
-            if (engine.IsSourceBuild)
-            {
-                return new List<string>();
-            }
-
-            return new List<string>
-            {
-                Path.Combine(engine.TargetPath, "Engine", "Binaries", platform, "UnrealGame.target"),
-                Path.Combine(engine.TargetPath, "Engine", "Binaries", platform, $"UnrealGame-{platform}-Shipping.target")
-            };
         }
     }
 }

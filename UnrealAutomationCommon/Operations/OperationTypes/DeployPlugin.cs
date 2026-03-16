@@ -770,6 +770,38 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     
     public class DeployPlugin : Operation<Plugin>
     {
+        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
+        {
+            string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
+            if (requirementsError != null)
+            {
+                return requirementsError;
+            }
+
+            EngineVersionOptions engineVersionOptions = operationParameters.FindOptions<EngineVersionOptions>();
+            if (engineVersionOptions == null || engineVersionOptions.EnabledVersions.Value.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (EngineVersion engineVersion in engineVersionOptions.EnabledVersions.Value)
+            {
+                Engine engine = EngineFinder.GetEngineInstall(engineVersion);
+                if (engine == null)
+                {
+                    return $"Engine {engineVersion.MajorMinorString} not found";
+                }
+
+                string platformRequirementsError = PluginBuildPlatformValidation.CheckRequirementsSatisfied(operationParameters, engine);
+                if (platformRequirementsError != null)
+                {
+                    return $"Engine {engineVersion.MajorMinorString}: {platformRequirementsError}";
+                }
+            }
+
+            return null;
+        }
+
         protected override async Task<OperationResult> OnExecuted(CancellationToken token)
         {
             Plugin plugin = GetTarget(OperationParameters);
