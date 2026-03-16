@@ -183,6 +183,7 @@ namespace UnrealCommander
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(VisibleCommand));
                     OnPropertyChanged(nameof(CanExecute));
+                    OnPropertyChanged(nameof(ExecuteDisabledReason));
                     OnPropertyChanged(nameof(Status));
                     OnPropertyChanged(nameof(SelectedTarget));
                     OnPropertyChanged(nameof(OperationTarget));
@@ -219,6 +220,7 @@ namespace UnrealCommander
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(VisibleCommand));
                     OnPropertyChanged(nameof(CanExecute));
+                    OnPropertyChanged(nameof(ExecuteDisabledReason));
                     OnPropertyChanged(nameof(AllowedBuildConfigurations));
                     OnPropertyChanged(nameof(EnabledOptionSetTypes));
                     OnPropertyChanged(nameof(EnabledOptionSets));
@@ -284,11 +286,21 @@ namespace UnrealCommander
         {
             get
             {
+                return ExecuteDisabledReason == null;
+            }
+        }
+
+        // Surface the current validation failure directly in the UI so disabled actions are self-explanatory.
+        public string ExecuteDisabledReason
+        {
+            get
+            {
                 if (Operation == null)
                 {
-                    return false;
+                    return "No operation selected";
                 }
-                return Operation.RequirementsSatisfied(PersistentState.OperationParameters);
+
+                return Operation.CheckRequirementsSatisfied(PersistentState.OperationParameters);
             }
         }
 

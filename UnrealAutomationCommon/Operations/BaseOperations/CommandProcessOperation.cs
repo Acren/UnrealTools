@@ -18,6 +18,11 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         protected abstract Command BuildCommand(OperationParameters operationParameters);
 
+        // Derived operations can inspect output as it streams without retaining the full process log in memory.
+        protected virtual void OnOutputLine(string line)
+        {
+        }
+
         protected override IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
         {
             return new List<Command> { BuildCommand(operationParameters) };
@@ -100,6 +105,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             {
                 return;
             }
+
+            // Let derived operations react to streaming output without forcing the base class to store it all.
+            OnOutputLine(line);
 
             string[] split = line.Split(new[] { ": " }, StringSplitOptions.None);
             LogLevel level = LogLevel.Information;

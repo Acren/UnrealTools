@@ -19,6 +19,28 @@ namespace UnrealAutomationCommon.Operations
 
         private BindingList<OperationOptions> _optionsInstances;
 
+        // Bubble nested option changes up to the parameters object so the UI refreshes when a checkbox changes.
+        private void HandleOptionsInstancePropertyChanged(object sender, PropertyChangedEventArgs args)
+        {
+            OnPropertyChanged(nameof(OptionsInstances));
+            OnPropertyChanged(nameof(Engine));
+        }
+
+        // Rebind option change listeners whenever the option set list changes or is replaced.
+        private void RefreshOptionsSubscriptions()
+        {
+            if (_optionsInstances == null)
+            {
+                return;
+            }
+
+            foreach (OperationOptions options in _optionsInstances)
+            {
+                options.PropertyChanged -= HandleOptionsInstancePropertyChanged;
+                options.PropertyChanged += HandleOptionsInstancePropertyChanged;
+            }
+        }
+
         public OperationParameters()
         {
             OptionsInstances = new BindingList<OperationOptions>();
@@ -48,10 +70,12 @@ namespace UnrealAutomationCommon.Operations
 
                 OptionsInstances.ListChanged += (sender, args) =>
                 {
+                    RefreshOptionsSubscriptions();
                     OnPropertyChanged(nameof(OptionsInstances));
                     OnPropertyChanged(nameof(Engine));
                 };
 
+                RefreshOptionsSubscriptions();
                 UpdateOptionsTarget();
             }
         }

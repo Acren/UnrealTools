@@ -137,20 +137,36 @@
                 <TextBox Name="CommandTextBox" IsReadOnly="True" Text="{Binding VisibleCommand, Mode=OneWay}"
                          TextWrapping="Wrap" FontFamily="Consolas" />
             </GroupBox>
-            <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
+            <StackPanel Grid.Row="4">
+                <Border Margin="0,0,0,5" Padding="8,6"
+                        BorderBrush="#FFD6A55C" BorderThickness="1" Background="#14D6A55C">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CanExecute}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding ExecuteDisabledReason}" TextWrapping="Wrap" />
+                </Border>
+                <WrapPanel HorizontalAlignment="Right">
                 <Button Click="CopyCommand" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2"
-                        Width="Auto" HorizontalAlignment="Right">
+                         Width="Auto" HorizontalAlignment="Right">
                     <TextBlock Text="Copy" />
                 </Button>
                 <Button Click="Execute" IsEnabled="{Binding CanExecute}" Margin="0,5,5,5" Padding="20,2" Width="Auto"
-                        HorizontalAlignment="Right">
+                         HorizontalAlignment="Right">
                     <Run Text="{Binding Operation.OperationName, Mode=OneWay}" />
                 </Button>
                 <Button Click="Terminate" IsEnabled="{Binding IsRunningOperation}" Margin="0,5,5,5" Padding="20,2"
-                        Width="Auto" HorizontalAlignment="Right">
+                         Width="Auto" HorizontalAlignment="Right">
                     <Run Text="Terminate" />
                 </Button>
-            </WrapPanel>
+                </WrapPanel>
+            </StackPanel>
         </Grid>
     </DockPanel>
 </Window>
