@@ -35,6 +35,9 @@
     <Compile Update="Options\PluginDeployOptionsControl.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Update="Options\UbtCompilerOptionsControl.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -51,6 +54,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Update="Options\PluginDeployOptionsControl.xaml">
+      <XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Update="Options\UbtCompilerOptionsControl.xaml">
       <XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
       <SubType>Designer</SubType>
     </Page>
