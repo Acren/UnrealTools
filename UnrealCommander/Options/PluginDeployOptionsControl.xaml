@@ -7,6 +7,10 @@
                           mc:Ignorable="d"
                           d:DesignHeight="450" d:DesignWidth="800">
     <StackPanel>
+        <CheckBox IsChecked="{Binding Path=RunClangCompileCheck.Value, Mode=TwoWay}" VerticalAlignment="Center"
+                  VerticalContentAlignment="Center">
+            <TextBlock Text="Run Clang Compile Check" VerticalAlignment="Center" />
+        </CheckBox>
         <CheckBox IsChecked="{Binding Path=TestStandalone.Value, Mode=TwoWay}" VerticalAlignment="Center"
                   VerticalContentAlignment="Center">
             <TextBlock Text="Test Standalone" VerticalAlignment="Center" />

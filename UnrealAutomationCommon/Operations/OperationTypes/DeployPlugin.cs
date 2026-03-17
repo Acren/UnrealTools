@@ -256,6 +256,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             await PrepareExampleProject();
 
+            // Run the optional Clang validation while the example project still contains source modules
+            // and the built plugin is installed as a project plugin.
+            await RunClangCompileCheck();
+
             await BuildCodeExampleProject();
 
             // Package code example project with plugin inside project
@@ -435,6 +439,40 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             if (!exampleProjectBuildResult.Success)
             {
                 throw new Exception($"Failed to build example project with modules");
+            }
+        }
+
+        private async Task RunClangCompileCheck()
+        {
+            PluginDeployOptions pluginDeployOptions = OperationParameters.RequestOptions<PluginDeployOptions>();
+            if (!pluginDeployOptions.RunClangCompileCheck)
+            {
+                return;
+            }
+
+            Logger.LogSectionHeader("Running Clang compile check");
+
+            OperationParameters clangBuildParams = new()
+            {
+                Target = ExampleProject,
+                EngineOverride = Engine
+            };
+
+            // Use the direct UBT build path here because BuildCookRun-based editor builds do not reliably
+            // honor compiler overrides.
+            clangBuildParams.SetOptions(new BuildConfigurationOptions
+            {
+                Configuration = BuildConfiguration.Development
+            });
+            clangBuildParams.SetOptions(new UbtCompilerOptions
+            {
+                Compiler = UbtCompiler.Clang
+            });
+
+            OperationResult clangBuildResult = await new BuildEditorTarget().Execute(clangBuildParams, Logger, Token);
+            if (!clangBuildResult.Success)
+            {
+                throw new Exception("Clang compile check failed");
             }
         }
 
