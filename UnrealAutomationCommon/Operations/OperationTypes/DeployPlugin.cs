@@ -466,15 +466,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 EngineOverride = Engine
             };
 
-            // Force the same compiler and language-standard combination Fab currently appears to use.
+            // Run the Fab-style Clang validation through the direct plugin build path.
             clangBuildParams.SetOptions(new BuildConfigurationOptions
             {
                 Configuration = BuildConfiguration.Development
             });
             clangBuildParams.SetOptions(new UbtCompilerOptions
             {
-                Compiler = UbtCompiler.Clang,
-                CppStandard = UbtCppStandard.Cpp17
+                Compiler = UbtCompiler.Clang
             });
 
             OperationResult clangBuildResult = await new BuildPlugin().Execute(clangBuildParams, Logger, Token);

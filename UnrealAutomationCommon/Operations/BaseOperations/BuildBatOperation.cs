@@ -6,6 +6,36 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     // Centralize the direct Build.bat wiring so all UBT-backed compile operations stay consistent.
     public abstract class BuildBatOperation<T> : CommandProcessOperation<T> where T : OperationTarget
     {
+        // Validate shared direct-UBT overrides once so every Build.bat-backed operation enforces the same limits.
+        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
+        {
+            string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
+            if (requirementsError != null)
+            {
+                return requirementsError;
+            }
+
+            UbtCompilerOptions buildBatOptions = operationParameters.FindOptions<UbtCompilerOptions>();
+            if (buildBatOptions == null)
+            {
+                return null;
+            }
+
+            Engine engine = GetTargetEngineInstall(operationParameters);
+            if (engine?.Version == null)
+            {
+                return null;
+            }
+
+            // UE 5.5 and newer have dropped Cpp17 support, so fail early before invoking UBT with an invalid override.
+            if (buildBatOptions.CppStandard == UbtCppStandard.Cpp17 && engine.Version >= new EngineVersion(5, 5, 0))
+            {
+                return $"C++17 is not supported for Unreal Engine {engine.Version.MajorMinorString} or newer";
+            }
+
+            return null;
+        }
+
         protected override Command BuildCommand(OperationParameters operationParameters)
         {
             Arguments args = new();
