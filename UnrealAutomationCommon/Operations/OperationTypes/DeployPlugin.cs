@@ -443,6 +443,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
 
+        // Rebuild the packaged plugin in-place with Clang so validation matches the project-plugin flow Fab uses.
         private async Task RunClangCompileCheck()
         {
             PluginDeployOptions pluginDeployOptions = OperationParameters.RequestOptions<PluginDeployOptions>();
@@ -453,14 +454,19 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Logger.LogSectionHeader("Running Clang compile check");
 
+            Plugin exampleProjectPlugin = ExampleProject.Plugins.SingleOrDefault(plugin => plugin.Name == BuiltPlugin.Name);
+            if (exampleProjectPlugin == null)
+            {
+                throw new Exception("Could not find packaged plugin inside example project for Clang validation");
+            }
+
             OperationParameters clangBuildParams = new()
             {
-                Target = ExampleProject,
+                Target = exampleProjectPlugin,
                 EngineOverride = Engine
             };
 
-            // Use the direct UBT build path here because BuildCookRun-based editor builds do not reliably
-            // honor compiler overrides.
+            // Force the same compiler and language-standard combination Fab currently appears to use.
             clangBuildParams.SetOptions(new BuildConfigurationOptions
             {
                 Configuration = BuildConfiguration.Development
@@ -469,8 +475,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 Compiler = UbtCompiler.Clang
             });
+            clangBuildParams.AdditionalArguments = "-CppStdEngine=Cpp17";
 
-            OperationResult clangBuildResult = await new BuildEditorTarget().Execute(clangBuildParams, Logger, Token);
+            OperationResult clangBuildResult = await new BuildPlugin().Execute(clangBuildParams, Logger, Token);
             if (!clangBuildResult.Success)
             {
                 throw new Exception("Clang compile check failed");

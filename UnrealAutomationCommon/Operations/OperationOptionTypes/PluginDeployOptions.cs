@@ -4,7 +4,7 @@
     {
         public override int SortIndex => 80;
 
-        // Keep the Fab-style Clang validation opt-in because only the direct UBT compile step honors it reliably.
+        // Keep the Fab-style Clang validation opt-in because the direct plugin build path is the closest match.
         public Option<bool> RunClangCompileCheck { get; } = false;
         public Option<bool> TestStandalone { get; } = true;
         public Option<bool> TestPackageWithProjectPlugin { get; } = true;
