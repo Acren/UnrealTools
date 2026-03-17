@@ -13,6 +13,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using CommunityToolkit.WinUI.Notifications;
 using Microsoft.Extensions.Logging;
+using NReco.Logging.File;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -61,11 +62,21 @@ namespace UnrealCommander
     /// </summary>
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
+        // Keep a small set of recent launch logs so diagnostics remain available without growing forever.
+        private const int MaxLaunchLogFiles = 20;
+
+        // Allow an individual launch log to roll if a single session becomes unusually noisy.
+        private const int MaxLogFileSizeBytes = 10 * 1024 * 1024;
+
         private Operation _operation;
         private PersistentData _persistentState = new();
+        private readonly ILoggerFactory _loggerFactory;
 
         private Runner _running;
 
+        /// <summary>
+        ///     Initializes the main window and wires up both interactive and persisted logging sinks.
+        /// </summary>
         public MainWindow()
         {
             Dispatcher.UnhandledException += (sender, args) =>
@@ -80,14 +91,25 @@ namespace UnrealCommander
             };
 
             InitializeComponent();
+            Closed += Window_Closed;
+
+            LoggingPaths.CleanupOldLaunchLogs(MaxLaunchLogFiles);
+            string launchLogFilePath = LoggingPaths.CreateLaunchLogFilePath();
             
-            using ILoggerFactory factory = LoggerFactory.Create(builder =>
+            _loggerFactory = LoggerFactory.Create(builder =>
             {
                 builder.AddConsole();
+                builder.AddFile(launchLogFilePath, options =>
+                {
+                    options.Append = true;
+                    options.FileSizeLimitBytes = MaxLogFileSizeBytes;
+                    options.MaxRollingFiles = 3;
+                });
                 builder.AddProvider(new LogViewerLoggingProvider() { Viewer = OutputLogViewer });
             });
 
-            AppLogger.Instance.Logger = factory.CreateLogger("UnrealCommander");
+            AppLogger.Instance.Logger = _loggerFactory.CreateLogger("UnrealCommander");
+            AppLogger.LoggerInstance.LogInformation("Writing launch log to {LaunchLogFilePath}", launchLogFilePath);
 
             PersistentState = PersistentData.Load();
             PersistentState.OperationParameters.RetryHandler = (Exception ex) =>
@@ -141,6 +163,14 @@ namespace UnrealCommander
             SelectedTarget = target;
 
             AppLogger.LoggerInstance.LogInformation("App initialized");
+        }
+
+        /// <summary>
+        ///     Disposes the logger factory after the window fully closes so file handles are released promptly.
+        /// </summary>
+        private void Window_Closed(object sender, EventArgs e)
+        {
+            _loggerFactory.Dispose();
         }
 
         public IOperationTarget SelectedTarget
