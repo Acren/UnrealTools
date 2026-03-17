@@ -345,6 +345,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
 
+        // Package the staged plugin into a distributable output before deployment verification continues.
         private async Task BuildPlugin()
         {
             Logger.LogSectionHeader("Building plugin");
@@ -360,7 +361,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
             buildPluginParams.SetOptions(OperationParameters.RequestOptions<PluginBuildOptions>());
 
-            OperationResult buildResult = await new BuildPlugin().Execute(buildPluginParams, Logger, Token);
+            OperationResult buildResult = await new PackagePlugin().Execute(buildPluginParams, Logger, Token);
 
             if (!buildResult.Success)
             {
