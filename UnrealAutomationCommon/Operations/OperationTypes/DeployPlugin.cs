@@ -473,9 +473,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             });
             clangBuildParams.SetOptions(new UbtCompilerOptions
             {
-                Compiler = UbtCompiler.Clang
+                Compiler = UbtCompiler.Clang,
+                CppStandard = UbtCppStandard.Cpp17
             });
-            clangBuildParams.AdditionalArguments = "-CppStdEngine=Cpp17";
 
             OperationResult clangBuildResult = await new BuildPlugin().Execute(clangBuildParams, Logger, Token);
             if (!clangBuildResult.Success)

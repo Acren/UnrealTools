@@ -4,7 +4,7 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class BuildPlugin : CommandProcessOperation<Plugin>
+    public class BuildPlugin : BuildBatOperation<Plugin>
     {
         // Direct Build.bat plugin compilation needs a host project and only applies to code plugins.
         public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
@@ -35,12 +35,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return null;
         }
 
-        protected override Command BuildCommand(OperationParameters operationParameters)
+        // Build the plugin against its host project through Build.bat so plugin compilation stays in place.
+        protected override void ConfigureBuildArguments(OperationParameters operationParameters, Arguments args)
         {
-            Arguments args = new();
             Plugin plugin = GetTarget(operationParameters);
             Project hostProject = plugin.HostProject;
-            UbtCompiler compiler = operationParameters.RequestOptions<UbtCompilerOptions>().Compiler;
 
             // Match Unreal's direct plugin build flow: editor target, platform, configuration, host project, then plugin path.
             args.SetArgument(GetTargetEngineInstall(operationParameters).BaseEditorName);
@@ -48,15 +47,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString());
             args.SetPath(hostProject.UProjectPath);
             args.SetKeyPath("plugin", plugin.UPluginPath);
-
-            // Only emit an explicit compiler flag when the user has opted out of the engine default behavior.
-            if (compiler != UbtCompiler.Default)
-            {
-                args.SetKeyValue("Compiler", compiler.ToString());
-            }
-
-            args.AddAdditionalArguments(operationParameters);
-            return new Command(GetTargetEngineInstall(operationParameters).GetBuildPath(), args);
         }
     }
 }

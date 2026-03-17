@@ -16,5 +16,8 @@ namespace UnrealCommander.Options
 
         // Surface the available compiler overrides from the shared enum so the UI and command builder stay aligned.
         public List<UbtCompiler> Compilers => EnumUtils.GetAll<UbtCompiler>();
+
+        // Surface the available language-standard overrides from the shared enum so the UI and command builder stay aligned.
+        public List<UbtCppStandard> CppStandards => EnumUtils.GetAll<UbtCppStandard>();
     }
 }
