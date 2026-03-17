@@ -1,4 +1,6 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -24,6 +26,7 @@ namespace UnrealCommander
     {
         private static readonly string DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UnrealCommander");
         private static readonly string DataFilePath = Path.Combine(DataFolder, "data.json");
+        private static readonly ISerializationBinder SerializationBinder = new DefaultSerializationBinder();
 
         private static PersistentData _instance;
 
@@ -143,17 +146,20 @@ namespace UnrealCommander
         {
             if (File.Exists(DataFilePath))
             {
-                using StreamReader sr = new(DataFilePath);
-                using JsonReader reader = new JsonTextReader(sr);
-                JsonSerializer serializer = new()
-                {
-                    PreserveReferencesHandling = PreserveReferencesHandling.All,
-                    TypeNameHandling = TypeNameHandling.Auto
-                };
-
                 try
                 {
-                    _instance = serializer.Deserialize<PersistentData>(reader);
+                    string jsonText = File.ReadAllText(DataFilePath);
+                    JToken jsonToken = JToken.Parse(jsonText);
+                    bool removedUnknownTypes = RemoveUnknownTypedObjects(jsonToken, "$", isRoot: true);
+
+                    JsonSerializer serializer = CreateSerializer();
+                    _instance = jsonToken.ToObject<PersistentData>(serializer);
+
+                    // Persist the cleaned data immediately so stale type references stop breaking future startups.
+                    if (_instance != null && removedUnknownTypes)
+                    {
+                        _instance.Save();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -188,11 +194,7 @@ namespace UnrealCommander
             StringWriter sw = new (sb);
 
             using JsonTextWriter writer = new(sw) { Formatting = Formatting.Indented };
-            JsonSerializer serializer = new()
-            {
-                PreserveReferencesHandling = PreserveReferencesHandling.All,
-                TypeNameHandling = TypeNameHandling.Auto
-            };
+            JsonSerializer serializer = CreateSerializer();
 
             serializer.Serialize(writer, this);
 
@@ -202,6 +204,87 @@ namespace UnrealCommander
             File.WriteAllText(DataFilePath, jsonString);
 
             _isSaving = false;
+        }
+
+        // Reuse the same serializer settings for load and save so typed references behave consistently.
+        private static JsonSerializer CreateSerializer()
+        {
+            return new JsonSerializer
+            {
+                PreserveReferencesHandling = PreserveReferencesHandling.All,
+                TypeNameHandling = TypeNameHandling.Auto,
+                SerializationBinder = SerializationBinder
+            };
+        }
+
+        // Recursively drop any object whose declared Json.NET type can no longer be resolved in the current app.
+        private static bool RemoveUnknownTypedObjects(JToken token, string path, bool isRoot = false)
+        {
+            bool removedAny = false;
+
+            if (token is JObject obj)
+            {
+                JToken typeToken = obj["$type"];
+                if (typeToken?.Type == JTokenType.String)
+                {
+                    string qualifiedTypeName = typeToken.Value<string>();
+                    if (!CanResolveTypeName(qualifiedTypeName))
+                    {
+                        AppLogger.LoggerInstance.LogWarning("Dropping persisted object at '{Path}' with unknown type '{TypeName}'", path, qualifiedTypeName);
+
+                        if (isRoot)
+                        {
+                            obj.RemoveAll();
+                            return true;
+                        }
+
+                        obj.Remove();
+                        return true;
+                    }
+                }
+
+                foreach (JProperty property in obj.Properties().ToList())
+                {
+                    removedAny |= RemoveUnknownTypedObjects(property.Value, AppendJsonPath(path, property.Name));
+                }
+
+                return removedAny;
+            }
+
+            if (token is JArray array)
+            {
+                for (int i = array.Count - 1; i >= 0; i--)
+                {
+                    removedAny |= RemoveUnknownTypedObjects(array[i], AppendJsonPath(path, i.ToString()), isRoot: false);
+                }
+            }
+
+            return removedAny;
+        }
+
+        // Let Json.NET parse the assembly-qualified type string so sanitization matches runtime deserialization behavior.
+        private static bool CanResolveTypeName(string qualifiedTypeName)
+        {
+            try
+            {
+                int assemblySeparatorIndex = qualifiedTypeName.IndexOf(',');
+                string typeName = assemblySeparatorIndex >= 0 ? qualifiedTypeName.Substring(0, assemblySeparatorIndex).Trim() : qualifiedTypeName.Trim();
+                string assemblyName = assemblySeparatorIndex >= 0 ? qualifiedTypeName.Substring(assemblySeparatorIndex + 1).Trim() : null;
+                Type resolvedType = SerializationBinder.BindToType(assemblyName, typeName);
+                return resolvedType != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Keep log paths readable for both object properties and array items while walking the JSON tree.
+        private static string AppendJsonPath(string path, string segment)
+        {
+            return int.TryParse(segment, out _)
+                ? $"{path}[{segment}]"
+                : $"{path}.{segment}";
         }
 
         public IOperationTarget AddTarget(string path)
