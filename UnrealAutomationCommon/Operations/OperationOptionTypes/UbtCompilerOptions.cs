@@ -21,7 +21,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
         private UbtCppStandard _cppStandard = UbtCppStandard.Default;
 
         public override int SortIndex => 30;
-        public override string Name => "Build.bat Options";
+        public override string Name => "Compiler";
 
         // Store the direct UBT overrides separately from general build options so unsupported UAT-based
         // operations do not accidentally advertise settings they cannot honor.
