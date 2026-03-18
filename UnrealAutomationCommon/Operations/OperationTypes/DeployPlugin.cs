@@ -452,6 +452,19 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
 
+        // Reuse the example project's prebuilt editor binaries so the packaging validation passes do not spend time
+        // recompiling the editor target before cooking and staging.
+        private OperationParameters CreateExampleProjectPackageParams(string outputPath)
+        {
+            return new OperationParameters
+            {
+                Target = ExampleProject,
+                EngineOverride = Engine,
+                OutputPathOverride = outputPath,
+                AdditionalArguments = "-nocompileeditor"
+            };
+        }
+
         // Rebuild the packaged plugin in-place with Clang so validation matches the project-plugin flow Fab uses.
         private async Task RunClangCompileCheck()
         {
@@ -500,12 +513,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string projectPluginPackagePath = Path.Combine(GetOperationTempPath(), @"ProjectPluginPackage");
                 FileUtils.DeleteDirectoryIfExists(projectPluginPackagePath);
 
-                OperationParameters packageWithPluginParams = new()
-                {
-                    Target = ExampleProject,
-                    EngineOverride = Engine,
-                    OutputPathOverride = projectPluginPackagePath
-                };
+                OperationParameters packageWithPluginParams = CreateExampleProjectPackageParams(projectPluginPackagePath);
 
                 OperationResult buildWithProjectPluginResult = await new PackageProject().Execute(packageWithPluginParams, Logger, Token);
 
@@ -563,12 +571,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string enginePluginPackagePath = Path.Combine(GetOperationTempPath(), @"EnginePluginPackage");
                 FileUtils.DeleteDirectoryIfExists(enginePluginPackagePath);
 
-                OperationParameters installedPluginPackageParams = new()
-                {
-                    Target = ExampleProject,
-                    EngineOverride = Engine,
-                    OutputPathOverride = enginePluginPackagePath
-                };
+                OperationParameters installedPluginPackageParams = CreateExampleProjectPackageParams(enginePluginPackagePath);
 
                 OperationResult installedPluginPackageOperationResult = await new PackageProject().Execute(installedPluginPackageParams, Logger, Token);
 
@@ -613,12 +616,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string blueprintOnlyPackagePath = Path.Combine(GetOperationTempPath(), @"BlueprintOnlyPackage");
                 FileUtils.DeleteDirectoryIfExists(blueprintOnlyPackagePath);
 
-                OperationParameters blueprintOnlyPackageParams = new()
-                {
-                    Target = ExampleProject,
-                    EngineOverride = Engine,
-                    OutputPathOverride = blueprintOnlyPackagePath
-                };
+                OperationParameters blueprintOnlyPackageParams = CreateExampleProjectPackageParams(blueprintOnlyPackagePath);
 
                 OperationResult blueprintOnlyPackageOperationResult = await new PackageProject().Execute(blueprintOnlyPackageParams, Logger, Token);
 
@@ -681,12 +679,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 FileUtils.DeleteDirectoryIfExists(demoPackagePath);
 
                 PackageProject demoPackageOperation = new();
-                OperationParameters demoPackageParams = new()
-                {
-                    Target = ExampleProject,
-                    EngineOverride = Engine,
-                    OutputPathOverride = demoPackagePath
-                };
+                OperationParameters demoPackageParams = CreateExampleProjectPackageParams(demoPackagePath);
 
                 // Set options for demo exe
                 demoPackageParams.RequestOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
