@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using LocalAutomation.Avalonia.ViewModels;
 
 namespace LocalAutomation.Avalonia;
@@ -34,6 +36,41 @@ public partial class MainWindow : Window
         {
             ViewModel.SetStatus(errorMessage);
         }
+    }
+
+    /// <summary>
+    /// Opens a folder picker so the Avalonia shell matches the legacy target-selection flow.
+    /// </summary>
+    private async void BrowseTarget_Click(object? sender, RoutedEventArgs e)
+    {
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel?.StorageProvider == null)
+        {
+            ViewModel.SetStatus("Folder browsing is not available in this window.");
+            return;
+        }
+
+        IReadOnlyList<IStorageFolder> folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Select target folder",
+            AllowMultiple = false
+        });
+
+        IStorageFolder? selectedFolder = folders.Count > 0 ? folders[0] : null;
+        if (selectedFolder == null)
+        {
+            return;
+        }
+
+        string? path = selectedFolder.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ViewModel.SetStatus("The selected folder is not available as a local filesystem path.");
+            return;
+        }
+
+        ViewModel.NewTargetPath = path;
+        ViewModel.SetStatus($"Selected target folder '{path}'.");
     }
 
     /// <summary>
