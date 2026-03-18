@@ -63,7 +63,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         {
             try
             {
-                logger.LogSectionHeader($"Running operation '{OperationName}'");
+                // Time every operation from the shared execution path so the top-level command always records an
+                // elapsed duration, even if the operation later fails or is cancelled.
+                using IDisposable operationTimingScope = logger.BeginSection(OperationName);
 
                 var warnings = 0;
                 var errors = 0;

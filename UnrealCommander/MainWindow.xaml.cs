@@ -13,7 +13,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using CommunityToolkit.WinUI.Notifications;
 using Microsoft.Extensions.Logging;
-using NReco.Logging.File;
+using Serilog;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -68,6 +68,9 @@ namespace UnrealCommander
         // Allow an individual launch log to roll if a single session becomes unusually noisy.
         private const int MaxLogFileSizeBytes = 10 * 1024 * 1024;
 
+        // Keep a few file segments per launch so large sessions still retain recent output after rolling.
+        private const int MaxRollingLaunchLogFiles = 3;
+
         private Operation _operation;
         private PersistentData _persistentState = new();
         private readonly ILoggerFactory _loggerFactory;
@@ -95,17 +98,24 @@ namespace UnrealCommander
 
             LoggingPaths.CleanupOldLaunchLogs(MaxLaunchLogFiles);
             string launchLogFilePath = LoggingPaths.CreateLaunchLogFilePath();
+
+            // Route Microsoft.Extensions.Logging through Serilog so the app can keep its existing ILogger usage
+            // while gaining a maintained rolling file sink instead of the old NReco file logger.
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Verbose()
+                .WriteTo.Console()
+                .WriteTo.File(
+                    path: launchLogFilePath,
+                    rollOnFileSizeLimit: true,
+                    fileSizeLimitBytes: MaxLogFileSizeBytes,
+                    retainedFileCountLimit: MaxRollingLaunchLogFiles,
+                    shared: true)
+                .WriteTo.Sink(new LogViewerSerilogSink() { Viewer = OutputLogViewer })
+                .CreateLogger();
             
             _loggerFactory = LoggerFactory.Create(builder =>
             {
-                builder.AddConsole();
-                builder.AddFile(launchLogFilePath, options =>
-                {
-                    options.Append = true;
-                    options.FileSizeLimitBytes = MaxLogFileSizeBytes;
-                    options.MaxRollingFiles = 3;
-                });
-                builder.AddProvider(new LogViewerLoggingProvider() { Viewer = OutputLogViewer });
+                builder.AddSerilog(dispose: false);
             });
 
             AppLogger.Instance.Logger = _loggerFactory.CreateLogger("UnrealCommander");
@@ -166,11 +176,13 @@ namespace UnrealCommander
         }
 
         /// <summary>
-        ///     Disposes the logger factory after the window fully closes so file handles are released promptly.
+        ///     Disposes the logger factory and Serilog pipeline after the window fully closes so file handles are
+        ///     released promptly.
         /// </summary>
         private void Window_Closed(object sender, EventArgs e)
         {
             _loggerFactory.Dispose();
+            Log.CloseAndFlush();
         }
 
         public IOperationTarget SelectedTarget
