@@ -10,7 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
-using System.Text;
+using LocalAutomation.Persistence;
 using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
@@ -27,6 +27,7 @@ namespace UnrealCommander
         private static readonly string DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UnrealCommander");
         private static readonly string DataFilePath = Path.Combine(DataFolder, "data.json");
         private static readonly ISerializationBinder SerializationBinder = new DefaultSerializationBinder();
+        private static readonly JsonFileStateStore<PersistentData> StateStore = CreateStateStore();
 
         private static PersistentData _instance;
 
@@ -144,36 +145,16 @@ namespace UnrealCommander
 
         public static PersistentData Load()
         {
-            if (File.Exists(DataFilePath))
-            {
-                try
-                {
-                    string jsonText = File.ReadAllText(DataFilePath);
-                    JToken jsonToken = JToken.Parse(jsonText);
-                    bool removedUnknownTypes = RemoveUnknownTypedObjects(jsonToken, "$", isRoot: true);
-
-                    JsonSerializer serializer = CreateSerializer();
-                    _instance = jsonToken.ToObject<PersistentData>(serializer);
-
-                    // Persist the cleaned data immediately so stale type references stop breaking future startups.
-                    if (_instance != null && removedUnknownTypes)
-                    {
-                        _instance.Save();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.LoggerInstance.LogError("Failed to load persistent data");
-                    AppLogger.LoggerInstance.LogError(ex.ToString());
-                }
-            }
-
-            if (_instance == null)
-            {
-                _instance = new PersistentData();
-            }
+            JsonStateLoadResult<PersistentData> loadResult = StateStore.Load();
+            _instance = loadResult.State;
 
             _instance._hasFinishedLoading = true;
+
+            // Persist the cleaned data immediately so stale type references stop breaking future startups.
+            if (loadResult.WasModified)
+            {
+                _instance.Save();
+            }
 
             return _instance;
         }
@@ -187,23 +168,25 @@ namespace UnrealCommander
 
             _isSaving = true;
 
-            // Build the entire json string before writing the file
-            // This is so that if we encounter an exception during serialization, we aren't left with a corrupt file
-
-            StringBuilder sb = new ();
-            StringWriter sw = new (sb);
-
-            using JsonTextWriter writer = new(sw) { Formatting = Formatting.Indented };
-            JsonSerializer serializer = CreateSerializer();
-
-            serializer.Serialize(writer, this);
-
-            string jsonString = sb.ToString();
-
-            Directory.CreateDirectory(DataFolder);
-            File.WriteAllText(DataFilePath, jsonString);
+            StateStore.Save(this);
 
             _isSaving = false;
+        }
+
+        // Centralize the JSON file I/O in LocalAutomation.Persistence while keeping the existing serializer settings
+        // and type-sanitization behavior specific to this state model.
+        private static JsonFileStateStore<PersistentData> CreateStateStore()
+        {
+            return new JsonFileStateStore<PersistentData>(
+                filePath: DataFilePath,
+                createDefaultState: () => new PersistentData(),
+                createSerializer: CreateSerializer,
+                preprocessToken: jsonToken => RemoveUnknownTypedObjects(jsonToken, "$", isRoot: true),
+                onLoadException: ex =>
+                {
+                    AppLogger.LoggerInstance.LogError("Failed to load persistent data");
+                    AppLogger.LoggerInstance.LogError(ex.ToString());
+                });
         }
 
         // Reuse the same serializer settings for load and save so typed references behave consistently.
