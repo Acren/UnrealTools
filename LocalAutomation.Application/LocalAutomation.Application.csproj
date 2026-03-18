@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
@@ -13,7 +13,6 @@
   <ItemGroup>
     <ProjectReference Include="..\LocalAutomation.Core\LocalAutomation.Core.csproj" />
     <ProjectReference Include="..\LocalAutomation.Extensions.Abstractions\LocalAutomation.Extensions.Abstractions.csproj" />
-    <ProjectReference Include="..\LocalAutomation.Persistence\LocalAutomation.Persistence.csproj" />
   </ItemGroup>
 
 </Project>

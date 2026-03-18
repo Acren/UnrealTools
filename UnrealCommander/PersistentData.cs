@@ -130,8 +130,8 @@ namespace UnrealCommander
                 {
                     return new();
                 }
-                var availableOperationTypes = OperationList.GetOrderedOperationTypes().Where(o => Operation.OperationTypeSupportsTarget(o, target)).ToList();
-                return availableOperationTypes;
+
+                return App.Services.Operations.GetAvailableOperationTypes(target).ToList();
             }
         }
 
@@ -289,26 +289,10 @@ namespace UnrealCommander
 
         public IOperationTarget AddTarget(string path)
         {
-            IOperationTarget target;
-            if (ProjectPaths.Instance.IsTargetDirectory(path))
+            object createdTarget = App.Services.Targets.CreateTarget(path);
+            if (createdTarget is not IOperationTarget target)
             {
-                target = new Project(path);
-            }
-            else if (PluginPaths.Instance.IsTargetDirectory(path))
-            {
-                target = new Plugin(path);
-            }
-            else if (PackagePaths.Instance.IsTargetDirectory(path))
-            {
-                target = new Package(path);
-            }
-            else if (EnginePaths.Instance.IsTargetDirectory(path))
-            {
-                target = new Engine(path);
-            }
-            else
-            {
-                throw new Exception("Path is not a target");
+                throw new Exception($"Created target '{createdTarget.GetType().Name}' does not implement IOperationTarget");
             }
 
             Targets.Add(target);

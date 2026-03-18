@@ -3,7 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using LocalAutomation.Extensions.Unreal;
 using AvaloniaApplication = Avalonia.Application;
-using ExtensionCatalog = LocalAutomation.Application.ExtensionCatalog;
+using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
 namespace LocalAutomation.Avalonia;
 
@@ -14,10 +14,10 @@ namespace LocalAutomation.Avalonia;
 public partial class App : AvaloniaApplication
 {
     /// <summary>
-    /// Keeps the compile-time extension catalog alive for the duration of the app so later phases can consume the
-    /// registered descriptors from a single shared source.
+    /// Keeps the compile-time application host alive for the duration of the app so later phases can consume shared
+    /// extension-backed services from a single source.
     /// </summary>
-    public static ExtensionCatalog Extensions { get; } = CreateExtensionCatalog();
+    public static LocalAutomationApplicationHost Services { get; } = CreateApplicationHost();
 
     /// <summary>
     /// Loads the application XAML resources and theme definitions.
@@ -41,12 +41,10 @@ public partial class App : AvaloniaApplication
     }
 
     /// <summary>
-    /// Registers compile-time extension modules for the current app session.
+    /// Registers compile-time extension modules for the current app session and exposes the resulting services.
     /// </summary>
-    private static ExtensionCatalog CreateExtensionCatalog()
+    private static LocalAutomationApplicationHost CreateApplicationHost()
     {
-        ExtensionCatalog catalog = new();
-        catalog.RegisterModule(new UnrealExtensionModule());
-        return catalog;
+        return LocalAutomationApplicationHost.Create(new UnrealExtensionModule());
     }
 }

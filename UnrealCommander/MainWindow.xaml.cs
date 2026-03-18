@@ -275,7 +275,7 @@ namespace UnrealCommander
 
         public IOperationTarget OperationTarget => PersistentState.OperationParameters.Target;
 
-        public List<Type> OperationTypes => OperationList.GetOrderedOperationTypes();
+        public List<Type> OperationTypes => App.Services.Operations.GetAllOperationTypes().ToList();
 
         public Engine SelectedEngine => (SelectedTarget as IEngineInstanceProvider)?.EngineInstance;
 
