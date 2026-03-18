@@ -70,15 +70,10 @@ public partial class MainWindow : Window
         }
 
         ViewModel.NewTargetPath = path;
-        ViewModel.SetStatus($"Selected target folder '{path}'.");
-    }
-
-    /// <summary>
-    /// Removes the currently selected target from the in-memory Avalonia session.
-    /// </summary>
-    private void RemoveTarget_Click(object? sender, RoutedEventArgs e)
-    {
-        ViewModel.RemoveSelectedTarget();
+        if (!ViewModel.TryAddTargetFromInput(out string? errorMessage) && !string.IsNullOrWhiteSpace(errorMessage))
+        {
+            ViewModel.SetStatus(errorMessage);
+        }
     }
 
     /// <summary>
