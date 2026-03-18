@@ -230,21 +230,17 @@ namespace UnrealCommander
                     OnPropertyChanged(nameof(SelectedTarget));
                     OnPropertyChanged(nameof(OperationTarget));
 
-                    if (!Operation.OperationTypeSupportsTarget(PersistentState.OperationType,
-                        PersistentState.OperationParameters.Target))
+                    Type coercedOperationType = App.Services.OperationSession.CoerceSelectedOperationType(
+                        PersistentState.OperationParameters.Target,
+                        PersistentState.OperationType);
+                    if (coercedOperationType != PersistentState.OperationType)
                     {
-                        foreach (Type operationType in OperationTypes)
-                            if (Operation.OperationTypeSupportsTarget(operationType,
-                                    PersistentState.OperationParameters.Target))
-                            {
-                                PersistentState.OperationType = operationType;
-                                break;
-                            }
+                        PersistentState.OperationType = coercedOperationType;
                     }
 
                     if (PersistentState.OperationType != null && (Operation == null || Operation.GetType() != PersistentState.OperationType))
                     {
-                        Operation = Operation.CreateOperation(PersistentState.OperationType);
+                        Operation = (Operation)App.Services.OperationSession.CreateOperation(PersistentState.OperationType);
                     }
                 }
             }
@@ -271,7 +267,7 @@ namespace UnrealCommander
             }
         }
 
-        public bool OperationSupportsMultipleEngines => Operation.SupportsMultipleEngines;
+        public bool OperationSupportsMultipleEngines => App.Services.OperationSession.SupportsMultipleEngines(Operation);
 
         public IOperationTarget OperationTarget => PersistentState.OperationParameters.Target;
 
@@ -305,7 +301,7 @@ namespace UnrealCommander
                 {
                     return new();
                 }
-                return Operation.GetRequiredOptionSetTypes(PersistentState.OperationParameters.Target).ToList();
+                return App.Services.OperationSession.GetEnabledOptionSetTypes(Operation, PersistentState.OperationParameters.Target).ToList();
             }
         }
 
@@ -337,12 +333,7 @@ namespace UnrealCommander
         {
             get
             {
-                if (Operation == null)
-                {
-                    return "No operation selected";
-                }
-
-                return Operation.CheckRequirementsSatisfied(PersistentState.OperationParameters);
+                return App.Services.OperationSession.GetExecuteDisabledReason(Operation, PersistentState.OperationParameters);
             }
         }
 
@@ -350,20 +341,7 @@ namespace UnrealCommander
         {
             get
             {
-                if (Operation == null)
-                {
-                    return "No operation";
-                }
-
-                var commandStrings = new List<string>();
-                foreach (Command command in Operation.GetCommands(PersistentState.OperationParameters)) commandStrings.Add(command.ToString());
-
-                if (commandStrings.Count > 0)
-                {
-                    return string.Join("\n", commandStrings);
-                }
-
-                return "No command";
+                return App.Services.OperationSession.GetVisibleCommandText(Operation, PersistentState.OperationParameters);
             }
         }
 
@@ -411,7 +389,7 @@ namespace UnrealCommander
         private async Task ExecuteAsync()
         {
             // Create a new operation instance of the selected one
-            Operation newOperation = Operation.CreateOperation(Operation.GetType());
+            Operation newOperation = (Operation)App.Services.OperationSession.CreateOperation(Operation.GetType());
 
             if (!newOperation.RequirementsSatisfied(PersistentState.OperationParameters))
             {
@@ -486,7 +464,13 @@ namespace UnrealCommander
 
         private void CopyCommand(object sender, RoutedEventArgs e)
         {
-            Clipboard.SetDataObject(Operation.GetCommands(PersistentState.OperationParameters).First().ToString());
+            string commandText = App.Services.OperationSession.GetPrimaryCommandText(Operation, PersistentState.OperationParameters);
+            if (commandText == null)
+            {
+                return;
+            }
+
+            Clipboard.SetDataObject(commandText);
             CommandTextBox.Focus();
             CommandTextBox.SelectAll();
         }

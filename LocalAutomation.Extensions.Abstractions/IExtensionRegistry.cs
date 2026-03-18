@@ -24,6 +24,11 @@ public interface IExtensionRegistry
     IReadOnlyList<ITargetFactory> TargetFactories { get; }
 
     /// <summary>
+    /// Gets the registered operation adapters used to create and inspect runtime operations.
+    /// </summary>
+    IReadOnlyList<IOperationAdapter> OperationAdapters { get; }
+
+    /// <summary>
     /// Gets the registered target context actions.
     /// </summary>
     IReadOnlyList<ContextActionDescriptor> ContextActions { get; }
@@ -42,6 +47,11 @@ public interface IExtensionRegistry
     /// Adds a target factory to the registry.
     /// </summary>
     void RegisterTargetFactory(ITargetFactory factory);
+
+    /// <summary>
+    /// Adds an operation adapter to the registry.
+    /// </summary>
+    void RegisterOperationAdapter(IOperationAdapter adapter);
 
     /// <summary>
     /// Adds a context action descriptor to the registry.

@@ -12,6 +12,7 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 {
     private readonly List<ContextActionDescriptor> _contextActions = new();
     private readonly List<IExtensionModule> _modules = new();
+    private readonly List<IOperationAdapter> _operationAdapters = new();
     private readonly List<OperationDescriptor> _operations = new();
     private readonly List<TargetDescriptor> _targets = new();
     private readonly List<ITargetFactory> _targetFactories = new();
@@ -40,6 +41,11 @@ public sealed class ExtensionCatalog : IExtensionRegistry
     /// Gets the registered target context actions.
     /// </summary>
     public IReadOnlyList<ContextActionDescriptor> ContextActions => _contextActions;
+
+    /// <summary>
+    /// Gets the registered operation adapters.
+    /// </summary>
+    public IReadOnlyList<IOperationAdapter> OperationAdapters => _operationAdapters;
 
     /// <summary>
     /// Registers a module once and lets it contribute its descriptors through the shared registry interface.
@@ -96,6 +102,20 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(factory.Id, _targetFactories, static item => item.Id, nameof(factory));
         _targetFactories.Add(factory);
+    }
+
+    /// <summary>
+    /// Registers an operation adapter after checking that its identifier is unique.
+    /// </summary>
+    public void RegisterOperationAdapter(IOperationAdapter adapter)
+    {
+        if (adapter == null)
+        {
+            throw new ArgumentNullException(nameof(adapter));
+        }
+
+        EnsureUniqueId(adapter.Id, _operationAdapters, static item => item.Id, nameof(adapter));
+        _operationAdapters.Add(adapter);
     }
 
     /// <summary>
