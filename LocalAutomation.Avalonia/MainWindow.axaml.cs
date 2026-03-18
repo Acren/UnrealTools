@@ -1,17 +1,69 @@
+using System;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using LocalAutomation.Avalonia.ViewModels;
 
 namespace LocalAutomation.Avalonia;
 
 /// <summary>
-/// Hosts the placeholder shell UI while the new LocalAutomation application structure is introduced.
+/// Hosts the first parity-focused Avalonia shell backed by the shared LocalAutomation application services.
 /// </summary>
 public partial class MainWindow : Window
 {
     /// <summary>
-    /// Initializes the placeholder shell window.
+    /// Initializes the Avalonia shell window and connects it to the shared LocalAutomation view model.
     /// </summary>
     public MainWindow()
     {
         InitializeComponent();
+        DataContext = new MainWindowViewModel(App.Services);
+    }
+
+    /// <summary>
+    /// Gets the strongly typed view model for the shell window.
+    /// </summary>
+    private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext!;
+
+    /// <summary>
+    /// Adds a target from the current input path and surfaces any validation error through the shared status text.
+    /// </summary>
+    private void AddTarget_Click(object? sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.TryAddTargetFromInput(out string? errorMessage) && !string.IsNullOrWhiteSpace(errorMessage))
+        {
+            ViewModel.SetStatus(errorMessage);
+        }
+    }
+
+    /// <summary>
+    /// Removes the currently selected target from the in-memory Avalonia session.
+    /// </summary>
+    private void RemoveTarget_Click(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.RemoveSelectedTarget();
+    }
+
+    /// <summary>
+    /// Copies the current primary command preview text onto the clipboard when one is available.
+    /// </summary>
+    private async void CopyCommand_Click(object? sender, RoutedEventArgs e)
+    {
+        string? commandText = ViewModel.PrimaryCommandText;
+        if (string.IsNullOrWhiteSpace(commandText))
+        {
+            ViewModel.SetStatus("No command is available to copy yet.");
+            return;
+        }
+
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard == null)
+        {
+            ViewModel.SetStatus("Clipboard access is not available in this window.");
+            return;
+        }
+
+        await clipboard.SetTextAsync(commandText);
+        ViewModel.SetStatus("Copied the current command preview to the clipboard.");
     }
 }

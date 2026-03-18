@@ -23,6 +23,7 @@
     <ProjectReference Include="..\LocalAutomation.Application\LocalAutomation.Application.csproj" />
     <ProjectReference Include="..\LocalAutomation.Extensions.Abstractions\LocalAutomation.Extensions.Abstractions.csproj" />
     <ProjectReference Include="..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj" />
+    <ProjectReference Include="..\UnrealAutomationCommon\UnrealAutomationCommon.csproj" />
   </ItemGroup>
 
 </Project>

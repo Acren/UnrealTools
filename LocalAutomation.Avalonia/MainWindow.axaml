@@ -1,20 +1,238 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
+        xmlns:ext="clr-namespace:LocalAutomation.Extensions.Abstractions;assembly=LocalAutomation.Extensions.Abstractions"
         x:Class="LocalAutomation.Avalonia.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
         Title="LocalAutomation"
-        Width="1200"
-        Height="800">
-    <Grid RowDefinitions="Auto,*" Margin="24">
-        <TextBlock Text="LocalAutomation"
-                   FontSize="28"
-                   FontWeight="Bold" />
-        <Border Grid.Row="1"
-                Margin="0,16,0,0"
-                Padding="20"
-                CornerRadius="8"
+        Width="1240"
+        Height="820"
+        MinWidth="960"
+        MinHeight="680">
+    <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" ColumnDefinitions="2.2*,2.8*">
+        <Border Grid.ColumnSpan="2"
+                Padding="16"
+                CornerRadius="10"
+                Background="#112C3E50"
+                BorderBrush="#334B657A"
                 BorderThickness="1">
-            <TextBlock TextWrapping="Wrap"
-                       Text="Phase 1 scaffolding is in place. The Avalonia shell will gain parity with the existing WPF app in later phases." />
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                <TextBlock Text="LocalAutomation"
+                           FontSize="26"
+                           FontWeight="SemiBold" />
+                <TextBlock Grid.Row="1"
+                           Margin="0,6,0,0"
+                           Text="Phase 7 parity shell preview"
+                           Opacity="0.7" />
+                <TextBlock Grid.Column="1"
+                           Grid.RowSpan="2"
+                           VerticalAlignment="Center"
+                           Text="{Binding Status}"
+                           TextAlignment="Right"
+                           TextWrapping="Wrap"
+                           MaxWidth="420" />
+            </Grid>
         </Border>
+
+        <Border Grid.Row="1"
+                Grid.ColumnSpan="2"
+                Margin="0,14,0,0"
+                Padding="14"
+                CornerRadius="10"
+                BorderBrush="#334B657A"
+                BorderThickness="1">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBox Watermark="Enter a project, plugin, package, or engine path"
+                         Text="{Binding NewTargetPath}" />
+                <Button Grid.Column="1"
+                        Margin="10,0,0,0"
+                        Content="Add Target"
+                        Click="AddTarget_Click"
+                        IsEnabled="{Binding CanAddTarget}" />
+                <Button Grid.Column="2"
+                        Margin="10,0,0,0"
+                        Content="Remove Target"
+                        Click="RemoveTarget_Click"
+                        IsEnabled="{Binding CanRemoveTarget}" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2"
+                Margin="0,14,14,0"
+                Padding="14"
+                CornerRadius="10"
+                BorderBrush="#334B657A"
+                BorderThickness="1">
+            <Grid RowDefinitions="Auto,*,Auto,Auto">
+                <TextBlock Text="Targets"
+                           FontSize="18"
+                           FontWeight="SemiBold" />
+                <ListBox Grid.Row="1"
+                         Margin="0,12,0,0"
+                         ItemsSource="{Binding Targets}"
+                         SelectedItem="{Binding SelectedTarget}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:TargetListItemViewModel">
+                            <Border Padding="10,8">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding TypeName}" Opacity="0.75" />
+                                    <TextBlock Text="{Binding TargetPath}" TextWrapping="Wrap" Opacity="0.7" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="4">
+                    <TextBlock Text="Selected target" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding SelectedTargetSummary}" />
+                    <TextBlock Text="{Binding SelectedTargetPath}" TextWrapping="Wrap" Opacity="0.75" />
+                    <TextBlock Text="{Binding SelectedTargetEngine}" Opacity="0.75" />
+                </StackPanel>
+                <Border Grid.Row="3"
+                        Padding="10"
+                        CornerRadius="8"
+                        Background="#0F3A5164"
+                        BorderBrush="#264B657A"
+                        BorderThickness="1">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Compatibility" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding ExecuteButtonText}" />
+                        <TextBlock Text="{Binding OperationSupportsMultipleEngines, StringFormat='Supports multiple engines: {0}'}"
+                                   Opacity="0.75" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2" Grid.Column="1" Margin="0,14,0,0" RowDefinitions="Auto,Auto,*,Auto,Auto">
+            <Border Padding="14"
+                    CornerRadius="10"
+                    BorderBrush="#334B657A"
+                    BorderThickness="1">
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock VerticalAlignment="Center"
+                               Text="Operation"
+                               FontWeight="SemiBold" />
+                    <ComboBox Grid.Column="1"
+                              Margin="12,0,0,0"
+                              ItemsSource="{Binding AvailableOperations}"
+                              SelectedItem="{Binding SelectedOperation}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="ext:OperationDescriptor">
+                                <TextBlock Text="{Binding DisplayName}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1"
+                    Margin="0,12,0,0"
+                    Padding="14"
+                    CornerRadius="10"
+                    BorderBrush="#334B657A"
+                    BorderThickness="1">
+                <Grid RowDefinitions="Auto,Auto">
+                    <TextBlock Text="Additional Arguments" FontWeight="SemiBold" />
+                    <TextBox Grid.Row="1"
+                             Margin="0,10,0,0"
+                             Watermark="Pass through extra arguments"
+                             Text="{Binding AdditionalArguments}" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="2"
+                    Margin="0,12,0,0"
+                    Padding="14"
+                    CornerRadius="10"
+                    BorderBrush="#334B657A"
+                    BorderThickness="1">
+                <Grid RowDefinitions="Auto,Auto,*">
+                    <TextBlock Text="Enabled Option Sets" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Grid.Row="1"
+                               Margin="0,10,0,0"
+                               Text="This parity shell lists which option groups are active for the selected target and operation."
+                               TextWrapping="Wrap"
+                               Opacity="0.75" />
+                    <ItemsControl Grid.Row="2" Margin="0,10,0,0" ItemsSource="{Binding EnabledOptionSetNames}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,8"
+                                        Padding="10,8"
+                                        CornerRadius="8"
+                                        Background="#0F3A5164"
+                                        BorderBrush="#264B657A"
+                                        BorderThickness="1">
+                                    <TextBlock Text="{Binding .}" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="3"
+                    Margin="0,12,0,0"
+                    Padding="12"
+                    CornerRadius="10"
+                    Background="#14D6A55C"
+                    BorderBrush="#FFD6A55C"
+                    BorderThickness="1"
+                    IsVisible="{Binding ShowExecuteDisabledReason}">
+                <TextBlock Text="{Binding ExecuteDisabledReason}" TextWrapping="Wrap" />
+            </Border>
+
+            <Border Grid.Row="4"
+                    Margin="0,12,0,0"
+                    Padding="14"
+                    CornerRadius="10"
+                    BorderBrush="#334B657A"
+                    BorderThickness="1">
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock Text="Command Preview" FontSize="18" FontWeight="SemiBold" />
+                    <TextBox Grid.Row="1"
+                             Margin="0,10,0,0"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             FontFamily="Consolas"
+                             Text="{Binding VisibleCommand}" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="3"
+                Grid.ColumnSpan="2"
+                Margin="0,14,0,0"
+                Padding="14"
+                CornerRadius="10"
+                BorderBrush="#334B657A"
+                BorderThickness="1">
+            <Grid RowDefinitions="Auto,Auto">
+                <TextBlock Text="Output" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock Grid.Row="1"
+                           Margin="0,8,0,0"
+                           Text="Log streaming and run history will be connected in later parity phases. For now, command preview and selection state are backed by the shared LocalAutomation services."
+                           TextWrapping="Wrap"
+                           Opacity="0.75" />
+            </Grid>
+        </Border>
+
+        <WrapPanel Grid.Row="4"
+                   Grid.ColumnSpan="2"
+                   Margin="0,14,0,0"
+                   HorizontalAlignment="Right"
+                   Orientation="Horizontal">
+            <Button Margin="0,0,8,0"
+                    Content="Copy Command"
+                    Click="CopyCommand_Click"
+                    IsEnabled="{Binding CanCopyCommand}" />
+            <Button Margin="0,0,8,0"
+                    Content="{Binding ExecuteButtonText}"
+                    IsEnabled="{Binding CanExecute}" />
+            <Button Content="Terminate"
+                    IsEnabled="False" />
+        </WrapPanel>
     </Grid>
 </Window>
