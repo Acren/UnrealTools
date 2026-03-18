@@ -1,0 +1,20 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="LocalAutomation.Avalonia.MainWindow"
+        Title="LocalAutomation"
+        Width="1200"
+        Height="800">
+    <Grid RowDefinitions="Auto,*" Margin="24">
+        <TextBlock Text="LocalAutomation"
+                   FontSize="28"
+                   FontWeight="Bold" />
+        <Border Grid.Row="1"
+                Margin="0,16,0,0"
+                Padding="20"
+                CornerRadius="8"
+                BorderThickness="1">
+            <TextBlock TextWrapping="Wrap"
+                       Text="Phase 1 scaffolding is in place. The Avalonia shell will gain parity with the existing WPF app in later phases." />
+        </Border>
+    </Grid>
+</Window>
