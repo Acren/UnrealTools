@@ -5,7 +5,7 @@
     <LangVersion>default</LangVersion>
   </PropertyGroup>
 	
-	<ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="3.11.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0-preview.5.24306.7" />
     <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
@@ -13,6 +13,10 @@
     <PackageReference Include="Polly" Version="7.2.3" />
     <PackageReference Include="Semver" Version="2.3.0" />
     <PackageReference Include="System.Management" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LocalAutomation.Core\LocalAutomation.Core.csproj" />
   </ItemGroup>
 
 	<ItemGroup>
