@@ -13,6 +13,7 @@ public sealed class ExtensionCatalog : IExtensionRegistry
     private readonly List<ContextActionDescriptor> _contextActions = new();
     private readonly List<IExtensionModule> _modules = new();
     private readonly List<IOptionEditorAdapter> _optionEditorAdapters = new();
+    private readonly List<IOptionValueConverter> _optionValueConverters = new();
     private readonly List<IOperationAdapter> _operationAdapters = new();
     private readonly List<OperationDescriptor> _operations = new();
     private readonly List<IRunnerAdapter> _runnerAdapters = new();
@@ -48,6 +49,11 @@ public sealed class ExtensionCatalog : IExtensionRegistry
     /// Gets the registered option editor adapters.
     /// </summary>
     public IReadOnlyList<IOptionEditorAdapter> OptionEditorAdapters => _optionEditorAdapters;
+
+    /// <summary>
+    /// Gets the registered option value converters.
+    /// </summary>
+    public IReadOnlyList<IOptionValueConverter> OptionValueConverters => _optionValueConverters;
 
     /// <summary>
     /// Gets the registered operation adapters.
@@ -170,6 +176,20 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(adapter.Id, _optionEditorAdapters, static item => item.Id, nameof(adapter));
         _optionEditorAdapters.Add(adapter);
+    }
+
+    /// <summary>
+    /// Registers an option value converter after checking that its identifier is unique.
+    /// </summary>
+    public void RegisterOptionValueConverter(IOptionValueConverter converter)
+    {
+        if (converter == null)
+        {
+            throw new ArgumentNullException(nameof(converter));
+        }
+
+        EnsureUniqueId(converter.Id, _optionValueConverters, static item => item.Id, nameof(converter));
+        _optionValueConverters.Add(converter);
     }
 
     /// <summary>

@@ -49,6 +49,8 @@ public sealed class UnrealExtensionModule : IExtensionModule
         registry.RegisterRunnerAdapter(new UnrealRunnerAdapter());
         registry.RegisterOptionEditorAdapter(new EngineVersionOptionEditorAdapter());
         registry.RegisterOptionEditorAdapter(new InsightsOptionEditorAdapter());
+        registry.RegisterOptionValueConverter(new EngineVersionListOptionValueConverter());
+        registry.RegisterOptionValueConverter(new TraceChannelListOptionValueConverter());
         RegisterContextActions(registry);
 
         foreach (OperationDescriptor descriptor in BuildOperationDescriptors())

@@ -44,6 +44,11 @@ public interface IExtensionRegistry
     IReadOnlyList<IOptionEditorAdapter> OptionEditorAdapters { get; }
 
     /// <summary>
+    /// Gets the registered option value converters.
+    /// </summary>
+    IReadOnlyList<IOptionValueConverter> OptionValueConverters { get; }
+
+    /// <summary>
     /// Adds a target descriptor to the registry.
     /// </summary>
     void RegisterTarget(TargetDescriptor descriptor);
@@ -77,4 +82,9 @@ public interface IExtensionRegistry
     /// Adds an option editor adapter to the registry.
     /// </summary>
     void RegisterOptionEditorAdapter(IOptionEditorAdapter adapter);
+
+    /// <summary>
+    /// Adds an option value converter to the registry.
+    /// </summary>
+    void RegisterOptionValueConverter(IOptionValueConverter converter);
 }

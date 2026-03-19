@@ -33,6 +33,22 @@ public sealed class OperationCatalogService
     }
 
     /// <summary>
+    /// Returns the descriptor with the provided stable identifier when one exists.
+    /// </summary>
+    public OperationDescriptor? GetOperation(string operationId)
+    {
+        return GetAllOperations().FirstOrDefault(descriptor => string.Equals(descriptor.Id, operationId, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Returns the descriptor for the provided runtime operation type when one exists.
+    /// </summary>
+    public OperationDescriptor? GetOperation(Type operationType)
+    {
+        return GetAllOperations().FirstOrDefault(descriptor => descriptor.OperationType == operationType);
+    }
+
+    /// <summary>
     /// Returns all registered runtime operation types in their configured sort order.
     /// </summary>
     public IReadOnlyList<Type> GetAllOperationTypes()

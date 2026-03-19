@@ -48,4 +48,25 @@ public sealed class TargetDiscoveryService
 
         throw new InvalidOperationException($"No registered target factory accepted '{source}'.");
     }
+
+    /// <summary>
+    /// Returns the stable target descriptor identifier for the provided runtime target when one exists.
+    /// </summary>
+    public string? GetTargetTypeId(object? target)
+    {
+        if (target == null)
+        {
+            return null;
+        }
+
+        foreach (TargetDescriptor descriptor in _catalog.TargetDescriptors)
+        {
+            if (descriptor.TargetType.IsInstanceOfType(target))
+            {
+                return descriptor.Id;
+            }
+        }
+
+        return null;
+    }
 }

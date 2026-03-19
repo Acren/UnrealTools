@@ -19,6 +19,7 @@ public sealed class LocalAutomationApplicationHost
         Execution = new ExecutionService();
         ExecutionRuntime = new ExecutionRuntimeService(catalog);
         OptionEditors = new OptionEditorService(catalog);
+        OptionValues = new OptionValuePersistenceService(catalog);
         Operations = new OperationCatalogService(catalog);
         OperationRuntime = new OperationRuntimeService(catalog);
         OperationSession = new OperationSessionService(Operations, OperationRuntime);
@@ -54,6 +55,11 @@ public sealed class LocalAutomationApplicationHost
     /// Gets the service used to resolve property-grid editor targets for option sets.
     /// </summary>
     public OptionEditorService OptionEditors { get; }
+
+    /// <summary>
+    /// Gets the service used to capture and reapply stable option values for persistence.
+    /// </summary>
+    public OptionValuePersistenceService OptionValues { get; }
 
     /// <summary>
     /// Gets the service used to create and inspect runtime operations through extension-provided adapters.
