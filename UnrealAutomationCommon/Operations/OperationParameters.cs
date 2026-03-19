@@ -166,6 +166,21 @@ namespace UnrealAutomationCommon.Operations
             return null;
         }
 
+        // Return the live options instance stored on this parameter object so new UI layers can bind directly to the
+        // actual state instead of working with the historical clone-based helpers above.
+        public OperationOptions GetOptionsInstance(Type optionsType)
+        {
+            foreach (OperationOptions options in OptionsInstances)
+            {
+                if (options.GetType() == optionsType)
+                {
+                    return options;
+                }
+            }
+
+            return null;
+        }
+
         public T RequestOptions<T>() where T : OperationOptions
         {
             T options = FindOptions<T>();
@@ -178,6 +193,21 @@ namespace UnrealAutomationCommon.Operations
             T newOptions = (T)Activator.CreateInstance(typeof(T));
             SetOptions(newOptions);
             return (T)newOptions.Clone();
+        }
+
+        // Ensure a live options instance exists for the provided runtime type and return the stored instance so host
+        // UIs can edit it directly.
+        public OperationOptions EnsureOptionsInstance(Type optionsType)
+        {
+            OperationOptions existingOptions = GetOptionsInstance(optionsType);
+            if (existingOptions != null)
+            {
+                return existingOptions;
+            }
+
+            OperationOptions newOptions = (OperationOptions)Activator.CreateInstance(optionsType);
+            SetOptions(newOptions);
+            return newOptions;
         }
 
         public void SetOptions<T>(T options) where T : OperationOptions
@@ -202,6 +232,19 @@ namespace UnrealAutomationCommon.Operations
             options.OperationTarget = Target;
 
             OptionsInstances.Insert(desiredIndex, options);
+        }
+
+        // Remove the live options instance for the provided runtime type when a target or operation no longer needs
+        // that option set.
+        public bool RemoveOptionsInstance(Type optionsType)
+        {
+            OperationOptions options = GetOptionsInstance(optionsType);
+            if (options == null)
+            {
+                return false;
+            }
+
+            return OptionsInstances.Remove(options);
         }
 
         public void ResetOptions()

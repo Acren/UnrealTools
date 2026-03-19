@@ -9,8 +9,8 @@ using UnrealAutomationCommon.Operations;
 namespace LocalAutomation.Avalonia.ViewModels;
 
 /// <summary>
-/// Drives the first real Avalonia shell by exposing target selection, operation selection, and command preview state
-/// through the shared LocalAutomation services.
+/// Drives the first real Avalonia shell by exposing target selection, operation selection, command preview, and a
+/// generic option-editing surface through the shared LocalAutomation services.
 /// </summary>
 public sealed class MainWindowViewModel : ViewModelBase
 {
@@ -42,9 +42,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ObservableCollection<OperationDescriptor> AvailableOperations { get; } = new();
 
     /// <summary>
-    /// Gets the required option set names for the current target and operation selection.
+    /// Gets the editable option sets for the current target and operation selection.
     /// </summary>
-    public ObservableCollection<string> EnabledOptionSetNames { get; } = new();
+    public ObservableCollection<OptionSetViewModel> EnabledOptionSets { get; } = new();
 
     /// <summary>
     /// Gets or sets the path text entered into the Add Target input.
@@ -74,7 +74,6 @@ public sealed class MainWindowViewModel : ViewModelBase
                 _operationParameters.Target = value?.Target;
                 RefreshOperationSelection();
                 RaiseDerivedStateChanged();
-                RaisePropertyChanged(nameof(CanRemoveTarget));
             }
         }
     }
@@ -93,7 +92,7 @@ public sealed class MainWindowViewModel : ViewModelBase
                     ? _services.OperationSession.CreateOperation(value.OperationType)
                     : null;
 
-                RefreshEnabledOptionSetNames();
+                RefreshEnabledOptionSets();
                 RaiseDerivedStateChanged();
             }
         }
@@ -128,11 +127,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets whether a non-empty target path can be added from the input box.
     /// </summary>
     public bool CanAddTarget => !string.IsNullOrWhiteSpace(NewTargetPath);
-
-    /// <summary>
-    /// Gets whether the selected target can currently be removed.
-    /// </summary>
-    public bool CanRemoveTarget => SelectedTarget != null;
 
     /// <summary>
     /// Gets whether the current selection can produce a command preview string for copying.
@@ -277,7 +271,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void HandleOperationParametersChanged(object? sender, PropertyChangedEventArgs e)
     {
-        RefreshEnabledOptionSetNames();
+        RefreshEnabledOptionSets();
         RaiseDerivedStateChanged();
     }
 
@@ -301,15 +295,35 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Rebuilds the human-readable option set list for the currently selected operation and target.
+    /// Rebuilds the editable option set list for the currently selected operation and target.
     /// </summary>
-    private void RefreshEnabledOptionSetNames()
+    private void RefreshEnabledOptionSets()
     {
-        EnabledOptionSetNames.Clear();
-        foreach (Type optionSetType in _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target))
+        var enabledOptionTypes = _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target);
+        foreach (Type optionSetType in enabledOptionTypes)
         {
-            string displayName = optionSetType.Name.Replace("Options", string.Empty);
-            EnabledOptionSetNames.Add(displayName);
+            _operationParameters.EnsureOptionsInstance(optionSetType);
+        }
+
+        foreach (OperationOptions options in _operationParameters.OptionsInstances.ToList())
+        {
+            if (!enabledOptionTypes.Contains(options.GetType()))
+            {
+                _operationParameters.RemoveOptionsInstance(options.GetType());
+            }
+        }
+
+        EnabledOptionSets.Clear();
+        foreach (OperationOptions options in _operationParameters.OptionsInstances)
+        {
+            if (options is UnrealAutomationCommon.Operations.OperationOptionTypes.EngineVersionOptions engineVersionOptions)
+            {
+                EnabledOptionSets.Add(new EngineVersionOptionSetViewModel(engineVersionOptions));
+            }
+            else
+            {
+                EnabledOptionSets.Add(new OptionSetViewModel(options));
+            }
         }
     }
 
@@ -319,6 +333,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void RaiseDerivedStateChanged()
     {
         RaisePropertyChanged(nameof(AdditionalArguments));
+        RaisePropertyChanged(nameof(CanAddTarget));
         RaisePropertyChanged(nameof(CanCopyCommand));
         RaisePropertyChanged(nameof(CanExecute));
         RaisePropertyChanged(nameof(ExecuteButtonText));

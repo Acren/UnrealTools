@@ -77,6 +77,19 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Removes the currently selected target from the list-level action inside the target card.
+    /// </summary>
+    private void RemoveSelectedTarget_Click(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedTarget == null)
+        {
+            return;
+        }
+
+        ViewModel.RemoveSelectedTarget();
+    }
+
+    /// <summary>
     /// Copies the current primary command preview text onto the clipboard when one is available.
     /// </summary>
     private async void CopyCommand_Click(object? sender, RoutedEventArgs e)

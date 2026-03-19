@@ -77,6 +77,10 @@
                                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding TypeName}" Opacity="0.75" />
                                     <TextBlock Text="{Binding TargetPath}" TextWrapping="Wrap" Opacity="0.7" />
+                                    <Button Margin="0,6,0,0"
+                                            HorizontalAlignment="Left"
+                                            Content="Remove"
+                                            Click="RemoveSelectedTarget_Click" />
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
@@ -148,22 +152,61 @@
                     BorderBrush="#334B657A"
                     BorderThickness="1">
                 <Grid RowDefinitions="Auto,Auto,*">
-                    <TextBlock Text="Enabled Option Sets" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Text="Options" FontSize="18" FontWeight="SemiBold" />
                     <TextBlock Grid.Row="1"
                                Margin="0,10,0,0"
-                               Text="This parity shell lists which option groups are active for the selected target and operation."
+                               Text="This parity shell now exposes a generic editor for the supported option field shapes used by the current operation."
                                TextWrapping="Wrap"
                                Opacity="0.75" />
-                    <ItemsControl Grid.Row="2" Margin="0,10,0,0" ItemsSource="{Binding EnabledOptionSetNames}">
+                    <ItemsControl Grid.Row="2" Margin="0,10,0,0" ItemsSource="{Binding EnabledOptionSets}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="vm:OptionSetViewModel">
                                 <Border Margin="0,0,0,8"
-                                        Padding="10,8"
+                                        Padding="12"
                                         CornerRadius="8"
                                         Background="#0F3A5164"
                                         BorderBrush="#264B657A"
                                         BorderThickness="1">
-                                    <TextBlock Text="{Binding .}" />
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                        <ItemsControl IsVisible="{Binding UseCustomEditor, Converter={x:Static BoolConverters.Not}}"
+                                                      ItemsSource="{Binding Fields}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:OptionFieldViewModel">
+                                                    <Grid ColumnDefinitions="160,*" Margin="0,0,0,6">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Text="{Binding DisplayName}" />
+                                                        <CheckBox Grid.Column="1"
+                                                                  VerticalAlignment="Center"
+                                                                  IsVisible="{Binding IsBoolean}"
+                                                                  IsChecked="{Binding BoolValue}" />
+                                                        <TextBox Grid.Column="1"
+                                                                 IsVisible="{Binding IsString}"
+                                                                 Text="{Binding StringValue}" />
+                                                        <ComboBox Grid.Column="1"
+                                                                  IsVisible="{Binding IsEnum}"
+                                                                  ItemsSource="{Binding EnumChoices}"
+                                                                  SelectedItem="{Binding SelectedEnumChoice}">
+                                                            <ComboBox.ItemTemplate>
+                                                                <DataTemplate x:DataType="vm:EnumChoiceViewModel">
+                                                                    <TextBlock Text="{Binding Label}" />
+                                                                </DataTemplate>
+                                                            </ComboBox.ItemTemplate>
+                                                        </ComboBox>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <ItemsControl IsVisible="{Binding UseCustomEditor}"
+                                                      ItemsSource="{Binding EngineVersions}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding Enabled}"
+                                                              Content="{Binding DisplayName}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
