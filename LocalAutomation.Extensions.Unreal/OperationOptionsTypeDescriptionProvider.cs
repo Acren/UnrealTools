@@ -66,7 +66,7 @@ public sealed class OperationOptionsTypeDescriptionProvider : TypeDescriptionPro
                     continue;
                 }
 
-                descriptors.Add(TryCreateWrappedDescriptor(property) ?? property);
+                descriptors.Add(TryCreateWrappedDescriptor(property) ?? new DisplayNamePropertyDescriptor(property));
             }
 
             return new PropertyDescriptorCollection(descriptors.ToArray(), true);
@@ -84,6 +84,56 @@ public sealed class OperationOptionsTypeDescriptionProvider : TypeDescriptionPro
 
             PropertyInfo? valueProperty = property.PropertyType.GetProperty(nameof(Option<bool>.Value));
             return valueProperty == null ? null : new WrappedOptionPropertyDescriptor(property, valueProperty);
+        }
+    }
+
+    /// <summary>
+    /// Re-exposes a normal property with a friendlier default display name when no explicit display metadata exists.
+    /// </summary>
+    private sealed class DisplayNamePropertyDescriptor : PropertyDescriptor
+    {
+        private readonly AttributeCollection _attributes;
+        private readonly PropertyDescriptor _inner;
+
+        /// <summary>
+        /// Creates a wrapper around an existing property descriptor.
+        /// </summary>
+        public DisplayNamePropertyDescriptor(PropertyDescriptor inner)
+            : base(inner.Name, BuildAttributes(inner))
+        {
+            _inner = inner;
+            _attributes = new AttributeCollection(BuildAttributes(inner));
+        }
+
+        /// <summary>
+        /// Gets the projected attributes exposed to the property grid.
+        /// </summary>
+        public override AttributeCollection Attributes => _attributes;
+
+        public override Type ComponentType => _inner.ComponentType;
+        public override bool IsReadOnly => _inner.IsReadOnly;
+        public override Type PropertyType => _inner.PropertyType;
+        public override bool CanResetValue(object component) => _inner.CanResetValue(component);
+        public override object? GetValue(object? component) => _inner.GetValue(component);
+        public override void ResetValue(object component) => _inner.ResetValue(component);
+        public override void SetValue(object? component, object? value) => _inner.SetValue(component, value);
+        public override bool ShouldSerializeValue(object component) => _inner.ShouldSerializeValue(component);
+
+        /// <summary>
+        /// Builds the property-grid-facing attribute list for a normal property.
+        /// </summary>
+        private static Attribute[] BuildAttributes(MemberDescriptor property)
+        {
+            List<Attribute> attributes = property.Attributes.Cast<Attribute>()
+                .Where(attribute => attribute is not BrowsableAttribute)
+                .ToList();
+
+            if (attributes.OfType<DisplayNameAttribute>().FirstOrDefault() == null)
+            {
+                attributes.Add(new DisplayNameAttribute(property.Name.SplitWordsByUppercase()));
+            }
+
+            return attributes.ToArray();
         }
     }
 
