@@ -15,14 +15,31 @@ public sealed class ExecutionSession
     /// </summary>
     public ExecutionSession(ILogStream logStream, Func<Task>? cancelAsync = null)
     {
+        Id = Guid.NewGuid().ToString("N");
         LogStream = logStream ?? throw new ArgumentNullException(nameof(logStream));
+        StartedAt = DateTimeOffset.Now;
         _cancelAsync = cancelAsync;
     }
+
+    /// <summary>
+    /// Gets the stable identifier for the execution session.
+    /// </summary>
+    public string Id { get; }
 
     /// <summary>
     /// Gets the live log stream associated with this execution.
     /// </summary>
     public ILogStream LogStream { get; }
+
+    /// <summary>
+    /// Gets the local time when the execution session was created.
+    /// </summary>
+    public DateTimeOffset StartedAt { get; }
+
+    /// <summary>
+    /// Gets or sets the local time when the execution session finished.
+    /// </summary>
+    public DateTimeOffset? FinishedAt { get; set; }
 
     /// <summary>
     /// Gets or sets whether the execution is currently running.

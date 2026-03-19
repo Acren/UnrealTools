@@ -199,17 +199,40 @@
                     CornerRadius="10"
                     BorderBrush="#334B657A"
                     BorderThickness="1">
-                <Grid RowDefinitions="Auto,*">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Runtime Tasks"
-                                   FontSize="18"
-                                   FontWeight="SemiBold" />
+                    <Grid RowDefinitions="Auto,Auto,*">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding SelectedRuntimeTabTitle}"
+                                    FontSize="18"
+                                    FontWeight="SemiBold" />
                         <Button Grid.Column="1"
                                 Content="Terminate"
                                 Click="Terminate_Click"
                                 IsEnabled="{Binding IsRunning}" />
                     </Grid>
                     <Border Grid.Row="1"
+                            Margin="0,12,0,0"
+                            Padding="8"
+                            CornerRadius="8"
+                            Background="#0F3A5164"
+                            BorderBrush="#264B657A"
+                            BorderThickness="1">
+                        <ItemsControl ItemsSource="{Binding RuntimeTabs}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RuntimeTaskTabViewModel">
+                                    <Button Margin="0,0,8,0"
+                                            Content="{Binding Title}"
+                                            Click="RuntimeTab_Click"
+                                            Classes.active="{Binding IsSelected}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                    <Border Grid.Row="2"
                             Margin="0,12,0,0"
                             Padding="10"
                             CornerRadius="8"
@@ -224,7 +247,7 @@
                                           Margin="0,10,0,0"
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
-                                <ItemsControl ItemsSource="{Binding LogEntries}">
+                                <ItemsControl ItemsSource="{Binding SelectedRuntimeLogEntries}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LogEntryViewModel">
                                             <Border Padding="0,0,0,4">

@@ -133,6 +133,19 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Selects a runtime tab in the global runtime panel.
+    /// </summary>
+    private void RuntimeTab_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: RuntimeTaskTabViewModel runtimeTab })
+        {
+            return;
+        }
+
+        ViewModel.SelectedRuntimeTab = runtimeTab;
+    }
+
+    /// <summary>
     /// Recomputes the responsive options column count whenever the options viewport width changes.
     /// </summary>
     private void OptionsScrollViewer_SizeChanged(object? sender, SizeChangedEventArgs e)
