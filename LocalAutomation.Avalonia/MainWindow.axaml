@@ -98,15 +98,15 @@
                     CornerRadius="10"
                     BorderBrush="#334B657A"
                     BorderThickness="1">
-                <Grid RowDefinitions="Auto,*,Auto">
-                    <Grid ColumnDefinitions="Auto,*,Auto">
-                        <TextBlock VerticalAlignment="Center"
-                                   Text="Options"
+                <Grid RowDefinitions="Auto,*">
+                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*">
+                        <TextBlock Text="Options"
                                    FontSize="18"
                                    FontWeight="SemiBold" />
-                        <ComboBox Grid.Column="2"
-                                  Width="230"
-                                  Margin="12,0,0,0"
+                        <ComboBox Grid.Row="1"
+                                  Width="260"
+                                  Margin="0,10,0,0"
+                                  HorizontalAlignment="Left"
                                   ItemsSource="{Binding AvailableOperations}"
                                   SelectedItem="{Binding SelectedOperation}">
                             <ComboBox.ItemTemplate>
@@ -118,13 +118,23 @@
                     </Grid>
 
                     <ScrollViewer Grid.Row="1"
+                                  SizeChanged="OptionsScrollViewer_SizeChanged"
                                   Margin="0,12,0,0"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{Binding EnabledOptionSets}">
+                        <ItemsControl Margin="0,0,-12,0"
+                                      ItemsSource="{Binding EnabledOptionSets}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <!-- A wrap panel keeps each card at a responsive width while allowing shorter
+                                         cards to keep their natural height instead of stretching to match taller cards. -->
+                                    <WrapPanel Orientation="Horizontal"
+                                               ItemWidth="{Binding OptionsCardWidth}" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:OptionSetViewModel">
-                                    <Border Margin="0,0,0,12"
+                                    <Border Margin="0,0,12,12"
                                             Padding="12"
                                             CornerRadius="8"
                                             Background="#0F3A5164"
@@ -146,22 +156,6 @@
                         </ItemsControl>
                     </ScrollViewer>
 
-                    <!-- Additional arguments sit after the main options because they behave like a final override layer. -->
-                    <Border Grid.Row="2"
-                            Margin="0,12,0,0"
-                            Padding="12"
-                            CornerRadius="8"
-                            Background="#0F3A5164"
-                            BorderBrush="#264B657A"
-                            BorderThickness="1">
-                        <Grid RowDefinitions="Auto,Auto">
-                            <TextBlock Text="Additional Arguments" FontWeight="SemiBold" />
-                            <TextBox Grid.Row="1"
-                                     Margin="0,10,0,0"
-                                     Watermark="Pass through extra arguments"
-                                     Text="{Binding AdditionalArguments}" />
-                        </Grid>
-                    </Border>
                 </Grid>
             </Border>
 

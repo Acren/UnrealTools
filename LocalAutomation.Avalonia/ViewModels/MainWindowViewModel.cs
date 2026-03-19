@@ -20,6 +20,9 @@ namespace LocalAutomation.Avalonia.ViewModels;
 public sealed class MainWindowViewModel : ViewModelBase
 {
     private static readonly TimeSpan SessionSaveDebounceDelay = TimeSpan.FromMilliseconds(350);
+    private const double MinimumOptionCardWidth = 340;
+    private const double OptionCardSpacing = 12;
+    private const int MaximumOptionColumns = 3;
 
     private readonly LocalAutomationApplicationHost _services;
     private readonly OperationParameters _operationParameters = new();
@@ -30,6 +33,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     private object? _currentOperation;
     private LocalAutomation.Core.ExecutionSession? _currentExecutionSession;
     private string _newTargetPath = string.Empty;
+    private double _optionsCardWidth = MinimumOptionCardWidth;
+    private int _optionsColumnCount = 1;
     private OperationDescriptor? _selectedOperation;
     private TargetListItemViewModel? _selectedTarget;
     private string _status = "Add a target path to begin using the LocalAutomation shell.";
@@ -66,6 +71,26 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets the editable option sets for the current target and operation selection.
     /// </summary>
     public ObservableCollection<OptionSetViewModel> EnabledOptionSets { get; } = new();
+
+    /// <summary>
+    /// Gets the current responsive options column count. The layout expands from one column up to three based on the
+    /// available width in the options viewport.
+    /// </summary>
+    public int OptionsColumnCount
+    {
+        get => _optionsColumnCount;
+        private set => SetProperty(ref _optionsColumnCount, value);
+    }
+
+    /// <summary>
+    /// Gets the responsive option-card width used by the wrapping layout so columns fill the available width evenly
+    /// without forcing all cards to match the tallest card's height.
+    /// </summary>
+    public double OptionsCardWidth
+    {
+        get => _optionsCardWidth;
+        private set => SetProperty(ref _optionsCardWidth, value);
+    }
 
     /// <summary>
     /// Gets the buffered execution log entries shown by the Avalonia shell.
@@ -366,6 +391,27 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Recomputes the number of option columns based on the current width of the options viewport so the cards fill
+    /// the row evenly without leaving a large trailing gap.
+    /// </summary>
+    public void UpdateOptionsColumnCount(double availableWidth)
+    {
+        if (availableWidth <= 0)
+        {
+            OptionsColumnCount = 1;
+            OptionsCardWidth = MinimumOptionCardWidth;
+            return;
+        }
+
+        int computedColumns = (int)Math.Floor(availableWidth / MinimumOptionCardWidth);
+        int clampedColumns = Math.Clamp(computedColumns, 1, MaximumOptionColumns);
+        double totalSpacing = OptionCardSpacing * Math.Max(0, clampedColumns - 1);
+
+        OptionsColumnCount = clampedColumns;
+        OptionsCardWidth = Math.Max(MinimumOptionCardWidth, (availableWidth - totalSpacing) / clampedColumns);
+    }
+
+    /// <summary>
     /// Starts the current operation through the shared execution runtime and begins streaming logs into the shell.
     /// </summary>
     public void Execute()
@@ -663,7 +709,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RefreshEnabledOptionSets()
     {
-        var enabledOptionTypes = _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target);
+        var enabledOptionTypes = _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target).ToList();
+
+        if (!enabledOptionTypes.Contains(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions)))
+        {
+            enabledOptionTypes.Add(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions));
+        }
+
         foreach (Type optionSetType in enabledOptionTypes)
         {
             _operationParameters.EnsureOptionsInstance(optionSetType);

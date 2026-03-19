@@ -24,6 +24,7 @@ namespace UnrealAutomationCommon.Operations
         {
             OnPropertyChanged(nameof(OptionsInstances));
             OnPropertyChanged(nameof(Engine));
+            OnPropertyChanged(nameof(AdditionalArguments));
         }
 
         // Rebind option change listeners whenever the option set list changes or is replaced.
@@ -73,6 +74,7 @@ namespace UnrealAutomationCommon.Operations
                     RefreshOptionsSubscriptions();
                     OnPropertyChanged(nameof(OptionsInstances));
                     OnPropertyChanged(nameof(Engine));
+                    OnPropertyChanged(nameof(AdditionalArguments));
                 };
 
                 RefreshOptionsSubscriptions();
@@ -147,10 +149,22 @@ namespace UnrealAutomationCommon.Operations
 
         public string AdditionalArguments
         {
-            get => _additionalArguments;
+            get
+            {
+                AdditionalArgumentsOptions existingOptions = GetOptionsInstance(typeof(AdditionalArgumentsOptions)) as AdditionalArgumentsOptions;
+                return existingOptions?.Arguments.Value ?? _additionalArguments;
+            }
             set
             {
-                _additionalArguments = value;
+                string normalizedValue = value ?? string.Empty;
+                _additionalArguments = normalizedValue;
+
+                AdditionalArgumentsOptions existingOptions = GetOptionsInstance(typeof(AdditionalArgumentsOptions)) as AdditionalArgumentsOptions;
+                if (existingOptions != null && existingOptions.Arguments.Value != normalizedValue)
+                {
+                    existingOptions.Arguments.Value = normalizedValue;
+                }
+
                 OnPropertyChanged();
             }
         }

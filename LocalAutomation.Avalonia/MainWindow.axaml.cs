@@ -133,6 +133,14 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Recomputes the responsive options column count whenever the options viewport width changes.
+    /// </summary>
+    private void OptionsScrollViewer_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        ViewModel.UpdateOptionsColumnCount(e.NewSize.Width);
+    }
+
+    /// <summary>
     /// Flushes any pending debounced session save before the window fully closes.
     /// </summary>
     private void HandleClosed(object? sender, System.EventArgs e)
