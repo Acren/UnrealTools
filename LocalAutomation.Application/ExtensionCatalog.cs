@@ -12,6 +12,7 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 {
     private readonly List<ContextActionDescriptor> _contextActions = new();
     private readonly List<IExtensionModule> _modules = new();
+    private readonly List<IOptionEditorAdapter> _optionEditorAdapters = new();
     private readonly List<IOperationAdapter> _operationAdapters = new();
     private readonly List<OperationDescriptor> _operations = new();
     private readonly List<IRunnerAdapter> _runnerAdapters = new();
@@ -42,6 +43,11 @@ public sealed class ExtensionCatalog : IExtensionRegistry
     /// Gets the registered target context actions.
     /// </summary>
     public IReadOnlyList<ContextActionDescriptor> ContextActions => _contextActions;
+
+    /// <summary>
+    /// Gets the registered option editor adapters.
+    /// </summary>
+    public IReadOnlyList<IOptionEditorAdapter> OptionEditorAdapters => _optionEditorAdapters;
 
     /// <summary>
     /// Gets the registered operation adapters.
@@ -150,6 +156,20 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(descriptor.Id, _contextActions, static item => item.Id, nameof(descriptor));
         _contextActions.Add(descriptor);
+    }
+
+    /// <summary>
+    /// Registers an option editor adapter after checking that its identifier is unique.
+    /// </summary>
+    public void RegisterOptionEditorAdapter(IOptionEditorAdapter adapter)
+    {
+        if (adapter == null)
+        {
+            throw new ArgumentNullException(nameof(adapter));
+        }
+
+        EnsureUniqueId(adapter.Id, _optionEditorAdapters, static item => item.Id, nameof(adapter));
+        _optionEditorAdapters.Add(adapter);
     }
 
     /// <summary>

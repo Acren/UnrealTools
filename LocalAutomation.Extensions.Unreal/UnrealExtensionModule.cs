@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon;
@@ -15,6 +16,8 @@ namespace LocalAutomation.Extensions.Unreal;
 /// </summary>
 public sealed class UnrealExtensionModule : IExtensionModule
 {
+    private static bool _registeredOperationOptionsProvider;
+
     /// <summary>
     /// Gets the stable identifier for the Unreal extension.
     /// </summary>
@@ -35,6 +38,8 @@ public sealed class UnrealExtensionModule : IExtensionModule
             throw new ArgumentNullException(nameof(registry));
         }
 
+        RegisterTypeDescriptionProviders();
+
         registry.RegisterTarget(new TargetDescriptor("unreal.project", "Project", typeof(Project)));
         registry.RegisterTarget(new TargetDescriptor("unreal.plugin", "Plugin", typeof(Plugin)));
         registry.RegisterTarget(new TargetDescriptor("unreal.engine", "Engine", typeof(Engine)));
@@ -42,12 +47,28 @@ public sealed class UnrealExtensionModule : IExtensionModule
         registry.RegisterTargetFactory(new UnrealPathTargetFactory());
         registry.RegisterOperationAdapter(new UnrealOperationAdapter());
         registry.RegisterRunnerAdapter(new UnrealRunnerAdapter());
+        registry.RegisterOptionEditorAdapter(new EngineVersionOptionEditorAdapter());
+        registry.RegisterOptionEditorAdapter(new InsightsOptionEditorAdapter());
         RegisterContextActions(registry);
 
         foreach (OperationDescriptor descriptor in BuildOperationDescriptors())
         {
             registry.RegisterOperation(descriptor);
         }
+    }
+
+    /// <summary>
+    /// Registers shared type-descriptor projections needed for property-grid rendering of Unreal option models.
+    /// </summary>
+    private static void RegisterTypeDescriptionProviders()
+    {
+        if (_registeredOperationOptionsProvider)
+        {
+            return;
+        }
+
+        TypeDescriptor.AddProviderTransparent(new OperationOptionsTypeDescriptionProvider(), typeof(OperationOptions));
+        _registeredOperationOptionsProvider = true;
     }
 
     /// <summary>

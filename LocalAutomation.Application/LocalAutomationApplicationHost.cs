@@ -18,6 +18,7 @@ public sealed class LocalAutomationApplicationHost
         ContextActions = new ContextActionService(catalog);
         Execution = new ExecutionService();
         ExecutionRuntime = new ExecutionRuntimeService(catalog);
+        OptionEditors = new OptionEditorService(catalog);
         Operations = new OperationCatalogService(catalog);
         OperationRuntime = new OperationRuntimeService(catalog);
         OperationSession = new OperationSessionService(Operations, OperationRuntime);
@@ -48,6 +49,11 @@ public sealed class LocalAutomationApplicationHost
     /// Gets the service used to start shared execution sessions through extension-provided runner adapters.
     /// </summary>
     public ExecutionRuntimeService ExecutionRuntime { get; }
+
+    /// <summary>
+    /// Gets the service used to resolve property-grid editor targets for option sets.
+    /// </summary>
+    public OptionEditorService OptionEditors { get; }
 
     /// <summary>
     /// Gets the service used to create and inspect runtime operations through extension-provided adapters.

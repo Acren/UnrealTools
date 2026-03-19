@@ -39,6 +39,11 @@ public interface IExtensionRegistry
     IReadOnlyList<ContextActionDescriptor> ContextActions { get; }
 
     /// <summary>
+    /// Gets the registered option editor adapters.
+    /// </summary>
+    IReadOnlyList<IOptionEditorAdapter> OptionEditorAdapters { get; }
+
+    /// <summary>
     /// Adds a target descriptor to the registry.
     /// </summary>
     void RegisterTarget(TargetDescriptor descriptor);
@@ -67,4 +72,9 @@ public interface IExtensionRegistry
     /// Adds a context action descriptor to the registry.
     /// </summary>
     void RegisterContextAction(ContextActionDescriptor descriptor);
+
+    /// <summary>
+    /// Adds an option editor adapter to the registry.
+    /// </summary>
+    void RegisterOptionEditorAdapter(IOptionEditorAdapter adapter);
 }

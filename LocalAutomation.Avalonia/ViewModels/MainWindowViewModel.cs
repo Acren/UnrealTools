@@ -678,18 +678,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         EnabledOptionSets.Clear();
         foreach (OperationOptions options in _operationParameters.OptionsInstances)
         {
-            if (options is UnrealAutomationCommon.Operations.OperationOptionTypes.EngineVersionOptions engineVersionOptions)
-            {
-                EnabledOptionSets.Add(new EngineVersionOptionSetViewModel(engineVersionOptions));
-            }
-            else if (options is UnrealAutomationCommon.Operations.OperationOptionTypes.InsightsOptions insightsOptions)
-            {
-                EnabledOptionSets.Add(new InsightsOptionSetViewModel(insightsOptions));
-            }
-            else
-            {
-                EnabledOptionSets.Add(new OptionSetViewModel(options));
-            }
+            EnabledOptionSets.Add(new OptionSetViewModel(options, _services.OptionEditors.GetEditorTarget(options)));
         }
     }
 

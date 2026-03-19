@@ -8,6 +8,11 @@ namespace UnrealAutomationCommon.Unreal
         public string Key { get; set; }
         public string Label { get; set; }
 
+        public override string ToString()
+        {
+            return Label;
+        }
+
         public bool Equals(TraceChannel other)
         {
             return Key == other.Key;

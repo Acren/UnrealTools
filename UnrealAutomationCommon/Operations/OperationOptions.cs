@@ -18,6 +18,7 @@ namespace UnrealAutomationCommon.Operations
         }
     }
 
+    [TypeConverter(typeof(ExpandableObjectConverter))]
     public class Option<T> : Option
     {
         private T _value;
@@ -73,9 +74,11 @@ namespace UnrealAutomationCommon.Operations
         }
 
         // Options index for ordering
+        [Browsable(false)]
         [JsonIgnore]
         public virtual int SortIndex => 0;
 
+        [Browsable(false)]
         [JsonIgnore]
         public virtual string Name
         {
@@ -87,6 +90,7 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
+        [Browsable(false)]
         [JsonIgnore]
         public IOperationTarget OperationTarget
         {
