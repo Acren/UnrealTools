@@ -19,6 +19,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 {
     private readonly LocalAutomationApplicationHost _services;
     private readonly OperationParameters _operationParameters = new();
+    private bool _isHydratingSessionSelection;
+    private bool _isRestoringSession;
     private object? _currentOperation;
     private LocalAutomation.Core.ExecutionSession? _currentExecutionSession;
     private string _newTargetPath = string.Empty;
@@ -33,6 +35,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _operationParameters.PropertyChanged += HandleOperationParametersChanged;
+        AttachApplicationLogStream();
+        RestoreSessionState();
     }
 
     /// <summary>
@@ -81,8 +85,13 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (SetProperty(ref _selectedTarget, value))
             {
                 _operationParameters.Target = value?.Target;
-                RefreshOperationSelection();
-                RaiseDerivedStateChanged();
+                if (!_isHydratingSessionSelection)
+                {
+                    RefreshOperationSelection();
+                    RaiseDerivedStateChanged();
+                }
+
+                SaveSessionState();
             }
         }
     }
@@ -101,8 +110,13 @@ public sealed class MainWindowViewModel : ViewModelBase
                     ? _services.OperationSession.CreateOperation(value.OperationType)
                     : null;
 
-                RefreshEnabledOptionSets();
-                RaiseDerivedStateChanged();
+                if (!_isHydratingSessionSelection)
+                {
+                    RefreshEnabledOptionSets();
+                    RaiseDerivedStateChanged();
+                }
+
+                SaveSessionState();
             }
         }
     }
@@ -255,6 +269,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 SelectedTarget = existingTarget;
                 Status = $"Selected existing {existingTarget.TypeName.ToLowerInvariant()} target '{existingTarget.DisplayName}'.";
+                SaveSessionState();
                 return true;
             }
 
@@ -263,6 +278,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             SelectedTarget = targetItem;
             NewTargetPath = string.Empty;
             Status = $"Added {target.TypeName.ToLowerInvariant()} target '{target.DisplayName}'.";
+            SaveSessionState();
             return true;
         }
         catch (Exception ex)
@@ -290,12 +306,14 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             SelectedTarget = null;
             Status = $"Removed target '{removedTargetName}'. Add another target path to continue.";
+            SaveSessionState();
             return;
         }
 
         int nextIndex = Math.Clamp(removedIndex, 0, Targets.Count - 1);
         SelectedTarget = Targets[nextIndex];
         Status = $"Removed target '{removedTargetName}'.";
+        SaveSessionState();
     }
 
     /// <summary>
@@ -355,8 +373,114 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void HandleOperationParametersChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // Ignore nested parameter notifications while session hydration is still rebuilding target, operation, and
+        // option state. Refreshing too early can treat the restored options as invalid and replace them with defaults
+        // before the persisted operation selection is reapplied.
+        if (_isRestoringSession)
+        {
+            return;
+        }
+
         RefreshEnabledOptionSets();
         RaiseDerivedStateChanged();
+        SaveSessionState();
+    }
+
+    /// <summary>
+    /// Seeds the output panel with application-level log entries and keeps listening so crashes and startup errors are
+    /// visible even outside operation execution.
+    /// </summary>
+    private void AttachApplicationLogStream()
+    {
+        foreach (LogEntry entry in ApplicationLogService.LogStream.Entries)
+        {
+            LogEntries.Add(new LogEntryViewModel(entry.Message, entry.Verbosity));
+        }
+
+        ApplicationLogService.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
+        {
+            LogEntries.Add(new LogEntryViewModel(entry.Message, entry.Verbosity));
+            RaiseExecutionStateChanged();
+        });
+    }
+
+    /// <summary>
+    /// Restores the last persisted shell state so the Avalonia parity shell reopens with the previous targets,
+    /// selection, and editable options.
+    /// </summary>
+    private void RestoreSessionState()
+    {
+        _isRestoringSession = true;
+        try
+        {
+            SessionState state = SessionStateStore.Load();
+
+            foreach (IOperationTarget target in state.Targets)
+            {
+                Targets.Add(new TargetListItemViewModel(target));
+            }
+
+            _operationParameters.AdditionalArguments = state.AdditionalArguments;
+            foreach (OperationOptions options in state.OptionsInstances)
+            {
+                _operationParameters.OptionsInstances.Add(options);
+            }
+
+            NewTargetPath = state.NewTargetPath;
+
+            TargetListItemViewModel? restoredSelection = Targets.FirstOrDefault(item =>
+                string.Equals(item.Target.TargetPath, state.SelectedTargetPath, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(item.Target.GetType().FullName, state.SelectedTargetTypeName, StringComparison.Ordinal));
+
+            // Apply the restored target and operation together before recomputing enabled option sets so the
+            // hydration pass does not temporarily coerce to a different operation and replace persisted values with
+            // new defaults.
+            _isHydratingSessionSelection = true;
+            SelectedTarget = restoredSelection ?? Targets.FirstOrDefault();
+            RefreshOperationSelection();
+
+            if (state.OperationType != null)
+            {
+                SelectedOperation = AvailableOperations.FirstOrDefault(descriptor => descriptor.OperationType == state.OperationType) ?? SelectedOperation;
+            }
+
+            _isHydratingSessionSelection = false;
+            RefreshEnabledOptionSets();
+            RaiseDerivedStateChanged();
+
+            if (SelectedTarget != null)
+            {
+                Status = $"Restored {Targets.Count} target(s) from the previous Avalonia session.";
+            }
+        }
+        finally
+        {
+            _isHydratingSessionSelection = false;
+            _isRestoringSession = false;
+            RaiseDerivedStateChanged();
+        }
+    }
+
+    /// <summary>
+    /// Persists the current shell state after user-driven selection or option changes.
+    /// </summary>
+    private void SaveSessionState()
+    {
+        if (_isRestoringSession)
+        {
+            return;
+        }
+
+        SessionStateStore.Save(new SessionState
+        {
+            Targets = new ObservableCollection<IOperationTarget>(Targets.Select(item => item.Target)),
+            AdditionalArguments = _operationParameters.AdditionalArguments,
+            OptionsInstances = _operationParameters.OptionsInstances.ToList(),
+            OperationType = SelectedOperation?.OperationType,
+            NewTargetPath = NewTargetPath,
+            SelectedTargetPath = SelectedTarget?.Target.TargetPath,
+            SelectedTargetTypeName = SelectedTarget?.Target.GetType().FullName
+        });
     }
 
     /// <summary>
@@ -366,12 +490,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void AttachExecutionSession(LocalAutomation.Core.ExecutionSession session)
     {
         _currentExecutionSession = session;
-        LogEntries.Clear();
-
-        foreach (LocalAutomation.Core.LogEntry entry in session.LogStream.Entries)
-        {
-            LogEntries.Add(new LogEntryViewModel(entry.Message, entry.Verbosity));
-        }
 
         session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
         {

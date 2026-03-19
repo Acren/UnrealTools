@@ -111,6 +111,10 @@ namespace UnrealAutomationCommon.Operations
             }
         }
 
+        // Treat the active engine as derived runtime state only. Serializing this getter causes Json.NET to invoke
+        // RequestOptions<EngineVersionOptions>(), which can mutate option collections during persistence and recurse
+        // back into save handlers.
+        [JsonIgnore]
         public Engine Engine
         {
             get

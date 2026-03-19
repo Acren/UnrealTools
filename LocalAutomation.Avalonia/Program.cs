@@ -15,7 +15,25 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        ApplicationLogService.Initialize();
+
+        try
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        catch (Exception ex)
+        {
+            ApplicationLogService.LogStartupException(ex);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Flushes the file-backed logging pipeline when the Avalonia process exits normally.
+    /// </summary>
+    static Program()
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => ApplicationLogService.Shutdown();
     }
 
     /// <summary>

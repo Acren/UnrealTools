@@ -18,10 +18,16 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0-preview.5.24306.7" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0-preview.5.24306.7" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\LocalAutomation.Application\LocalAutomation.Application.csproj" />
+    <ProjectReference Include="..\LocalAutomation.Persistence\LocalAutomation.Persistence.csproj" />
     <ProjectReference Include="..\LocalAutomation.Extensions.Abstractions\LocalAutomation.Extensions.Abstractions.csproj" />
     <ProjectReference Include="..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj" />
     <ProjectReference Include="..\UnrealAutomationCommon\UnrealAutomationCommon.csproj" />
