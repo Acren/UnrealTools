@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = new MainWindowViewModel(App.Services);
+        Closed += HandleClosed;
     }
 
     /// <summary>
@@ -139,5 +140,13 @@ public partial class MainWindow : Window
         }
 
         ViewModel.ExecuteTargetAction(action);
+    }
+
+    /// <summary>
+    /// Flushes any pending debounced session save before the window fully closes.
+    /// </summary>
+    private void HandleClosed(object? sender, System.EventArgs e)
+    {
+        ViewModel.FlushPendingSessionState();
     }
 }

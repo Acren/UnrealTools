@@ -19,10 +19,14 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class MainWindowViewModel : ViewModelBase
 {
+    private static readonly TimeSpan SessionSaveDebounceDelay = TimeSpan.FromMilliseconds(350);
+
     private readonly LocalAutomationApplicationHost _services;
     private readonly OperationParameters _operationParameters = new();
+    private readonly DispatcherTimer _sessionSaveTimer;
     private bool _isHydratingSessionSelection;
     private bool _isRestoringSession;
+    private bool _hasPendingSessionSave;
     private object? _currentOperation;
     private LocalAutomation.Core.ExecutionSession? _currentExecutionSession;
     private string _newTargetPath = string.Empty;
@@ -36,6 +40,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel(LocalAutomationApplicationHost services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
+        _sessionSaveTimer = new DispatcherTimer { Interval = SessionSaveDebounceDelay };
+        _sessionSaveTimer.Tick += HandleSessionSaveTimerTick;
         _operationParameters.PropertyChanged += HandleOperationParametersChanged;
         AttachApplicationLogStream();
         RestoreSessionState();
@@ -335,6 +341,21 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Flushes any queued session save immediately. Hosts should call this before shutdown so the most recent UI
+    /// edits are not lost if the debounce window has not elapsed yet.
+    /// </summary>
+    public void FlushPendingSessionState()
+    {
+        if (!_hasPendingSessionSave)
+        {
+            return;
+        }
+
+        _sessionSaveTimer.Stop();
+        SaveSessionStateCore();
+    }
+
+    /// <summary>
     /// Updates the current status line when the shell needs to surface a transient user-facing note.
     /// </summary>
     public void SetStatus(string message)
@@ -401,7 +422,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         RefreshEnabledOptionSets();
         RaiseDerivedStateChanged();
-        SaveSessionState();
+        QueueSessionStateSave();
     }
 
     /// <summary>
@@ -526,6 +547,18 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        _hasPendingSessionSave = true;
+        _sessionSaveTimer.Stop();
+        _sessionSaveTimer.Start();
+    }
+
+    /// <summary>
+    /// Writes the latest session snapshot to disk immediately.
+    /// </summary>
+    private void SaveSessionStateCore()
+    {
+        _hasPendingSessionSave = false;
+
         SessionStateStore.Save(new SessionState
         {
             Targets = new ObservableCollection<IOperationTarget>(Targets.Select(item => item.Target)),
@@ -536,6 +569,29 @@ public sealed class MainWindowViewModel : ViewModelBase
             SelectedTargetPath = SelectedTarget?.Target.TargetPath,
             SelectedTargetTypeName = SelectedTarget?.Target.GetType().FullName
         });
+    }
+
+    /// <summary>
+    /// Commits a debounced session save once the user has paused edits for a short interval.
+    /// </summary>
+    private void HandleSessionSaveTimerTick(object? sender, EventArgs e)
+    {
+        _sessionSaveTimer.Stop();
+
+        if (_isRestoringSession || !_hasPendingSessionSave)
+        {
+            return;
+        }
+
+        SaveSessionStateCore();
+    }
+
+    /// <summary>
+    /// Queues a debounced session save for the current shell state.
+    /// </summary>
+    private void QueueSessionStateSave()
+    {
+        SaveSessionState();
     }
 
     /// <summary>
