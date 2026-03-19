@@ -41,6 +41,7 @@ public sealed class UnrealExtensionModule : IExtensionModule
         registry.RegisterTarget(new TargetDescriptor("unreal.package", "Package", typeof(Package)));
         registry.RegisterTargetFactory(new UnrealPathTargetFactory());
         registry.RegisterOperationAdapter(new UnrealOperationAdapter());
+        registry.RegisterRunnerAdapter(new UnrealRunnerAdapter());
 
         foreach (OperationDescriptor descriptor in BuildOperationDescriptors())
         {

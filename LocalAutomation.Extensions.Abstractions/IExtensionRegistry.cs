@@ -29,6 +29,11 @@ public interface IExtensionRegistry
     IReadOnlyList<IOperationAdapter> OperationAdapters { get; }
 
     /// <summary>
+    /// Gets the registered runner adapters used to execute runtime operations.
+    /// </summary>
+    IReadOnlyList<IRunnerAdapter> RunnerAdapters { get; }
+
+    /// <summary>
     /// Gets the registered target context actions.
     /// </summary>
     IReadOnlyList<ContextActionDescriptor> ContextActions { get; }
@@ -52,6 +57,11 @@ public interface IExtensionRegistry
     /// Adds an operation adapter to the registry.
     /// </summary>
     void RegisterOperationAdapter(IOperationAdapter adapter);
+
+    /// <summary>
+    /// Adds a runner adapter to the registry.
+    /// </summary>
+    void RegisterRunnerAdapter(IRunnerAdapter adapter);
 
     /// <summary>
     /// Adds a context action descriptor to the registry.

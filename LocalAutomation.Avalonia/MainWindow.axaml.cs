@@ -111,4 +111,20 @@ public partial class MainWindow : Window
         await clipboard.SetTextAsync(commandText);
         ViewModel.SetStatus("Copied the current command preview to the clipboard.");
     }
+
+    /// <summary>
+    /// Starts the selected operation from the Avalonia shell.
+    /// </summary>
+    private void Execute_Click(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.Execute();
+    }
+
+    /// <summary>
+    /// Cancels the current execution session when one is active.
+    /// </summary>
+    private async void Terminate_Click(object? sender, RoutedEventArgs e)
+    {
+        await ViewModel.CancelExecutionAsync();
+    }
 }

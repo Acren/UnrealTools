@@ -2,6 +2,9 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
+using Avalonia.Threading;
+using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 using UnrealAutomationCommon.Operations;
@@ -17,6 +20,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly LocalAutomationApplicationHost _services;
     private readonly OperationParameters _operationParameters = new();
     private object? _currentOperation;
+    private LocalAutomation.Core.ExecutionSession? _currentExecutionSession;
     private string _newTargetPath = string.Empty;
     private OperationDescriptor? _selectedOperation;
     private TargetListItemViewModel? _selectedTarget;
@@ -45,6 +49,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets the editable option sets for the current target and operation selection.
     /// </summary>
     public ObservableCollection<OptionSetViewModel> EnabledOptionSets { get; } = new();
+
+    /// <summary>
+    /// Gets the buffered execution log entries shown by the Avalonia shell.
+    /// </summary>
+    public ObservableCollection<LogEntryViewModel> LogEntries { get; } = new();
 
     /// <summary>
     /// Gets or sets the path text entered into the Add Target input.
@@ -139,6 +148,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     public bool CanExecute => _services.OperationSession.CanExecute(_currentOperation, _operationParameters);
 
     /// <summary>
+    /// Gets whether the current Avalonia execution session is running.
+    /// </summary>
+    public bool IsRunning => _currentExecutionSession is { IsRunning: true };
+
+    /// <summary>
     /// Gets whether the execute warning panel should be shown.
     /// </summary>
     public bool ShowExecuteDisabledReason => !CanExecute;
@@ -157,6 +171,32 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets the current operation button label.
     /// </summary>
     public string ExecuteButtonText => SelectedOperation?.DisplayName ?? "Execute";
+
+    /// <summary>
+    /// Gets a short execution summary line for the output panel.
+    /// </summary>
+    public string ExecutionSummary
+    {
+        get
+        {
+            if (_currentExecutionSession == null)
+            {
+                return "No execution has been started in the Avalonia shell yet.";
+            }
+
+            if (_currentExecutionSession.IsRunning)
+            {
+                return $"Running {_currentExecutionSession.OperationName} on {_currentExecutionSession.TargetName}";
+            }
+
+            if (_currentExecutionSession.Success == true)
+            {
+                return $"{_currentExecutionSession.OperationName} succeeded for {_currentExecutionSession.TargetName}";
+            }
+
+            return $"{_currentExecutionSession.OperationName} failed for {_currentExecutionSession.TargetName}";
+        }
+    }
 
     /// <summary>
     /// Gets the summary text for the currently selected target.
@@ -267,12 +307,105 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Starts the current operation through the shared execution runtime and begins streaming logs into the shell.
+    /// </summary>
+    public void Execute()
+    {
+        if (_currentOperation == null)
+        {
+            SetStatus("Select an operation before executing.");
+            return;
+        }
+
+        if (!CanExecute)
+        {
+            SetStatus(ExecuteDisabledReason);
+            return;
+        }
+
+        if (IsRunning)
+        {
+            SetStatus("An operation is already running.");
+            return;
+        }
+
+        LocalAutomation.Core.ExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _operationParameters);
+        AttachExecutionSession(session);
+        _services.Execution.SetCurrentSession(session);
+        SetStatus($"Started {session.OperationName} for {session.TargetName}.");
+    }
+
+    /// <summary>
+    /// Cancels the current execution session when one is running.
+    /// </summary>
+    public async Task CancelExecutionAsync()
+    {
+        if (_currentExecutionSession == null || !_currentExecutionSession.IsRunning)
+        {
+            return;
+        }
+
+        await _currentExecutionSession.CancelAsync();
+        SetStatus($"Cancelling {_currentExecutionSession.OperationName}.");
+        RaiseExecutionStateChanged();
+    }
+
+    /// <summary>
     /// Responds to parameter changes by refreshing the derived UI state that depends on operation parameters.
     /// </summary>
     private void HandleOperationParametersChanged(object? sender, PropertyChangedEventArgs e)
     {
         RefreshEnabledOptionSets();
         RaiseDerivedStateChanged();
+    }
+
+    /// <summary>
+    /// Attaches the shared execution session to the shell and mirrors its log/output state into Avalonia-friendly
+    /// observable collections.
+    /// </summary>
+    private void AttachExecutionSession(LocalAutomation.Core.ExecutionSession session)
+    {
+        _currentExecutionSession = session;
+        LogEntries.Clear();
+
+        foreach (LocalAutomation.Core.LogEntry entry in session.LogStream.Entries)
+        {
+            LogEntries.Add(new LogEntryViewModel(entry.Message, entry.Verbosity));
+        }
+
+        session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
+        {
+            LogEntries.Add(new LogEntryViewModel(entry.Message, entry.Verbosity));
+            RaiseExecutionStateChanged();
+        });
+
+        _ = WatchExecutionCompletionAsync(session);
+        RaiseExecutionStateChanged();
+    }
+
+    /// <summary>
+    /// Polls the running session until it completes so completion state can be reflected back into the shell.
+    /// </summary>
+    private async Task WatchExecutionCompletionAsync(LocalAutomation.Core.ExecutionSession session)
+    {
+        while (session.IsRunning)
+        {
+            await Task.Delay(100);
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            RaiseExecutionStateChanged();
+
+            if (session.Success == true)
+            {
+                SetStatus($"{session.OperationName} succeeded for {session.TargetName}.");
+            }
+            else
+            {
+                SetStatus($"{session.OperationName} finished with failure for {session.TargetName}.");
+            }
+        });
     }
 
     /// <summary>
@@ -345,5 +478,16 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SelectedTargetPath));
         RaisePropertyChanged(nameof(SelectedTargetSummary));
         RaisePropertyChanged(nameof(VisibleCommand));
+        RaiseExecutionStateChanged();
+    }
+
+    /// <summary>
+    /// Raises change notifications for all execution-related shell state.
+    /// </summary>
+    private void RaiseExecutionStateChanged()
+    {
+        RaisePropertyChanged(nameof(CanExecute));
+        RaisePropertyChanged(nameof(ExecutionSummary));
+        RaisePropertyChanged(nameof(IsRunning));
     }
 }

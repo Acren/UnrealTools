@@ -15,6 +15,8 @@ public sealed class LocalAutomationApplicationHost
     public LocalAutomationApplicationHost(ExtensionCatalog catalog)
     {
         Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        Execution = new ExecutionService();
+        ExecutionRuntime = new ExecutionRuntimeService(catalog);
         Operations = new OperationCatalogService(catalog);
         OperationRuntime = new OperationRuntimeService(catalog);
         OperationSession = new OperationSessionService(Operations, OperationRuntime);
@@ -30,6 +32,16 @@ public sealed class LocalAutomationApplicationHost
     /// Gets the service used to query registered operations for a target.
     /// </summary>
     public OperationCatalogService Operations { get; }
+
+    /// <summary>
+    /// Gets the service that tracks the shared execution session for UI hosts.
+    /// </summary>
+    public ExecutionService Execution { get; }
+
+    /// <summary>
+    /// Gets the service used to start shared execution sessions through extension-provided runner adapters.
+    /// </summary>
+    public ExecutionRuntimeService ExecutionRuntime { get; }
 
     /// <summary>
     /// Gets the service used to create and inspect runtime operations through extension-provided adapters.

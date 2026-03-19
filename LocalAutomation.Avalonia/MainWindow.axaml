@@ -9,7 +9,7 @@
         Height="820"
         MinWidth="960"
         MinHeight="680">
-    <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" ColumnDefinitions="2.2*,2.8*">
+    <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto,Auto" ColumnDefinitions="2.2*,2.8*">
         <Border Grid.ColumnSpan="2"
                 Padding="16"
                 CornerRadius="10"
@@ -249,15 +249,40 @@
                 Margin="0,14,0,0"
                 Padding="14"
                 CornerRadius="10"
+                MaxHeight="240"
+                VerticalAlignment="Top"
                 BorderBrush="#334B657A"
                 BorderThickness="1">
-            <Grid RowDefinitions="Auto,Auto">
+            <Grid RowDefinitions="Auto,Auto,*">
                 <TextBlock Text="Output" FontSize="18" FontWeight="SemiBold" />
                 <TextBlock Grid.Row="1"
                            Margin="0,8,0,0"
-                           Text="Log streaming and run history will be connected in later parity phases. For now, command preview and selection state are backed by the shared LocalAutomation services."
+                           Text="{Binding ExecutionSummary}"
                            TextWrapping="Wrap"
                            Opacity="0.75" />
+                <Border Grid.Row="2"
+                        Margin="0,12,0,0"
+                        Padding="10"
+                        CornerRadius="8"
+                        Background="#0B1117"
+                        BorderBrush="#264B657A"
+                        BorderThickness="1">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding LogEntries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LogEntryViewModel">
+                                    <Border Padding="0,0,0,6">
+                                        <TextBlock Text="{Binding Message}"
+                                                   Foreground="{Binding Foreground}"
+                                                   TextWrapping="Wrap"
+                                                   FontFamily="Consolas" />
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
             </Grid>
         </Border>
 
@@ -272,9 +297,11 @@
                     IsEnabled="{Binding CanCopyCommand}" />
             <Button Margin="0,0,8,0"
                     Content="{Binding ExecuteButtonText}"
+                    Click="Execute_Click"
                     IsEnabled="{Binding CanExecute}" />
             <Button Content="Terminate"
-                    IsEnabled="False" />
+                    Click="Terminate_Click"
+                    IsEnabled="{Binding IsRunning}" />
         </WrapPanel>
     </Grid>
 </Window>

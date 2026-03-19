@@ -14,6 +14,7 @@ public sealed class ExtensionCatalog : IExtensionRegistry
     private readonly List<IExtensionModule> _modules = new();
     private readonly List<IOperationAdapter> _operationAdapters = new();
     private readonly List<OperationDescriptor> _operations = new();
+    private readonly List<IRunnerAdapter> _runnerAdapters = new();
     private readonly List<TargetDescriptor> _targets = new();
     private readonly List<ITargetFactory> _targetFactories = new();
 
@@ -46,6 +47,11 @@ public sealed class ExtensionCatalog : IExtensionRegistry
     /// Gets the registered operation adapters.
     /// </summary>
     public IReadOnlyList<IOperationAdapter> OperationAdapters => _operationAdapters;
+
+    /// <summary>
+    /// Gets the registered runner adapters.
+    /// </summary>
+    public IReadOnlyList<IRunnerAdapter> RunnerAdapters => _runnerAdapters;
 
     /// <summary>
     /// Registers a module once and lets it contribute its descriptors through the shared registry interface.
@@ -116,6 +122,20 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(adapter.Id, _operationAdapters, static item => item.Id, nameof(adapter));
         _operationAdapters.Add(adapter);
+    }
+
+    /// <summary>
+    /// Registers a runner adapter after checking that its identifier is unique.
+    /// </summary>
+    public void RegisterRunnerAdapter(IRunnerAdapter adapter)
+    {
+        if (adapter == null)
+        {
+            throw new ArgumentNullException(nameof(adapter));
+        }
+
+        EnsureUniqueId(adapter.Id, _runnerAdapters, static item => item.Id, nameof(adapter));
+        _runnerAdapters.Add(adapter);
     }
 
     /// <summary>
