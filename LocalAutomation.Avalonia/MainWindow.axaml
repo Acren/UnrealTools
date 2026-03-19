@@ -10,66 +10,32 @@
         Height="820"
         MinWidth="960"
         MinHeight="680">
-    <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto,Auto" ColumnDefinitions="2.2*,2.8*">
-        <Border Grid.ColumnSpan="2"
-                Padding="16"
-                CornerRadius="10"
-                Background="#112C3E50"
-                BorderBrush="#334B657A"
-                BorderThickness="1">
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                <TextBlock Text="LocalAutomation"
-                           FontSize="26"
-                           FontWeight="SemiBold" />
-                <TextBlock Grid.Row="1"
-                           Margin="0,6,0,0"
-                           Text="Phase 7 parity shell preview"
-                           Opacity="0.7" />
-                <TextBlock Grid.Column="1"
-                           Grid.RowSpan="2"
-                           VerticalAlignment="Center"
-                           Text="{Binding Status}"
-                           TextAlignment="Right"
-                           TextWrapping="Wrap"
-                           MaxWidth="420" />
-            </Grid>
-        </Border>
+    <Grid Margin="12" RowDefinitions="*" ColumnDefinitions="320,*">
 
-        <Border Grid.Row="1"
-                Grid.ColumnSpan="2"
-                Margin="0,14,0,0"
-                Padding="14"
-                CornerRadius="10"
-                BorderBrush="#334B657A"
-                BorderThickness="1">
-            <Grid ColumnDefinitions="*,Auto,Auto">
-                <TextBox Watermark="Enter a project, plugin, package, or engine path"
-                         Text="{Binding NewTargetPath}" />
-                <Button Grid.Column="1"
-                        Margin="10,0,0,0"
-                        Content="Browse"
-                        Click="BrowseTarget_Click" />
-                <Button Grid.Column="2"
-                        Margin="10,0,0,0"
-                        Content="Add Target"
-                        Click="AddTarget_Click"
-                        IsEnabled="{Binding CanAddTarget}" />
-            </Grid>
-        </Border>
-
-        <Border Grid.Row="2"
-                Margin="0,14,14,0"
+        <!-- The left column stays dedicated to targets so selection, identity, and quick actions always remain visible. -->
+        <Border Grid.Row="0"
+                Margin="0,12,12,0"
                 Padding="14"
                 CornerRadius="10"
                 BorderBrush="#334B657A"
                 BorderThickness="1">
             <Grid RowDefinitions="Auto,*,Auto,Auto">
-                <TextBlock Text="Targets"
-                           FontSize="18"
-                           FontWeight="SemiBold" />
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Targets"
+                               FontSize="18"
+                               FontWeight="SemiBold" />
+                    <!-- Target creation moves into the targets panel so the app chrome stays focused on the working surface. -->
+                    <Button Grid.Column="1"
+                            Width="34"
+                            Height="34"
+                            Padding="0"
+                            HorizontalAlignment="Right"
+                            Content="+"
+                            Click="BrowseTarget_Click" />
+                </Grid>
                 <ListBox Grid.Row="1"
-                         Margin="0,12,0,0"
-                         ItemsSource="{Binding Targets}"
+                          Margin="0,12,0,0"
+                          ItemsSource="{Binding Targets}"
                          SelectedItem="{Binding SelectedTarget}">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:TargetListItemViewModel">
@@ -123,58 +89,36 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="2" Grid.Column="1" Margin="0,14,0,0" RowDefinitions="Auto,Auto,*,Auto,Auto">
+        <!-- The right side is split into target-scoped editing above and global runtime monitoring below. -->
+        <Grid Grid.Row="0"
+              Grid.Column="1"
+              Margin="0,12,0,0"
+              RowDefinitions="1.2*,Auto,0.95*">
             <Border Padding="14"
                     CornerRadius="10"
                     BorderBrush="#334B657A"
                     BorderThickness="1">
-                <Grid ColumnDefinitions="Auto,*">
-                    <TextBlock VerticalAlignment="Center"
-                               Text="Operation"
-                               FontWeight="SemiBold" />
-                    <ComboBox Grid.Column="1"
-                              Margin="12,0,0,0"
-                              ItemsSource="{Binding AvailableOperations}"
-                              SelectedItem="{Binding SelectedOperation}">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="ext:OperationDescriptor">
-                                <TextBlock Text="{Binding DisplayName}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                </Grid>
-            </Border>
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <TextBlock VerticalAlignment="Center"
+                                   Text="Options"
+                                   FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <ComboBox Grid.Column="2"
+                                  Width="230"
+                                  Margin="12,0,0,0"
+                                  ItemsSource="{Binding AvailableOperations}"
+                                  SelectedItem="{Binding SelectedOperation}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="ext:OperationDescriptor">
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
 
-            <Border Grid.Row="1"
-                    Margin="0,12,0,0"
-                    Padding="14"
-                    CornerRadius="10"
-                    BorderBrush="#334B657A"
-                    BorderThickness="1">
-                <Grid RowDefinitions="Auto,Auto">
-                    <TextBlock Text="Additional Arguments" FontWeight="SemiBold" />
-                    <TextBox Grid.Row="1"
-                             Margin="0,10,0,0"
-                             Watermark="Pass through extra arguments"
-                             Text="{Binding AdditionalArguments}" />
-                </Grid>
-            </Border>
-
-            <Border Grid.Row="2"
-                    Margin="0,12,0,0"
-                    Padding="14"
-                    CornerRadius="10"
-                    BorderBrush="#334B657A"
-                    BorderThickness="1">
-                <Grid RowDefinitions="Auto,Auto,*">
-                    <TextBlock Text="Options" FontSize="18" FontWeight="SemiBold" />
-                    <TextBlock Grid.Row="1"
-                               Margin="0,10,0,0"
-                               Text="This parity shell now exposes a generic editor for the supported option field shapes used by the current operation."
-                               TextWrapping="Wrap"
-                               Opacity="0.75" />
-                    <ScrollViewer Grid.Row="2"
-                                  Margin="0,10,0,0"
+                    <ScrollViewer Grid.Row="1"
+                                  Margin="0,12,0,0"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding EnabledOptionSets}">
@@ -201,29 +145,50 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
+
+                    <!-- Additional arguments sit after the main options because they behave like a final override layer. -->
+                    <Border Grid.Row="2"
+                            Margin="0,12,0,0"
+                            Padding="12"
+                            CornerRadius="8"
+                            Background="#0F3A5164"
+                            BorderBrush="#264B657A"
+                            BorderThickness="1">
+                        <Grid RowDefinitions="Auto,Auto">
+                            <TextBlock Text="Additional Arguments" FontWeight="SemiBold" />
+                            <TextBox Grid.Row="1"
+                                     Margin="0,10,0,0"
+                                     Watermark="Pass through extra arguments"
+                                     Text="{Binding AdditionalArguments}" />
+                        </Grid>
+                    </Border>
                 </Grid>
             </Border>
 
-            <Border Grid.Row="3"
-                    Margin="0,12,0,0"
-                    Padding="12"
-                    CornerRadius="10"
-                    Background="#14D6A55C"
-                    BorderBrush="#FFD6A55C"
-                    BorderThickness="1"
-                    IsVisible="{Binding ShowExecuteDisabledReason}">
-                <TextBlock Text="{Binding ExecuteDisabledReason}" TextWrapping="Wrap" />
-            </Border>
-
-            <Border Grid.Row="4"
+            <!-- The command preview is still tied to the current target/operation selection, so it lives above runtime. -->
+            <Border Grid.Row="1"
                     Margin="0,12,0,0"
                     Padding="14"
                     CornerRadius="10"
                     BorderBrush="#334B657A"
                     BorderThickness="1">
-                <Grid RowDefinitions="Auto,*">
-                    <TextBlock Text="Command Preview" FontSize="18" FontWeight="SemiBold" />
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,*">
+                    <TextBlock Text="Command"
+                               FontSize="18"
+                               FontWeight="SemiBold" />
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right">
+                        <Button Content="Copy Command"
+                                Margin="0,0,8,0"
+                                Click="CopyCommand_Click"
+                                IsEnabled="{Binding CanCopyCommand}" />
+                        <Button Content="{Binding ExecuteButtonText}"
+                                Click="Execute_Click"
+                                IsEnabled="{Binding CanExecute}" />
+                    </StackPanel>
                     <TextBox Grid.Row="1"
+                             Grid.ColumnSpan="2"
                              Margin="0,10,0,0"
                              IsReadOnly="True"
                              AcceptsReturn="True"
@@ -232,66 +197,57 @@
                              Text="{Binding VisibleCommand}" />
                 </Grid>
             </Border>
+
+            <!-- Runtime is global so future task tabs can switch between runs from different targets without changing selection. -->
+            <Border Grid.Row="2"
+                    Margin="0,12,0,0"
+                    Padding="14"
+                    CornerRadius="10"
+                    BorderBrush="#334B657A"
+                    BorderThickness="1">
+                <Grid RowDefinitions="Auto,*">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Runtime Tasks"
+                                   FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <Button Grid.Column="1"
+                                Content="Terminate"
+                                Click="Terminate_Click"
+                                IsEnabled="{Binding IsRunning}" />
+                    </Grid>
+                    <Border Grid.Row="1"
+                            Margin="0,12,0,0"
+                            Padding="10"
+                            CornerRadius="8"
+                            Background="#0B1117"
+                            BorderBrush="#264B657A"
+                            BorderThickness="1">
+                        <Grid RowDefinitions="Auto,*">
+                            <TextBlock Text="{Binding ExecutionSummary}"
+                                       TextWrapping="Wrap"
+                                       Opacity="0.75" />
+                            <ScrollViewer Grid.Row="1"
+                                          Margin="0,10,0,0"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding LogEntries}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LogEntryViewModel">
+                                            <Border Padding="0,0,0,4">
+                                                <TextBlock Text="{Binding Message}"
+                                                           Foreground="{Binding Foreground}"
+                                                           TextWrapping="Wrap"
+                                                           FontFamily="Consolas"
+                                                           FontSize="12" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
         </Grid>
-
-        <Border Grid.Row="3"
-                Grid.ColumnSpan="2"
-                Margin="0,14,0,0"
-                Padding="14"
-                CornerRadius="10"
-                MaxHeight="240"
-                VerticalAlignment="Top"
-                BorderBrush="#334B657A"
-                BorderThickness="1">
-            <Grid RowDefinitions="Auto,Auto,*">
-                <TextBlock Text="Output" FontSize="18" FontWeight="SemiBold" />
-                <TextBlock Grid.Row="1"
-                           Margin="0,8,0,0"
-                           Text="{Binding ExecutionSummary}"
-                           TextWrapping="Wrap"
-                           Opacity="0.75" />
-                <Border Grid.Row="2"
-                        Margin="0,12,0,0"
-                        Padding="10"
-                        CornerRadius="8"
-                        Background="#0B1117"
-                        BorderBrush="#264B657A"
-                        BorderThickness="1">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{Binding LogEntries}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:LogEntryViewModel">
-                                    <Border Padding="0,0,0,6">
-                                        <TextBlock Text="{Binding Message}"
-                                                   Foreground="{Binding Foreground}"
-                                                   TextWrapping="Wrap"
-                                                   FontFamily="Consolas" />
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </Border>
-            </Grid>
-        </Border>
-
-        <WrapPanel Grid.Row="4"
-                   Grid.ColumnSpan="2"
-                   Margin="0,14,0,0"
-                   HorizontalAlignment="Right"
-                   Orientation="Horizontal">
-            <Button Margin="0,0,8,0"
-                    Content="Copy Command"
-                    Click="CopyCommand_Click"
-                    IsEnabled="{Binding CanCopyCommand}" />
-            <Button Margin="0,0,8,0"
-                    Content="{Binding ExecuteButtonText}"
-                    Click="Execute_Click"
-                    IsEnabled="{Binding CanExecute}" />
-            <Button Content="Terminate"
-                    Click="Terminate_Click"
-                    IsEnabled="{Binding IsRunning}" />
-        </WrapPanel>
     </Grid>
 </Window>

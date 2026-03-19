@@ -356,11 +356,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Updates the current status line when the shell needs to surface a transient user-facing note.
+    /// Records a transient shell note in the shared log/output stream now that the window no longer reserves space for
+    /// a dedicated status banner.
     /// </summary>
     public void SetStatus(string message)
     {
         Status = message;
+        AppLogger.LoggerInstance.LogInformation(message);
     }
 
     /// <summary>

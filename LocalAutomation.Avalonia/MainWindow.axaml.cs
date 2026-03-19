@@ -29,18 +29,8 @@ public partial class MainWindow : Window
     private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext!;
 
     /// <summary>
-    /// Adds a target from the current input path and surfaces any validation error through the shared status text.
-    /// </summary>
-    private void AddTarget_Click(object? sender, RoutedEventArgs e)
-    {
-        if (!ViewModel.TryAddTargetFromInput(out string? errorMessage) && !string.IsNullOrWhiteSpace(errorMessage))
-        {
-            ViewModel.SetStatus(errorMessage);
-        }
-    }
-
-    /// <summary>
-    /// Opens a folder picker so the Avalonia shell matches the legacy target-selection flow.
+    /// Opens a folder picker from the compact targets-panel add button so the shell no longer needs a dedicated
+    /// top-level target-creation strip.
     /// </summary>
     private async void BrowseTarget_Click(object? sender, RoutedEventArgs e)
     {
