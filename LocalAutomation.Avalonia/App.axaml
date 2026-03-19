@@ -282,6 +282,7 @@
         <Style Selector="ListBox.targets-list">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
         </Style>
         <Style Selector="ListBox.targets-list ListBoxItem">
             <Setter Property="Margin" Value="0,0,0,4" />
@@ -302,6 +303,7 @@
         <Style Selector="ListBox.targets-list ScrollViewer">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
         </Style>
 
         <!-- Property-grid specific styles pull the embedded editor controls toward the same compact graphite language. -->
