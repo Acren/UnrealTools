@@ -1,8 +1,369 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:pgc="clr-namespace:Avalonia.PropertyGrid.Controls;assembly=Avalonia.PropertyGrid"
              xmlns:themes="clr-namespace:Avalonia.Themes.Fluent;assembly=Avalonia.Themes.Fluent"
              x:Class="LocalAutomation.Avalonia.App">
+    <!-- Centralized graphite tokens let the shell mirror the mockup without scattering hard-coded colors. -->
+    <Application.Resources>
+        <Color x:Key="GraphiteBackgroundColor">#16181B</Color>
+        <Color x:Key="GraphitePanelColor">#1B1E22</Color>
+        <Color x:Key="GraphiteCardColor">#22262B</Color>
+        <Color x:Key="GraphiteInputColor">#14171A</Color>
+        <Color x:Key="GraphiteTerminalColor">#101215</Color>
+        <Color x:Key="GraphiteLineColor">#2D333A</Color>
+        <Color x:Key="GraphiteLineStrongColor">#434C56</Color>
+        <Color x:Key="GraphiteLineSubtleColor">#252A30</Color>
+        <Color x:Key="GraphiteTextColor">#EDF0F3</Color>
+        <Color x:Key="GraphiteTextSoftColor">#C2C8CF</Color>
+        <Color x:Key="GraphiteTextMutedColor">#89919A</Color>
+        <Color x:Key="GraphiteTextInverseColor">#121417</Color>
+        <Color x:Key="GraphiteAccentColor">#AEB9C5</Color>
+        <Color x:Key="GraphiteAccentHoverColor">#C8D1DA</Color>
+        <Color x:Key="GraphiteActiveBorderColor">#75AEB9C5</Color>
+        <Color x:Key="GraphiteActiveBackgroundColor">#12AEB9C5</Color>
+        <Color x:Key="GraphiteDangerColor">#EF8680</Color>
+
+        <SolidColorBrush x:Key="GraphiteBackgroundBrush" Color="{StaticResource GraphiteBackgroundColor}" />
+        <SolidColorBrush x:Key="GraphitePanelBrush" Color="{StaticResource GraphitePanelColor}" />
+        <SolidColorBrush x:Key="GraphiteCardBrush" Color="{StaticResource GraphiteCardColor}" />
+        <SolidColorBrush x:Key="GraphiteInputBrush" Color="{StaticResource GraphiteInputColor}" />
+        <SolidColorBrush x:Key="GraphiteTerminalBrush" Color="{StaticResource GraphiteTerminalColor}" />
+        <SolidColorBrush x:Key="GraphiteLineBrush" Color="{StaticResource GraphiteLineColor}" />
+        <SolidColorBrush x:Key="GraphiteLineStrongBrush" Color="{StaticResource GraphiteLineStrongColor}" />
+        <SolidColorBrush x:Key="GraphiteLineSubtleBrush" Color="{StaticResource GraphiteLineSubtleColor}" />
+        <SolidColorBrush x:Key="GraphiteTextBrush" Color="{StaticResource GraphiteTextColor}" />
+        <SolidColorBrush x:Key="GraphiteTextSoftBrush" Color="{StaticResource GraphiteTextSoftColor}" />
+        <SolidColorBrush x:Key="GraphiteTextMutedBrush" Color="{StaticResource GraphiteTextMutedColor}" />
+        <SolidColorBrush x:Key="GraphiteTextInverseBrush" Color="{StaticResource GraphiteTextInverseColor}" />
+        <SolidColorBrush x:Key="GraphiteAccentBrush" Color="{StaticResource GraphiteAccentColor}" />
+        <SolidColorBrush x:Key="GraphiteAccentHoverBrush" Color="{StaticResource GraphiteAccentHoverColor}" />
+        <SolidColorBrush x:Key="GraphiteActiveBorderBrush" Color="{StaticResource GraphiteActiveBorderColor}" />
+        <SolidColorBrush x:Key="GraphiteActiveBackgroundBrush" Color="{StaticResource GraphiteActiveBackgroundColor}" />
+        <SolidColorBrush x:Key="GraphiteDangerBrush" Color="{StaticResource GraphiteDangerColor}" />
+    </Application.Resources>
     <Application.Styles>
         <themes:FluentTheme />
+
+        <!-- The shell defaults everything to the graphite palette so the window reads like a dense desktop tool. -->
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource GraphiteBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+
+        <!-- Shared slab styles keep panels and cards visually consistent across the shell. -->
+        <Style Selector="Border.panel">
+            <Setter Property="Background" Value="{DynamicResource GraphitePanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource GraphiteCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Border.inset">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Border.terminal-shell">
+            <Setter Property="Background" Value="{DynamicResource GraphiteTerminalBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Border.pill">
+            <Setter Property="Background" Value="{DynamicResource GraphiteCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+
+        <!-- Typography styles recreate the uppercase graphite chrome from the reference. -->
+        <Style Selector="TextBlock.section-title">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+        </Style>
+        <Style Selector="TextBlock.panel-title">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+        </Style>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+        </Style>
+        <Style Selector="TextBlock.soft">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+        </Style>
+        <Style Selector="TextBlock.detail-label">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+        </Style>
+        <Style Selector="TextBlock.field-label">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+        </Style>
+        <Style Selector="TextBlock.status-danger">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteDangerBrush}" />
+        </Style>
+
+        <!-- Buttons trade Fluent glow for flat, deliberate graphite controls. -->
+        <Style Selector="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+        <Style Selector="Button:pressed">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+        </Style>
+        <Style Selector="Button:disabled">
+            <Setter Property="Opacity" Value="0.55" />
+        </Style>
+        <Style Selector="Button.small">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource GraphiteAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextInverseBrush}" />
+        </Style>
+        <Style Selector="Button.primary:pointerover">
+            <Setter Property="Background" Value="{DynamicResource GraphiteAccentHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextInverseBrush}" />
+        </Style>
+        <Style Selector="Button.subtle">
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="Padding" Value="8,6" />
+        </Style>
+        <Style Selector="Button.subtle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource GraphiteCardBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+        </Style>
+        <Style Selector="Button.danger">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteDangerBrush}" />
+            <Setter Property="BorderBrush" Value="#66EF8680" />
+        </Style>
+        <Style Selector="Button.tab">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,2" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+        </Style>
+        <Style Selector="Button.tab:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+        </Style>
+        <Style Selector="Button.tab.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+
+        <!-- Inputs use the same compact mechanical treatment as the mockup. -->
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="DatePicker">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="TextBox:focus">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <Style Selector="ComboBox:focus">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <Style Selector="NumericUpDown:focus">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <Style Selector="DatePicker:focus">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <Style Selector="TextBox.mono">
+            <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, monospace" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+
+        <!-- Scrollbars and popup lists get the same hard-edged graphite treatment as the main shell. -->
+        <Style Selector="ScrollBar">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ScrollBar /template/ Thumb">
+            <Setter Property="Background" Value="{DynamicResource GraphiteLineStrongBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
+            <Setter Property="MinWidth" Value="10" />
+            <Setter Property="MinHeight" Value="10" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="ScrollBar /template/ Thumb:pointerover">
+            <Setter Property="Background" Value="{DynamicResource GraphiteAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <Style Selector="FlyoutPresenter">
+            <Setter Property="Background" Value="{DynamicResource GraphitePanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="MenuFlyoutPresenter">
+            <Setter Property="Background" Value="{DynamicResource GraphitePanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="ComboBoxItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="Padding" Value="10,6" />
+        </Style>
+        <Style Selector="ComboBoxItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+        <Style Selector="ComboBoxItem:selected">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+        <Style Selector="ComboBox /template/ ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+        <Style Selector="ComboBox /template/ ToggleButton">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="ComboBox /template/ ToggleButton:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
+        </Style>
+        <Style Selector="AutoCompleteBox /template/ TextBox">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+
+        <!-- The target list uses the selection border rather than Fluent's filled highlight. -->
+        <Style Selector="ListBox.targets-list">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="ListBox.targets-list ListBoxItem">
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="ListBox.targets-list ListBoxItem:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
+        </Style>
+        <Style Selector="ListBox.targets-list ListBoxItem:selected">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteActiveBorderBrush}" />
+        </Style>
+        <Style Selector="ListBox.targets-list ScrollViewer">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <!-- Property-grid specific styles pull the embedded editor controls toward the same compact graphite language. -->
+        <Style Selector="pgc|PropertyGrid">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+            <Setter Property="Margin" Value="0" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid Button">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid ToggleButton">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid ToggleButton:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid Expander">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid Expander /template/ ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid Expander /template/ ToggleButton:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid ScrollViewer">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid TextBox, pgc|PropertyGrid ComboBox, pgc|PropertyGrid NumericUpDown, pgc|PropertyGrid DatePicker">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="MinHeight" Value="30" />
+        </Style>
+        <Style Selector="pgc|PropertyGrid TextBox:focus, pgc|PropertyGrid ComboBox:focus, pgc|PropertyGrid NumericUpDown:focus, pgc|PropertyGrid DatePicker:focus">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <Style Selector="pgc|ButtonEdit, pgc|ListEdit, pgc|CheckedListEdit, pgc|CheckedMask">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
     </Application.Styles>
 </Application>
