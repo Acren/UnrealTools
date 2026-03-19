@@ -212,9 +212,18 @@
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                         <ItemsControl IsVisible="{Binding UseCustomEditor}"
-                                                      ItemsSource="{Binding EngineVersions}">
+                                                       ItemsSource="{Binding EngineVersions}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding Enabled}"
+                                                              Content="{Binding DisplayName}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <ItemsControl IsVisible="{Binding UseTraceChannelEditor}"
+                                                      ItemsSource="{Binding TraceChannels}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:TraceChannelChoiceViewModel">
                                                     <CheckBox IsChecked="{Binding Enabled}"
                                                               Content="{Binding DisplayName}" />
                                                 </DataTemplate>

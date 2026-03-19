@@ -682,6 +682,10 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 EnabledOptionSets.Add(new EngineVersionOptionSetViewModel(engineVersionOptions));
             }
+            else if (options is UnrealAutomationCommon.Operations.OperationOptionTypes.InsightsOptions insightsOptions)
+            {
+                EnabledOptionSets.Add(new InsightsOptionSetViewModel(insightsOptions));
+            }
             else
             {
                 EnabledOptionSets.Add(new OptionSetViewModel(options));

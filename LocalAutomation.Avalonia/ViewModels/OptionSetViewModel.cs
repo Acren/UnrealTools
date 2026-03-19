@@ -59,6 +59,16 @@ public class OptionSetViewModel : ViewModelBase
     public virtual ObservableCollection<EngineVersionChoiceViewModel> EngineVersions { get; } = new();
 
     /// <summary>
+    /// Gets the trace channel choices when a specialized Unreal Insights editor is active.
+    /// </summary>
+    public virtual ObservableCollection<TraceChannelChoiceViewModel> TraceChannels { get; } = new();
+
+    /// <summary>
+    /// Indicates whether the custom editor should render a trace channel checklist.
+    /// </summary>
+    public virtual bool UseTraceChannelEditor => false;
+
+    /// <summary>
     /// Refreshes field values from the underlying option model.
     /// </summary>
     public virtual void Refresh()
