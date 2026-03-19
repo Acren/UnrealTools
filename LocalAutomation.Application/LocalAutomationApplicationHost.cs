@@ -15,6 +15,7 @@ public sealed class LocalAutomationApplicationHost
     public LocalAutomationApplicationHost(ExtensionCatalog catalog)
     {
         Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        ContextActions = new ContextActionService(catalog);
         Execution = new ExecutionService();
         ExecutionRuntime = new ExecutionRuntimeService(catalog);
         Operations = new OperationCatalogService(catalog);
@@ -27,6 +28,11 @@ public sealed class LocalAutomationApplicationHost
     /// Gets the catalog containing the registered extension modules and their descriptors.
     /// </summary>
     public ExtensionCatalog Catalog { get; }
+
+    /// <summary>
+    /// Gets the service used to query extension-provided target context actions.
+    /// </summary>
+    public ContextActionService ContextActions { get; }
 
     /// <summary>
     /// Gets the service used to query registered operations for a target.

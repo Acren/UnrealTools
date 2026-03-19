@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
+using Microsoft.Extensions.Logging;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
+using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -50,6 +52,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ObservableCollection<OperationDescriptor> AvailableOperations { get; } = new();
 
     /// <summary>
+    /// Gets the target actions currently available for the selected target.
+    /// </summary>
+    public ObservableCollection<TargetContextActionViewModel> TargetActions { get; } = new();
+
+    /// <summary>
     /// Gets the editable option sets for the current target and operation selection.
     /// </summary>
     public ObservableCollection<OptionSetViewModel> EnabledOptionSets { get; } = new();
@@ -88,6 +95,7 @@ public sealed class MainWindowViewModel : ViewModelBase
                 if (!_isHydratingSessionSelection)
                 {
                     RefreshOperationSelection();
+                    RefreshTargetActions();
                     RaiseDerivedStateChanged();
                 }
 
@@ -306,6 +314,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             SelectedTarget = null;
             Status = $"Removed target '{removedTargetName}'. Add another target path to continue.";
+            RefreshTargetActions();
             SaveSessionState();
             return;
         }
@@ -313,7 +322,16 @@ public sealed class MainWindowViewModel : ViewModelBase
         int nextIndex = Math.Clamp(removedIndex, 0, Targets.Count - 1);
         SelectedTarget = Targets[nextIndex];
         Status = $"Removed target '{removedTargetName}'.";
+        RefreshTargetActions();
         SaveSessionState();
+    }
+
+    /// <summary>
+    /// Executes one of the currently available target actions.
+    /// </summary>
+    public void ExecuteTargetAction(TargetContextActionViewModel? action)
+    {
+        action?.Execute();
     }
 
     /// <summary>
@@ -405,6 +423,42 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Recomputes the target actions available for the selected target from the shared extension catalog.
+    /// </summary>
+    private void RefreshTargetActions()
+    {
+        TargetActions.Clear();
+
+        if (SelectedTarget?.Target == null)
+        {
+            return;
+        }
+
+        foreach (ContextActionDescriptor descriptor in _services.ContextActions.GetActionsForTarget(SelectedTarget.Target))
+        {
+            object target = SelectedTarget.Target;
+            TargetActions.Add(new TargetContextActionViewModel(descriptor, () => ExecuteTargetAction(descriptor, target)));
+        }
+    }
+
+    /// <summary>
+    /// Executes a selected target action and reports the result through the shared status text and application log.
+    /// </summary>
+    private void ExecuteTargetAction(ContextActionDescriptor descriptor, object target)
+    {
+        try
+        {
+            descriptor.Execute(target);
+            SetStatus($"Executed '{descriptor.DisplayName}' for '{SelectedTarget?.DisplayName}'.");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LoggerInstance.LogError(ex, "Target action '{ActionName}' failed.", descriptor.DisplayName);
+            SetStatus($"Failed to run '{descriptor.DisplayName}': {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Restores the last persisted shell state so the Avalonia parity shell reopens with the previous targets,
     /// selection, and editable options.
     /// </summary>
@@ -445,6 +499,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
 
             _isHydratingSessionSelection = false;
+            RefreshTargetActions();
             RefreshEnabledOptionSets();
             RaiseDerivedStateChanged();
 

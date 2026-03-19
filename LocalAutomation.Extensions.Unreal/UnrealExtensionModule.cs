@@ -42,6 +42,7 @@ public sealed class UnrealExtensionModule : IExtensionModule
         registry.RegisterTargetFactory(new UnrealPathTargetFactory());
         registry.RegisterOperationAdapter(new UnrealOperationAdapter());
         registry.RegisterRunnerAdapter(new UnrealRunnerAdapter());
+        RegisterContextActions(registry);
 
         foreach (OperationDescriptor descriptor in BuildOperationDescriptors())
         {
@@ -124,5 +125,40 @@ public sealed class UnrealExtensionModule : IExtensionModule
         }
 
         return supportedTargetTypes;
+    }
+
+    /// <summary>
+    /// Registers the first parity-focused set of target actions used by the Avalonia shell.
+    /// </summary>
+    private static void RegisterContextActions(IExtensionRegistry registry)
+    {
+        registry.RegisterContextAction(new ContextActionDescriptor(
+            id: "unreal.target.open-directory",
+            displayName: "Open Directory",
+            targetType: typeof(IOperationTarget),
+            execute: target => RunProcess.OpenDirectory(((IOperationTarget)target).TargetDirectory)));
+
+        registry.RegisterContextAction(new ContextActionDescriptor(
+            id: "unreal.target.open-output",
+            displayName: "Open Output",
+            targetType: typeof(IOperationTarget),
+            execute: target => RunProcess.OpenDirectory(((IOperationTarget)target).OutputDirectory)));
+
+        registry.RegisterContextAction(new ContextActionDescriptor(
+            id: "unreal.project.open-staged-build",
+            displayName: "Open Staged Build",
+            targetType: typeof(Project),
+            execute: target =>
+            {
+                Project project = (Project)target;
+                Engine? engine = project.EngineInstance;
+                if (engine == null)
+                {
+                    throw new InvalidOperationException($"Project '{project.DisplayName}' does not currently resolve to an engine install.");
+                }
+
+                RunProcess.OpenDirectory(project.GetStagedBuildWindowsPath(engine));
+            },
+            canExecute: target => ((Project)target).EngineInstance != null));
     }
 }

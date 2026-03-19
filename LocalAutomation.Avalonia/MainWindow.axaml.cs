@@ -127,4 +127,17 @@ public partial class MainWindow : Window
     {
         await ViewModel.CancelExecutionAsync();
     }
+
+    /// <summary>
+    /// Executes a selected target action from the selected-target action strip.
+    /// </summary>
+    private void TargetAction_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: TargetContextActionViewModel action })
+        {
+            return;
+        }
+
+        ViewModel.ExecuteTargetAction(action);
+    }
 }

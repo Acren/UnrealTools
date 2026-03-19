@@ -91,6 +91,20 @@
                     <TextBlock Text="{Binding SelectedTargetSummary}" />
                     <TextBlock Text="{Binding SelectedTargetPath}" TextWrapping="Wrap" Opacity="0.75" />
                     <TextBlock Text="{Binding SelectedTargetEngine}" Opacity="0.75" />
+                    <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding TargetActions}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TargetContextActionViewModel">
+                                <Button Margin="0,0,8,8"
+                                        Content="{Binding DisplayName}"
+                                        Click="TargetAction_Click" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
                 <Border Grid.Row="3"
                         Padding="10"
