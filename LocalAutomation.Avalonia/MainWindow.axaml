@@ -244,18 +244,22 @@
                                        TextWrapping="Wrap"
                                        Opacity="0.75" />
                             <ScrollViewer Grid.Row="1"
+                                          x:Name="RuntimeLogScrollViewer"
                                           Margin="0,10,0,0"
+                                          ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
                                 <ItemsControl ItemsSource="{Binding SelectedRuntimeLogEntries}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LogEntryViewModel">
                                             <Border Padding="0,0,0,4">
-                                                <TextBlock Text="{Binding Message}"
-                                                           Foreground="{Binding Foreground}"
-                                                           TextWrapping="Wrap"
-                                                           FontFamily="Consolas"
-                                                           FontSize="12" />
+                                                <!-- SelectableTextBlock keeps the terminal-style look while allowing
+                                                     users to highlight and copy log output directly. -->
+                                                <SelectableTextBlock Text="{Binding Message}"
+                                                                     Foreground="{Binding Foreground}"
+                                                                     TextWrapping="Wrap"
+                                                                     FontFamily="Consolas"
+                                                                     FontSize="12" />
                                             </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
