@@ -29,6 +29,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly OperationParameters _operationParameters = new();
     private readonly SessionPersistenceService _sessionPersistence;
     private readonly DispatcherTimer _sessionSaveTimer;
+    private readonly TargetPickerItemViewModel _addTargetPickerItem = TargetPickerItemViewModel.CreateAddAction();
     private bool _isApplyingTargetState;
     private bool _isHydratingSessionSelection;
     private bool _isRestoringSession;
@@ -40,6 +41,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private OperationDescriptor? _selectedOperation;
     private RuntimeTaskTabViewModel? _selectedRuntimeTab;
     private SessionSnapshot _sessionSnapshot = new();
+    private TargetPickerItemViewModel? _selectedTargetPickerItem;
     private TargetListItemViewModel? _selectedTarget;
     private string _status = "Add a target path to begin using the LocalAutomation shell.";
 
@@ -53,6 +55,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         _sessionSaveTimer = new DispatcherTimer { Interval = SessionSaveDebounceDelay };
         _sessionSaveTimer.Tick += HandleSessionSaveTimerTick;
         _operationParameters.PropertyChanged += HandleOperationParametersChanged;
+        TargetPickerItems.Add(_addTargetPickerItem);
         RuntimeTabs.Add(CreateApplicationLogTab());
         SelectedRuntimeTab = RuntimeTabs[0];
         AttachApplicationLogStream();
@@ -63,6 +66,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets the currently added targets shown in the shell.
     /// </summary>
     public ObservableCollection<TargetListItemViewModel> Targets { get; } = new();
+
+    /// <summary>
+    /// Gets the target-picker rows, including the synthetic add-target action shown at the bottom of the dropdown.
+    /// </summary>
+    public ObservableCollection<TargetPickerItemViewModel> TargetPickerItems { get; } = new();
 
     /// <summary>
     /// Gets the operations compatible with the current target selection.
@@ -140,6 +148,29 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Gets or sets the picker row currently shown by the target dropdown.
+    /// </summary>
+    public TargetPickerItemViewModel? SelectedTargetPickerItem
+    {
+        get => _selectedTargetPickerItem;
+        set
+        {
+            // The synthetic add-target row is handled by the view, so keep the last real target selected in the view
+            // model while still allowing the popup to surface the action entry.
+            if (value?.IsAddAction == true)
+            {
+                RaisePropertyChanged();
+                return;
+            }
+
+            if (SetProperty(ref _selectedTargetPickerItem, value) && !ReferenceEquals(SelectedTarget, value?.TargetItem))
+            {
+                SelectedTarget = value?.TargetItem;
+            }
+        }
+    }
+
+    /// <summary>
     /// Gets or sets the currently selected target row.
     /// </summary>
     public TargetListItemViewModel? SelectedTarget
@@ -156,6 +187,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (SetProperty(ref _selectedTarget, value))
             {
                 _operationParameters.Target = value?.Target;
+                SyncSelectedTargetPickerItem();
                 if (!_isHydratingSessionSelection)
                 {
                     RefreshOperationSelection();
@@ -367,7 +399,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
 
             TargetListItemViewModel targetItem = new(target);
-            Targets.Add(targetItem);
+            AddTargetItem(targetItem);
             SelectedTarget = targetItem;
             NewTargetPath = string.Empty;
             Status = $"Added {target.TypeName.ToLowerInvariant()} target '{target.DisplayName}'.";
@@ -393,7 +425,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         string removedTargetName = SelectedTarget.DisplayName;
         int removedIndex = Targets.IndexOf(SelectedTarget);
-        Targets.Remove(SelectedTarget);
+        RemoveTargetItem(SelectedTarget);
 
         if (Targets.Count == 0)
         {
@@ -673,7 +705,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 if (_sessionPersistence.TryRestoreTarget(targetSnapshot, out IOperationTarget? target) && target != null)
                 {
-                    Targets.Add(new TargetListItemViewModel(target));
+                    AddTargetItem(new TargetListItemViewModel(target));
                     restoredSnapshots.Add(targetSnapshot);
                 }
             }
@@ -909,6 +941,43 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SelectedTargetSummary));
         RaisePropertyChanged(nameof(VisibleCommand));
         RaiseExecutionStateChanged();
+    }
+
+    /// <summary>
+    /// Adds a real target row to both the session-backed target list and the picker list while keeping the synthetic
+    /// add-target action anchored at the bottom of the dropdown.
+    /// </summary>
+    private void AddTargetItem(TargetListItemViewModel targetItem)
+    {
+        Targets.Add(targetItem);
+        TargetPickerItems.Insert(Math.Max(0, TargetPickerItems.Count - 1), new TargetPickerItemViewModel(targetItem));
+    }
+
+    /// <summary>
+    /// Removes a real target row from both the working target list and the dropdown picker entries.
+    /// </summary>
+    private void RemoveTargetItem(TargetListItemViewModel targetItem)
+    {
+        Targets.Remove(targetItem);
+
+        TargetPickerItemViewModel? pickerItem = TargetPickerItems.FirstOrDefault(item => ReferenceEquals(item.TargetItem, targetItem));
+        if (pickerItem != null)
+        {
+            TargetPickerItems.Remove(pickerItem);
+        }
+    }
+
+    /// <summary>
+    /// Mirrors the real selected target into the dropdown selection so the collapsed picker always shows the active
+    /// target instead of the synthetic add row.
+    /// </summary>
+    private void SyncSelectedTargetPickerItem()
+    {
+        TargetPickerItemViewModel? pickerItem = SelectedTarget == null
+            ? null
+            : TargetPickerItems.FirstOrDefault(item => ReferenceEquals(item.TargetItem, SelectedTarget));
+
+        SetProperty(ref _selectedTargetPickerItem, pickerItem, nameof(SelectedTargetPickerItem));
     }
 
     /// <summary>

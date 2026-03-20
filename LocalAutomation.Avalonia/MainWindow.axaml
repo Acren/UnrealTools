@@ -13,102 +13,155 @@
     <!-- The window now mirrors the Obsidian Graphite mockup: compact chrome, hard dividers, and stacked workspace panels. -->
     <Grid Margin="10" RowDefinitions="*">
 
-        <!-- The main split keeps targets fixed on the left and the stacked workflow on the right. -->
-        <Grid ColumnDefinitions="280,*" ColumnSpacing="10">
+        <!-- The shell keeps controls in the upper split and gives runtime output a full-width panel underneath. -->
+        <Grid RowDefinitions="*,0.9*" RowSpacing="10" ColumnDefinitions="*,280" ColumnSpacing="10">
 
-            <!-- The targets rail keeps selection context, actions, and compatibility in one place. -->
+            <!-- The right rail now stacks targets above the command preview so both share the same narrow control column. -->
+            <Grid Grid.Column="1" RowDefinitions="*,Auto" RowSpacing="10" MinHeight="0">
+
+            <!-- The targets rail keeps target selection and target-scoped actions compact. -->
             <Border Classes="panel">
-                <Grid RowDefinitions="Auto,*,Auto" MinHeight="0">
+                <Grid RowDefinitions="Auto,Auto,*" MinHeight="0">
                     <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBlock Text="TARGETS" Classes="panel-title" VerticalAlignment="Center" />
-                            <Button Grid.Column="1"
-                                    Classes="small"
-                                    Content="+ Add"
-                                    Click="BrowseTarget_Click" />
-                        </Grid>
+                        <TextBlock Text="TARGET" Classes="panel-title" VerticalAlignment="Center" />
                     </Border>
 
-                    <!-- Let the ListBox own scrolling so its item width stays aligned with the visible viewport. -->
-                    <ListBox Grid.Row="1"
-                             Margin="8,8,8,0"
-                             Classes="targets-list"
-                             ItemsSource="{Binding Targets}"
-                             SelectedItem="{Binding SelectedTarget}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="vm:TargetListItemViewModel">
+                    <ComboBox Grid.Row="1"
+                              Margin="8,8,8,0"
+                              ItemsSource="{Binding TargetPickerItems}"
+                              SelectedItem="{Binding SelectedTargetPickerItem}"
+                              MaxDropDownHeight="360"
+                              HorizontalAlignment="Stretch"
+                              SelectionChanged="TargetPicker_SelectionChanged">
+                        <ComboBox.SelectionBoxItemTemplate>
+                            <DataTemplate x:DataType="vm:TargetPickerItemViewModel">
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <!-- The title/path stack owns the flexible column so long target paths truncate without hiding the display name. -->
                                     <StackPanel Spacing="2">
                                         <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding TargetPath}" Classes="muted" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding TypeName}" Classes="muted" />
+                                        <TextBlock Text="{Binding TargetPath}" FontSize="12" Classes="muted" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
-                                    <!-- The type badge stays in the auto column so it sizes to its label instead of stretching across the row. -->
-                                    <Border Grid.Column="1" Classes="pill" Padding="6,2" VerticalAlignment="Top" HorizontalAlignment="Right">
+                                    <Border Grid.Column="1" Classes="pill" Padding="6,2" VerticalAlignment="Top" HorizontalAlignment="Right" IsVisible="{Binding IsTargetItem}">
                                         <TextBlock Text="{Binding TypeName}" FontSize="10" FontWeight="Bold" Classes="muted" />
                                     </Border>
                                 </Grid>
                             </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                        </ComboBox.SelectionBoxItemTemplate>
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TargetPickerItemViewModel">
+                                <Grid>
+                                    <!-- Real targets keep the richer two-line layout, with the badge aligned beside the name to free the full row for the path. -->
+                                    <StackPanel IsVisible="{Binding IsTargetItem}" Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <Border Grid.Column="1" Classes="pill" Padding="6,2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                                <TextBlock Text="{Binding TypeName}" FontSize="10" FontWeight="Bold" Classes="muted" />
+                                            </Border>
+                                            <Button Grid.Column="2"
+                                                    Classes="small subtle"
+                                                    Padding="4,0"
+                                                    MinWidth="24"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Center"
+                                                    Content="X"
+                                                    Click="RemoveTargetPickerItem_Click" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding TargetPath}" FontSize="12" Classes="muted" TextWrapping="Wrap" />
+                                    </StackPanel>
 
-                    <!-- Selected-target details stay separated from the scrollable list so actions remain easy to reach. -->
-                    <Border Grid.Row="2" Padding="12,12,12,12" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,1,0,0">
-                    <StackPanel Spacing="10">
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="SELECTED" Classes="detail-label" />
-                            <TextBlock Text="{Binding SelectedTargetSummary}" Classes="soft" />
-                            <TextBlock Text="{Binding SelectedTargetPath}" Classes="muted" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding SelectedTargetEngine}" Classes="muted" />
-                        </StackPanel>
+                                    <!-- The synthetic add row uses a dedicated minimal layout so it reads like an action, not a target. -->
+                                    <Border IsVisible="{Binding IsAddAction}"
+                                            Padding="6,4"
+                                            Background="Transparent"
+                                            BorderBrush="Transparent"
+                                            BorderThickness="0">
+                                        <TextBlock Text="{Binding AddActionLabel}"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Classes="soft" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
 
-                        <WrapPanel Orientation="Horizontal">
-                            <ItemsControl ItemsSource="{Binding TargetActions}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:TargetContextActionViewModel">
-                                        <Button Classes="subtle small"
-                                                Margin="0,0,6,6"
-                                                Content="{Binding DisplayName}"
-                                                Click="TargetAction_Click" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <Button Classes="danger small"
-                                    Margin="0,0,6,6"
-                                    Content="Remove"
-                                    Click="RemoveSelectedTarget_Click" />
-                        </WrapPanel>
-
-                        <Border Classes="card" Padding="10,8">
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="COMPATIBILITY" Classes="detail-label" />
-                                <TextBlock Text="{Binding ExecuteButtonText}" Classes="soft" />
-                                <TextBlock Text="{Binding OperationSupportsMultipleEngines, StringFormat='Supports multiple engines: {0}'}"
-                                           Classes="muted" />
-                            </StackPanel>
-                        </Border>
+                    <!-- Target actions stay visually separated from the picker and share the available row width evenly. -->
+                    <Border Grid.Row="2"
+                            Margin="8,10,8,8"
+                            Padding="0"
+                            BorderBrush="{DynamicResource GraphiteLineBrush}"
+                            BorderThickness="0,1,0,0">
+                    <StackPanel Spacing="6" Margin="0,10,0,0">
+                        <ItemsControl ItemsSource="{Binding TargetActions}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="2" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TargetContextActionViewModel">
+                                    <Button Classes="small"
+                                            Margin="0,0,8,0"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Center"
+                                            Content="{Binding DisplayName}"
+                                            Click="TargetAction_Click" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                     </Border>
                 </Grid>
             </Border>
 
-            <!-- The right column preserves the options-command-runtime stack from the reference layout. -->
-            <Grid Grid.Column="1" RowDefinitions="1.1*,Auto,0.9*" RowSpacing="10" MinHeight="0">
+            <!-- The command preview moves into the left rail so it matches the targets panel width. -->
+            <Border Classes="panel" Grid.Row="1">
+                <Grid RowDefinitions="Auto,*,Auto" MinHeight="0">
+                    <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
+                        <TextBlock Text="COMMAND" Classes="field-label" />
+                    </Border>
+                    <Border Grid.Row="1" Background="{DynamicResource GraphiteTerminalBrush}">
+                        <ScrollViewer Margin="12,10,12,12"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <SelectableTextBlock Classes="mono"
+                                                 Text="{Binding VisibleCommand}"
+                                                 TextWrapping="Wrap" />
+                        </ScrollViewer>
+                    </Border>
+                    <Border Grid.Row="2" Padding="12,10,12,12" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,1,0,0">
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <Button Grid.Column="0"
+                                    Classes="small"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Content="Copy"
+                                    Click="CopyCommand_Click"
+                                    IsEnabled="{Binding CanCopyCommand}" />
+                            <Button Grid.Column="1"
+                                    Classes="primary small"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Content="{Binding ExecuteButtonText}"
+                                    Click="Execute_Click"
+                                    IsEnabled="{Binding CanExecute}" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+            </Grid>
+
+            <!-- The upper-left column is now dedicated to operations and options, while runtime output spans the full width below. -->
+            <Grid MinHeight="0">
 
                 <!-- Options stay dominant and use compact cards to match the mockup's editing surface. -->
                 <Border Classes="panel" Grid.Row="0">
                     <Grid RowDefinitions="Auto,*" MinHeight="0">
                         <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                <TextBlock Text="OPTIONS" Classes="panel-title" VerticalAlignment="Center" />
+                            <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
+                                <TextBlock Text="OPERATION" Classes="panel-title" VerticalAlignment="Center" />
                                 <ComboBox Grid.Column="1"
                                           Width="260"
+                                          HorizontalAlignment="Left"
                                           ItemsSource="{Binding AvailableOperations}"
                                           SelectedItem="{Binding SelectedOperation}">
                                     <ComboBox.ItemTemplate>
@@ -154,47 +207,13 @@
                     </Grid>
                 </Border>
 
-                <!-- The command panel stays compact and action-oriented, like the reference command strip. -->
-                <Border Classes="panel" Grid.Row="1">
-                    <Grid Margin="12,10" ColumnDefinitions="*,Auto" ColumnSpacing="10" RowDefinitions="Auto,*">
-                        <TextBlock Text="COMMAND" Classes="field-label" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                            <Button Classes="small"
-                                    Content="Copy"
-                                    Click="CopyCommand_Click"
-                                    IsEnabled="{Binding CanCopyCommand}" />
-                            <Button Classes="primary small"
-                                    Content="{Binding ExecuteButtonText}"
-                                    Click="Execute_Click"
-                                    IsEnabled="{Binding CanExecute}" />
-                        </StackPanel>
-                        <TextBox Grid.Row="1"
-                                 Grid.ColumnSpan="2"
-                                 Margin="0,8,0,0"
-                                 Classes="mono"
-                                 IsReadOnly="True"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 MinHeight="52"
-                                 Text="{Binding VisibleCommand}" />
-                    </Grid>
-                </Border>
+            </Grid>
 
-                <!-- Runtime uses underlined tabs and a terminal slab so execution feedback matches the mockup tone. -->
-                <Border Classes="panel" Grid.Row="2">
-                    <Grid RowDefinitions="Auto,Auto,*" MinHeight="0">
-                        <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                <TextBlock Text="{Binding SelectedRuntimeTabTitle}" Classes="panel-title" VerticalAlignment="Center" />
-                                <Button Grid.Column="1"
-                                        Classes="danger small"
-                                        Content="Terminate"
-                                        Click="Terminate_Click"
-                                        IsEnabled="{Binding IsRunning}" />
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Row="1" Margin="12,8,12,0" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,1">
+            <!-- Runtime uses underlined tabs and a terminal slab so execution feedback matches the mockup tone. -->
+            <Border Classes="panel" Grid.Row="1" Grid.ColumnSpan="2">
+                <Grid RowDefinitions="Auto,*" MinHeight="0">
+                    <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                             <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                           VerticalScrollBarVisibility="Disabled">
                                 <ItemsControl ItemsSource="{Binding RuntimeTabs}">
@@ -213,35 +232,38 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
-                        </Border>
-
-                        <Grid Grid.Row="2" Margin="12,10,12,12" RowDefinitions="Auto,*" MinHeight="0">
-                            <TextBlock Text="{Binding ExecutionSummary}" TextWrapping="Wrap" Classes="muted" />
-                            <Border Grid.Row="1" Classes="terminal-shell" Margin="0,8,0,0" Padding="10,10,10,6">
-                                <ScrollViewer x:Name="RuntimeLogScrollViewer"
-                                              ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
-                                              VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Disabled">
-                                    <ItemsControl ItemsSource="{Binding SelectedRuntimeLogEntries}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:LogEntryViewModel">
-                                                <Border Padding="0,0,0,4">
-                                                    <!-- SelectableTextBlock preserves copyable logs while keeping the terminal presentation lightweight. -->
-                                                    <SelectableTextBlock Text="{Binding Message}"
-                                                                         Foreground="{Binding Foreground}"
-                                                                         TextWrapping="Wrap"
-                                                                         FontFamily="Consolas, Cascadia Mono, monospace"
-                                                                         FontSize="12" />
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
-                            </Border>
+                            <Button Grid.Column="1"
+                                    Classes="danger small"
+                                    Content="Terminate"
+                                    Click="Terminate_Click"
+                                    IsEnabled="{Binding IsRunning}" />
                         </Grid>
-                    </Grid>
-                </Border>
-            </Grid>
+                    </Border>
+
+                    <Border Grid.Row="1" Margin="0" Background="{DynamicResource GraphiteTerminalBrush}">
+                        <ScrollViewer x:Name="RuntimeLogScrollViewer"
+                                      Margin="12,10,12,12"
+                                      ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding SelectedRuntimeLogEntries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LogEntryViewModel">
+                                        <Border Padding="0,0,0,4">
+                                            <!-- SelectableTextBlock preserves copyable logs while keeping the terminal presentation lightweight. -->
+                                            <SelectableTextBlock Text="{Binding Message}"
+                                                                 Foreground="{Binding Foreground}"
+                                                                 TextWrapping="Wrap"
+                                                                 FontFamily="Consolas, Cascadia Mono, monospace"
+                                                                 FontSize="12" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </Window>

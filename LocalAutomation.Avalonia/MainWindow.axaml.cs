@@ -44,8 +44,7 @@ public partial class MainWindow : Window
     private ScrollViewer? RuntimeLogViewer => this.FindControl<ScrollViewer>("RuntimeLogScrollViewer");
 
     /// <summary>
-    /// Opens a folder picker from the compact targets-panel add button so the shell no longer needs a dedicated
-    /// top-level target-creation strip.
+    /// Opens a folder picker from the targets panel when the user chooses the add-target affordance.
     /// </summary>
     private async void BrowseTarget_Click(object? sender, RoutedEventArgs e)
     {
@@ -79,6 +78,50 @@ public partial class MainWindow : Window
         if (!ViewModel.TryAddTargetFromInput(out string? errorMessage) && !string.IsNullOrWhiteSpace(errorMessage))
         {
             ViewModel.SetStatus(errorMessage);
+        }
+    }
+
+    /// <summary>
+    /// Intercepts selection of the synthetic add-target dropdown row so the combo box can launch the folder picker
+    /// without replacing the current real target selection.
+    /// </summary>
+    private void TargetPicker_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox comboBox || comboBox.SelectedItem is not TargetPickerItemViewModel pickerItem || !pickerItem.IsAddAction)
+        {
+            return;
+        }
+
+        // Immediately restore the previous real selection so the collapsed combo never gets stuck on the add action.
+        comboBox.SelectedItem = ViewModel.SelectedTargetPickerItem;
+        BrowseTarget_Click(sender, new RoutedEventArgs());
+    }
+
+    /// <summary>
+    /// Removes a target directly from the dropdown row so the left rail no longer needs a separate remove button.
+    /// </summary>
+    private void RemoveTargetPickerItem_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: TargetPickerItemViewModel { TargetItem: { } targetItem } })
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        if (ReferenceEquals(ViewModel.SelectedTarget, targetItem))
+        {
+            ViewModel.RemoveSelectedTarget();
+            return;
+        }
+
+        TargetListItemViewModel? previousTarget = ViewModel.SelectedTarget;
+        ViewModel.SelectedTarget = targetItem;
+        ViewModel.RemoveSelectedTarget();
+
+        if (previousTarget != null && !ReferenceEquals(ViewModel.SelectedTarget, previousTarget))
+        {
+            ViewModel.SelectedTarget = previousTarget;
         }
     }
 

@@ -219,6 +219,10 @@
             <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, monospace" />
             <Setter Property="FontSize" Value="12" />
         </Style>
+        <Style Selector="SelectableTextBlock.mono">
+            <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, monospace" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
 
         <!-- Scrollbars and popup lists get the same hard-edged graphite treatment as the main shell. -->
         <Style Selector="ScrollBar">
