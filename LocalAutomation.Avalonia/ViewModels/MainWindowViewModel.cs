@@ -490,7 +490,10 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Responds to parameter changes by refreshing the derived UI state that depends on operation parameters.
+    /// Responds to parameter changes by refreshing only derived shell state that depends on live parameter values.
+    /// The enabled option-set list depends on the selected operation and target, not on edits within an existing
+    /// option card, so rebuilding `EnabledOptionSets` here would recreate the property-grid editors on every keystroke
+    /// and drop focus from the currently edited control.
     /// </summary>
     private void HandleOperationParametersChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -502,7 +505,6 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        RefreshEnabledOptionSets();
         RaiseDerivedStateChanged();
         QueueSessionStateSave();
     }

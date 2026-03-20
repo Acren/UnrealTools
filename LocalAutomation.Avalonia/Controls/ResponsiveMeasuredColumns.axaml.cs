@@ -21,6 +21,7 @@ public partial class ResponsiveMeasuredColumns : UserControl
     private readonly Dictionary<object, double> _itemHeights = new(ReferenceEqualityComparer.Instance);
     private INotifyCollectionChanged? _observedCollection;
     private bool _layoutUpdateQueued;
+    private double _lastMeasuredWidth = -1;
     private double _pendingAvailableWidth;
 
     /// <summary>
@@ -159,10 +160,19 @@ public partial class ResponsiveMeasuredColumns : UserControl
             return;
         }
 
-        if (!_itemHeights.TryGetValue(item, out double currentHeight) || Math.Abs(currentHeight - e.NewSize.Height) >= 1)
+        bool isFirstMeasurement = !_itemHeights.TryGetValue(item, out double currentHeight);
+        if (isFirstMeasurement || Math.Abs(currentHeight - e.NewSize.Height) >= 1)
         {
             _itemHeights[item] = e.NewSize.Height;
-            QueueLayoutUpdate();
+
+            // Changing an editor value can temporarily alter measured height while the focused control is mid-edit.
+            // Rebalancing immediately causes the card to hop between columns and recreate controls, which drops focus.
+            // We only rebalance on first realization; later height changes are cached and picked up the next time a
+            // width or collection change legitimately triggers a fresh layout pass.
+            if (isFirstMeasurement)
+            {
+                QueueLayoutUpdate();
+            }
         }
     }
 
@@ -172,6 +182,12 @@ public partial class ResponsiveMeasuredColumns : UserControl
     /// </summary>
     private void HandleSizeChanged(object? sender, SizeChangedEventArgs e)
     {
+        if (_lastMeasuredWidth >= 0 && Math.Abs(_lastMeasuredWidth - e.NewSize.Width) < 1)
+        {
+            return;
+        }
+
+        _lastMeasuredWidth = e.NewSize.Width;
         _pendingAvailableWidth = e.NewSize.Width;
         QueueLayoutUpdate();
     }
