@@ -89,6 +89,16 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Clears the accumulated log entries for this tab.
+    /// </summary>
+    public void ClearLogEntries()
+    {
+        LogEntries.Clear();
+        RaisePropertyChanged(nameof(IsRunning));
+        RaisePropertyChanged(nameof(CanTerminate));
+    }
+
+    /// <summary>
     /// Raises change notifications after the backing execution session changes state.
     /// </summary>
     public void NotifyStateChanged()

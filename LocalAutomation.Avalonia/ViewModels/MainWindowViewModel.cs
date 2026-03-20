@@ -510,6 +510,21 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Clears the log entries for the currently selected runtime tab.
+    /// </summary>
+    public void ClearSelectedRuntimeLog()
+    {
+        if (SelectedRuntimeTab == null)
+        {
+            return;
+        }
+
+        SelectedRuntimeTab.ClearLogEntries();
+        SetStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}.");
+        RaiseDerivedStateChanged();
+    }
+
+    /// <summary>
     /// Seeds the output panel with application-level log entries and keeps listening so crashes and startup errors are
     /// visible even outside operation execution.
     /// </summary>

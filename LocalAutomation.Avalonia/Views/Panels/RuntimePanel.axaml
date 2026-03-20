@@ -43,6 +43,12 @@
             </Border>
 
             <Border Grid.Row="1" Margin="0" Background="{DynamicResource GraphiteTerminalBrush}">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Clear"
+                                  Click="ClearLog_Click" />
+                    </ContextMenu>
+                </Border.ContextMenu>
                 <ScrollViewer x:Name="RuntimeLogScrollViewer"
                               Margin="12,10,12,12"
                               ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"

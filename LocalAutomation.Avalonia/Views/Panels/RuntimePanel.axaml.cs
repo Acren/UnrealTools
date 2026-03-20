@@ -69,6 +69,16 @@ public partial class RuntimePanel : UserControl
     }
 
     /// <summary>
+    /// Clears the currently selected runtime log from the context menu.
+    /// </summary>
+    private void ClearLog_Click(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.ClearSelectedRuntimeLog();
+        RenderEntireRuntimeLog();
+        _shouldAutoScrollRuntimeLog = true;
+    }
+
+    /// <summary>
     /// Tracks whether the runtime log is pinned to the bottom.
     /// </summary>
     private void RuntimeLogScrollViewer_ScrollChanged(object? sender, ScrollChangedEventArgs e)
