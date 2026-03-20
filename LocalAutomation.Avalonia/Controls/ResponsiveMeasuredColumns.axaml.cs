@@ -156,7 +156,7 @@ public partial class ResponsiveMeasuredColumns : UserControl
     /// </summary>
     private void ItemHost_SizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        if (sender is not Control { DataContext: MeasuredItem { Item: { } item } })
+        if (sender is not Control { DataContext: MeasuredItemPlacement { Item: { } item } })
         {
             return;
         }
@@ -260,10 +260,26 @@ public partial class ResponsiveMeasuredColumns : UserControl
             column.Reset(cardWidth);
         }
 
-        foreach (object item in items)
+        // Balance taller cards first so large option groups claim space early, then let shorter cards fill the
+        // remaining gaps. This avoids a late tall card being forced into an already crowded column just because its
+        // source-order turn arrived after smaller cards had already claimed the other columns.
+        List<MeasuredItemPlacement> placements = items
+            .Select((item, index) => new MeasuredItemPlacement(item, index, GetMeasuredHeight(item)))
+            .OrderByDescending(placement => placement.MeasuredHeight)
+            .ThenBy(placement => placement.SourceIndex)
+            .ToList();
+
+        foreach (MeasuredItemPlacement placement in placements)
         {
             MeasuredColumn targetColumn = Columns.OrderBy(column => column.TotalMeasuredHeight).First();
-            targetColumn.AddItem(item, GetMeasuredHeight(item), RowSpacing);
+            targetColumn.AddItem(placement, RowSpacing);
+        }
+
+        // After balancing by measured height, restore source ordering within each column so scanning still feels
+        // stable and predictable relative to the original option-set order.
+        foreach (MeasuredColumn column in Columns)
+        {
+            column.SortBySourceOrder();
         }
 
     }
@@ -345,7 +361,7 @@ public partial class ResponsiveMeasuredColumns : UserControl
         /// <summary>
         /// Gets the items currently assigned to this column.
         /// </summary>
-        public AvaloniaList<MeasuredItem> Items { get; } = new();
+        public AvaloniaList<MeasuredItemPlacement> Items { get; } = new();
 
         /// <summary>
         /// Gets the current card width for this column.
@@ -374,34 +390,61 @@ public partial class ResponsiveMeasuredColumns : UserControl
         /// <summary>
         /// Appends an item and updates the running measured height for this column.
         /// </summary>
-        public void AddItem(object item, double measuredHeight, double rowSpacing)
+        public void AddItem(MeasuredItemPlacement item, double rowSpacing)
         {
             if (Items.Count > 0)
             {
                 TotalMeasuredHeight += rowSpacing;
             }
 
-            Items.Add(new MeasuredItem(item));
-            TotalMeasuredHeight += measuredHeight;
+            Items.Add(item);
+            TotalMeasuredHeight += item.MeasuredHeight;
+        }
+
+        /// <summary>
+        /// Restores source ordering within the column after the balancing pass has decided which column should own
+        /// each card.
+        /// </summary>
+        public void SortBySourceOrder()
+        {
+            List<MeasuredItemPlacement> sortedItems = Items.OrderBy(item => item.SourceIndex).ToList();
+            Items.Clear();
+
+            foreach (MeasuredItemPlacement item in sortedItems)
+            {
+                Items.Add(item);
+            }
         }
     }
 
     /// <summary>
     /// Wraps a source item so the control can keep generic measurement metadata separate from consumer data.
     /// </summary>
-    public sealed class MeasuredItem
+    public sealed class MeasuredItemPlacement
     {
         /// <summary>
         /// Initializes a wrapped measured item.
         /// </summary>
-        public MeasuredItem(object item)
+        public MeasuredItemPlacement(object item, int sourceIndex, double measuredHeight)
         {
             Item = item;
+            SourceIndex = sourceIndex;
+            MeasuredHeight = measuredHeight;
         }
 
         /// <summary>
         /// Gets the original source item.
         /// </summary>
         public object Item { get; }
+
+        /// <summary>
+        /// Gets the original index from the bound item source.
+        /// </summary>
+        public int SourceIndex { get; }
+
+        /// <summary>
+        /// Gets the measured rendered height used during balancing.
+        /// </summary>
+        public double MeasuredHeight { get; }
     }
 }
