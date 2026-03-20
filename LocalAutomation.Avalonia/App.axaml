@@ -110,7 +110,7 @@
             <Setter Property="Background" Value="{DynamicResource GraphiteCardBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="CornerRadius" Value="999" />
         </Style>
         <Style Selector="GridSplitter">
             <Setter Property="Background" Value="Transparent" />
