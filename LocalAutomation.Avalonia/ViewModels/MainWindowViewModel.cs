@@ -24,6 +24,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private const double MinimumOptionCardWidth = 340;
     private const double OptionCardSpacing = 10;
     private const double OptionsViewportHorizontalPadding = 20;
+    private const double OptionColumnVerticalSpacing = 10;
     private const int MaximumOptionColumns = 3;
 
     private readonly LocalAutomationApplicationHost _services;
@@ -488,22 +489,66 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// and the per-card right margin used in XAML, otherwise the wrap panel can think another column fits while the
     /// hidden chrome and item spacing silently force a wrap.
     /// </summary>
-    public void UpdateOptionsColumnCount(double availableWidth)
+    public bool UpdateOptionsColumnCount(double availableWidth)
     {
         double usableWidth = Math.Max(0, availableWidth - OptionsViewportHorizontalPadding);
 
         if (usableWidth <= 0)
         {
+            bool changedToFallback = OptionsColumnCount != 1 || Math.Abs(OptionsCardWidth - MinimumOptionCardWidth) > 0.5;
             OptionsColumnCount = 1;
             OptionsCardWidth = MinimumOptionCardWidth;
-            return;
+            foreach (OptionColumnViewModel column in OptionColumns)
+            {
+                column.CardWidth = OptionsCardWidth;
+            }
+
+            return changedToFallback;
         }
 
         int computedColumns = (int)Math.Floor((usableWidth + OptionCardSpacing) / (MinimumOptionCardWidth + OptionCardSpacing));
         int clampedColumns = Math.Clamp(computedColumns, 1, MaximumOptionColumns);
+        double nextCardWidth = Math.Max(MinimumOptionCardWidth, (usableWidth / clampedColumns) - OptionCardSpacing);
+
+        bool columnCountChanged = OptionsColumnCount != clampedColumns;
+        bool cardWidthChanged = Math.Abs(OptionsCardWidth - nextCardWidth) > 0.5;
 
         OptionsColumnCount = clampedColumns;
-        OptionsCardWidth = Math.Max(MinimumOptionCardWidth, (usableWidth / clampedColumns) - OptionCardSpacing);
+        OptionsCardWidth = nextCardWidth;
+
+        foreach (OptionColumnViewModel column in OptionColumns)
+        {
+            column.CardWidth = OptionsCardWidth;
+        }
+
+        return columnCountChanged || cardWidthChanged;
+    }
+
+    /// <summary>
+    /// Records a measured option-card height from the live UI and rebalances columns when the rendered size changes
+    /// enough to affect layout quality.
+    /// </summary>
+    public bool UpdateOptionCardMeasuredHeight(OptionSetViewModel optionSet, double measuredHeight)
+    {
+        if (optionSet == null || measuredHeight <= 0)
+        {
+            return false;
+        }
+
+        if (Math.Abs(optionSet.MeasuredHeight - measuredHeight) < 1)
+        {
+            return false;
+        }
+
+        optionSet.MeasuredHeight = measuredHeight;
+        return true;
+    }
+
+    /// <summary>
+    /// Rebalances the current option cards across the active columns using the latest measured heights.
+    /// </summary>
+    public void RebalanceOptionColumns()
+    {
         RebuildOptionColumns();
     }
 
@@ -938,23 +983,35 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     /// <summary>
     /// Redistributes the current option cards into independent vertical columns so shorter cards do not inherit the
-    /// height of taller neighbors the way they would inside a row-based wrap panel. The columns are rebuilt on every
-    /// width change so card widths stay in sync with the latest viewport size instead of lagging behind until the
-    /// column count changes.
+    /// height of taller neighbors the way they would inside a row-based wrap panel. The balancing pass uses measured
+    /// card heights from the live UI so columns converge toward similar total heights instead of following a rigid
+    /// round-robin pattern.
     /// </summary>
     private void RebuildOptionColumns()
     {
-        OptionColumns.Clear();
-
         int columnCount = Math.Max(1, OptionsColumnCount);
-        for (int index = 0; index < columnCount; index++)
+
+        while (OptionColumns.Count < columnCount)
         {
-            OptionColumns.Add(new OptionColumnViewModel { CardWidth = OptionsCardWidth });
+            OptionColumns.Add(new OptionColumnViewModel());
         }
 
-        for (int index = 0; index < EnabledOptionSets.Count; index++)
+        while (OptionColumns.Count > columnCount)
         {
-            OptionColumns[index % columnCount].Items.Add(EnabledOptionSets[index]);
+            OptionColumns.RemoveAt(OptionColumns.Count - 1);
+        }
+
+        foreach (OptionColumnViewModel column in OptionColumns)
+        {
+            column.Reset(OptionsCardWidth);
+        }
+
+        foreach (OptionSetViewModel optionSet in EnabledOptionSets)
+        {
+            OptionColumnViewModel targetColumn = OptionColumns
+                .OrderBy(column => column.TotalMeasuredHeight)
+                .First();
+            targetColumn.AddItem(optionSet, OptionColumnVerticalSpacing);
         }
     }
 

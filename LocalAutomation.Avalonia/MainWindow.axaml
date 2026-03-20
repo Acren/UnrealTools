@@ -196,7 +196,7 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:OptionSetViewModel">
-                                                    <Border Classes="card" Padding="10,8">
+                                                    <Border Classes="card" Padding="10,8" SizeChanged="OptionCard_SizeChanged">
                                                         <Grid RowDefinitions="Auto,*">
                                                             <TextBlock Text="{Binding Name}" Classes="panel-title" />
                                                             <pgc:PropertyGrid Grid.Row="1"

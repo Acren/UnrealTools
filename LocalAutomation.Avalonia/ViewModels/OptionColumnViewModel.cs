@@ -9,6 +9,7 @@ namespace LocalAutomation.Avalonia.ViewModels;
 public sealed class OptionColumnViewModel : ViewModelBase
 {
     private double _cardWidth;
+    private double _totalMeasuredHeight;
 
     /// <summary>
     /// Gets or sets the width assigned to cards within this visual column.
@@ -23,4 +24,37 @@ public sealed class OptionColumnViewModel : ViewModelBase
     /// Gets the cards currently assigned to this visual column.
     /// </summary>
     public ObservableCollection<OptionSetViewModel> Items { get; } = new();
+
+    /// <summary>
+    /// Gets the cumulative measured height assigned to this column during layout balancing.
+    /// </summary>
+    public double TotalMeasuredHeight
+    {
+        get => _totalMeasuredHeight;
+        private set => SetProperty(ref _totalMeasuredHeight, value);
+    }
+
+    /// <summary>
+    /// Clears the column before a fresh redistribution pass.
+    /// </summary>
+    public void Reset(double cardWidth)
+    {
+        CardWidth = cardWidth;
+        TotalMeasuredHeight = 0;
+        Items.Clear();
+    }
+
+    /// <summary>
+    /// Appends a card to this column and tracks its contribution to the running column height.
+    /// </summary>
+    public void AddItem(OptionSetViewModel item, double verticalSpacing)
+    {
+        if (Items.Count > 0)
+        {
+            TotalMeasuredHeight += verticalSpacing;
+        }
+
+        Items.Add(item);
+        TotalMeasuredHeight += item.MeasuredHeight;
+    }
 }

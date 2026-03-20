@@ -19,7 +19,10 @@ public partial class MainWindow : Window
     private const double AutoScrollTolerance = 4;
 
     private bool _shouldAutoScrollRuntimeLog = true;
+    private bool _optionsLayoutUpdateQueued;
     private INotifyCollectionChanged? _currentRuntimeLogCollection;
+    private double _pendingOptionsViewportWidth;
+    private readonly Dictionary<OptionSetViewModel, double> _pendingOptionCardHeights = new();
 
     /// <summary>
     /// Initializes the Avalonia shell window and connects it to the shared LocalAutomation view model.
@@ -217,7 +220,59 @@ public partial class MainWindow : Window
     /// </summary>
     private void OptionsScrollViewer_SizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        ViewModel.UpdateOptionsColumnCount(e.NewSize.Width);
+        _pendingOptionsViewportWidth = e.NewSize.Width;
+        QueueOptionsLayoutUpdate();
+    }
+
+    /// <summary>
+    /// Feeds measured option-card heights back into the view model so column balancing can use actual rendered sizes
+    /// instead of guesses.
+    /// </summary>
+    private void OptionCard_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (sender is not Control { DataContext: OptionSetViewModel optionSet })
+        {
+            return;
+        }
+
+        _pendingOptionCardHeights[optionSet] = e.NewSize.Height;
+        QueueOptionsLayoutUpdate();
+    }
+
+    /// <summary>
+    /// Coalesces many resize events into a single layout rebalance so the options area responds smoothly instead of
+    /// chasing every intermediate mouse movement with delayed reflows.
+    /// </summary>
+    private void QueueOptionsLayoutUpdate()
+    {
+        if (_optionsLayoutUpdateQueued)
+        {
+            return;
+        }
+
+        _optionsLayoutUpdateQueued = true;
+        Dispatcher.UIThread.Post(ApplyPendingOptionsLayoutUpdate, DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// Applies the latest pending width and measured-card updates after the current layout pass completes.
+    /// </summary>
+    private void ApplyPendingOptionsLayoutUpdate()
+    {
+        _optionsLayoutUpdateQueued = false;
+
+        bool shouldRebalance = ViewModel.UpdateOptionsColumnCount(_pendingOptionsViewportWidth);
+        foreach ((OptionSetViewModel optionSet, double measuredHeight) in _pendingOptionCardHeights)
+        {
+            shouldRebalance |= ViewModel.UpdateOptionCardMeasuredHeight(optionSet, measuredHeight);
+        }
+
+        _pendingOptionCardHeights.Clear();
+
+        if (shouldRebalance)
+        {
+            ViewModel.RebalanceOptionColumns();
+        }
     }
 
     /// <summary>
