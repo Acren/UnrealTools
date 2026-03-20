@@ -48,19 +48,11 @@
                               ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding SelectedRuntimeLogEntries}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:LogEntryViewModel">
-                                <Border Padding="0,0,0,4">
-                                    <SelectableTextBlock Text="{Binding Message}"
-                                                         Foreground="{Binding Foreground}"
-                                                         TextWrapping="Wrap"
-                                                         FontFamily="Consolas, Cascadia Mono, monospace"
-                                                         FontSize="12" />
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <!-- One SelectableTextBlock with inline runs preserves per-line coloring while allowing drag
+                         selection across the entire log surface. -->
+                    <SelectableTextBlock x:Name="RuntimeLogTextBlock"
+                                         Classes="mono"
+                                         TextWrapping="Wrap" />
                 </ScrollViewer>
             </Border>
         </Grid>

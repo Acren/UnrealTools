@@ -2,7 +2,9 @@ using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using LocalAutomation.Avalonia.ViewModels;
 
@@ -39,6 +41,11 @@ public partial class RuntimePanel : UserControl
     /// Resolves the runtime log scroll viewer used for conditional auto-follow behavior.
     /// </summary>
     private ScrollViewer? RuntimeLogViewer => this.FindControl<ScrollViewer>("RuntimeLogScrollViewer");
+
+    /// <summary>
+    /// Resolves the single selectable log surface used for multi-line selection.
+    /// </summary>
+    private SelectableTextBlock? RuntimeLogSelectionSurface => this.FindControl<SelectableTextBlock>("RuntimeLogTextBlock");
 
     /// <summary>
     /// Selects a runtime tab.
@@ -126,6 +133,7 @@ public partial class RuntimePanel : UserControl
         }
 
         AttachRuntimeLogCollection();
+        RenderEntireRuntimeLog();
         _shouldAutoScrollRuntimeLog = true;
         ScrollRuntimeLogToEnd();
     }
@@ -138,6 +146,7 @@ public partial class RuntimePanel : UserControl
         DetachRuntimeLogCollection();
         _currentRuntimeLogCollection = ViewModel.SelectedRuntimeLogEntries;
         _currentRuntimeLogCollection.CollectionChanged += HandleRuntimeLogCollectionChanged;
+        RenderEntireRuntimeLog();
     }
 
     /// <summary>
@@ -159,6 +168,21 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void HandleRuntimeLogCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems != null)
+        {
+            foreach (object? item in e.NewItems)
+            {
+                if (item is LogEntryViewModel entry)
+                {
+                    AppendRuntimeLogEntry(entry);
+                }
+            }
+        }
+        else
+        {
+            RenderEntireRuntimeLog();
+        }
+
         if (!_shouldAutoScrollRuntimeLog || e.Action != NotifyCollectionChangedAction.Add)
         {
             return;
@@ -188,5 +212,47 @@ public partial class RuntimePanel : UserControl
 
         double remaining = runtimeLogViewer.Extent.Height - runtimeLogViewer.Viewport.Height - runtimeLogViewer.Offset.Y;
         return remaining <= AutoScrollTolerance;
+    }
+
+    /// <summary>
+    /// Rebuilds the full selectable runtime log surface for the selected tab.
+    /// </summary>
+    private void RenderEntireRuntimeLog()
+    {
+        SelectableTextBlock? logTextBlock = RuntimeLogSelectionSurface;
+        if (logTextBlock == null)
+        {
+            return;
+        }
+
+        logTextBlock.Inlines?.Clear();
+        foreach (LogEntryViewModel entry in ViewModel.SelectedRuntimeLogEntries)
+        {
+            AppendRuntimeLogEntry(entry);
+        }
+    }
+
+    /// <summary>
+    /// Appends one colored line to the shared selectable runtime log surface.
+    /// </summary>
+    private void AppendRuntimeLogEntry(LogEntryViewModel entry)
+    {
+        SelectableTextBlock? logTextBlock = RuntimeLogSelectionSurface;
+        if (logTextBlock == null)
+        {
+            return;
+        }
+
+        InlineCollection inlines = logTextBlock.Inlines ??= new InlineCollection();
+        if (inlines.Count > 0)
+        {
+            inlines.Add(new LineBreak());
+        }
+
+        inlines.Add(new Run
+        {
+            Text = entry.Message,
+            Foreground = new SolidColorBrush(Color.Parse(entry.Foreground))
+        });
     }
 }
