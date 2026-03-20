@@ -22,7 +22,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 {
     private static readonly TimeSpan SessionSaveDebounceDelay = TimeSpan.FromMilliseconds(350);
     private const double MinimumOptionCardWidth = 340;
-    private const double OptionCardSpacing = 12;
+    private const double OptionCardSpacing = 10;
+    private const double OptionsViewportHorizontalPadding = 20;
     private const int MaximumOptionColumns = 3;
 
     private readonly LocalAutomationApplicationHost _services;
@@ -86,6 +87,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets the editable option sets for the current target and operation selection.
     /// </summary>
     public ObservableCollection<OptionSetViewModel> EnabledOptionSets { get; } = new();
+
+    /// <summary>
+    /// Gets the visible option columns used by the options panel masonry-style layout.
+    /// </summary>
+    public ObservableCollection<OptionColumnViewModel> OptionColumns { get; } = new();
 
     /// <summary>
     /// Gets the current responsive options column count. The layout expands from one column up to three based on the
@@ -478,23 +484,27 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     /// <summary>
     /// Recomputes the number of option columns based on the current width of the options viewport so the cards fill
-    /// the row evenly without leaving a large trailing gap.
+    /// the row evenly without leaving a large trailing gap. The computed width accounts for the scroll viewer padding
+    /// and the per-card right margin used in XAML, otherwise the wrap panel can think another column fits while the
+    /// hidden chrome and item spacing silently force a wrap.
     /// </summary>
     public void UpdateOptionsColumnCount(double availableWidth)
     {
-        if (availableWidth <= 0)
+        double usableWidth = Math.Max(0, availableWidth - OptionsViewportHorizontalPadding);
+
+        if (usableWidth <= 0)
         {
             OptionsColumnCount = 1;
             OptionsCardWidth = MinimumOptionCardWidth;
             return;
         }
 
-        int computedColumns = (int)Math.Floor(availableWidth / MinimumOptionCardWidth);
+        int computedColumns = (int)Math.Floor((usableWidth + OptionCardSpacing) / (MinimumOptionCardWidth + OptionCardSpacing));
         int clampedColumns = Math.Clamp(computedColumns, 1, MaximumOptionColumns);
-        double totalSpacing = OptionCardSpacing * Math.Max(0, clampedColumns - 1);
 
         OptionsColumnCount = clampedColumns;
-        OptionsCardWidth = Math.Max(MinimumOptionCardWidth, (availableWidth - totalSpacing) / clampedColumns);
+        OptionsCardWidth = Math.Max(MinimumOptionCardWidth, (usableWidth / clampedColumns) - OptionCardSpacing);
+        RebuildOptionColumns();
     }
 
     /// <summary>
@@ -907,6 +917,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             EnabledOptionSets.Add(new OptionSetViewModel(options, _services.OptionEditors.GetEditorTarget(options)));
         }
+
+        RebuildOptionColumns();
     }
 
     /// <summary>
@@ -919,6 +931,30 @@ public sealed class MainWindowViewModel : ViewModelBase
         foreach (OperationOptions options in _operationParameters.OptionsInstances)
         {
             EnabledOptionSets.Add(new OptionSetViewModel(options, _services.OptionEditors.GetEditorTarget(options)));
+        }
+
+        RebuildOptionColumns();
+    }
+
+    /// <summary>
+    /// Redistributes the current option cards into independent vertical columns so shorter cards do not inherit the
+    /// height of taller neighbors the way they would inside a row-based wrap panel. The columns are rebuilt on every
+    /// width change so card widths stay in sync with the latest viewport size instead of lagging behind until the
+    /// column count changes.
+    /// </summary>
+    private void RebuildOptionColumns()
+    {
+        OptionColumns.Clear();
+
+        int columnCount = Math.Max(1, OptionsColumnCount);
+        for (int index = 0; index < columnCount; index++)
+        {
+            OptionColumns.Add(new OptionColumnViewModel { CardWidth = OptionsCardWidth });
+        }
+
+        for (int index = 0; index < EnabledOptionSets.Count; index++)
+        {
+            OptionColumns[index % columnCount].Items.Add(EnabledOptionSets[index]);
         }
     }
 
