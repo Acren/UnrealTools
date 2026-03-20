@@ -10,8 +10,9 @@
     <!-- This panel isolates runtime tabs, log streaming, and runtime cancellation. -->
     <Border Classes="panel">
         <Grid RowDefinitions="Auto,*" MinHeight="0">
-            <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <!-- Keep the tab strip visually integrated with the panel edge instead of floating inside extra header padding. -->
+            <Border Padding="0" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="0">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding RuntimeTabs}">
@@ -24,21 +25,55 @@
                                 <DataTemplate x:DataType="vm:RuntimeTaskTabViewModel">
                                     <Button Classes="tab"
                                             Classes.active="{Binding IsSelected}"
+                                            Classes.app-log="{Binding IsApplicationLog}"
                                             Click="RuntimeTab_Click">
                                         <Button.Content>
-                                            <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
-                                                       Classes="panel-title" />
+                                            <Grid MinHeight="34">
+                                                <!-- Tabs with subtitles use a compact status-dot + two-line layout. -->
+                                                <Grid IsVisible="{Binding HasSubtitle}"
+                                                      ColumnDefinitions="12,*"
+                                                      ColumnSpacing="8">
+                                                <Border Width="6"
+                                                        Height="6"
+                                                        CornerRadius="999"
+                                                        VerticalAlignment="Center"
+                                                        IsVisible="{Binding HasStatusMarker}"
+                                                            Classes="runtime-status-dot"
+                                                            Classes.running="{Binding IsRunningStatus}"
+                                                            Classes.succeeded="{Binding IsSucceededStatus}"
+                                                            Classes.failed="{Binding IsFailedStatus}" />
+                                                    <StackPanel Grid.Column="1"
+                                                                VerticalAlignment="Center"
+                                                                Spacing="0">
+                                                        <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                                   Classes="panel-title" />
+                                                        <TextBlock Text="{Binding Subtitle}"
+                                                                   Classes="tab-subtitle" />
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <!-- Tabs without subtitles, such as the application log tab, center the
+                                                     title directly so they do not inherit extra empty line space. -->
+                                                <TextBlock IsVisible="{Binding HasSubtitle, Converter={x:Static BoolConverters.Not}}"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                           Classes="panel-title" />
+                                            </Grid>
                                         </Button.Content>
                                     </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
-                    <Button Grid.Column="1"
-                            Classes="danger small"
-                            Content="Terminate"
-                            Click="Terminate_Click"
-                            IsEnabled="{Binding IsRunning}" />
+                    <Border Grid.Column="1"
+                            Padding="10,8"
+                            BorderBrush="Transparent"
+                            BorderThickness="0">
+                        <Button Classes="danger small"
+                                Content="Terminate"
+                                Click="Terminate_Click"
+                                IsEnabled="{Binding IsRunning}" />
+                    </Border>
                 </Grid>
             </Border>
 

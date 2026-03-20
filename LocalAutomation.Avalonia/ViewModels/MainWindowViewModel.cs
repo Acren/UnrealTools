@@ -586,8 +586,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         return new RuntimeTaskTabViewModel(
             id: "application-log",
-            title: "Output",
-            subtitle: "Application log messages and shell diagnostics.",
+            title: "App Log",
+            subtitle: string.Empty,
             isApplicationLog: true);
     }
 
@@ -783,8 +783,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         RuntimeTaskTabViewModel runtimeTab = new(
             id: session.Id,
-            title: $"{session.TargetName} - {session.OperationName}",
-            subtitle: $"{session.OperationName} on {session.TargetName}",
+            title: session.OperationName,
+            subtitle: session.TargetName,
             isApplicationLog: false,
             session: session);
 

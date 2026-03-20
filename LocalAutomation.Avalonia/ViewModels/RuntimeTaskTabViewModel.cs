@@ -40,6 +40,11 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     public string Subtitle { get; }
 
     /// <summary>
+    /// Gets whether the runtime tab has a non-empty subtitle worth rendering.
+    /// </summary>
+    public bool HasSubtitle => !string.IsNullOrWhiteSpace(Subtitle);
+
+    /// <summary>
     /// Gets whether this tab is the permanent application log tab.
     /// </summary>
     public bool IsApplicationLog { get; }
@@ -79,6 +84,57 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     public bool CanClose => !IsApplicationLog;
 
     /// <summary>
+    /// Gets a short status label for the tab so running and completed tasks are easier to scan in the tab strip.
+    /// </summary>
+    public string StatusText
+    {
+        get
+        {
+            if (IsApplicationLog)
+            {
+                return "App";
+            }
+
+            if (Session?.IsRunning == true)
+            {
+                return "Running";
+            }
+
+            if (Session?.Success == true)
+            {
+                return "Done";
+            }
+
+            if (Session?.Success == false)
+            {
+                return "Failed";
+            }
+
+            return "Idle";
+        }
+    }
+
+    /// <summary>
+    /// Gets whether the runtime tab should show a colored status marker.
+    /// </summary>
+    public bool HasStatusMarker => !IsApplicationLog;
+
+    /// <summary>
+    /// Gets whether the task is currently in a running state.
+    /// </summary>
+    public bool IsRunningStatus => Session?.IsRunning == true;
+
+    /// <summary>
+    /// Gets whether the task finished successfully.
+    /// </summary>
+    public bool IsSucceededStatus => Session?.IsRunning != true && Session?.Success == true;
+
+    /// <summary>
+    /// Gets whether the task finished unsuccessfully.
+    /// </summary>
+    public bool IsFailedStatus => Session?.IsRunning != true && Session?.Success == false;
+
+    /// <summary>
     /// Adds a log entry to the tab and raises runtime-derived change notifications.
     /// </summary>
     public void AddLogEntry(LogEntryViewModel entry)
@@ -86,6 +142,7 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
         LogEntries.Add(entry);
         RaisePropertyChanged(nameof(IsRunning));
         RaisePropertyChanged(nameof(CanTerminate));
+        RaiseStatusChanged();
     }
 
     /// <summary>
@@ -96,6 +153,7 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
         LogEntries.Clear();
         RaisePropertyChanged(nameof(IsRunning));
         RaisePropertyChanged(nameof(CanTerminate));
+        RaiseStatusChanged();
     }
 
     /// <summary>
@@ -105,5 +163,18 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     {
         RaisePropertyChanged(nameof(IsRunning));
         RaisePropertyChanged(nameof(CanTerminate));
+        RaiseStatusChanged();
+    }
+
+    /// <summary>
+    /// Raises change notifications for the derived tab-status presentation properties.
+    /// </summary>
+    private void RaiseStatusChanged()
+    {
+        RaisePropertyChanged(nameof(StatusText));
+        RaisePropertyChanged(nameof(HasStatusMarker));
+        RaisePropertyChanged(nameof(IsRunningStatus));
+        RaisePropertyChanged(nameof(IsSucceededStatus));
+        RaisePropertyChanged(nameof(IsFailedStatus));
     }
 }

@@ -27,6 +27,9 @@
         <Color x:Key="GraphiteActiveBackgroundColor">#12AEB9C5</Color>
         <Color x:Key="GraphiteDangerColor">#EF8680</Color>
         <Color x:Key="GraphiteDangerBackgroundColor">#24EF8680</Color>
+        <Color x:Key="RuntimeTabRunningColor">#63A8FF</Color>
+        <Color x:Key="RuntimeTabSucceededColor">#7BE37B</Color>
+        <Color x:Key="RuntimeTabFailedColor">#FF7575</Color>
 
         <SolidColorBrush x:Key="GraphiteBackgroundBrush" Color="{StaticResource GraphiteBackgroundColor}" />
         <SolidColorBrush x:Key="GraphitePanelBrush" Color="{StaticResource GraphitePanelColor}" />
@@ -50,6 +53,9 @@
         <SolidColorBrush x:Key="GraphiteActiveBackgroundBrush" Color="{StaticResource GraphiteActiveBackgroundColor}" />
         <SolidColorBrush x:Key="GraphiteDangerBrush" Color="{StaticResource GraphiteDangerColor}" />
         <SolidColorBrush x:Key="GraphiteDangerBackgroundBrush" Color="{StaticResource GraphiteDangerBackgroundColor}" />
+        <SolidColorBrush x:Key="RuntimeTabRunningBrush" Color="{StaticResource RuntimeTabRunningColor}" />
+        <SolidColorBrush x:Key="RuntimeTabSucceededBrush" Color="{StaticResource RuntimeTabSucceededColor}" />
+        <SolidColorBrush x:Key="RuntimeTabFailedBrush" Color="{StaticResource RuntimeTabFailedColor}" />
     </Application.Resources>
     <Application.Styles>
         <themes:FluentTheme>
@@ -147,6 +153,7 @@
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="TextBlock.muted">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
@@ -220,7 +227,7 @@
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="0" />
-            <Setter Property="Padding" Value="14,4,14,7" />
+            <Setter Property="Padding" Value="0" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
@@ -230,19 +237,21 @@
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0,0,0,2" />
             <Setter Property="CornerRadius" Value="0" />
-            <Setter Property="Padding" Value="14,4,14,7" />
+            <Setter Property="Padding" Value="16,6,18,6" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
         </Style>
         <Style Selector="Button.tab:pointerover">
-            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
         </Style>
         <Style Selector="Button.tab:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
         </Style>
         <Style Selector="Button.tab.active">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
         </Style>
         <Style Selector="Button.tab.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
         </Style>
         <Style Selector="Button.tab.active:pointerover">
@@ -254,15 +263,49 @@
         </Style>
         <Style Selector="Button.tab TextBlock.panel-title">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
-            <Setter Property="Opacity" Value="0.75" />
+            <Setter Property="Opacity" Value="0.88" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="Button.tab:pointerover TextBlock.panel-title">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
-            <Setter Property="Opacity" Value="0.92" />
+            <Setter Property="Opacity" Value="0.96" />
         </Style>
         <Style Selector="Button.tab.active TextBlock.panel-title">
-            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
             <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="TextBlock.tab-subtitle">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.tab:pointerover TextBlock.tab-subtitle">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="Opacity" Value="0.9" />
+        </Style>
+        <Style Selector="Button.tab.active TextBlock.tab-subtitle">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="Opacity" Value="0.94" />
+        </Style>
+        <Style Selector="Button.tab.app-log /template/ ContentPresenter">
+            <Setter Property="Padding" Value="18,6,20,6" />
+        </Style>
+        <Style Selector="Border.runtime-status-dot">
+            <Setter Property="Background" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
+        </Style>
+        <Style Selector="Border.runtime-status-dot.running">
+            <Setter Property="Background" Value="{DynamicResource RuntimeTabRunningBrush}" />
+            <Setter Property="BoxShadow" Value="0 0 5 0 #5563A8FF" />
+        </Style>
+        <Style Selector="Border.runtime-status-dot.succeeded">
+            <Setter Property="Background" Value="{DynamicResource RuntimeTabSucceededBrush}" />
+            <Setter Property="BoxShadow" Value="0 0 5 0 #557BE37B" />
+        </Style>
+        <Style Selector="Border.runtime-status-dot.failed">
+            <Setter Property="Background" Value="{DynamicResource RuntimeTabFailedBrush}" />
+            <Setter Property="BoxShadow" Value="0 0 5 0 #55FF7575" />
         </Style>
 
         <!-- Inputs use the same compact mechanical treatment as the mockup. -->
