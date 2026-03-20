@@ -37,11 +37,13 @@ namespace UnrealAutomationCommon.Operations
                 return null;
             }
 
-            string missingRequirements = string.Join(", ", unavailablePlatforms.SelectMany(platform => GetRequiredTargetFiles(engine, platform)).Distinct());
-            string missingDetails = string.IsNullOrEmpty(missingRequirements)
-                ? "The engine does not advertise support for the requested platform."
-                : $"Missing required engine files: {missingRequirements}.";
-            return $"Requested target platform(s) {string.Join(", ", unavailablePlatforms)} are not available in engine '{engine.DisplayName}'. Unreal BuildPlugin would silently skip them. {missingDetails}";
+            string unavailablePlatformList = string.Join(", ", unavailablePlatforms);
+            if (engine.IsSourceBuild)
+            {
+                return $"{unavailablePlatformList} is not available in '{engine.DisplayName}'. Build or install support for that platform, or disable it before running BuildPlugin.";
+            }
+
+            return $"{unavailablePlatformList} is not installed for '{engine.DisplayName}'. Install platform support in Epic Games Launcher, or disable it before running BuildPlugin.";
         }
 
         // Resolve the final TargetPlatforms value after AdditionalArguments overrides so validation matches execution.

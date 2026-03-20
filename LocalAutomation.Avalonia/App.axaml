@@ -22,6 +22,7 @@
         <Color x:Key="GraphiteActiveBorderColor">#75AEB9C5</Color>
         <Color x:Key="GraphiteActiveBackgroundColor">#12AEB9C5</Color>
         <Color x:Key="GraphiteDangerColor">#EF8680</Color>
+        <Color x:Key="GraphiteDangerBackgroundColor">#24EF8680</Color>
 
         <SolidColorBrush x:Key="GraphiteBackgroundBrush" Color="{StaticResource GraphiteBackgroundColor}" />
         <SolidColorBrush x:Key="GraphitePanelBrush" Color="{StaticResource GraphitePanelColor}" />
@@ -40,6 +41,7 @@
         <SolidColorBrush x:Key="GraphiteActiveBorderBrush" Color="{StaticResource GraphiteActiveBorderColor}" />
         <SolidColorBrush x:Key="GraphiteActiveBackgroundBrush" Color="{StaticResource GraphiteActiveBackgroundColor}" />
         <SolidColorBrush x:Key="GraphiteDangerBrush" Color="{StaticResource GraphiteDangerColor}" />
+        <SolidColorBrush x:Key="GraphiteDangerBackgroundBrush" Color="{StaticResource GraphiteDangerBackgroundColor}" />
     </Application.Resources>
     <Application.Styles>
         <themes:FluentTheme />

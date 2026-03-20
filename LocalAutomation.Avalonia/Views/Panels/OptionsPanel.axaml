@@ -8,7 +8,7 @@
              x:DataType="vm:MainWindowViewModel">
     <!-- This panel isolates operation selection and generic responsive option-card layout. -->
     <Border Classes="panel">
-        <Grid RowDefinitions="Auto,*" MinHeight="0">
+        <Grid RowDefinitions="Auto,*,Auto" MinHeight="0">
             <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
                 <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
                     <TextBlock Text="OPERATION" Classes="panel-title" VerticalAlignment="Center" />
@@ -55,6 +55,19 @@
                     </controls:ResponsiveMeasuredColumns.ItemTemplate>
                 </controls:ResponsiveMeasuredColumns>
             </ScrollViewer>
+
+            <!-- The blocked-execution reason is a full-width footer so long validation details have room and remain
+                 easy to copy without crowding the narrow command rail. -->
+            <Border Grid.Row="2"
+                    IsVisible="{Binding ShowExecuteDisabledReason}"
+                    Background="{DynamicResource GraphiteDangerBackgroundBrush}"
+                    BorderBrush="{DynamicResource GraphiteDangerBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="12,10,12,12">
+                <SelectableTextBlock Text="{Binding ExecuteDisabledReason}"
+                                     Classes="status-danger"
+                                     TextWrapping="Wrap" />
+            </Border>
         </Grid>
     </Border>
 </UserControl>
