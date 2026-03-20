@@ -571,7 +571,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         return new RuntimeTaskTabViewModel(
             id: "application-log",
-            title: "Application",
+            title: "Output",
             subtitle: "Application log messages and shell diagnostics.",
             isApplicationLog: true);
     }

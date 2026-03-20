@@ -1,8 +1,12 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:LocalAutomation.Avalonia.Converters"
              xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
              x:Class="LocalAutomation.Avalonia.Views.Panels.RuntimePanel"
              x:DataType="vm:MainWindowViewModel">
+    <UserControl.Resources>
+        <conv:UppercaseTextConverter x:Key="UppercaseTextConverter" />
+    </UserControl.Resources>
     <!-- This panel isolates runtime tabs, log streaming, and runtime cancellation. -->
     <Border Classes="panel">
         <Grid RowDefinitions="Auto,*" MinHeight="0">
@@ -20,8 +24,12 @@
                                 <DataTemplate x:DataType="vm:RuntimeTaskTabViewModel">
                                     <Button Classes="tab"
                                             Classes.active="{Binding IsSelected}"
-                                            Content="{Binding Title}"
-                                            Click="RuntimeTab_Click" />
+                                            Click="RuntimeTab_Click">
+                                        <Button.Content>
+                                            <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                       Classes="panel-title" />
+                                        </Button.Content>
+                                    </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

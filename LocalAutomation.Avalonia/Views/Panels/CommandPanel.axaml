@@ -7,7 +7,7 @@
     <Border Classes="panel">
         <Grid RowDefinitions="Auto,*,Auto" MinHeight="0">
             <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
-                <TextBlock Text="COMMAND" Classes="field-label" />
+                <TextBlock Text="COMMAND" Classes="panel-title" />
             </Border>
             <Border Grid.Row="1" Background="{DynamicResource GraphiteTerminalBrush}">
                 <ScrollViewer Margin="12,10,12,12"

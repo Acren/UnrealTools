@@ -165,17 +165,51 @@
         <Style Selector="Button.tab">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0,0,0,2" />
+            <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="0" />
-            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Padding" Value="14,4,14,7" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
         </Style>
+        <Style Selector="Button.tab /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,2" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="14,4,14,7" />
+        </Style>
         <Style Selector="Button.tab:pointerover">
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
         </Style>
+        <Style Selector="Button.tab:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+        </Style>
         <Style Selector="Button.tab.active">
-            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+        <Style Selector="Button.tab.active /template/ ContentPresenter">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <Style Selector="Button.tab.active:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+        <Style Selector="Button.tab.active:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <Style Selector="Button.tab TextBlock.panel-title">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="Opacity" Value="0.75" />
+        </Style>
+        <Style Selector="Button.tab:pointerover TextBlock.panel-title">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="Opacity" Value="0.92" />
+        </Style>
+        <Style Selector="Button.tab.active TextBlock.panel-title">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="Opacity" Value="1" />
         </Style>
 
         <!-- Inputs use the same compact mechanical treatment as the mockup. -->
