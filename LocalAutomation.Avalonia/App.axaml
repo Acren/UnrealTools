@@ -409,11 +409,11 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Width" Value="22" />
-            <Setter Property="Height" Value="22" />
-            <Setter Property="MinWidth" Value="22" />
-            <Setter Property="MinHeight" Value="22" />
-            <Setter Property="CornerRadius" Value="11" />
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="MinWidth" Value="20" />
+            <Setter Property="MinHeight" Value="20" />
+            <Setter Property="CornerRadius" Value="10" />
         </Style>
         <Style Selector="Button.target-remove:pointerover">
             <Setter Property="Background" Value="#30FFFFFF" />
