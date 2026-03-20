@@ -251,7 +251,7 @@ public partial class ResponsiveMeasuredColumns : UserControl
         }
 
         double usableWidth = Math.Max(0, _pendingAvailableWidth - ViewportHorizontalPadding);
-        int columnCount = ComputeColumnCount(usableWidth);
+        int columnCount = ComputeColumnCount(usableWidth, items.Count);
         double cardWidth = ComputeCardWidth(usableWidth, columnCount);
 
         EnsureColumnCount(columnCount);
@@ -299,15 +299,17 @@ public partial class ResponsiveMeasuredColumns : UserControl
     /// <summary>
     /// Computes how many columns can fit within the current available width.
     /// </summary>
-    private int ComputeColumnCount(double usableWidth)
+    private int ComputeColumnCount(double usableWidth, int itemCount)
     {
+        int maxAllowedColumns = Math.Max(1, Math.Min(MaxColumns, itemCount));
+
         if (usableWidth <= 0)
         {
             return 1;
         }
 
         int computedColumns = (int)Math.Floor((usableWidth + ColumnSpacing) / (MinimumItemWidth + ColumnSpacing));
-        return Math.Clamp(computedColumns, 1, Math.Max(1, MaxColumns));
+        return Math.Clamp(computedColumns, 1, maxAllowedColumns);
     }
 
     /// <summary>
