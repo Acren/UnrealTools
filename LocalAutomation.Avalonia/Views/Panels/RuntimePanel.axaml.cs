@@ -249,6 +249,13 @@ public partial class RuntimePanel : UserControl
             inlines.Add(new LineBreak());
         }
 
+        // A muted fixed-width timestamp makes long-running logs easier to scan without overpowering severity colors.
+        inlines.Add(new Run
+        {
+            Text = $"[{entry.TimestampText}] ",
+            Foreground = new SolidColorBrush(Color.Parse("#8B949E"))
+        });
+
         inlines.Add(new Run
         {
             Text = entry.Message,

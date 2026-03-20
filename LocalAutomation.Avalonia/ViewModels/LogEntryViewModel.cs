@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -14,12 +15,23 @@ public sealed class LogEntryViewModel
     {
         Message = message;
         Verbosity = verbosity;
+        Timestamp = DateTimeOffset.Now;
     }
 
     /// <summary>
     /// Gets the formatted message text.
     /// </summary>
     public string Message { get; }
+
+    /// <summary>
+    /// Gets the local timestamp captured when the log line was added to the UI.
+    /// </summary>
+    public DateTimeOffset Timestamp { get; }
+
+    /// <summary>
+    /// Gets the formatted timestamp prefix shown before the log text.
+    /// </summary>
+    public string TimestampText => Timestamp.ToString("HH:mm:ss");
 
     /// <summary>
     /// Gets the severity for styling.
