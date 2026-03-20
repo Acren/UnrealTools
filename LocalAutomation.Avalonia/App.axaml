@@ -85,6 +85,30 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="3" />
         </Style>
+        <Style Selector="GridSplitter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="GridSplitter.resize-handle-vertical">
+            <Setter Property="Background" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+        </Style>
+        <Style Selector="GridSplitter.resize-handle-horizontal">
+            <Setter Property="Background" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+        </Style>
+        <Style Selector="GridSplitter:pointerover">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+        </Style>
+        <Style Selector="GridSplitter:pressed">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+        </Style>
+        <Style Selector="GridSplitter.resize-handle-vertical:pointerover, GridSplitter.resize-handle-horizontal:pointerover">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBorderBrush}" />
+        </Style>
+        <Style Selector="GridSplitter.resize-handle-vertical:pressed, GridSplitter.resize-handle-horizontal:pressed">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBorderBrush}" />
+        </Style>
 
         <!-- Typography styles recreate the uppercase graphite chrome from the reference. -->
         <Style Selector="TextBlock.section-title">
