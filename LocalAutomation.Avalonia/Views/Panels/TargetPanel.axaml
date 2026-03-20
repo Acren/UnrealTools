@@ -1,0 +1,95 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
+             x:Class="LocalAutomation.Avalonia.Views.Panels.TargetPanel"
+             x:DataType="vm:MainWindowViewModel">
+    <!-- This panel isolates target selection and target-scoped actions from the rest of the shell. -->
+    <Border Classes="panel">
+        <Grid RowDefinitions="Auto,Auto,*" MinHeight="0">
+            <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
+                <TextBlock Text="TARGET" Classes="panel-title" VerticalAlignment="Center" />
+            </Border>
+
+            <ComboBox Grid.Row="1"
+                      Margin="8,8,8,0"
+                      ItemsSource="{Binding TargetPickerItems}"
+                      SelectedItem="{Binding SelectedTargetPickerItem}"
+                      MaxDropDownHeight="360"
+                      HorizontalAlignment="Stretch"
+                      SelectionChanged="TargetPicker_SelectionChanged">
+                <ComboBox.SelectionBoxItemTemplate>
+                    <DataTemplate x:DataType="vm:TargetPickerItemViewModel">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding TargetPath}" FontSize="12" Classes="muted" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Classes="pill" Padding="6,2" VerticalAlignment="Top" HorizontalAlignment="Right" IsVisible="{Binding IsTargetItem}">
+                                <TextBlock Text="{Binding TypeName}" FontSize="10" FontWeight="Bold" Classes="muted" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ComboBox.SelectionBoxItemTemplate>
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:TargetPickerItemViewModel">
+                        <Grid>
+                            <StackPanel IsVisible="{Binding IsTargetItem}" Spacing="2">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Border Grid.Column="1" Classes="pill" Padding="6,2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                        <TextBlock Text="{Binding TypeName}" FontSize="10" FontWeight="Bold" Classes="muted" />
+                                    </Border>
+                                    <Button Grid.Column="2"
+                                            Classes="small subtle"
+                                            Padding="4,0"
+                                            MinWidth="24"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Center"
+                                            Content="X"
+                                            Click="RemoveTargetPickerItem_Click" />
+                                </Grid>
+                                <TextBlock Text="{Binding TargetPath}" FontSize="12" Classes="muted" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Border IsVisible="{Binding IsAddAction}"
+                                    Padding="6,4"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0">
+                                <TextBlock Text="{Binding AddActionLabel}"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Classes="soft" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <Border Grid.Row="2"
+                    Margin="8,10,8,8"
+                    Padding="0"
+                    BorderBrush="{DynamicResource GraphiteLineBrush}"
+                    BorderThickness="0,1,0,0">
+                <StackPanel Spacing="6" Margin="0,10,0,0">
+                    <ItemsControl ItemsSource="{Binding TargetActions}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="2" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TargetContextActionViewModel">
+                                <Button Classes="small"
+                                        Margin="0,0,8,0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Content="{Binding DisplayName}"
+                                        Click="TargetAction_Click" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

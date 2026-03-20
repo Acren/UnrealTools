@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
+             x:Class="LocalAutomation.Avalonia.Views.Panels.CommandPanel"
+             x:DataType="vm:MainWindowViewModel">
+    <!-- This panel isolates the command preview and its execution actions. -->
+    <Border Classes="panel">
+        <Grid RowDefinitions="Auto,*,Auto" MinHeight="0">
+            <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
+                <TextBlock Text="COMMAND" Classes="field-label" />
+            </Border>
+            <Border Grid.Row="1" Background="{DynamicResource GraphiteTerminalBrush}">
+                <ScrollViewer Margin="12,10,12,12"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <SelectableTextBlock Classes="mono"
+                                         Text="{Binding VisibleCommand}"
+                                         TextWrapping="Wrap" />
+                </ScrollViewer>
+            </Border>
+            <Border Grid.Row="2" Padding="12,10,12,12" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,1,0,0">
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                    <Button Grid.Column="0"
+                            Classes="small"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Content="Copy"
+                            Click="CopyCommand_Click"
+                            IsEnabled="{Binding CanCopyCommand}" />
+                    <Button Grid.Column="1"
+                            Classes="primary small"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Content="{Binding ExecuteButtonText}"
+                            Click="Execute_Click"
+                            IsEnabled="{Binding CanExecute}" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

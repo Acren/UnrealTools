@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
+             x:Class="LocalAutomation.Avalonia.Controls.ResponsiveMeasuredColumns"
+             x:Name="Root"
+             x:CompileBindings="False">
+    <!-- This control owns the responsive column balancing so parent views only provide items and a template. -->
+    <ItemsControl x:Name="ColumnsHost"
+                  ItemsSource="{Binding Columns, ElementName=Root}">
+        <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+            <DataTemplate>
+                <ItemsControl ItemsSource="{Binding Items}"
+                              Width="{Binding CardWidth}"
+                              Margin="{Binding TrailingMargin}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Vertical"
+                                        Spacing="{Binding RowSpacing, ElementName=Root}" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border SizeChanged="ItemHost_SizeChanged">
+                                <ContentControl Content="{Binding Item}"
+                                                ContentTemplate="{Binding ItemTemplate, ElementName=Root}" />
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</UserControl>

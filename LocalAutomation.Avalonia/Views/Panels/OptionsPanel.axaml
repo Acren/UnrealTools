@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
+             xmlns:pgc="clr-namespace:Avalonia.PropertyGrid.Controls;assembly=Avalonia.PropertyGrid"
+             xmlns:ext="clr-namespace:LocalAutomation.Extensions.Abstractions;assembly=LocalAutomation.Extensions.Abstractions"
+             xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
+             x:Class="LocalAutomation.Avalonia.Views.Panels.OptionsPanel"
+             x:DataType="vm:MainWindowViewModel">
+    <!-- This panel isolates operation selection and generic responsive option-card layout. -->
+    <Border Classes="panel">
+        <Grid RowDefinitions="Auto,*" MinHeight="0">
+            <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
+                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
+                    <TextBlock Text="OPERATION" Classes="panel-title" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1"
+                              Width="260"
+                              HorizontalAlignment="Left"
+                              ItemsSource="{Binding AvailableOperations}"
+                              SelectedItem="{Binding SelectedOperation}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="ext:OperationDescriptor">
+                                <TextBlock Text="{Binding DisplayName}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0"
+                          Padding="10,10,10,0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <controls:ResponsiveMeasuredColumns ItemsSource="{Binding EnabledOptionSets}"
+                                                    MinimumItemWidth="340"
+                                                    MaxColumns="3"
+                                                    ColumnSpacing="10"
+                                                    RowSpacing="10"
+                                                    ViewportHorizontalPadding="20">
+                    <controls:ResponsiveMeasuredColumns.ItemTemplate>
+                        <DataTemplate x:DataType="vm:OptionSetViewModel">
+                            <Border Classes="card" Padding="10,8">
+                                <Grid RowDefinitions="Auto,*">
+                                    <TextBlock Text="{Binding Name}" Classes="panel-title" />
+                                    <pgc:PropertyGrid Grid.Row="1"
+                                                      Margin="0,10,0,0"
+                                                      DataContext="{Binding PropertyGridTarget}"
+                                                      IsQuickFilterVisible="False"
+                                                      IsCategoryVisible="False"
+                                                      IsHeaderVisible="False"
+                                                      IsTitleVisible="False" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </controls:ResponsiveMeasuredColumns.ItemTemplate>
+                </controls:ResponsiveMeasuredColumns>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</UserControl>

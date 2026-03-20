@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
+             x:Class="LocalAutomation.Avalonia.Views.Panels.RuntimePanel"
+             x:DataType="vm:MainWindowViewModel">
+    <!-- This panel isolates runtime tabs, log streaming, and runtime cancellation. -->
+    <Border Classes="panel">
+        <Grid RowDefinitions="Auto,*" MinHeight="0">
+            <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding RuntimeTabs}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RuntimeTaskTabViewModel">
+                                    <Button Classes="tab"
+                                            Classes.active="{Binding IsSelected}"
+                                            Content="{Binding Title}"
+                                            Click="RuntimeTab_Click" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <Button Grid.Column="1"
+                            Classes="danger small"
+                            Content="Terminate"
+                            Click="Terminate_Click"
+                            IsEnabled="{Binding IsRunning}" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1" Margin="0" Background="{DynamicResource GraphiteTerminalBrush}">
+                <ScrollViewer x:Name="RuntimeLogScrollViewer"
+                              Margin="12,10,12,12"
+                              ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding SelectedRuntimeLogEntries}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LogEntryViewModel">
+                                <Border Padding="0,0,0,4">
+                                    <SelectableTextBlock Text="{Binding Message}"
+                                                         Foreground="{Binding Foreground}"
+                                                         TextWrapping="Wrap"
+                                                         FontFamily="Consolas, Cascadia Mono, monospace"
+                                                         FontSize="12" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>
