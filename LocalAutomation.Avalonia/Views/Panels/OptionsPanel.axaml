@@ -36,7 +36,7 @@
                                                     MaxColumns="3"
                                                     ColumnSpacing="10"
                                                     RowSpacing="10"
-                                                    ViewportHorizontalPadding="20">
+                                                    ViewportHorizontalPadding="0">
                     <controls:ResponsiveMeasuredColumns.ItemTemplate>
                         <DataTemplate x:DataType="vm:OptionSetViewModel">
                             <Border Classes="card" Padding="10,8">

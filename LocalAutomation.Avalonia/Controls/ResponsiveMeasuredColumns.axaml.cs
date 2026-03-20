@@ -9,6 +9,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Media;
 using Avalonia.Threading;
+using LocalAutomation.Avalonia.ViewModels;
 
 namespace LocalAutomation.Avalonia.Controls;
 
@@ -265,10 +266,6 @@ public partial class ResponsiveMeasuredColumns : UserControl
             targetColumn.AddItem(item, GetMeasuredHeight(item), RowSpacing);
         }
 
-        for (int index = Columns.Count - 1; index >= 0; index--)
-        {
-            Columns[index].TrailingMargin = index == Columns.Count - 1 ? new Thickness(0) : new Thickness(0, 0, ColumnSpacing, 0);
-        }
     }
 
     /// <summary>
@@ -298,8 +295,8 @@ public partial class ResponsiveMeasuredColumns : UserControl
     }
 
     /// <summary>
-    /// Computes the width assigned to each card for the current column count.
-    /// </summary>
+     /// Computes the width assigned to each card for the current column count.
+     /// </summary>
     private double ComputeCardWidth(double usableWidth, int columnCount)
     {
         if (usableWidth <= 0)
@@ -307,7 +304,11 @@ public partial class ResponsiveMeasuredColumns : UserControl
             return MinimumItemWidth;
         }
 
-        return Math.Max(MinimumItemWidth, (usableWidth / Math.Max(1, columnCount)) - ColumnSpacing);
+        // Once the column count is chosen from the minimum-width threshold, the remaining available width should be
+        // divided evenly across those columns. We floor the result so fractional pixel widths do not round up across
+        // multiple columns and clip the right edge of the final card at certain viewport sizes.
+        double totalSpacing = Math.Max(0, columnCount - 1) * ColumnSpacing;
+        return Math.Max(0, Math.Floor((usableWidth - totalSpacing) / Math.Max(1, columnCount)));
     }
 
     /// <summary>
@@ -337,8 +338,10 @@ public partial class ResponsiveMeasuredColumns : UserControl
     /// <summary>
     /// Groups a vertical stack of items assigned to one balanced column.
     /// </summary>
-    public sealed class MeasuredColumn
+    public sealed class MeasuredColumn : ViewModelBase
     {
+        private double _cardWidth;
+
         /// <summary>
         /// Gets the items currently assigned to this column.
         /// </summary>
@@ -347,12 +350,11 @@ public partial class ResponsiveMeasuredColumns : UserControl
         /// <summary>
         /// Gets the current card width for this column.
         /// </summary>
-        public double CardWidth { get; private set; }
-
-        /// <summary>
-        /// Gets the trailing margin applied to this column.
-        /// </summary>
-        public Thickness TrailingMargin { get; set; }
+        public double CardWidth
+        {
+            get => _cardWidth;
+            private set => SetProperty(ref _cardWidth, value);
+        }
 
         /// <summary>
         /// Gets the cumulative measured height assigned to this column.

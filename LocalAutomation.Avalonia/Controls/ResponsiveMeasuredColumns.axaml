@@ -9,14 +9,14 @@
                   ItemsSource="{Binding Columns, ElementName=Root}">
         <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" />
+                <StackPanel Orientation="Horizontal"
+                            Spacing="{Binding ColumnSpacing, ElementName=Root}" />
             </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
             <DataTemplate>
                 <ItemsControl ItemsSource="{Binding Items}"
-                              Width="{Binding CardWidth}"
-                              Margin="{Binding TrailingMargin}">
+                              Width="{Binding CardWidth}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Orientation="Vertical"
