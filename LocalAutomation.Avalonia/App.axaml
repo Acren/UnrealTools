@@ -8,6 +8,10 @@
         <Color x:Key="GraphiteBackgroundColor">#16181B</Color>
         <Color x:Key="GraphitePanelColor">#1B1E22</Color>
         <Color x:Key="GraphiteCardColor">#22262B</Color>
+        <Color x:Key="GraphiteDropdownColor">#1A1E22</Color>
+        <Color x:Key="GraphiteDropdownHoverColor">#20262C</Color>
+        <Color x:Key="GraphiteDropdownSelectedColor">#28313A</Color>
+        <Color x:Key="GraphiteDropdownSelectedBorderColor">#6B7B88</Color>
         <Color x:Key="GraphiteInputColor">#14171A</Color>
         <Color x:Key="GraphiteTerminalColor">#101215</Color>
         <Color x:Key="GraphiteLineColor">#2D333A</Color>
@@ -27,6 +31,10 @@
         <SolidColorBrush x:Key="GraphiteBackgroundBrush" Color="{StaticResource GraphiteBackgroundColor}" />
         <SolidColorBrush x:Key="GraphitePanelBrush" Color="{StaticResource GraphitePanelColor}" />
         <SolidColorBrush x:Key="GraphiteCardBrush" Color="{StaticResource GraphiteCardColor}" />
+        <SolidColorBrush x:Key="GraphiteDropdownBrush" Color="{StaticResource GraphiteDropdownColor}" />
+        <SolidColorBrush x:Key="GraphiteDropdownHoverBrush" Color="{StaticResource GraphiteDropdownHoverColor}" />
+        <SolidColorBrush x:Key="GraphiteDropdownSelectedBrush" Color="{StaticResource GraphiteDropdownSelectedColor}" />
+        <SolidColorBrush x:Key="GraphiteDropdownSelectedBorderBrush" Color="{StaticResource GraphiteDropdownSelectedBorderColor}" />
         <SolidColorBrush x:Key="GraphiteInputBrush" Color="{StaticResource GraphiteInputColor}" />
         <SolidColorBrush x:Key="GraphiteTerminalBrush" Color="{StaticResource GraphiteTerminalColor}" />
         <SolidColorBrush x:Key="GraphiteLineBrush" Color="{StaticResource GraphiteLineColor}" />
@@ -44,7 +52,26 @@
         <SolidColorBrush x:Key="GraphiteDangerBackgroundBrush" Color="{StaticResource GraphiteDangerBackgroundColor}" />
     </Application.Resources>
     <Application.Styles>
-        <themes:FluentTheme />
+        <themes:FluentTheme>
+            <!-- Fluent still owns many list/popup visuals internally, so the stable way to get dropdowns aligned with
+                 our graphite-blue direction is to provide a custom dark palette rather than fight each template part
+                 individually. -->
+            <themes:FluentTheme.Palettes>
+                <themes:ColorPaletteResources x:Key="Dark"
+                                              Accent="{StaticResource GraphiteAccentColor}"
+                                              RegionColor="{StaticResource GraphitePanelColor}"
+                                              ErrorText="{StaticResource GraphiteDangerColor}"
+                                              BaseHigh="{StaticResource GraphiteTextColor}"
+                                              BaseMedium="{StaticResource GraphiteTextSoftColor}"
+                                              BaseMediumLow="{StaticResource GraphiteTextMutedColor}"
+                                              ChromeHigh="{StaticResource GraphiteLineStrongColor}"
+                                              ChromeMedium="{StaticResource GraphiteLineColor}"
+                                              ChromeMediumLow="{StaticResource GraphiteLineSubtleColor}"
+                                              ChromeLow="{StaticResource GraphiteInputColor}"
+                                              ListLow="{StaticResource GraphiteDropdownColor}"
+                                              ListMedium="{StaticResource GraphiteDropdownHoverColor}" />
+            </themes:FluentTheme.Palettes>
+        </themes:FluentTheme>
 
         <!-- The shell defaults everything to the graphite palette so the window reads like a dense desktop tool. -->
         <Style Selector="Window">
@@ -300,29 +327,16 @@
             <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
         </Style>
         <Style Selector="FlyoutPresenter">
-            <Setter Property="Background" Value="{DynamicResource GraphitePanelBrush}" />
+            <Setter Property="Background" Value="{DynamicResource GraphiteDropdownBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="4" />
         </Style>
         <Style Selector="MenuFlyoutPresenter">
-            <Setter Property="Background" Value="{DynamicResource GraphitePanelBrush}" />
+            <Setter Property="Background" Value="{DynamicResource GraphiteDropdownBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="4" />
-        </Style>
-        <Style Selector="ComboBoxItem">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
-            <Setter Property="Padding" Value="10,6" />
-        </Style>
-        <Style Selector="ComboBoxItem:pointerover">
-            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
-        </Style>
-        <Style Selector="ComboBoxItem:selected">
-            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
         </Style>
         <Style Selector="ComboBox /template/ ContentPresenter">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
@@ -335,6 +349,88 @@
         </Style>
         <Style Selector="ComboBox /template/ ToggleButton:pointerover">
             <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
+        </Style>
+        <Style Selector="ComboBox.target-picker">
+            <Setter Property="MinHeight" Value="58" />
+        </Style>
+        <Style Selector="ComboBox.target-picker:pointerover /template/ ToggleButton">
+            <Setter Property="Background" Value="{DynamicResource GraphiteCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
+        </Style>
+        <Style Selector="ComboBox.target-picker:focus /template/ ToggleButton">
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <Style Selector="ComboBox /template/ PopupRoot Border">
+            <Setter Property="Background" Value="{DynamicResource GraphiteDropdownBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="ComboBox /template/ PopupRoot">
+            <Setter Property="Background" Value="{DynamicResource GraphiteDropdownBrush}" />
+        </Style>
+        <Style Selector="ComboBox /template/ PopupRoot ScrollViewer">
+            <Setter Property="Background" Value="{DynamicResource GraphiteDropdownBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <!-- The popup surface comes from the Fluent palette; we only nudge row states here so they stay close to the
+             default Fluent behavior while shifting toward the app's cooler graphite-blue tones. Keeping a constant
+             border thickness prevents item wobble when hover/selection changes. -->
+        <Style Selector="ComboBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource GraphiteDropdownBrush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource GraphiteDropdownHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineStrongBrush}" />
+        </Style>
+        <Style Selector="ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource GraphiteDropdownSelectedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteDropdownSelectedBorderBrush}" />
+        </Style>
+        <Style Selector="ComboBoxItem:pointerover TextBlock, ComboBoxItem:selected TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+        <Style Selector="ComboBox.target-picker ComboBoxItem">
+            <Setter Property="Padding" Value="12,10" />
+        </Style>
+        <Style Selector="ComboBox.target-picker ComboBoxItem:last-child">
+            <Setter Property="Margin" Value="0,6,0,0" />
+            <Setter Property="Padding" Value="12,12" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineBrush}" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+        <Style Selector="Button.target-remove">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="MinWidth" Value="22" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="CornerRadius" Value="11" />
+        </Style>
+        <Style Selector="Button.target-remove:pointerover">
+            <Setter Property="Background" Value="#30FFFFFF" />
+            <Setter Property="BorderBrush" Value="#48FFFFFF" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
+        </Style>
+        <Style Selector="Button.target-remove:pressed">
+            <Setter Property="Background" Value="#44FFFFFF" />
+            <Setter Property="BorderBrush" Value="#58FFFFFF" />
+        </Style>
+        <Style Selector="Button.target-remove Path">
+            <Setter Property="Stroke" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+        </Style>
+        <Style Selector="Button.target-remove:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource GraphiteTextBrush}" />
         </Style>
         <Style Selector="AutoCompleteBox /template/ TextBox">
             <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />

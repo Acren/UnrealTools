@@ -12,6 +12,7 @@
 
             <ComboBox Grid.Row="1"
                       Margin="8,8,8,0"
+                      Classes="target-picker"
                       ItemsSource="{Binding TargetPickerItems}"
                       SelectedItem="{Binding SelectedTargetPickerItem}"
                       MaxDropDownHeight="360"
@@ -40,13 +41,15 @@
                                         <TextBlock Text="{Binding TypeName}" FontSize="10" FontWeight="Bold" Classes="muted" />
                                     </Border>
                                     <Button Grid.Column="2"
-                                            Classes="small subtle"
-                                            Padding="4,0"
-                                            MinWidth="24"
+                                            Classes="small subtle target-remove"
                                             HorizontalAlignment="Right"
                                             VerticalAlignment="Center"
-                                            Content="X"
-                                            Click="RemoveTargetPickerItem_Click" />
+                                            Click="RemoveTargetPickerItem_Click">
+                                        <Grid Width="10" Height="10">
+                                            <Path Data="M 1,1 L 9,9" />
+                                            <Path Data="M 9,1 L 1,9" />
+                                        </Grid>
+                                    </Button>
                                 </Grid>
                                 <TextBlock Text="{Binding TargetPath}" FontSize="12" Classes="muted" TextWrapping="Wrap" />
                             </StackPanel>
