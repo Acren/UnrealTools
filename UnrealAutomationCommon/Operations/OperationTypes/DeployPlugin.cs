@@ -288,7 +288,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new global::LocalAutomation.Runtime.OperationResult(true);
         }
 
-        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
+        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
             return new List<LocalAutomation.Runtime.Command>();
         }
@@ -889,12 +889,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return await deployForEngineOp.Execute(OperationParameters, Logger, token);
         }
 
-        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
+        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            operationParameters.RequestOptions<EngineVersionOptions>();
-            operationParameters.RequestOptions<AutomationOptions>();
-            operationParameters.RequestOptions<PluginBuildOptions>();
-            operationParameters.RequestOptions<PluginDeployOptions>();
+            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            typedParameters.RequestOptions<EngineVersionOptions>();
+            typedParameters.RequestOptions<AutomationOptions>();
+            typedParameters.RequestOptions<PluginBuildOptions>();
+            typedParameters.RequestOptions<PluginDeployOptions>();
             return new List<LocalAutomation.Runtime.Command>();
         }
 

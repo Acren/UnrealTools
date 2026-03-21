@@ -60,19 +60,6 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
         return operationParameters.Engine;
     }
 
-    /// <summary>
-    /// Bridges command generation from the shared runtime onto the Unreal-specific command model.
-    /// </summary>
-    protected sealed override IEnumerable<global::LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
-    {
-        return BuildCommands((UnrealAutomationCommon.Operations.OperationParameters)operationParameters);
-    }
-
-    /// <summary>
-    /// Lets Unreal operations build command previews from the Unreal-specific parameter model.
-    /// </summary>
-    protected abstract IEnumerable<global::LocalAutomation.Runtime.Command> BuildCommands(UnrealAutomationCommon.Operations.OperationParameters operationParameters);
-
 }
 
 /// <summary>

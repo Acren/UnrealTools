@@ -10,7 +10,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class CleanProject : Operation<Project>
     {
-        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
+        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
             return new List<LocalAutomation.Runtime.Command>();
         }

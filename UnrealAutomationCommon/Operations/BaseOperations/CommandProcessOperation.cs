@@ -25,9 +25,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         {
         }
 
-        protected override IEnumerable<global::LocalAutomation.Runtime.Command> BuildCommands(UnrealAutomationCommon.Operations.OperationParameters operationParameters)
+        protected override IEnumerable<global::LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            return new List<global::LocalAutomation.Runtime.Command> { BuildCommand(operationParameters) };
+            return new List<global::LocalAutomation.Runtime.Command> { BuildCommand((UnrealAutomationCommon.Operations.OperationParameters)operationParameters) };
         }
 
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)

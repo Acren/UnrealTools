@@ -169,11 +169,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new global::LocalAutomation.Runtime.OperationResult(true);
         }
 
-        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
+        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            operationParameters.RequestOptions<EngineVersionOptions>();
-            operationParameters.RequestOptions<AutomationOptions>();
-            operationParameters.RequestOptions<VerifyDeploymentOptions>();
+            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            typedParameters.RequestOptions<EngineVersionOptions>();
+            typedParameters.RequestOptions<AutomationOptions>();
+            typedParameters.RequestOptions<VerifyDeploymentOptions>();
             return new List<LocalAutomation.Runtime.Command>();
         }
 
