@@ -2,10 +2,10 @@
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class VerifyDeploymentOptions : OperationOptions
+    public class VerifyDeploymentOptions : global::LocalAutomation.Runtime.OperationOptions
     {
         public override int SortIndex => 80;
 
-        public Option<string> ExampleProjectsPath { get; } = "";
+        public global::LocalAutomation.Runtime.Option<string> ExampleProjectsPath { get; } = "";
     }
 }

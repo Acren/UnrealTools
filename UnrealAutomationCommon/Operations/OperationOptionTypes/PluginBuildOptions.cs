@@ -2,12 +2,12 @@
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class PluginBuildOptions : OperationOptions
+    public class PluginBuildOptions : global::LocalAutomation.Runtime.OperationOptions
     {
         public override int SortIndex => 45;
 
-        public Option<bool> BuildWin64 { get; set; } = true;
-        public Option<bool> BuildLinux { get; set; } = true;
-        public Option<bool> StrictIncludes { get; set; } = true;
+        public global::LocalAutomation.Runtime.Option<bool> BuildWin64 { get; set; } = true;
+        public global::LocalAutomation.Runtime.Option<bool> BuildLinux { get; set; } = true;
+        public global::LocalAutomation.Runtime.Option<bool> StrictIncludes { get; set; } = true;
     }
 }

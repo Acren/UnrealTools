@@ -2,7 +2,7 @@
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class BuildConfigurationOptions : OperationOptions
+    public class BuildConfigurationOptions : global::LocalAutomation.Runtime.OperationOptions
     {
         private BuildConfiguration _configuration = BuildConfiguration.Development;
 

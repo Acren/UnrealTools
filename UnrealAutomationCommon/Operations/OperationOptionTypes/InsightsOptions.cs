@@ -3,7 +3,7 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class InsightsOptions : OperationOptions
+    public class InsightsOptions : global::LocalAutomation.Runtime.OperationOptions
     {
         private BindingList<TraceChannel> _traceChannels;
 

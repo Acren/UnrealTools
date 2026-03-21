@@ -2,12 +2,12 @@
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class AutomationOptions : OperationOptions
+    public class AutomationOptions : global::LocalAutomation.Runtime.OperationOptions
     {
         public override int SortIndex => 50;
 
-        public Option<bool> RunTests { get; } = false;
-        public Option<bool> Headless { get; } = true;
+        public global::LocalAutomation.Runtime.Option<bool> RunTests { get; } = false;
+        public global::LocalAutomation.Runtime.Option<bool> Headless { get; } = true;
 
         public string TestNameOverride { get; set; }
     }

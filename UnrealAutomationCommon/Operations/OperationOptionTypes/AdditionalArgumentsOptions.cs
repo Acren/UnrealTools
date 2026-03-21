@@ -1,5 +1,4 @@
 using global::LocalAutomation.Runtime;
-using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes;
 
@@ -7,7 +6,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes;
 /// Stores freeform pass-through arguments as a normal option set so newer UIs can render it through the same option
 /// pipeline as the rest of the operation configuration.
 /// </summary>
-public sealed class AdditionalArgumentsOptions : OperationOptions
+public sealed class AdditionalArgumentsOptions : global::LocalAutomation.Runtime.OperationOptions
 {
     /// <summary>
     /// Keep this option set at the end of the list because it acts as a final override layer rather than a primary
@@ -23,5 +22,5 @@ public sealed class AdditionalArgumentsOptions : OperationOptions
     /// <summary>
     /// Gets the raw argument string appended to the generated command.
     /// </summary>
-    public Option<string> Arguments { get; } = string.Empty;
+    public global::LocalAutomation.Runtime.Option<string> Arguments { get; } = string.Empty;
 }

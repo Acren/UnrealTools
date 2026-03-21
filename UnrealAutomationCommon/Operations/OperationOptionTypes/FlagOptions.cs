@@ -1,6 +1,6 @@
 ﻿namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class FlagOptions : OperationOptions
+    public class FlagOptions : global::LocalAutomation.Runtime.OperationOptions
     {
         private bool _stompMalloc;
         private bool _waitForAttach;

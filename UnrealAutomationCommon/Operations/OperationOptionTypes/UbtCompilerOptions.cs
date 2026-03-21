@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
         Cpp20
     }
 
-    public class UbtCompilerOptions : OperationOptions
+    public class UbtCompilerOptions : global::LocalAutomation.Runtime.OperationOptions
     {
         private UbtCompiler _compiler = UbtCompiler.Default;
         private UbtCppStandard _cppStandard = UbtCppStandard.Default;

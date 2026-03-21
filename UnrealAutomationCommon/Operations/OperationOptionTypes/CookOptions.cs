@@ -3,7 +3,7 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class CookOptions : OperationOptions
+    public class CookOptions : global::LocalAutomation.Runtime.OperationOptions
     {
         private BuildConfiguration _cookerConfiguration = BuildConfiguration.Development;
 
@@ -20,6 +20,6 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
             }
         }
 
-        public Option<bool> WaitForAttach { get; } = false;
+        public global::LocalAutomation.Runtime.Option<bool> WaitForAttach { get; } = false;
     }
 }
