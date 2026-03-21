@@ -2,54 +2,42 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using LocalAutomation.Core;
-using LocalAutomation.Extensions.Abstractions;
+using LocalAutomation.Runtime;
 using Microsoft.Extensions.Logging;
 
 namespace LocalAutomation.Application;
 
 /// <summary>
-/// Resolves extension-provided runtime adapters so hosts can create and inspect operation instances without knowing
-/// their concrete framework-specific base classes.
+/// Resolves canonical runtime operations so hosts can create and inspect operations without routing behavior through
+/// extension-owned adapter seams.
 /// </summary>
 public sealed class OperationRuntimeService
 {
-    private readonly ExtensionCatalog _catalog;
-
-    /// <summary>
-    /// Creates an operation runtime service around the shared extension catalog.
-    /// </summary>
-    public OperationRuntimeService(ExtensionCatalog catalog)
-    {
-        _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
-    }
-
     /// <summary>
     /// Creates a runtime operation instance for the provided operation type.
     /// </summary>
-    public object? CreateOperation(Type? operationType)
+    public Operation? CreateOperation(Type? operationType)
     {
         if (operationType == null)
         {
             return null;
         }
 
-        return GetAdapter(operationType).CreateOperation(operationType);
+        return Operation.CreateOperation(operationType);
     }
 
     /// <summary>
-    /// Creates a host-facing parameter session around the shared runtime parameter model contributed by the registered
-    /// operation adapter.
+    /// Creates a host-facing parameter session around the shared runtime parameter model.
     /// </summary>
     public OperationParameterSession CreateParameterSession()
     {
-        IOperationAdapter adapter = GetDefaultAdapter();
-        return new OperationParameterSession(adapter, adapter.CreateParameters());
+        return new OperationParameterSession(new OperationParameters());
     }
 
     /// <summary>
     /// Returns whether the provided operation instance supports multiple engines.
     /// </summary>
-    public bool SupportsMultipleEngines(object? operation)
+    public bool SupportsMultipleEngines(Operation? operation)
     {
         if (operation == null)
         {
@@ -58,7 +46,7 @@ public sealed class OperationRuntimeService
 
         try
         {
-            return GetAdapter(operation.GetType()).SupportsMultipleEngines(operation);
+            return operation.SupportsMultipleEngines;
         }
         catch (Exception ex)
         {
@@ -70,7 +58,7 @@ public sealed class OperationRuntimeService
     /// <summary>
     /// Returns the option set types required by the provided operation and target combination.
     /// </summary>
-    public IReadOnlyList<Type> GetRequiredOptionSetTypes(object? operation, object? target)
+    public IReadOnlyList<Type> GetRequiredOptionSetTypes(Operation? operation, IOperationTarget? target)
     {
         if (operation == null)
         {
@@ -79,7 +67,12 @@ public sealed class OperationRuntimeService
 
         try
         {
-            return GetAdapter(operation.GetType()).GetRequiredOptionSetTypes(operation, target);
+            if (target == null)
+            {
+                return Array.Empty<Type>();
+            }
+
+            return operation.GetRequiredOptionSetTypes(target).ToList();
         }
         catch (Exception ex)
         {
@@ -92,7 +85,7 @@ public sealed class OperationRuntimeService
     /// Returns the current validation error for the provided operation and parameter state, or <c>null</c> when the
     /// operation can execute.
     /// </summary>
-    public string? CheckRequirements(object? operation, object parameters)
+    public string? CheckRequirements(Operation? operation, OperationParameters parameters)
     {
         if (operation == null)
         {
@@ -101,7 +94,7 @@ public sealed class OperationRuntimeService
 
         try
         {
-            return GetAdapter(operation.GetType()).CheckRequirements(operation, parameters);
+            return operation.CheckRequirementsSatisfied(parameters);
         }
         catch (Exception ex)
         {
@@ -113,7 +106,7 @@ public sealed class OperationRuntimeService
     /// <summary>
     /// Formats the visible command preview text for the provided operation and parameter state.
     /// </summary>
-    public string GetVisibleCommandText(object? operation, object parameters)
+    public string GetVisibleCommandText(Operation? operation, OperationParameters parameters)
     {
         if (operation == null)
         {
@@ -122,7 +115,7 @@ public sealed class OperationRuntimeService
 
         try
         {
-            IReadOnlyList<string> commandTexts = GetAdapter(operation.GetType()).GetCommandTexts(operation, parameters);
+            IReadOnlyList<string> commandTexts = operation.GetCommandTexts(parameters);
             return commandTexts.Count > 0 ? string.Join("\n", commandTexts) : "No command";
         }
         catch (Exception ex)
@@ -135,7 +128,7 @@ public sealed class OperationRuntimeService
     /// <summary>
     /// Returns the first formatted command preview line for clipboard-style actions.
     /// </summary>
-    public string? GetPrimaryCommandText(object? operation, object parameters)
+    public string? GetPrimaryCommandText(Operation? operation, OperationParameters parameters)
     {
         if (operation == null)
         {
@@ -144,7 +137,7 @@ public sealed class OperationRuntimeService
 
         try
         {
-            return GetAdapter(operation.GetType()).GetCommandTexts(operation, parameters).FirstOrDefault();
+            return operation.GetCommandTexts(parameters).FirstOrDefault();
         }
         catch (Exception ex)
         {
@@ -154,16 +147,16 @@ public sealed class OperationRuntimeService
     }
 
     /// <summary>
-    /// Returns the display name for the provided runtime option-set instance through its owning adapter.
+    /// Returns the display name for the provided runtime option-set instance.
     /// </summary>
-    public string GetOptionSetName(object optionSet)
+    public string GetOptionSetName(OperationOptions optionSet)
     {
         if (optionSet == null)
         {
             throw new ArgumentNullException(nameof(optionSet));
         }
 
-        return GetDefaultAdapter().GetOptionSetName(optionSet);
+        return optionSet.Name;
     }
 
     /// <summary>
@@ -189,36 +182,6 @@ public sealed class OperationRuntimeService
         }
 
         return availableOperationTypes[0];
-    }
-
-    /// <summary>
-    /// Finds the registered adapter responsible for the provided operation type.
-    /// </summary>
-    private IOperationAdapter GetAdapter(Type operationType)
-    {
-        foreach (IOperationAdapter adapter in _catalog.OperationAdapters)
-        {
-            if (adapter.CanHandle(operationType))
-            {
-                return adapter;
-            }
-        }
-
-        throw new InvalidOperationException($"No registered operation adapter can handle '{operationType.FullName}'.");
-    }
-
-    /// <summary>
-    /// Returns the single shared operation adapter used by the current bridge-era shell parameter model.
-    /// </summary>
-    private IOperationAdapter GetDefaultAdapter()
-    {
-        IOperationAdapter? adapter = _catalog.OperationAdapters.FirstOrDefault();
-        if (adapter == null)
-        {
-            return new EmptyOperationAdapter();
-        }
-
-        return adapter;
     }
 
     /// <summary>

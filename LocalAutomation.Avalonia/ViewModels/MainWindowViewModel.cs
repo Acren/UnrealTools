@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using LocalAutomation.Application;
 using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
+using LocalAutomation.Runtime;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -27,7 +28,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private bool _isHydratingSessionSelection;
     private bool _isRestoringSession;
     private bool _hasPendingSessionSave;
-    private object? _currentOperation;
+    private Operation? _currentOperation;
     private OperationDescriptor? _selectedOperation;
     private SessionSnapshot _sessionSnapshot = new();
     private string _status = "Add a target path to begin using the LocalAutomation shell.";
@@ -105,9 +106,10 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             // Keep the live operation object aligned with the selected descriptor so command preview, validation, and
             // execution all run through the same shared runtime path.
-            _currentOperation = value != null
-                ? _services.OperationSession.CreateOperation(value.OperationType)
-                : null;
+            OperationParameters existingParameters = _parameterSession.RawValue;
+            _currentOperation = value != null ? _services.OperationSession.CreateOperation(value.OperationType) : null;
+            OperationParameters replacementParameters = _currentOperation?.CreateParameters(existingParameters) ?? new OperationParameters();
+            _parameterSession.Replace(replacementParameters);
 
             if (!_isHydratingSessionSelection && !_isApplyingTargetState)
             {
@@ -422,7 +424,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             CaptureTargetState(previousOperationTarget);
         }
 
-        _parameterSession.Target = selectedTarget?.Target;
+        _parameterSession.Target = selectedTarget?.Target as IOperationTarget;
         if (!_isHydratingSessionSelection)
         {
             RefreshOperationSelection();
@@ -457,15 +459,15 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RefreshEnabledOptionSets()
     {
-        var enabledOptionTypes = _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target).ToList();
-        List<object> existingOptionSets = _parameterSession.OptionSets.ToList();
+        var enabledOptionTypes = _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target as IOperationTarget).ToList();
+        List<OperationOptions> existingOptionSets = _parameterSession.OptionSets.ToList();
 
         foreach (Type optionSetType in enabledOptionTypes)
         {
             _parameterSession.EnsureOptionSet(optionSetType);
         }
 
-        foreach (object options in existingOptionSets)
+        foreach (OperationOptions options in existingOptionSets)
         {
             if (!enabledOptionTypes.Contains(options.GetType()))
             {
@@ -474,7 +476,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         EnabledOptionSets.Clear();
-        foreach (object options in _parameterSession.OptionSets)
+        foreach (OperationOptions options in _parameterSession.OptionSets)
         {
             EnabledOptionSets.Add(new OptionSetViewModel(_services, options, _services.OptionEditors.GetEditorTarget(options)));
         }
@@ -487,7 +489,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void RebuildOptionCards()
     {
         EnabledOptionSets.Clear();
-        foreach (object options in _parameterSession.OptionSets)
+        foreach (OperationOptions options in _parameterSession.OptionSets)
         {
             EnabledOptionSets.Add(new OptionSetViewModel(_services, options, _services.OptionEditors.GetEditorTarget(options)));
         }

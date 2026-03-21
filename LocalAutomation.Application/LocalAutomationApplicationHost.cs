@@ -17,11 +17,11 @@ public sealed class LocalAutomationApplicationHost
         Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         ContextActions = new ContextActionService(catalog);
         Execution = new ExecutionService();
-        ExecutionRuntime = new ExecutionRuntimeService(catalog);
+        ExecutionRuntime = new ExecutionRuntimeService();
         OptionEditors = new OptionEditorService(catalog);
         OptionValues = new OptionValuePersistenceService(catalog);
         Operations = new OperationCatalogService(catalog);
-        OperationRuntime = new OperationRuntimeService(catalog);
+        OperationRuntime = new OperationRuntimeService();
         OperationSession = new OperationSessionService(Operations, OperationRuntime);
         Targets = new TargetDiscoveryService(catalog);
     }
@@ -47,7 +47,7 @@ public sealed class LocalAutomationApplicationHost
     public ExecutionService Execution { get; }
 
     /// <summary>
-    /// Gets the service used to start shared execution sessions through extension-provided runner adapters.
+    /// Gets the service used to start shared execution sessions through the shared runtime runner.
     /// </summary>
     public ExecutionRuntimeService ExecutionRuntime { get; }
 

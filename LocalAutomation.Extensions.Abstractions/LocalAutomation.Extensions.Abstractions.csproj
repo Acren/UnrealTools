@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LocalAutomation.Core\LocalAutomation.Core.csproj" />
+    <ProjectReference Include="..\LocalAutomation.Runtime\LocalAutomation.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

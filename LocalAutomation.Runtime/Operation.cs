@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
@@ -22,9 +23,9 @@ public abstract class Operation
     public string OperationName => GetOperationName();
 
     /// <summary>
-    /// Gets whether the operation supports multiple engine selections.
-    /// </summary>
-    public bool SupportsMultipleEngines => false;
+     /// Gets whether the operation supports multiple engine selections.
+     /// </summary>
+    public virtual bool SupportsMultipleEngines => false;
 
     /// <summary>
     /// Gets whether the operation is currently executing.
@@ -70,6 +71,30 @@ public abstract class Operation
         }
 
         return CreateOperation(operationType).SupportsTarget(target);
+    }
+
+    /// <summary>
+    /// Creates parameter state for this operation, optionally cloning shared state from an existing parameter set.
+    /// </summary>
+    public virtual OperationParameters CreateParameters(OperationParameters? existing = null)
+    {
+        OperationParameters parameters = CreateOperationParameters();
+        if (existing != null)
+        {
+            parameters.Target = existing.Target;
+            parameters.OutputPathOverride = existing.OutputPathOverride;
+            parameters.AdditionalArguments = existing.AdditionalArguments;
+
+            foreach (OperationOptions options in existing.OptionsInstances)
+            {
+                if (parameters.GetOptionsInstance(options.GetType()) == null)
+                {
+                    parameters.SetOptions((OperationOptions)options.Clone());
+                }
+            }
+        }
+
+        return parameters;
     }
 
     /// <summary>
@@ -188,6 +213,14 @@ public abstract class Operation
     }
 
     /// <summary>
+    /// Returns formatted command preview strings for the provided parameter state.
+    /// </summary>
+    public virtual IReadOnlyList<string> GetCommandTexts(OperationParameters operationParameters)
+    {
+        return GetCommands(operationParameters).Select(command => command.ToString()).ToList();
+    }
+
+    /// <summary>
     /// Returns the shared temporary directory used by operation flows.
     /// </summary>
     public string GetOperationTempPath()
@@ -302,6 +335,13 @@ public abstract class Operation
     public virtual string? GetLogsPath(OperationParameters operationParameters)
     {
         return null;
+    }
+
+    /// <summary>
+    /// Gives derived runtimes a chance to prepare output folders or emit pre-run notices before execution starts.
+    /// </summary>
+    public virtual void PrepareForExecution(OperationParameters operationParameters, ILogger logger)
+    {
     }
 
     /// <summary>

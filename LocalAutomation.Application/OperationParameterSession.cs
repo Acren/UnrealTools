@@ -1,30 +1,25 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using LocalAutomation.Runtime;
 
 namespace LocalAutomation.Application;
 
 /// <summary>
-/// Wraps an extension-owned runtime parameter object so UI hosts can edit targets, additional arguments, and option
-/// sets without referencing the extension's concrete parameter types.
+/// Wraps the shared runtime parameter object so UI hosts can edit targets, additional arguments, and option sets
+/// without depending on extension-specific parameter subclasses.
 /// </summary>
 public sealed class OperationParameterSession : INotifyPropertyChanged
 {
-    private readonly Extensions.Abstractions.IOperationAdapter _adapter;
-    private readonly INotifyPropertyChanged? _observableParameters;
+    private OperationParameters _parameters;
 
     /// <summary>
-    /// Creates a parameter session around the provided adapter-owned runtime parameter object.
+    /// Creates a parameter session around the provided shared runtime parameter object.
     /// </summary>
-    public OperationParameterSession(Extensions.Abstractions.IOperationAdapter adapter, object rawValue)
+    public OperationParameterSession(OperationParameters parameters)
     {
-        _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
-        RawValue = rawValue ?? throw new ArgumentNullException(nameof(rawValue));
-        _observableParameters = rawValue as INotifyPropertyChanged;
-        if (_observableParameters != null)
-        {
-            _observableParameters.PropertyChanged += HandleUnderlyingParametersChanged;
-        }
+        _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
+        _parameters.PropertyChanged += HandleUnderlyingParametersChanged;
     }
 
     /// <summary>
@@ -35,15 +30,40 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
     /// <summary>
     /// Gets the wrapped runtime parameter object used by execution and option persistence services.
     /// </summary>
-    public object RawValue { get; }
+    public OperationParameters RawValue => _parameters;
+
+    /// <summary>
+    /// Replaces the wrapped runtime parameter object while preserving the outer session instance observed by the UI.
+    /// </summary>
+    public void Replace(OperationParameters parameters)
+    {
+        if (parameters == null)
+        {
+            throw new ArgumentNullException(nameof(parameters));
+        }
+
+        if (ReferenceEquals(_parameters, parameters))
+        {
+            return;
+        }
+
+        _parameters.PropertyChanged -= HandleUnderlyingParametersChanged;
+        _parameters = parameters;
+        _parameters.PropertyChanged += HandleUnderlyingParametersChanged;
+
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RawValue)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Target)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AdditionalArguments)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OptionSets)));
+    }
 
     /// <summary>
     /// Gets or sets the currently selected runtime target.
     /// </summary>
-    public object? Target
+    public IOperationTarget? Target
     {
-        get => _adapter.GetTarget(RawValue);
-        set => _adapter.SetTarget(RawValue, value);
+        get => _parameters.Target;
+        set => _parameters.Target = value;
     }
 
     /// <summary>
@@ -51,21 +71,21 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
     /// </summary>
     public string AdditionalArguments
     {
-        get => _adapter.GetAdditionalArguments(RawValue);
-        set => _adapter.SetAdditionalArguments(RawValue, value);
+        get => _parameters.AdditionalArguments;
+        set => _parameters.AdditionalArguments = value;
     }
 
     /// <summary>
     /// Gets the current live option-set instances.
     /// </summary>
-    public IReadOnlyList<object> OptionSets => _adapter.GetOptionSets(RawValue);
+    public IReadOnlyList<OperationOptions> OptionSets => _parameters.OptionsInstances;
 
     /// <summary>
     /// Ensures the provided option-set type exists and returns the live instance.
     /// </summary>
-    public object EnsureOptionSet(Type optionSetType)
+    public OperationOptions EnsureOptionSet(Type optionSetType)
     {
-        return _adapter.EnsureOptionSet(RawValue, optionSetType);
+        return _parameters.EnsureOptionsInstance(optionSetType);
     }
 
     /// <summary>
@@ -73,7 +93,7 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
     /// </summary>
     public bool RemoveOptionSet(Type optionSetType)
     {
-        return _adapter.RemoveOptionSet(RawValue, optionSetType);
+        return _parameters.RemoveOptionsInstance(optionSetType);
     }
 
     /// <summary>
@@ -81,15 +101,15 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
     /// </summary>
     public void ResetOptionSets()
     {
-        _adapter.ResetOptionSets(RawValue);
+        _parameters.ResetOptions();
     }
 
     /// <summary>
     /// Returns the display name for the provided option-set instance.
     /// </summary>
-    public string GetOptionSetName(object optionSet)
+    public string GetOptionSetName(OperationOptions optionSet)
     {
-        return _adapter.GetOptionSetName(optionSet);
+        return optionSet.Name;
     }
 
     /// <summary>

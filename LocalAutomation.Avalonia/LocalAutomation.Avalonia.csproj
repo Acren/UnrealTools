@@ -30,6 +30,7 @@
     <ProjectReference Include="..\LocalAutomation.Application\LocalAutomation.Application.csproj" />
     <ProjectReference Include="..\LocalAutomation.Persistence\LocalAutomation.Persistence.csproj" />
     <ProjectReference Include="..\LocalAutomation.Extensions.Abstractions\LocalAutomation.Extensions.Abstractions.csproj" />
+    <ProjectReference Include="..\LocalAutomation.Runtime\LocalAutomation.Runtime.csproj" />
   </ItemGroup>
 
   <Target Name="CopyBundledExtensions" AfterTargets="Build">
@@ -52,7 +53,7 @@
       <!-- Batch directly on each bundled extension project so wildcard expansion happens against a concrete source
            root instead of being treated as a literal transformed path. -->
       <BundledExtensionFiles Include="%(BundledExtensionProject.SourceRoot)**\*.*"
-                             Exclude="%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.pdb">
+                             Exclude="%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Runtime.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Runtime.pdb">
         <ExtensionFolderName>%(BundledExtensionProject.ExtensionFolderName)</ExtensionFolderName>
       </BundledExtensionFiles>
       <BundledExtensionDirectories Include="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(ExtensionFolderName)\%(RecursiveDir)')" />

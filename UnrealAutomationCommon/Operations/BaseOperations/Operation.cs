@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -24,6 +25,31 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
     protected override global::LocalAutomation.Runtime.OperationParameters CreateOperationParameters()
     {
         return new UnrealAutomationCommon.Operations.OperationParameters();
+    }
+
+    /// <summary>
+    /// Creates Unreal-specific parameter state and preserves any compatible shared state from an existing parameter set.
+    /// </summary>
+    public override global::LocalAutomation.Runtime.OperationParameters CreateParameters(global::LocalAutomation.Runtime.OperationParameters? existing = null)
+    {
+        UnrealAutomationCommon.Operations.OperationParameters parameters = (UnrealAutomationCommon.Operations.OperationParameters)base.CreateParameters(existing);
+        if (parameters.GetOptionsInstance(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions)) == null)
+        {
+            parameters.SetOptions(new UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions());
+        }
+
+        return parameters;
+    }
+
+    /// <summary>
+    /// Keeps freeform additional arguments available through the Unreal option pipeline without requiring app-level
+    /// adapter glue.
+    /// </summary>
+    public sealed override HashSet<System.Type> GetRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
+    {
+        HashSet<System.Type> optionTypes = base.GetRequiredOptionSetTypes(target);
+        optionTypes.Add(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions));
+        return optionTypes;
     }
 
     /// <summary>

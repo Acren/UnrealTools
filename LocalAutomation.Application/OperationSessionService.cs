@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using LocalAutomation.Runtime;
 
 namespace LocalAutomation.Application;
 
@@ -32,7 +33,7 @@ public sealed class OperationSessionService
     /// <summary>
     /// Creates a runtime operation instance for the selected operation type.
     /// </summary>
-    public object? CreateOperation(Type? operationType)
+    public Operation? CreateOperation(Type? operationType)
     {
         return _runtime.CreateOperation(operationType);
     }
@@ -40,7 +41,7 @@ public sealed class OperationSessionService
     /// <summary>
     /// Returns whether the selected operation supports multiple engine selections.
     /// </summary>
-    public bool SupportsMultipleEngines(object? operation)
+    public bool SupportsMultipleEngines(Operation? operation)
     {
         return _runtime.SupportsMultipleEngines(operation);
     }
@@ -48,7 +49,7 @@ public sealed class OperationSessionService
     /// <summary>
     /// Returns the required option set types for the selected operation and target.
     /// </summary>
-    public IReadOnlyList<Type> GetEnabledOptionSetTypes(object? operation, object? target)
+    public IReadOnlyList<Type> GetEnabledOptionSetTypes(Operation? operation, IOperationTarget? target)
     {
         return _runtime.GetRequiredOptionSetTypes(operation, target);
     }
@@ -56,7 +57,7 @@ public sealed class OperationSessionService
     /// <summary>
     /// Returns the current execution blocking reason for the selected operation and parameter state.
     /// </summary>
-    public string? GetExecuteDisabledReason(object? operation, object parameters)
+    public string? GetExecuteDisabledReason(Operation? operation, OperationParameters parameters)
     {
         return _runtime.CheckRequirements(operation, parameters);
     }
@@ -64,7 +65,7 @@ public sealed class OperationSessionService
     /// <summary>
     /// Returns whether the selected operation is currently runnable.
     /// </summary>
-    public bool CanExecute(object? operation, object parameters)
+    public bool CanExecute(Operation? operation, OperationParameters parameters)
     {
         return GetExecuteDisabledReason(operation, parameters) == null;
     }
@@ -72,7 +73,7 @@ public sealed class OperationSessionService
     /// <summary>
     /// Returns the command preview text for the selected operation and parameter state.
     /// </summary>
-    public string GetVisibleCommandText(object? operation, object parameters)
+    public string GetVisibleCommandText(Operation? operation, OperationParameters parameters)
     {
         return _runtime.GetVisibleCommandText(operation, parameters);
     }
@@ -80,7 +81,7 @@ public sealed class OperationSessionService
     /// <summary>
     /// Returns the first command preview line for clipboard copy actions.
     /// </summary>
-    public string? GetPrimaryCommandText(object? operation, object parameters)
+    public string? GetPrimaryCommandText(Operation? operation, OperationParameters parameters)
     {
         return _runtime.GetPrimaryCommandText(operation, parameters);
     }

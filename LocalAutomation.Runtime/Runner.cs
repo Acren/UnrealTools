@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 #nullable enable
 
@@ -17,8 +19,6 @@ public class Runner
 {
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly OperationParameters _operationParameters;
-    private readonly Action<string>? _deleteDirectoryIfExists;
-    private readonly Action<OperationParameters, ILogger>? _beforeRun;
     private readonly List<string> _errors = new();
     private readonly List<string> _warnings = new();
     private Task<OperationResult>? _currentTask;
@@ -27,12 +27,10 @@ public class Runner
     /// <summary>
     /// Creates a runtime runner for the provided operation and parameters.
     /// </summary>
-    public Runner(Operation operation, OperationParameters operationParameters, Action<string>? deleteDirectoryIfExists = null, Action<OperationParameters, ILogger>? beforeRun = null)
+    public Runner(Operation operation, OperationParameters operationParameters)
     {
         Operation = operation;
         _operationParameters = operationParameters;
-        _deleteDirectoryIfExists = deleteDirectoryIfExists;
-        _beforeRun = beforeRun;
     }
 
     /// <summary>
@@ -55,9 +53,24 @@ public class Runner
             throw new Exception("Task is already running");
         }
 
+        // Resolve the logger at execution time instead of construction time so the current host can swap in a
+        // session-specific forwarding logger before the run starts.
+        try
+        {
+            _logger = ApplicationLogger.Logger;
+        }
+        catch (InvalidOperationException)
+        {
+            _logger = NullLogger.Instance;
+        }
+
         string outputPath = Operation.GetOutputPath(_operationParameters);
-        _deleteDirectoryIfExists?.Invoke(outputPath);
-        _beforeRun?.Invoke(_operationParameters, _logger);
+        if (Directory.Exists(outputPath))
+        {
+            Directory.Delete(outputPath, recursive: true);
+        }
+
+        Operation.PrepareForExecution(_operationParameters, _logger);
 
         EventStreamLogger eventLogger = new();
         eventLogger.Output += (level, output) =>
