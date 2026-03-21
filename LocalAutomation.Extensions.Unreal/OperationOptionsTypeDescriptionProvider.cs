@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using UnrealAutomationCommon;
-using UnrealAutomationCommon.Operations;
 
 namespace LocalAutomation.Extensions.Unreal;
 
@@ -14,22 +13,12 @@ namespace LocalAutomation.Extensions.Unreal;
 /// </summary>
 public sealed class OperationOptionsTypeDescriptionProvider : TypeDescriptionProvider
 {
-    private static readonly TypeDescriptionProvider BaseProvider = TypeDescriptor.GetProvider(typeof(OperationOptions));
-
     /// <summary>
-    /// Creates a provider that wraps the default provider for <see cref="OperationOptions"/>.
-    /// </summary>
-    public OperationOptionsTypeDescriptionProvider()
-        : base(BaseProvider)
-    {
-    }
-
-    /// <summary>
-    /// Returns a custom descriptor that unwraps <see cref="Option{T}"/> properties into editable value properties.
-    /// </summary>
+     /// Returns a custom descriptor that unwraps <see cref="Option{T}"/> properties into editable value properties.
+     /// </summary>
     public override ICustomTypeDescriptor GetTypeDescriptor(Type objectType, object? instance)
     {
-        return new OperationOptionsTypeDescriptor(base.GetTypeDescriptor(objectType, instance));
+        return new OperationOptionsTypeDescriptor(objectType, instance);
     }
 
     /// <summary>
@@ -37,12 +26,14 @@ public sealed class OperationOptionsTypeDescriptionProvider : TypeDescriptionPro
     /// </summary>
     private sealed class OperationOptionsTypeDescriptor : CustomTypeDescriptor
     {
+        private readonly Type _objectType;
+
         /// <summary>
-        /// Creates a wrapper over the default type descriptor.
-        /// </summary>
-        public OperationOptionsTypeDescriptor(ICustomTypeDescriptor parent)
-            : base(parent)
+         /// Creates a wrapper over the default type descriptor.
+         /// </summary>
+        public OperationOptionsTypeDescriptor(Type objectType, object? instance)
         {
+            _objectType = objectType;
         }
 
         /// <summary>
@@ -59,7 +50,7 @@ public sealed class OperationOptionsTypeDescriptionProvider : TypeDescriptionPro
         public override PropertyDescriptorCollection GetProperties(Attribute[]? attributes)
         {
             List<PropertyDescriptor> descriptors = new();
-            foreach (PropertyDescriptor property in base.GetProperties(attributes).Cast<PropertyDescriptor>())
+            foreach (PropertyDescriptor property in GetBaseProperties(attributes).Cast<PropertyDescriptor>())
             {
                 if (property.Attributes.OfType<BrowsableAttribute>().FirstOrDefault()?.Browsable == false)
                 {
@@ -77,13 +68,29 @@ public sealed class OperationOptionsTypeDescriptionProvider : TypeDescriptionPro
         /// </summary>
         private static PropertyDescriptor? TryCreateWrappedDescriptor(PropertyDescriptor property)
         {
-            if (!property.PropertyType.IsGenericType || property.PropertyType.GetGenericTypeDefinition() != typeof(Option<>))
+            if (!property.PropertyType.IsSubclassOf(typeof(global::LocalAutomation.Runtime.Option)))
             {
                 return null;
             }
 
-            PropertyInfo? valueProperty = property.PropertyType.GetProperty(nameof(Option<bool>.Value));
+            PropertyInfo? valueProperty = property.PropertyType.GetProperty(nameof(global::LocalAutomation.Runtime.Option<bool>.Value));
             return valueProperty == null ? null : new WrappedOptionPropertyDescriptor(property, valueProperty);
+        }
+
+        /// <summary>
+        /// Returns the underlying CLR properties while bypassing this provider so wrapped option projection does not
+        /// recurse through the TypeDescriptor pipeline.
+        /// </summary>
+        private PropertyDescriptorCollection GetBaseProperties(Attribute[]? attributes)
+        {
+            List<PropertyDescriptor> descriptors = new();
+            foreach (PropertyInfo property in _objectType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                Attribute[] propertyAttributes = property.GetCustomAttributes(true).OfType<Attribute>().ToArray();
+                descriptors.Add(TypeDescriptor.CreateProperty(_objectType, property.Name, property.PropertyType, propertyAttributes));
+            }
+
+            return new PropertyDescriptorCollection(descriptors.ToArray(), true);
         }
     }
 

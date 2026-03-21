@@ -1,4 +1,6 @@
-﻿namespace UnrealAutomationCommon.Operations.OperationOptionTypes
+﻿using global::LocalAutomation.Runtime;
+
+namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
     public class PackageOptions : OperationOptions
     {

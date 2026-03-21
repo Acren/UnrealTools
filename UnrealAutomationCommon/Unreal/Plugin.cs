@@ -6,6 +6,7 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Semver;
+using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
@@ -131,16 +132,6 @@ namespace UnrealAutomationCommon.Unreal
             {
                 AppLogger.LoggerInstance.LogError($"Plugin descriptor could not be loaded from {UPluginPath}");
             }
-        }
-
-        public override bool SupportsConfiguration(BuildConfiguration configuration)
-        {
-            if (EngineInstance == null)
-            {
-                return false;
-            }
-
-            return EngineInstance.SupportsConfiguration(configuration);
         }
 
         public bool UpdateVersionInteger()

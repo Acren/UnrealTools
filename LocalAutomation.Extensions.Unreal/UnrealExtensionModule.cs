@@ -9,6 +9,9 @@ using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
+using RuntimeTarget = global::LocalAutomation.Runtime.IOperationTarget;
+using RuntimeOperationOptions = global::LocalAutomation.Runtime.OperationOptions;
+using UnrealOperation = global::UnrealAutomationCommon.Operations.BaseOperations.Operation;
 
 namespace LocalAutomation.Extensions.Unreal;
 
@@ -81,7 +84,7 @@ public sealed class UnrealExtensionModule : IExtensionModule
             return;
         }
 
-        TypeDescriptor.AddProviderTransparent(new OperationOptionsTypeDescriptionProvider(), typeof(OperationOptions));
+        TypeDescriptor.AddProviderTransparent(new OperationOptionsTypeDescriptionProvider(), typeof(RuntimeOperationOptions));
         _registeredOperationOptionsProvider = true;
     }
 
@@ -107,13 +110,13 @@ public sealed class UnrealExtensionModule : IExtensionModule
             typeof(VerifyDeployment)
         };
 
-        orderedTypes.AddRange(TypeUtils.GetSubclassesOf(typeof(Operation)));
+        orderedTypes.AddRange(TypeUtils.GetSubclassesOf(typeof(UnrealOperation)));
 
         int sortOrder = 0;
         List<OperationDescriptor> descriptors = new();
         foreach (Type operationType in orderedTypes.Distinct())
         {
-            Operation operation = Operation.CreateOperation(operationType);
+            UnrealOperation operation = (UnrealOperation)UnrealOperation.CreateOperation(operationType);
             descriptors.Add(new OperationDescriptor(
                 id: BuildOperationId(operationType),
                 displayName: operation.OperationName,
@@ -145,7 +148,7 @@ public sealed class UnrealExtensionModule : IExtensionModule
         Type? currentType = operationType;
         while (currentType != null)
         {
-            if (currentType.IsGenericType && currentType.GetGenericTypeDefinition() == typeof(Operation<>))
+            if (currentType.IsGenericType && currentType.GetGenericTypeDefinition() == typeof(global::UnrealAutomationCommon.Operations.BaseOperations.Operation<>))
             {
                 supportedTargetTypes.Add(currentType.GetGenericArguments()[0]);
                 break;
@@ -156,7 +159,7 @@ public sealed class UnrealExtensionModule : IExtensionModule
 
         if (supportedTargetTypes.Count == 0)
         {
-            supportedTargetTypes.Add(typeof(IOperationTarget));
+            supportedTargetTypes.Add(typeof(RuntimeTarget));
         }
 
         return supportedTargetTypes;
@@ -170,14 +173,14 @@ public sealed class UnrealExtensionModule : IExtensionModule
         registry.RegisterContextAction(new ContextActionDescriptor(
             id: "unreal.target.open-directory",
             displayName: "Open Directory",
-            targetType: typeof(IOperationTarget),
-            execute: target => RunProcess.OpenDirectory(((IOperationTarget)target).TargetDirectory)));
+            targetType: typeof(RuntimeTarget),
+            execute: target => RunProcess.OpenDirectory(((RuntimeTarget)target).TargetDirectory)));
 
         registry.RegisterContextAction(new ContextActionDescriptor(
             id: "unreal.target.open-output",
             displayName: "Open Output",
-            targetType: typeof(IOperationTarget),
-            execute: target => RunProcess.OpenDirectory(((IOperationTarget)target).OutputDirectory)));
+            targetType: typeof(RuntimeTarget),
+            execute: target => RunProcess.OpenDirectory(((RuntimeTarget)target).OutputDirectory)));
 
         registry.RegisterContextAction(new ContextActionDescriptor(
             id: "unreal.project.open-staged-build",

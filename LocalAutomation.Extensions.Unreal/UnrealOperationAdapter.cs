@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using LocalAutomation.Extensions.Abstractions;
-using UnrealAutomationCommon.Operations;
-using UnrealAutomationCommon.Operations.BaseOperations;
+using RuntimeTarget = global::LocalAutomation.Runtime.IOperationTarget;
+using RuntimeOperationOptions = global::LocalAutomation.Runtime.OperationOptions;
+using UnrealOperation = global::UnrealAutomationCommon.Operations.BaseOperations.Operation;
+using UnrealOperationParameters = global::UnrealAutomationCommon.Operations.OperationParameters;
 
 namespace LocalAutomation.Extensions.Unreal;
 
@@ -22,7 +24,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public bool CanHandle(Type operationType)
     {
-        return typeof(Operation).IsAssignableFrom(operationType);
+        return typeof(UnrealOperation).IsAssignableFrom(operationType);
     }
 
     /// <summary>
@@ -30,7 +32,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public object CreateOperation(Type operationType)
     {
-        return Operation.CreateOperation(operationType);
+        return UnrealOperation.CreateOperation(operationType);
     }
 
     /// <summary>
@@ -38,7 +40,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public object CreateParameters()
     {
-        return new OperationParameters();
+        return new UnrealOperationParameters();
     }
 
     /// <summary>
@@ -46,12 +48,12 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public void SetTarget(object parameters, object? target)
     {
-        if (parameters is not OperationParameters typedParameters)
+        if (parameters is not UnrealOperationParameters typedParameters)
         {
             throw new ArgumentException("Parameters are not Unreal operation parameters", nameof(parameters));
         }
 
-        typedParameters.Target = target as IOperationTarget;
+        typedParameters.Target = target as RuntimeTarget;
     }
 
     /// <summary>
@@ -59,7 +61,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public object? GetTarget(object parameters)
     {
-        if (parameters is not OperationParameters typedParameters)
+        if (parameters is not UnrealOperationParameters typedParameters)
         {
             throw new ArgumentException("Parameters are not Unreal operation parameters", nameof(parameters));
         }
@@ -72,7 +74,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public string GetAdditionalArguments(object parameters)
     {
-        if (parameters is not OperationParameters typedParameters)
+        if (parameters is not UnrealOperationParameters typedParameters)
         {
             throw new ArgumentException("Parameters are not Unreal operation parameters", nameof(parameters));
         }
@@ -85,7 +87,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public void SetAdditionalArguments(object parameters, string additionalArguments)
     {
-        if (parameters is not OperationParameters typedParameters)
+        if (parameters is not UnrealOperationParameters typedParameters)
         {
             throw new ArgumentException("Parameters are not Unreal operation parameters", nameof(parameters));
         }
@@ -98,7 +100,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public IReadOnlyList<object> GetOptionSets(object parameters)
     {
-        if (parameters is not OperationParameters typedParameters)
+        if (parameters is not UnrealOperationParameters typedParameters)
         {
             throw new ArgumentException("Parameters are not Unreal operation parameters", nameof(parameters));
         }
@@ -111,7 +113,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public object EnsureOptionSet(object parameters, Type optionSetType)
     {
-        if (parameters is not OperationParameters typedParameters)
+        if (parameters is not UnrealOperationParameters typedParameters)
         {
             throw new ArgumentException("Parameters are not Unreal operation parameters", nameof(parameters));
         }
@@ -124,7 +126,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public bool RemoveOptionSet(object parameters, Type optionSetType)
     {
-        if (parameters is not OperationParameters typedParameters)
+        if (parameters is not UnrealOperationParameters typedParameters)
         {
             throw new ArgumentException("Parameters are not Unreal operation parameters", nameof(parameters));
         }
@@ -137,7 +139,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public void ResetOptionSets(object parameters)
     {
-        if (parameters is not OperationParameters typedParameters)
+        if (parameters is not UnrealOperationParameters typedParameters)
         {
             throw new ArgumentException("Parameters are not Unreal operation parameters", nameof(parameters));
         }
@@ -150,7 +152,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public string GetOptionSetName(object optionSet)
     {
-        if (optionSet is not OperationOptions typedOptions)
+        if (optionSet is not RuntimeOperationOptions typedOptions)
         {
             throw new ArgumentException("Option set is not a supported Unreal option model", nameof(optionSet));
         }
@@ -163,7 +165,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public IReadOnlyList<Type> GetRequiredOptionSetTypes(object operation, object? target)
     {
-        if (operation is not Operation typedOperation || target is not IOperationTarget typedTarget)
+        if (operation is not UnrealOperation typedOperation || target is not RuntimeTarget typedTarget)
         {
             return Array.Empty<Type>();
         }
@@ -185,7 +187,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public bool SupportsMultipleEngines(object operation)
     {
-        return operation is Operation typedOperation && typedOperation.SupportsMultipleEngines;
+        return operation is UnrealOperation typedOperation && typedOperation.SupportsMultipleEngines;
     }
 
     /// <summary>
@@ -193,7 +195,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public string? CheckRequirements(object operation, object parameters)
     {
-        if (operation is not Operation typedOperation || parameters is not OperationParameters typedParameters)
+        if (operation is not UnrealOperation typedOperation || parameters is not UnrealOperationParameters typedParameters)
         {
             return "Operation parameters are incompatible";
         }
@@ -206,7 +208,7 @@ public sealed class UnrealOperationAdapter : IOperationAdapter
     /// </summary>
     public IReadOnlyList<string> GetCommandTexts(object operation, object parameters)
     {
-        if (operation is not Operation typedOperation || parameters is not OperationParameters typedParameters)
+        if (operation is not UnrealOperation typedOperation || parameters is not UnrealOperationParameters typedParameters)
         {
             return Array.Empty<string>();
         }

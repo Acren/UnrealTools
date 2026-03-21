@@ -1,10 +1,12 @@
+using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
+using RuntimeTarget = LocalAutomation.Runtime.OperationTarget;
 
 namespace UnrealAutomationCommon.Operations.BaseOperations
 {
     // Centralize the direct Build.bat wiring so all UBT-backed compile operations stay consistent.
-    public abstract class BuildBatOperation<T> : CommandProcessOperation<T> where T : OperationTarget
+    public abstract class BuildBatOperation<T> : CommandProcessOperation<T> where T : RuntimeTarget
     {
         // Validate shared direct-UBT overrides once so every Build.bat-backed operation enforces the same limits.
         public override string CheckRequirementsSatisfied(OperationParameters operationParameters)

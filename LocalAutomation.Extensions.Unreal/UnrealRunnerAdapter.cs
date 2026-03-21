@@ -7,6 +7,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
+using RuntimeOperationResult = global::LocalAutomation.Runtime.OperationResult;
+using UnrealOperation = global::UnrealAutomationCommon.Operations.BaseOperations.Operation;
+using UnrealOperationParameters = global::UnrealAutomationCommon.Operations.OperationParameters;
 
 namespace LocalAutomation.Extensions.Unreal;
 
@@ -25,7 +28,7 @@ public sealed class UnrealRunnerAdapter : IRunnerAdapter
     /// </summary>
     public bool CanHandle(object operation)
     {
-        return operation is Operation;
+        return operation is UnrealOperation;
     }
 
     /// <summary>
@@ -34,12 +37,12 @@ public sealed class UnrealRunnerAdapter : IRunnerAdapter
     /// </summary>
     public ExecutionSession StartExecution(object operation, object parameters)
     {
-        if (operation is not Operation typedOperation)
+        if (operation is not UnrealOperation typedOperation)
         {
             throw new ArgumentException("Operation is not a supported Unreal operation", nameof(operation));
         }
 
-        if (parameters is not OperationParameters typedParameters)
+        if (parameters is not UnrealOperationParameters typedParameters)
         {
             throw new ArgumentException("Parameters are not Unreal operation parameters", nameof(parameters));
         }
@@ -78,7 +81,7 @@ public sealed class UnrealRunnerAdapter : IRunnerAdapter
     {
         try
         {
-            OperationResult result = await runner.Run();
+            RuntimeOperationResult result = await runner.Run();
             session.Success = result.Success;
         }
         catch (Exception ex)

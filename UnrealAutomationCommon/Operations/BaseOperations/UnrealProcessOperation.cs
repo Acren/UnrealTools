@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Linq;
+using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 using Microsoft.Extensions.Logging;
@@ -7,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace UnrealAutomationCommon.Operations.BaseOperations
 {
     // Operation type for running Unreal processes
-    public abstract class UnrealProcessOperation<T> : CommandProcessOperation<T> where T : OperationTarget
+    public abstract class UnrealProcessOperation<T> : CommandProcessOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget
     {
         protected override void OnProcessEnded(OperationResult result)
         {
@@ -29,18 +30,14 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 {
                     string reportFilePath = OutputPaths.GetTestReportFilePath(GetOutputPath(OperationParameters));
                     TestReport report = TestReport.Load(reportFilePath);
-                    if (report != null)
-                    {
-                        result.TestReport = report;
-                    }
-                    else
+                    if (report == null)
                     {
                         throw new Exception("Expected test report at " + reportFilePath + " but didn't find one");
                     }
 
-                    if (result.TestReport != null)
+                    if (report != null)
                     {
-                        foreach (Test test in result.TestReport.Tests)
+                        foreach (Test test in report.Tests)
                         {
                             Logger.Log(test.State == TestState.Success ? LogLevel.Information : LogLevel.Error, EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath);
                             foreach (TestEntry entry in test.Entries)
@@ -50,9 +47,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                                 }
                         }
 
-                        int testsPassed = result.TestReport.Tests.Count(t => t.State == TestState.Success);
-                        bool allPassed = testsPassed == result.TestReport.Tests.Count;
-                        Logger.Log(allPassed ? LogLevel.Information : LogLevel.Error, testsPassed + " of " + result.TestReport.Tests.Count + " tests passed");
+                        int testsPassed = report.Tests.Count(t => t.State == TestState.Success);
+                        bool allPassed = testsPassed == report.Tests.Count;
+                        Logger.Log(allPassed ? LogLevel.Information : LogLevel.Error, testsPassed + " of " + report.Tests.Count + " tests passed");
                     }
 
                     if (report.Failed > 0)

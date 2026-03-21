@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.IO;
+using LocalAutomation.Runtime;
 using Newtonsoft.Json;
 using Semver;
 using UnrealAutomationCommon.Operations;
@@ -34,7 +35,10 @@ namespace UnrealAutomationCommon.Unreal
             IsSourceBuild = File.Exists(Path.Combine(TargetPath, "Default.uprojectdirs"));
         }
 
-        public override bool SupportsConfiguration(BuildConfiguration configuration)
+        /// <summary>
+        /// Returns whether this Unreal engine install can build or launch with the requested configuration.
+        /// </summary>
+        public bool SupportsConfiguration(BuildConfiguration configuration)
         {
             if (configuration == BuildConfiguration.Debug
                 || configuration == BuildConfiguration.Test)

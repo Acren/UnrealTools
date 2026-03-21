@@ -68,7 +68,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
       
-        protected override async Task<OperationResult> OnExecuted(CancellationToken token)
+        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             Token = token;
             
@@ -859,7 +859,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return null;
         }
 
-        protected override async Task<OperationResult> OnExecuted(CancellationToken token)
+        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             Plugin plugin = GetTarget(OperationParameters);
 

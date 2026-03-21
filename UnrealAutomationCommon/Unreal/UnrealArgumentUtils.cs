@@ -1,4 +1,4 @@
-﻿using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {

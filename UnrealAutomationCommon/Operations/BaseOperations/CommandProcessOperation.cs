@@ -5,10 +5,12 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using UnrealAutomationCommon.Operations;
+#nullable enable
 
 namespace UnrealAutomationCommon.Operations.BaseOperations
 {
-    public abstract class CommandProcessOperation<T> : Operation<T> where T : OperationTarget
+    public abstract class CommandProcessOperation<T> : Operation<T> where T : global::LocalAutomation.Runtime.OperationTarget
     {
         private string _fileName;
         private Process _process;
@@ -23,12 +25,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         {
         }
 
-        protected override IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
+        protected override IEnumerable<Command> BuildCommands(UnrealAutomationCommon.Operations.OperationParameters operationParameters)
         {
             return new List<Command> { BuildCommand(operationParameters) };
         }
 
-        protected override async Task<OperationResult> OnExecuted(CancellationToken token)
+        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             Command command = BuildCommand(OperationParameters);
 

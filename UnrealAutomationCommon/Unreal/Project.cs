@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
@@ -120,16 +121,6 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         public Package GetProvidedPackage(Engine engineContext) => GetStagedPackage(engineContext);
-
-        public override bool SupportsConfiguration(BuildConfiguration configuration)
-        {
-            if (EngineInstance == null)
-            {
-                return false;
-            }
-
-            return EngineInstance.SupportsConfiguration(configuration);
-        }
 
         public override void LoadDescriptor()
         {

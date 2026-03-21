@@ -1,14 +1,15 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public abstract class LaunchPackage<T> : UnrealProcessOperation<T> where T : OperationTarget, IPackageProvider
+    public abstract class LaunchPackage<T> : UnrealProcessOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget, IPackageProvider
     {
         public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
         {
@@ -35,7 +36,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new Command(GetTarget(operationParameters).GetProvidedPackage(operationParameters.Engine).ExecutablePath, args);
         }
 
-        protected override async Task<OperationResult> OnExecuted(CancellationToken token)
+        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
             if (automationOptions is { RunTests: { Value: true } })
@@ -61,7 +62,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            return await base.OnExecuted(token);
+            return await base.OnExecutedUnreal(token);
         }
 
         protected override string GetOperationName()

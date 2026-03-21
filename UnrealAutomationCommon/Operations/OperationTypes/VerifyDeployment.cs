@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class VerifyDeployment : Operation<Plugin>
     {
-        protected override async Task<OperationResult> OnExecuted(CancellationToken token)
+        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             Plugin plugin = GetTarget(OperationParameters);
 

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
@@ -24,11 +24,34 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return "Build Editor";
         }
 
-        public override bool SupportsConfiguration(BuildConfiguration configuration)
+        /// <summary>
+        /// Keeps the BuildCookRun editor flow constrained to Development because UAT forces that configuration
+        /// internally even when callers request something else.
+        /// </summary>
+        private static bool SupportsRequestedConfiguration(BuildConfiguration configuration)
         {
-            // It seems when UAT calls UBT for this it always passes Development config
-            // Disallow other configurations to prevent unexpected results
             return configuration == BuildConfiguration.Development;
+        }
+
+        /// <summary>
+        /// Rejects unsupported build configurations before command generation so the user sees a clear validation
+        /// message instead of a misleading UAT invocation.
+        /// </summary>
+        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
+        {
+            string baseError = base.CheckRequirementsSatisfied(operationParameters);
+            if (baseError != null)
+            {
+                return baseError;
+            }
+
+            BuildConfiguration configuration = operationParameters.RequestOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration;
+            if (!SupportsRequestedConfiguration(configuration))
+            {
+                return "Configuration is not supported";
+            }
+
+            return null;
         }
     }
 }

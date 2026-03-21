@@ -1,9 +1,10 @@
-﻿using UnrealAutomationCommon.Operations.BaseOperations;
+using UnrealAutomationCommon.Operations;
+using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public abstract class LaunchEditor<T> : UnrealProcessOperation<T> where T : OperationTarget, IEngineInstanceProvider
+    public abstract class LaunchEditor<T> : UnrealProcessOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget, IEngineInstanceProvider
     {
         protected override Command BuildCommand(OperationParameters operationParameters)
         {

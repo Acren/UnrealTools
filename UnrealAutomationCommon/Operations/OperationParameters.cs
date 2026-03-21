@@ -1,286 +1,97 @@
-﻿using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
-using System.Runtime.CompilerServices;
+using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
-namespace UnrealAutomationCommon.Operations
+#nullable enable
+
+namespace UnrealAutomationCommon.Operations;
+
+/// <summary>
+/// Adds Unreal-specific environment resolution on top of the shared runtime parameter model.
+/// </summary>
+public class OperationParameters : global::LocalAutomation.Runtime.UnrealRuntimeOperationParameters<Engine>
 {
-    public delegate void RetryHandler(Exception ex);
+    /// <summary>
+    /// Gets the effective Unreal engine for the current target and option state.
+    /// </summary>
+    [JsonIgnore]
+    public Engine? Engine => GetEnvironment();
 
-    public class OperationParameters : INotifyPropertyChanged
+    /// <summary>
+    /// Preserves the existing Unreal-specific override property name while delegating storage to the runtime base.
+    /// </summary>
+    [JsonIgnore]
+    public Engine? EngineOverride
     {
-        private string _additionalArguments;
+        get => EnvironmentOverride;
+        set => EnvironmentOverride = value;
+    }
 
-        private IOperationTarget _target;
-
-        private BindingList<OperationOptions> _optionsInstances;
-
-        // Bubble nested option changes up to the parameters object so the UI refreshes when a checkbox changes.
-        private void HandleOptionsInstancePropertyChanged(object sender, PropertyChangedEventArgs args)
+    /// <summary>
+    /// Mirrors the freeform argument string into the dedicated Unreal option set when present.
+    /// </summary>
+    public override string AdditionalArguments
+    {
+        get
         {
-            OnPropertyChanged(nameof(OptionsInstances));
-            OnPropertyChanged(nameof(Engine));
-            OnPropertyChanged(nameof(AdditionalArguments));
+            AdditionalArgumentsOptions? existingOptions = GetOptionsInstance(typeof(AdditionalArgumentsOptions)) as AdditionalArgumentsOptions;
+            return existingOptions?.Arguments.Value ?? base.AdditionalArguments;
         }
-
-        // Rebind option change listeners whenever the option set list changes or is replaced.
-        private void RefreshOptionsSubscriptions()
+        set
         {
-            if (_optionsInstances == null)
-            {
-                return;
-            }
+            string normalizedValue = value ?? string.Empty;
+            base.AdditionalArguments = normalizedValue;
 
-            foreach (OperationOptions options in _optionsInstances)
+            AdditionalArgumentsOptions? existingOptions = GetOptionsInstance(typeof(AdditionalArgumentsOptions)) as AdditionalArgumentsOptions;
+            if (existingOptions != null && existingOptions.Arguments.Value != normalizedValue)
             {
-                options.PropertyChanged -= HandleOptionsInstancePropertyChanged;
-                options.PropertyChanged += HandleOptionsInstancePropertyChanged;
+                existingOptions.Arguments.Value = normalizedValue;
             }
         }
+    }
 
-        public OperationParameters()
+    /// <summary>
+    /// Resolves the effective Unreal engine from explicit overrides, engine-version options, or the target itself.
+    /// </summary>
+    public override Engine? GetEnvironment()
+    {
+        if (EnvironmentOverride != null)
         {
-            OptionsInstances = new BindingList<OperationOptions>();
+            return EnvironmentOverride;
         }
 
-        // Delegate used to determine if failed action should be retried or cancelled
-        // Useful for triggering "retry?" message boxes
-        [JsonIgnore]
-        public RetryHandler RetryHandler { get; set; }
-
-        [JsonIgnore]
-        public string OutputPathOverride { get; set; }
-
-        [JsonIgnore]
-        public Engine EngineOverride { get; set; }
-
-        [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-        public BindingList<OperationOptions> OptionsInstances
+        EngineVersionOptions? versionOptions = FindOptions<EngineVersionOptions>();
+        if (versionOptions != null && versionOptions.EnabledVersions.Value.Count > 0)
         {
-            get => _optionsInstances;
-            set
+            EngineVersion? version = versionOptions.EnabledVersions.Value[0];
+            if (version != null)
             {
-                // Sort initial options - note this creates a new BindingList instance
-                List<OperationOptions> initialOptions = value.ToList();
-                initialOptions.Sort();
-                _optionsInstances = new BindingList<OperationOptions>(initialOptions);
-
-                OptionsInstances.ListChanged += (sender, args) =>
-                {
-                    RefreshOptionsSubscriptions();
-                    OnPropertyChanged(nameof(OptionsInstances));
-                    OnPropertyChanged(nameof(Engine));
-                    OnPropertyChanged(nameof(AdditionalArguments));
-                };
-
-                RefreshOptionsSubscriptions();
-                UpdateOptionsTarget();
+                return EngineFinder.GetEngineInstall(version);
             }
         }
 
-        public IOperationTarget Target
+        if (Target is not IEngineInstanceProvider engineInstanceProvider)
         {
-            get => _target;
-            set
-            {
-                if (_target != value)
-                {
-                    if (_target != null)
-                    {
-                        _target.PropertyChanged -= TargetChanged;
-                    }
-
-                    _target = value;
-                    if (_target != null)
-                    {
-                        _target.PropertyChanged += TargetChanged;
-                    }
-
-                    // Notify options about new target
-                    UpdateOptionsTarget();
-
-                    OnPropertyChanged();
-                }
-
-                void TargetChanged(object sender, PropertyChangedEventArgs args)
-                {
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        // Treat the active engine as derived runtime state only. Serializing this getter causes Json.NET to invoke
-        // RequestOptions<EngineVersionOptions>(), which can mutate option collections during persistence and recurse
-        // back into save handlers.
-        [JsonIgnore]
-        public Engine Engine
-        {
-            get
-            {
-                // Return engine install override if there is one
-                if (EngineOverride != null)
-                {
-                    return EngineOverride;
-                }
-
-                var VersionOptions = RequestOptions<EngineVersionOptions>();
-                if (VersionOptions != null && VersionOptions.EnabledVersions.Value.Count > 0)
-                {
-                    EngineVersion version = VersionOptions.EnabledVersions.Value[0];
-                    if (version != null)
-                    {
-                        return EngineFinder.GetEngineInstall(version);
-                    }
-                }
-
-                if (Target is not IEngineInstanceProvider)
-                {
-                    return null;
-                }
-
-                IEngineInstanceProvider engineInstanceProvider = Target as IEngineInstanceProvider;
-                return engineInstanceProvider?.EngineInstance;
-            }
-        }
-
-        public string AdditionalArguments
-        {
-            get
-            {
-                AdditionalArgumentsOptions existingOptions = GetOptionsInstance(typeof(AdditionalArgumentsOptions)) as AdditionalArgumentsOptions;
-                return existingOptions?.Arguments.Value ?? _additionalArguments;
-            }
-            set
-            {
-                string normalizedValue = value ?? string.Empty;
-                _additionalArguments = normalizedValue;
-
-                AdditionalArgumentsOptions existingOptions = GetOptionsInstance(typeof(AdditionalArgumentsOptions)) as AdditionalArgumentsOptions;
-                if (existingOptions != null && existingOptions.Arguments.Value != normalizedValue)
-                {
-                    existingOptions.Arguments.Value = normalizedValue;
-                }
-
-                OnPropertyChanged();
-            }
-        }
-
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        public T FindOptions<T>() where T : OperationOptions
-        {
-            foreach (OperationOptions options in OptionsInstances)
-            {
-                if (options.GetType() == typeof(T))
-                {
-                    return (T)options.Clone();
-                }
-            }
-
             return null;
         }
 
-        // Return the live options instance stored on this parameter object so new UI layers can bind directly to the
-        // actual state instead of working with the historical clone-based helpers above.
-        public OperationOptions GetOptionsInstance(Type optionsType)
-        {
-            foreach (OperationOptions options in OptionsInstances)
-            {
-                if (options.GetType() == optionsType)
-                {
-                    return options;
-                }
-            }
+        return engineInstanceProvider.EngineInstance;
+    }
 
-            return null;
-        }
+    /// <summary>
+    /// Keeps engine-derived state observable for hosts that still bind directly to this legacy type.
+    /// </summary>
+    protected override void OnOptionsStateChanged()
+    {
+        OnPropertyChanged(nameof(Engine));
+    }
 
-        public T RequestOptions<T>() where T : OperationOptions
-        {
-            T options = FindOptions<T>();
-
-            if (options != null)
-            {
-                return options;
-            }
-
-            T newOptions = (T)Activator.CreateInstance(typeof(T));
-            SetOptions(newOptions);
-            return (T)newOptions.Clone();
-        }
-
-        // Ensure a live options instance exists for the provided runtime type and return the stored instance so host
-        // UIs can edit it directly.
-        public OperationOptions EnsureOptionsInstance(Type optionsType)
-        {
-            OperationOptions existingOptions = GetOptionsInstance(optionsType);
-            if (existingOptions != null)
-            {
-                return existingOptions;
-            }
-
-            OperationOptions newOptions = (OperationOptions)Activator.CreateInstance(optionsType);
-            SetOptions(newOptions);
-            return newOptions;
-        }
-
-        public void SetOptions<T>(T options) where T : OperationOptions
-        {
-            if (FindOptions<T>() != null)
-            {
-                throw new Exception("Parameters already has options of this type");
-            }
-
-            // Find index to insert at
-            int desiredIndex = 0;
-            foreach (OperationOptions optionsInstance in OptionsInstances)
-            {
-                if (options.CompareTo(optionsInstance) < 0)
-                {
-                    break;
-                }
-
-                desiredIndex++;
-            }
-
-            options.OperationTarget = Target;
-
-            OptionsInstances.Insert(desiredIndex, options);
-        }
-
-        // Remove the live options instance for the provided runtime type when a target or operation no longer needs
-        // that option set.
-        public bool RemoveOptionsInstance(Type optionsType)
-        {
-            OperationOptions options = GetOptionsInstance(optionsType);
-            if (options == null)
-            {
-                return false;
-            }
-
-            return OptionsInstances.Remove(options);
-        }
-
-        public void ResetOptions()
-        {
-            OptionsInstances.Clear();
-        }
-
-        private void UpdateOptionsTarget()
-        {
-            foreach (OperationOptions options in OptionsInstances.ToList())
-            {
-                options.OperationTarget = Target;
-            }
-        }
-
-        private void OnPropertyChanged([CallerMemberName] string name = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
+    /// <summary>
+    /// Keeps engine-derived state observable when the active target changes.
+    /// </summary>
+    protected override void OnTargetStateChanged()
+    {
+        OnPropertyChanged(nameof(Engine));
     }
 }

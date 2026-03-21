@@ -1,4 +1,4 @@
-﻿using LocalAutomation.Core;
+﻿using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon
 {
@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon
     /// Preserves the existing UnrealAutomationCommon command API while delegating the shared runtime model to
     /// LocalAutomation.Core.
     /// </summary>
-    public class Command : CommandSpec
+    public class Command : LocalAutomation.Runtime.Command
     {
         /// <summary>
         /// Creates a command from a file path and raw argument string.

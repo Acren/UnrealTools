@@ -1,135 +1,57 @@
-﻿using System;
-using System.ComponentModel;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using Newtonsoft.Json;
-using UnrealAutomationCommon.Annotations;
+namespace UnrealAutomationCommon.Operations;
 
-namespace UnrealAutomationCommon.Operations
+#nullable enable
+
+/// <summary>
+/// Preserves the historical UnrealAutomationCommon option wrapper type while the canonical implementation lives in the
+/// shared runtime project.
+/// </summary>
+public class Option : global::LocalAutomation.Runtime.Option
 {
-    public class Option : INotifyPropertyChanged
-    {
-        public event PropertyChangedEventHandler PropertyChanged;
+}
 
-        [NotifyPropertyChangedInvocator]
-        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
+/// <summary>
+/// Preserves the historical generic option wrapper type while delegating behavior to the shared runtime model.
+/// </summary>
+public class Option<T> : global::LocalAutomation.Runtime.Option<T>
+{
+    /// <summary>
+    /// Creates a typed option with the provided default value.
+    /// </summary>
+    public Option(T defaultValue)
+        : base(defaultValue)
+    {
     }
 
-    [TypeConverter(typeof(ExpandableObjectConverter))]
-    public class Option<T> : Option
+    /// <summary>
+    /// Creates a typed option and invokes a callback whenever the wrapped value changes.
+    /// </summary>
+    public Option(System.Action changedCallback, T defaultValue)
+        : base(changedCallback, defaultValue)
     {
-        private T _value;
-
-        public Option(T defaultValue)
-        {
-            _value = defaultValue;
-        }
-        public Option(Action changedCallback, T defaultValue)
-        {
-            _value = defaultValue;
-            PropertyChanged += (sender, args) => changedCallback();
-        }
-
-        public T Value
-        {
-            get => _value;
-            set
-            {
-                _value = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public static implicit operator T(Option<T> option)
-        {
-            return option.Value;
-        }
-
-        public static implicit operator Option<T>(T value)
-        {
-            return new Option<T>(value);
-        }
     }
 
-    public class OperationOptions : INotifyPropertyChanged, IComparable<OperationOptions>
+    /// <summary>
+    /// Reads the wrapped value directly from the legacy option wrapper.
+    /// </summary>
+    public static implicit operator T(Option<T> option)
     {
-        private IOperationTarget _operationTarget = null;
-
-        public OperationOptions()
-        {
-            PropertyInfo[] properties = GetType().GetProperties();
-            foreach (PropertyInfo property in properties)
-            {
-                if (property.PropertyType.IsSubclassOf(typeof(Option)))
-                {
-                    if (property.GetValue(this) is Option option)
-                    {
-                        option.PropertyChanged += (sender, args) => OptionChanged();
-                    }
-                }
-            }
-        }
-
-        // Options index for ordering
-        [Browsable(false)]
-        [JsonIgnore]
-        public virtual int SortIndex => 0;
-
-        [Browsable(false)]
-        [JsonIgnore]
-        public virtual string Name
-        {
-            get
-            {
-                string name = GetType().Name;
-                name = name.Replace("Options", "");
-                return name.SplitWordsByUppercase();
-            }
-        }
-
-        [Browsable(false)]
-        [JsonIgnore]
-        public IOperationTarget OperationTarget
-        {
-            get => _operationTarget;
-            set
-            {
-                _operationTarget = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        public OperationOptions Clone()
-        {
-            return (OperationOptions)MemberwiseClone();
-        }
-
-        protected void OptionChanged()
-        {
-            OnPropertyChanged();
-        }
-
-        [NotifyPropertyChangedInvocator]
-        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-
-        public int CompareTo(OperationOptions other)
-        {
-            // First try compare by index
-            if (SortIndex != other.SortIndex)
-            {
-                return SortIndex.CompareTo(other.SortIndex);
-            }
-
-            // Then by name
-            return String.Compare(Name, other.Name, StringComparison.Ordinal);
-        }
+        return option.Value;
     }
+
+    /// <summary>
+    /// Wraps a raw value into the legacy option wrapper type.
+    /// </summary>
+    public static implicit operator Option<T>(T value)
+    {
+        return new Option<T>(value);
+    }
+}
+
+/// <summary>
+/// Preserves the historical UnrealAutomationCommon option types while the canonical implementation lives in the
+/// shared runtime project.
+/// </summary>
+public class OperationOptions : global::LocalAutomation.Runtime.OperationOptions
+{
 }
