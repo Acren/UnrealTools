@@ -30,7 +30,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return new List<global::LocalAutomation.Runtime.Command> { BuildCommand(operationParameters) };
         }
 
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
             global::LocalAutomation.Runtime.Command command = BuildCommand(OperationParameters);
 

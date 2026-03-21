@@ -73,18 +73,6 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
     /// </summary>
     protected abstract IEnumerable<global::LocalAutomation.Runtime.Command> BuildCommands(UnrealAutomationCommon.Operations.OperationParameters operationParameters);
 
-    /// <summary>
-    /// Bridges runtime execution onto the Unreal-specific operation result model.
-    /// </summary>
-    protected sealed override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
-    {
-        return await OnExecutedUnreal(token).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Lets Unreal operations implement execution using the Unreal-specific result model.
-    /// </summary>
-    protected abstract Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token);
 }
 
 /// <summary>

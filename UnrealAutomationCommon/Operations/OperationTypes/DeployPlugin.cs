@@ -68,7 +68,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
       
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
             Token = token;
             
@@ -860,7 +860,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return null;
         }
 
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
             Plugin plugin = GetTarget(OperationParameters);
 
