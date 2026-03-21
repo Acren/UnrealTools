@@ -169,12 +169,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new OperationResult(true);
         }
 
-        protected override IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
+        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
         {
             operationParameters.RequestOptions<EngineVersionOptions>();
             operationParameters.RequestOptions<AutomationOptions>();
             operationParameters.RequestOptions<VerifyDeploymentOptions>();
-            return new List<Command>();
+            return new List<LocalAutomation.Runtime.Command>();
         }
 
         public readonly struct ExampleProjectZipInfo

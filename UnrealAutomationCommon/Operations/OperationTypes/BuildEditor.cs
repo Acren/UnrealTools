@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class BuildEditor : CommandProcessOperation<Project>
     {
-        protected override Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
         {
             Arguments args = UATArguments.MakeBuildArguments(operationParameters);
             if (args.GetArgument("ubtargs") != null)
@@ -16,7 +16,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     Logger.LogWarning("BuildCookRun editor targets do not respect UbtArgs argument - consider direct UBT usage instead");
                 }
             }
-            return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), args);
+            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), args.ToString());
         }
 
         protected override string GetOperationName()

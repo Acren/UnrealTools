@@ -10,9 +10,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class CleanProject : Operation<Project>
     {
-        protected override IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
+        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
         {
-            return new List<Command>();
+            return new List<LocalAutomation.Runtime.Command>();
         }
 
         protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)

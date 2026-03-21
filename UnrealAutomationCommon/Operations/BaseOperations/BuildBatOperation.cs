@@ -38,14 +38,14 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return null;
         }
 
-        protected override Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
         {
             Arguments args = new();
 
             // Let derived operations describe the target-specific portion of the Build.bat invocation first.
             ConfigureBuildArguments(operationParameters, args);
             ApplySharedBuildArguments(operationParameters, args);
-            return new Command(GetTargetEngineInstall(operationParameters).GetBuildPath(), args);
+            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetBuildPath(), args.ToString());
         }
 
         // Derived operations provide the target name, platform/config, project path, and any target-specific flags.

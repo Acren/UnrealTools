@@ -31,7 +31,7 @@ namespace UnrealAutomationCommon
             return Run(startInfo);
         }
 
-        public static Process Run(Command command)
+        public static Process Run(LocalAutomation.Runtime.Command command)
         {
             return Run(command.File, command.Arguments);
         }

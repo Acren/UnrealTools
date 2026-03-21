@@ -11,7 +11,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class PackageProject : CommandProcessOperation<Project>
     {
-        protected override Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
         {
             Arguments arguments = UATArguments.MakeBuildArguments(operationParameters);
             arguments.SetFlag("cook");
@@ -40,7 +40,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 arguments.SetKeyValue("additionalcookeroptions","-waitforattach");
             }
 
-            return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), arguments);
+            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), arguments.ToString());
         }
 
         protected override string GetOperationName()

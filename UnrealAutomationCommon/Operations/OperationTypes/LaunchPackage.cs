@@ -27,13 +27,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return null;
         }
 
-        protected override Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
         {
             Arguments args = UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters));
             args.SetFlag("windowed");
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
-            return new Command(GetTarget(operationParameters).GetProvidedPackage(operationParameters.Engine).ExecutablePath, args);
+            return new global::LocalAutomation.Runtime.Command(GetTarget(operationParameters).GetProvidedPackage(operationParameters.Engine).ExecutablePath, args.ToString());
         }
 
         protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)

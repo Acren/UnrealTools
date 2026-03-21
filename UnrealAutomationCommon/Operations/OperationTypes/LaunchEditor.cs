@@ -6,9 +6,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public abstract class LaunchEditor<T> : UnrealProcessOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget, IEngineInstanceProvider
     {
-        protected override Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
         {
-            return new Command(GetTargetEngineInstall(operationParameters).GetEditorExe(operationParameters), UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true));
+            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetEditorExe(operationParameters), UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true).ToString());
         }
     }
 

@@ -5,7 +5,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class GenerateProjectFiles : CommandProcessOperation<Project>
     {
-        protected override Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
         {
             Arguments args = new();
             args.SetFlag("projectfiles");
@@ -14,7 +14,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             args.SetFlag("rocket");
             args.SetFlag("progress");
             args.AddAdditionalArguments(operationParameters);
-            return new Command(GetTargetEngineInstall(operationParameters).GetUBTExe(), args);
+            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetUBTExe(), args.ToString());
         }
     }
 }

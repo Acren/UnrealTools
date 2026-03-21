@@ -5,14 +5,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class LaunchStandalone : UnrealProcessOperation<Project>
     {
-        protected override Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
         {
             Arguments args = UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true);
             args.SetFlag("game");
             args.SetFlag("windowed");
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
-            return new Command(GetTargetEngineInstall(operationParameters).GetEditorExe(operationParameters), args);
+            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetEditorExe(operationParameters), args.ToString());
         }
     }
 }

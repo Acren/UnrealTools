@@ -111,7 +111,7 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
     /// <summary>
     /// Lets Unreal operations build command previews from the Unreal-specific parameter model.
     /// </summary>
-    protected abstract IEnumerable<UnrealAutomationCommon.Command> BuildCommands(UnrealAutomationCommon.Operations.OperationParameters operationParameters);
+    protected abstract IEnumerable<global::LocalAutomation.Runtime.Command> BuildCommands(UnrealAutomationCommon.Operations.OperationParameters operationParameters);
 
     /// <summary>
     /// Bridges runtime execution onto the Unreal-specific operation result model.

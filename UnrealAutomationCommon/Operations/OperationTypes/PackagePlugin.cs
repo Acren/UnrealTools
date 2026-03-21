@@ -31,14 +31,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return PluginBuildPlatformValidation.CheckRequirementsSatisfied(operationParameters, engine);
         }
 
-        protected override Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
         {
             // Package the plugin into a distributable output folder through UAT's BuildPlugin flow.
             PluginBuildOptions pluginBuildOptions = operationParameters.RequestOptions<PluginBuildOptions>();
             Arguments buildPluginArguments = BuildPluginArguments(operationParameters, pluginBuildOptions);
             _requestedTargetPlatforms = PluginBuildPlatformValidation.GetRequestedTargetPlatforms(buildPluginArguments);
             _builtTargetPlatforms = new List<string>();
-            return new Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), buildPluginArguments);
+            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), buildPluginArguments.ToString());
         }
 
         // Track Unreal's reported target platform list as it streams by so we do not need to retain the full log.

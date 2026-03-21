@@ -288,9 +288,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new OperationResult(true);
         }
 
-        protected override IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
+        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
         {
-            return new List<Command>();
+            return new List<LocalAutomation.Runtime.Command>();
         }
 
         private async Task BuildEditor()
@@ -888,13 +888,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return await deployForEngineOp.Execute(OperationParameters, Logger, token);
         }
 
-        protected override IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
+        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
         {
             operationParameters.RequestOptions<EngineVersionOptions>();
             operationParameters.RequestOptions<AutomationOptions>();
             operationParameters.RequestOptions<PluginBuildOptions>();
             operationParameters.RequestOptions<PluginDeployOptions>();
-            return new List<Command>();
+            return new List<LocalAutomation.Runtime.Command>();
         }
 
         protected override bool FailOnWarning()
