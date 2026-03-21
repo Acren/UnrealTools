@@ -42,7 +42,7 @@
                           ResizeDirection="Rows"
                           Classes="resize-handle-horizontal" />
 
-            <panels:RuntimePanel Grid.Row="2" Grid.ColumnSpan="3" />
+            <panels:RuntimePanel Grid.Row="2" Grid.ColumnSpan="3" DataContext="{Binding Runtime}" />
         </Grid>
     </Grid>
 </Window>

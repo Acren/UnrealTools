@@ -19,7 +19,7 @@ public partial class RuntimePanel : UserControl
 
     private bool _shouldAutoScrollRuntimeLog = true;
     private INotifyCollectionChanged? _currentRuntimeLogCollection;
-    private MainWindowViewModel? _observedViewModel;
+    private RuntimePanelViewModel? _observedViewModel;
 
     /// <summary>
     /// Initializes the runtime panel.
@@ -33,9 +33,9 @@ public partial class RuntimePanel : UserControl
     }
 
     /// <summary>
-    /// Gets the shared shell view model backing this panel.
+    /// Gets the runtime panel view model backing this panel.
     /// </summary>
-    private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext!;
+    private RuntimePanelViewModel ViewModel => (RuntimePanelViewModel)DataContext!;
 
     /// <summary>
     /// Resolves the runtime log scroll viewer used for conditional auto-follow behavior.
@@ -110,7 +110,7 @@ public partial class RuntimePanel : UserControl
             _observedViewModel.PropertyChanged -= HandleViewModelPropertyChanged;
         }
 
-        _observedViewModel = DataContext as MainWindowViewModel;
+        _observedViewModel = DataContext as RuntimePanelViewModel;
         if (_observedViewModel != null)
         {
             _observedViewModel.PropertyChanged += HandleViewModelPropertyChanged;
@@ -126,7 +126,7 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void HandleAttachedToVisualTree(object? sender, global::Avalonia.VisualTreeAttachmentEventArgs e)
     {
-        if (DataContext is MainWindowViewModel)
+        if (DataContext is RuntimePanelViewModel)
         {
             AttachRuntimeLogCollection();
         }
@@ -151,7 +151,7 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void HandleViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!string.Equals(e.PropertyName, nameof(MainWindowViewModel.SelectedRuntimeLogEntries), StringComparison.Ordinal))
+        if (!string.Equals(e.PropertyName, nameof(RuntimePanelViewModel.SelectedRuntimeLogEntries), StringComparison.Ordinal))
         {
             return;
         }

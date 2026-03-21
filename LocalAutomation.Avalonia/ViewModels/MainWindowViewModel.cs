@@ -26,7 +26,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly OperationParameters _operationParameters = new();
     private readonly SessionPersistenceService _sessionPersistence;
     private readonly DispatcherTimer _sessionSaveTimer;
-    private readonly DispatcherTimer _runtimeDurationTimer;
     private readonly TargetPickerItemViewModel _addTargetPickerItem = TargetPickerItemViewModel.CreateAddAction();
     private bool _isApplyingTargetState;
     private bool _isHydratingSessionSelection;
@@ -35,13 +34,10 @@ public sealed class MainWindowViewModel : ViewModelBase
     private object? _currentOperation;
     private string _newTargetPath = string.Empty;
     private OperationDescriptor? _selectedOperation;
-    private RuntimeTaskTabViewModel? _selectedRuntimeTab;
     private SessionSnapshot _sessionSnapshot = new();
     private TargetPickerItemViewModel? _selectedTargetPickerItem;
     private TargetListItemViewModel? _selectedTarget;
     private string _status = "Add a target path to begin using the LocalAutomation shell.";
-    private RuntimeTaskTabViewModel? _observedRuntimeTab;
-    private event PropertyChangedEventHandler? _selectedRuntimeTabPropertyChanged;
 
     /// <summary>
     /// Creates the Avalonia main window view model around the shared LocalAutomation application host.
@@ -52,13 +48,9 @@ public sealed class MainWindowViewModel : ViewModelBase
         _sessionPersistence = new SessionPersistenceService(services);
         _sessionSaveTimer = new DispatcherTimer { Interval = SessionSaveDebounceDelay };
         _sessionSaveTimer.Tick += HandleSessionSaveTimerTick;
-        _runtimeDurationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _runtimeDurationTimer.Tick += HandleRuntimeDurationTimerTick;
         _operationParameters.PropertyChanged += HandleOperationParametersChanged;
+        Runtime = new RuntimePanelViewModel(services, SetStatus);
         TargetPickerItems.Add(_addTargetPickerItem);
-        RuntimeTabs.Add(CreateApplicationLogTab());
-        SelectedRuntimeTab = RuntimeTabs[0];
-        AttachApplicationLogStream();
         RestoreSessionState();
     }
 
@@ -88,49 +80,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ObservableCollection<OptionSetViewModel> EnabledOptionSets { get; } = new();
 
     /// <summary>
-    /// Gets the runtime tabs shown in the global runtime panel. The first tab is reserved for application logs.
+    /// Gets the runtime panel view model that owns task tabs, selected-task metrics, and runtime actions.
     /// </summary>
-    public ObservableCollection<RuntimeTaskTabViewModel> RuntimeTabs { get; } = new();
-
-    /// <summary>
-    /// Gets or sets the currently selected runtime tab.
-    /// </summary>
-    public RuntimeTaskTabViewModel? SelectedRuntimeTab
-    {
-        get => _selectedRuntimeTab;
-        set
-        {
-            if (SetProperty(ref _selectedRuntimeTab, value))
-            {
-                // Selected-task header pills bind through MainWindowViewModel, so mirror child metric changes from the
-                // active runtime tab back into top-level notifications.
-                if (_selectedRuntimeTabPropertyChanged != null)
-                {
-                    if (_observedRuntimeTab != null)
-                    {
-                        _observedRuntimeTab.PropertyChanged -= _selectedRuntimeTabPropertyChanged;
-                    }
-
-                    _selectedRuntimeTabPropertyChanged = null;
-                    _observedRuntimeTab = null;
-                }
-
-                if (value != null)
-                {
-                    _selectedRuntimeTabPropertyChanged = (_, args) => HandleSelectedRuntimeTabPropertyChanged(args.PropertyName);
-                    value.PropertyChanged += _selectedRuntimeTabPropertyChanged;
-                    _observedRuntimeTab = value;
-                }
-
-                foreach (RuntimeTaskTabViewModel tab in RuntimeTabs)
-                {
-                    tab.IsSelected = ReferenceEquals(tab, value);
-                }
-
-                RaiseExecutionStateChanged();
-            }
-        }
-    }
+    public RuntimePanelViewModel Runtime { get; }
 
     /// <summary>
     /// Gets or sets the path text entered into the Add Target input.
@@ -267,11 +219,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     public bool CanExecute => _services.OperationSession.CanExecute(_currentOperation, _operationParameters);
 
     /// <summary>
-    /// Gets whether the current Avalonia execution session is running.
-    /// </summary>
-    public bool IsRunning => SelectedRuntimeTab?.CanTerminate == true;
-
-    /// <summary>
     /// Gets whether the execute warning panel should be shown.
     /// </summary>
     public bool ShowExecuteDisabledReason => !CanExecute;
@@ -290,72 +237,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets the current operation button label.
     /// </summary>
     public string ExecuteButtonText => SelectedOperation?.DisplayName ?? "Execute";
-
-    /// <summary>
-    /// Gets a short execution summary line for the output panel.
-    /// </summary>
-    public string ExecutionSummary
-    {
-        get
-        {
-            if (SelectedRuntimeTab == null)
-            {
-                return "No runtime tab is selected.";
-            }
-
-            if (SelectedRuntimeTab.IsApplicationLog)
-            {
-                return "Application log messages appear here even when no tasks are running.";
-            }
-
-            if (SelectedRuntimeTab.Session?.IsRunning == true)
-            {
-                return $"Running {SelectedRuntimeTab.Session.OperationName} on {SelectedRuntimeTab.Session.TargetName}";
-            }
-
-            if (SelectedRuntimeTab.Session?.Success == true)
-            {
-                return $"{SelectedRuntimeTab.Session.OperationName} succeeded for {SelectedRuntimeTab.Session.TargetName}";
-            }
-
-            if (SelectedRuntimeTab.Session != null)
-            {
-                return $"{SelectedRuntimeTab.Session.OperationName} failed for {SelectedRuntimeTab.Session.TargetName}";
-            }
-
-            return SelectedRuntimeTab.Subtitle;
-        }
-    }
-
-    /// <summary>
-    /// Gets the log entries shown for the currently selected runtime tab.
-    /// </summary>
-    public ObservableCollection<LogEntryViewModel> SelectedRuntimeLogEntries => SelectedRuntimeTab?.LogEntries ?? new ObservableCollection<LogEntryViewModel>();
-
-    /// <summary>
-    /// Gets the runtime tab title shown in the panel header when a tab is selected.
-    /// </summary>
-    public string SelectedRuntimeTabTitle => SelectedRuntimeTab?.Title ?? "Runtime";
-
-    /// <summary>
-    /// Gets whether the selected runtime tab should show task metrics in the panel header.
-    /// </summary>
-    public bool ShowSelectedRuntimeMetrics => SelectedRuntimeTab is { IsApplicationLog: false };
-
-    /// <summary>
-    /// Gets the warning count for the selected runtime task.
-    /// </summary>
-    public int SelectedRuntimeWarningCount => SelectedRuntimeTab?.WarningCount ?? 0;
-
-    /// <summary>
-    /// Gets the error count for the selected runtime task.
-    /// </summary>
-    public int SelectedRuntimeErrorCount => SelectedRuntimeTab?.ErrorCount ?? 0;
-
-    /// <summary>
-    /// Gets the elapsed duration text for the selected runtime task.
-    /// </summary>
-    public string SelectedRuntimeDuration => SelectedRuntimeTab?.DurationText ?? "--:--";
 
     /// <summary>
     /// Gets the summary text for the currently selected target.
@@ -514,24 +395,9 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         LocalAutomation.Core.ExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _operationParameters);
-        AttachExecutionSession(session);
+        Runtime.AttachExecutionSession(session);
         _services.Execution.AddSession(session);
         SetStatus($"Started {session.OperationName} for {session.TargetName}.");
-    }
-
-    /// <summary>
-    /// Cancels the current execution session when one is running.
-    /// </summary>
-    public async Task CancelExecutionAsync()
-    {
-        if (SelectedRuntimeTab?.Session is not { IsRunning: true } session)
-        {
-            return;
-        }
-
-        await session.CancelAsync();
-        SetStatus($"Cancelling {session.OperationName}.");
-        RaiseExecutionStateChanged();
     }
 
     /// <summary>
@@ -552,86 +418,6 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         RaiseDerivedStateChanged();
         QueueSessionStateSave();
-    }
-
-    /// <summary>
-    /// Clears the log entries for the currently selected runtime tab.
-    /// </summary>
-    public void ClearSelectedRuntimeLog()
-    {
-        if (SelectedRuntimeTab == null)
-        {
-            return;
-        }
-
-        SelectedRuntimeTab.ClearLogEntries();
-        SetStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}.");
-        RaiseDerivedStateChanged();
-    }
-
-    /// <summary>
-    /// Closes the provided runtime tab when it is not the permanent app log tab. Running tabs are cancelled first so
-    /// the close affordance does not leave background work orphaned after the tab disappears.
-    /// </summary>
-    public async Task CloseRuntimeTabAsync(RuntimeTaskTabViewModel? runtimeTab)
-    {
-        if (runtimeTab == null || !runtimeTab.CanClose)
-        {
-            return;
-        }
-
-        // Closing a running tab should behave like terminate-and-dismiss so the session is asked to stop before it is
-        // removed from the visible runtime collection.
-        if (runtimeTab.Session is { IsRunning: true } session)
-        {
-            await session.CancelAsync();
-            SetStatus($"Cancelling {session.OperationName} before closing its tab.");
-        }
-
-        RemoveRuntimeTab(runtimeTab);
-    }
-
-    /// <summary>
-    /// Removes a runtime tab from the visible collection and picks the next selected tab.
-    /// </summary>
-    private void RemoveRuntimeTab(RuntimeTaskTabViewModel runtimeTab)
-    {
-        int removedIndex = RuntimeTabs.IndexOf(runtimeTab);
-        RuntimeTabs.Remove(runtimeTab);
-
-        // Once the UI tab is dismissed, drop the backing session from the shared session list so shell state and any
-        // persisted execution history only track tabs that remain visible.
-        if (runtimeTab.Session != null)
-        {
-            _services.Execution.RemoveSession(runtimeTab.Session.Id);
-        }
-
-        if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
-        {
-            int nextIndex = Math.Clamp(removedIndex - 1, 0, RuntimeTabs.Count - 1);
-            SelectedRuntimeTab = RuntimeTabs.Count > 0 ? RuntimeTabs[nextIndex] : null;
-        }
-
-        RaiseExecutionStateChanged();
-    }
-
-    /// <summary>
-    /// Seeds the output panel with application-level log entries and keeps listening so crashes and startup errors are
-    /// visible even outside operation execution.
-    /// </summary>
-    private void AttachApplicationLogStream()
-    {
-        RuntimeTaskTabViewModel applicationTab = RuntimeTabs[0];
-        foreach (LogEntry entry in ApplicationLogService.LogStream.Entries)
-        {
-            applicationTab.AddLogEntry(new LogEntryViewModel(entry.Message, entry.Verbosity));
-        }
-
-        ApplicationLogService.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
-        {
-            applicationTab.AddLogEntry(new LogEntryViewModel(entry.Message, entry.Verbosity));
-            RaiseExecutionStateChanged();
-        });
     }
 
     /// <summary>
@@ -668,18 +454,6 @@ public sealed class MainWindowViewModel : ViewModelBase
             AppLogger.LoggerInstance.LogError(ex, "Target action '{ActionName}' failed.", descriptor.DisplayName);
             SetStatus($"Failed to run '{descriptor.DisplayName}': {ex.Message}");
         }
-    }
-
-    /// <summary>
-    /// Creates the permanent first runtime tab used for application-level logs.
-    /// </summary>
-    private static RuntimeTaskTabViewModel CreateApplicationLogTab()
-    {
-        return new RuntimeTaskTabViewModel(
-            id: "application-log",
-            title: "App Log",
-            subtitle: string.Empty,
-            isApplicationLog: true);
     }
 
     /// <summary>
@@ -867,100 +641,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Refreshes the selected task duration once per second while any runtime session remains active.
-    /// </summary>
-    private void HandleRuntimeDurationTimerTick(object? sender, EventArgs e)
-    {
-        // The selected header reads through MainWindowViewModel, so forward the currently selected tab's duration tick
-        // into its derived shell properties once per second.
-        HandleSelectedRuntimeTabPropertyChanged(nameof(RuntimeTaskTabViewModel.DurationText));
-
-        if (!RuntimeTabs.Any(tab => tab.IsRunning))
-        {
-            _runtimeDurationTimer.Stop();
-        }
-    }
-
-    /// <summary>
-    /// Mirrors selected runtime-tab property changes into the derived shell properties used by the panel header.
-    /// </summary>
-    private void HandleSelectedRuntimeTabPropertyChanged(string? propertyName)
-    {
-        switch (propertyName)
-        {
-            case nameof(RuntimeTaskTabViewModel.DurationText):
-                RaisePropertyChanged(nameof(SelectedRuntimeDuration));
-                break;
-            case nameof(RuntimeTaskTabViewModel.WarningCount):
-            case nameof(RuntimeTaskTabViewModel.HasWarnings):
-                RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
-                break;
-            case nameof(RuntimeTaskTabViewModel.ErrorCount):
-            case nameof(RuntimeTaskTabViewModel.HasErrors):
-                RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
-                break;
-        }
-    }
-
-    /// <summary>
-    /// Attaches the shared execution session to the shell and mirrors its log/output state into Avalonia-friendly
-    /// observable collections.
-    /// </summary>
-    private void AttachExecutionSession(LocalAutomation.Core.ExecutionSession session)
-    {
-        RuntimeTaskTabViewModel runtimeTab = new(
-            id: session.Id,
-            title: session.OperationName,
-            subtitle: session.TargetName,
-            isApplicationLog: false,
-            session: session);
-
-        RuntimeTabs.Add(runtimeTab);
-        SelectedRuntimeTab = runtimeTab;
-        if (!_runtimeDurationTimer.IsEnabled)
-        {
-            _runtimeDurationTimer.Start();
-        }
-
-        session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
-        {
-            runtimeTab.AddLogEntry(new LogEntryViewModel(entry.Message, entry.Verbosity));
-            RaiseExecutionStateChanged();
-        });
-
-        _ = WatchExecutionCompletionAsync(runtimeTab);
-        RaiseExecutionStateChanged();
-    }
-
-    /// <summary>
-    /// Polls the running session until it completes so completion state can be reflected back into the shell.
-    /// </summary>
-    private async Task WatchExecutionCompletionAsync(RuntimeTaskTabViewModel runtimeTab)
-    {
-        LocalAutomation.Core.ExecutionSession session = runtimeTab.Session!;
-        while (session.IsRunning)
-        {
-            await Task.Delay(100);
-        }
-
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            session.FinishedAt = DateTimeOffset.Now;
-            runtimeTab.NotifyStateChanged();
-            RaiseExecutionStateChanged();
-
-            if (session.Success == true)
-            {
-                SetStatus($"{session.OperationName} succeeded for {session.TargetName}.");
-            }
-            else
-            {
-                SetStatus($"{session.OperationName} finished with failure for {session.TargetName}.");
-            }
-        });
-    }
-
-    /// <summary>
     /// Rebuilds the compatible operation list for the currently selected target and preserves the active selection
     /// when it remains valid.
     /// </summary>
@@ -1042,7 +722,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SelectedTargetPath));
         RaisePropertyChanged(nameof(SelectedTargetSummary));
         RaisePropertyChanged(nameof(VisibleCommand));
-        RaiseExecutionStateChanged();
     }
 
     /// <summary>
@@ -1080,21 +759,5 @@ public sealed class MainWindowViewModel : ViewModelBase
             : TargetPickerItems.FirstOrDefault(item => ReferenceEquals(item.TargetItem, SelectedTarget));
 
         SetProperty(ref _selectedTargetPickerItem, pickerItem, nameof(SelectedTargetPickerItem));
-    }
-
-    /// <summary>
-    /// Raises change notifications for all execution-related shell state.
-    /// </summary>
-    private void RaiseExecutionStateChanged()
-    {
-        RaisePropertyChanged(nameof(CanExecute));
-        RaisePropertyChanged(nameof(ExecutionSummary));
-        RaisePropertyChanged(nameof(IsRunning));
-        RaisePropertyChanged(nameof(SelectedRuntimeLogEntries));
-        RaisePropertyChanged(nameof(SelectedRuntimeDuration));
-        RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
-        RaisePropertyChanged(nameof(SelectedRuntimeTabTitle));
-        RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
-        RaisePropertyChanged(nameof(ShowSelectedRuntimeMetrics));
     }
 }
