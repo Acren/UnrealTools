@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new List<LocalAutomation.Runtime.Command>();
         }
 
-        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             Logger.LogInformation("Cleaning binaries");
 
@@ -44,7 +44,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Logger.LogInformation("Cleaning complete");
 
-            return new OperationResult(true);
+            return new global::LocalAutomation.Runtime.OperationResult(true);
         }
     }
 }

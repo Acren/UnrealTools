@@ -124,7 +124,7 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
     /// <summary>
     /// Lets Unreal operations implement execution using the Unreal-specific result model.
     /// </summary>
-    protected abstract Task<OperationResult> OnExecutedUnreal(CancellationToken token);
+    protected abstract Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token);
 }
 
 /// <summary>

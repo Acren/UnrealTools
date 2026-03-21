@@ -65,7 +65,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         // Compare Unreal's reported target platform list with what the user requested so silent skips become failures.
-        protected override void OnProcessEnded(OperationResult result)
+        protected override void OnProcessEnded(global::LocalAutomation.Runtime.OperationResult result)
         {
             base.OnProcessEnded(result);
 

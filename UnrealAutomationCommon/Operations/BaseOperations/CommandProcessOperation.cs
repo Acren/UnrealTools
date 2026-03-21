@@ -30,7 +30,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return new List<global::LocalAutomation.Runtime.Command> { BuildCommand(operationParameters) };
         }
 
-        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             global::LocalAutomation.Runtime.Command command = BuildCommand(OperationParameters);
 
@@ -148,10 +148,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             Logger.Log(level, line);
         }
 
-        private OperationResult HandleProcessEnded()
+        private global::LocalAutomation.Runtime.OperationResult HandleProcessEnded()
         {
             bool success = _process.ExitCode == 0 && !Cancelled;
-            OperationResult result = new(success)
+            global::LocalAutomation.Runtime.OperationResult result = new(success)
             {
                 ExitCode = _process.ExitCode
             };
@@ -163,7 +163,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return result;
         }
 
-        protected virtual void OnProcessEnded(OperationResult result)
+        protected virtual void OnProcessEnded(global::LocalAutomation.Runtime.OperationResult result)
         {
         }
     }

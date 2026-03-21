@@ -68,7 +68,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
       
-        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             Token = token;
             
@@ -285,7 +285,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Logger.LogInformation($"Finished deploying plugin for {engineVersion.MajorMinorString}");
 
-            return new OperationResult(true);
+            return new global::LocalAutomation.Runtime.OperationResult(true);
         }
 
         protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
@@ -368,7 +368,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 };
                 buildPluginParams.SetOptions(OperationParameters.RequestOptions<PluginBuildOptions>());
 
-                OperationResult buildResult = await new PackagePlugin().Execute(buildPluginParams, Logger, Token);
+                global::LocalAutomation.Runtime.OperationResult buildResult = await new PackagePlugin().Execute(buildPluginParams, Logger, Token);
 
                 if (!buildResult.Success)
                 {
@@ -445,7 +445,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Target = ExampleProject,
                 EngineOverride = Engine
             };
-            OperationResult exampleProjectBuildResult = await new BuildEditor().Execute(buildExampleProjectParams, Logger, Token);
+            global::LocalAutomation.Runtime.OperationResult exampleProjectBuildResult = await new BuildEditor().Execute(buildExampleProjectParams, Logger, Token);
             if (!exampleProjectBuildResult.Success)
             {
                 throw new Exception($"Failed to build example project with modules");
@@ -498,7 +498,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     Compiler = UbtCompiler.Clang
                 });
 
-                OperationResult clangBuildResult = await new BuildPlugin().Execute(clangBuildParams, Logger, Token);
+                global::LocalAutomation.Runtime.OperationResult clangBuildResult = await new BuildPlugin().Execute(clangBuildParams, Logger, Token);
                 if (!clangBuildResult.Success)
                 {
                     throw new Exception("Clang compile check failed");
@@ -515,7 +515,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 OperationParameters packageWithPluginParams = CreateExampleProjectPackageParams(projectPluginPackagePath);
 
-                OperationResult buildWithProjectPluginResult = await new PackageProject().Execute(packageWithPluginParams, Logger, Token);
+                global::LocalAutomation.Runtime.OperationResult buildWithProjectPluginResult = await new PackageProject().Execute(packageWithPluginParams, Logger, Token);
 
                 if (!buildWithProjectPluginResult.Success)
                 {
@@ -535,7 +535,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         };
                         testProjectPluginPackageParams.SetOptions(automationOptions);
 
-                        OperationResult testResult = await new LaunchPackage().Execute(testProjectPluginPackageParams, Logger, Token);
+                        global::LocalAutomation.Runtime.OperationResult testResult = await new LaunchPackage().Execute(testProjectPluginPackageParams, Logger, Token);
 
                         if (!testResult.Success)
                         {
@@ -573,7 +573,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 OperationParameters installedPluginPackageParams = CreateExampleProjectPackageParams(enginePluginPackagePath);
 
-                OperationResult installedPluginPackageOperationResult = await new PackageProject().Execute(installedPluginPackageParams, Logger, Token);
+                global::LocalAutomation.Runtime.OperationResult installedPluginPackageOperationResult = await new PackageProject().Execute(installedPluginPackageParams, Logger, Token);
 
                 if (!installedPluginPackageOperationResult.Success)
                 {
@@ -594,7 +594,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         };
                         testEnginePluginPackageParams.SetOptions(automationOptions);
 
-                        OperationResult testResult = await new LaunchPackage().Execute(testEnginePluginPackageParams, Logger, Token);
+                        global::LocalAutomation.Runtime.OperationResult testResult = await new LaunchPackage().Execute(testEnginePluginPackageParams, Logger, Token);
 
                         if (!testResult.Success)
                         {
@@ -618,7 +618,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 OperationParameters blueprintOnlyPackageParams = CreateExampleProjectPackageParams(blueprintOnlyPackagePath);
 
-                OperationResult blueprintOnlyPackageOperationResult = await new PackageProject().Execute(blueprintOnlyPackageParams, Logger, Token);
+                global::LocalAutomation.Runtime.OperationResult blueprintOnlyPackageOperationResult = await new PackageProject().Execute(blueprintOnlyPackageParams, Logger, Token);
 
                 if (!blueprintOnlyPackageOperationResult.Success)
                 {
@@ -639,7 +639,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         };
                         testEnginePluginPackageParams.SetOptions(automationOptions);
 
-                        OperationResult testResult = await new LaunchPackage().Execute(testEnginePluginPackageParams, Logger, Token);
+                        global::LocalAutomation.Runtime.OperationResult testResult = await new LaunchPackage().Execute(testEnginePluginPackageParams, Logger, Token);
 
                         if (!testResult.Success)
                         {
@@ -685,7 +685,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 demoPackageParams.RequestOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
                 demoPackageParams.RequestOptions<PackageOptions>().NoDebugInfo.Value = true;
 
-                OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, Logger, Token);
+                global::LocalAutomation.Runtime.OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, Logger, Token);
 
                 if (!demoExePackageOperationResult.Success)
                 {
@@ -859,7 +859,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return null;
         }
 
-        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             Plugin plugin = GetTarget(OperationParameters);
 
@@ -871,7 +871,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     throw new Exception("Engine not found");
                 }
-                OperationResult result = await DeployForEngine(engine, token);
+                global::LocalAutomation.Runtime.OperationResult result = await DeployForEngine(engine, token);
                 if (!result.Success)
                 {
                     // Failure
@@ -879,10 +879,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            return new OperationResult(true);
+            return new global::LocalAutomation.Runtime.OperationResult(true);
         }
 
-        private async Task<OperationResult> DeployForEngine(Engine engine, CancellationToken token)
+        private async Task<global::LocalAutomation.Runtime.OperationResult> DeployForEngine(Engine engine, CancellationToken token)
         {
             DeployPluginForEngine deployForEngineOp = new() { Engine = engine };
             return await deployForEngineOp.Execute(OperationParameters, Logger, token);

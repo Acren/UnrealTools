@@ -36,7 +36,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new global::LocalAutomation.Runtime.Command(GetTarget(operationParameters).GetProvidedPackage(operationParameters.Engine).ExecutablePath, args.ToString());
         }
 
-        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
             if (automationOptions is { RunTests: { Value: true } })

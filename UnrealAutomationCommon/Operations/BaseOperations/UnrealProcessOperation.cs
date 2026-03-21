@@ -10,7 +10,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     // Operation type for running Unreal processes
     public abstract class UnrealProcessOperation<T> : CommandProcessOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget
     {
-        protected override void OnProcessEnded(OperationResult result)
+        protected override void OnProcessEnded(global::LocalAutomation.Runtime.OperationResult result)
         {
             // Report test results
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();

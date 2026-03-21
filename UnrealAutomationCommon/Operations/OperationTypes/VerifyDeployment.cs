@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class VerifyDeployment : Operation<Plugin>
     {
-        protected override async Task<OperationResult> OnExecutedUnreal(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecutedUnreal(CancellationToken token)
         {
             Plugin plugin = GetTarget(OperationParameters);
 
@@ -27,7 +27,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     throw new Exception("Engine not found");
                 }
-                OperationResult result = await VerifyForEngine(engine, token);
+                global::LocalAutomation.Runtime.OperationResult result = await VerifyForEngine(engine, token);
                 if (!result.Success)
                 {
                     // Failure
@@ -35,10 +35,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            return new OperationResult(true);
+            return new global::LocalAutomation.Runtime.OperationResult(true);
         }
 
-        private async Task<OperationResult> VerifyForEngine(Engine engine, CancellationToken token)
+        private async Task<global::LocalAutomation.Runtime.OperationResult> VerifyForEngine(Engine engine, CancellationToken token)
         {
             Plugin plugin = GetTarget(OperationParameters);
             EngineVersion engineVersion = engine.Version;
@@ -138,7 +138,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 OutputPathOverride = packageOutput
             };
 
-            OperationResult packageExampleProjectResult = await packageExampleProject.Execute(packageExampleProjectParams, Logger, token);
+            global::LocalAutomation.Runtime.OperationResult packageExampleProjectResult = await packageExampleProject.Execute(packageExampleProjectParams, Logger, token);
 
             if (!packageExampleProjectResult.Success)
             {
@@ -156,7 +156,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 };
                 testPackageParams.SetOptions(automationOpts);
 
-                OperationResult testPackageResult = await new LaunchStagedPackage().Execute(testPackageParams, Logger, token);
+                global::LocalAutomation.Runtime.OperationResult testPackageResult = await new LaunchStagedPackage().Execute(testPackageParams, Logger, token);
 
                 if (!testPackageResult.Success)
                 {
@@ -166,7 +166,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Logger.LogInformation($"Finished verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
 
-            return new OperationResult(true);
+            return new global::LocalAutomation.Runtime.OperationResult(true);
         }
 
         protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(OperationParameters operationParameters)
