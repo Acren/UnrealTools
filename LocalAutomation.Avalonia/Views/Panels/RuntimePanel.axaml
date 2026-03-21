@@ -23,44 +23,93 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:RuntimeTaskTabViewModel">
-                                    <Button Classes="tab"
-                                            Classes.active="{Binding IsSelected}"
-                                            Classes.app-log="{Binding IsApplicationLog}"
-                                            Click="RuntimeTab_Click">
-                                        <Button.Content>
-                                            <Grid MinHeight="34">
-                                                <!-- Tabs with subtitles use a compact status-dot + two-line layout. -->
-                                                <Grid IsVisible="{Binding HasSubtitle}"
-                                                      ColumnDefinitions="12,*"
-                                                      ColumnSpacing="8">
-                                                <Border Width="6"
-                                                        Height="6"
-                                                        CornerRadius="999"
-                                                        VerticalAlignment="Center"
-                                                        IsVisible="{Binding HasStatusMarker}"
-                                                            Classes="runtime-status-dot"
-                                                            Classes.running="{Binding IsRunningStatus}"
-                                                            Classes.succeeded="{Binding IsSucceededStatus}"
-                                                            Classes.failed="{Binding IsFailedStatus}" />
-                                                    <StackPanel Grid.Column="1"
-                                                                VerticalAlignment="Center"
-                                                                Spacing="0">
-                                                        <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
-                                                                   Classes="panel-title" />
-                                                        <TextBlock Text="{Binding Subtitle}"
-                                                                   Classes="tab-subtitle" />
-                                                    </StackPanel>
-                                                </Grid>
+                                    <Grid MinHeight="34">
+                                        <Button Classes="tab"
+                                                Classes.active="{Binding IsSelected}"
+                                                Classes.app-log="{Binding IsApplicationLog}"
+                                                Click="RuntimeTab_Click">
+                                            <Button.Content>
+                                                <Grid MinHeight="34">
+                                                    <!-- Closable tabs reserve the shared close-chip lane so the text stops
+                                                         before the 12px edge inset used by the action affordance. -->
+                                                    <Grid IsVisible="{Binding CanClose}"
+                                                          MinHeight="34"
+                                                          Margin="0,0,22,0">
+                                                        <!-- Tabs with subtitles use a compact status-dot + two-line layout. -->
+                                                        <Grid IsVisible="{Binding HasSubtitle}"
+                                                              ColumnDefinitions="12,*"
+                                                              ColumnSpacing="8">
+                                                            <Border Width="6"
+                                                                    Height="6"
+                                                                    CornerRadius="999"
+                                                                    VerticalAlignment="Center"
+                                                                    IsVisible="{Binding HasStatusMarker}"
+                                                                    Classes="runtime-status-dot"
+                                                                    Classes.running="{Binding IsRunningStatus}"
+                                                                    Classes.succeeded="{Binding IsSucceededStatus}"
+                                                                    Classes.failed="{Binding IsFailedStatus}" />
+                                                            <StackPanel Grid.Column="1"
+                                                                        VerticalAlignment="Center"
+                                                                        Spacing="0">
+                                                                <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                                           Classes="panel-title" />
+                                                                <TextBlock Text="{Binding Subtitle}"
+                                                                           Classes="tab-subtitle" />
+                                                            </StackPanel>
+                                                        </Grid>
 
-                                                <!-- Tabs without subtitles, such as the application log tab, center the
-                                                     title directly so they do not inherit extra empty line space. -->
-                                                <TextBlock IsVisible="{Binding HasSubtitle, Converter={x:Static BoolConverters.Not}}"
-                                                           VerticalAlignment="Center"
-                                                           Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
-                                                           Classes="panel-title" />
-                                            </Grid>
-                                        </Button.Content>
-                                    </Button>
+                                                        <!-- Tabs without subtitles, such as the application log tab, center the
+                                                             title directly so they do not inherit extra empty line space. -->
+                                                        <TextBlock IsVisible="{Binding HasSubtitle, Converter={x:Static BoolConverters.Not}}"
+                                                                   VerticalAlignment="Center"
+                                                                   Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                                   Classes="panel-title" />
+                                                    </Grid>
+
+                                                    <!-- Tabs without a close affordance can use the full width, which
+                                                         prevents the app-log tab from reserving phantom space. -->
+                                                    <Grid IsVisible="{Binding CanClose, Converter={x:Static BoolConverters.Not}}"
+                                                          MinHeight="34">
+                                                        <!-- Tabs with subtitles use a compact status-dot + two-line layout. -->
+                                                        <Grid IsVisible="{Binding HasSubtitle}"
+                                                              ColumnDefinitions="12,*"
+                                                              ColumnSpacing="8">
+                                                            <Border Width="6"
+                                                                    Height="6"
+                                                                    CornerRadius="999"
+                                                                    VerticalAlignment="Center"
+                                                                    IsVisible="{Binding HasStatusMarker}"
+                                                                    Classes="runtime-status-dot"
+                                                                    Classes.running="{Binding IsRunningStatus}"
+                                                                    Classes.succeeded="{Binding IsSucceededStatus}"
+                                                                    Classes.failed="{Binding IsFailedStatus}" />
+                                                            <StackPanel Grid.Column="1"
+                                                                        VerticalAlignment="Center"
+                                                                        Spacing="0">
+                                                                <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                                           Classes="panel-title" />
+                                                                <TextBlock Text="{Binding Subtitle}"
+                                                                           Classes="tab-subtitle" />
+                                                            </StackPanel>
+                                                        </Grid>
+
+                                                        <TextBlock IsVisible="{Binding HasSubtitle, Converter={x:Static BoolConverters.Not}}"
+                                                                   VerticalAlignment="Center"
+                                                                   Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                                   Classes="panel-title" />
+                                                    </Grid>
+                                                </Grid>
+                                            </Button.Content>
+                                        </Button>
+
+                                        <!-- The close affordance uses the same right-edge inset as the target picker. -->
+                                        <Button Classes="close-chip"
+                                                HorizontalAlignment="Right"
+                                                Margin="0,0,12,0"
+                                                VerticalAlignment="Center"
+                                                IsVisible="{Binding CanClose}"
+                                                Click="CloseRuntimeTab_Click" />
+                                    </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

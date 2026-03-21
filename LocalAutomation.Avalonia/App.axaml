@@ -29,7 +29,7 @@
         <Color x:Key="GraphiteDangerBackgroundColor">#24EF8680</Color>
         <Color x:Key="RuntimeTabRunningColor">#63A8FF</Color>
         <Color x:Key="RuntimeTabSucceededColor">#7BE37B</Color>
-        <Color x:Key="RuntimeTabFailedColor">#FF7575</Color>
+        <Color x:Key="RuntimeTabFailedColor">#FF5C5C</Color>
 
         <SolidColorBrush x:Key="GraphiteBackgroundBrush" Color="{StaticResource GraphiteBackgroundColor}" />
         <SolidColorBrush x:Key="GraphitePanelBrush" Color="{StaticResource GraphitePanelColor}" />
@@ -217,6 +217,41 @@
         <Style Selector="Button.subtle:pointerover">
             <Setter Property="Background" Value="{DynamicResource GraphiteCardBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+        </Style>
+        <!-- Close chips share one touch target so tab and target-row affordances can sit on the same visual rail. -->
+        <Style Selector="Button.close-chip">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="MinWidth" Value="18" />
+            <Setter Property="MinHeight" Value="18" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <!-- The shared close-chip icon uses vector strokes bound to the button foreground so hover and
+                             active color changes stay consistent anywhere the chip is reused. -->
+                        <Grid Width="8" Height="8">
+                            <Path Data="M 1,1 L 7,7"
+                                  StrokeThickness="1.4"
+                                  Stroke="{Binding $parent[Button].Foreground}" />
+                            <Path Data="M 7,1 L 1,7"
+                                  StrokeThickness="1.4"
+                                  Stroke="{Binding $parent[Button].Foreground}" />
+                        </Grid>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style Selector="Button.close-chip:pointerover">
+            <Setter Property="Background" Value="{DynamicResource GraphiteActiveBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
         </Style>
         <Style Selector="Button.danger">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteDangerBrush}" />
@@ -446,34 +481,19 @@
             <Setter Property="BorderThickness" Value="0,1,0,0" />
             <Setter Property="CornerRadius" Value="0" />
         </Style>
-        <Style Selector="Button.target-remove">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Width" Value="20" />
-            <Setter Property="Height" Value="20" />
-            <Setter Property="MinWidth" Value="20" />
-            <Setter Property="MinHeight" Value="20" />
-            <Setter Property="CornerRadius" Value="10" />
-        </Style>
-        <Style Selector="Button.target-remove:pointerover">
+        <!-- Target-row remove buttons reuse the shared close-chip baseline and only swap in a slightly stronger
+             outlined hover/pressed treatment so the affordance reads clearly inside the picker row. -->
+        <Style Selector="Button.close-chip.target-remove:pointerover">
             <Setter Property="Background" Value="#30FFFFFF" />
             <Setter Property="BorderBrush" Value="#48FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
         </Style>
-        <Style Selector="Button.target-remove:pressed">
+        <Style Selector="Button.close-chip.target-remove:pressed">
             <Setter Property="Background" Value="#44FFFFFF" />
             <Setter Property="BorderBrush" Value="#58FFFFFF" />
-        </Style>
-        <Style Selector="Button.target-remove Path">
-            <Setter Property="Stroke" Value="{DynamicResource GraphiteTextMutedBrush}" />
-            <Setter Property="StrokeThickness" Value="1.5" />
-            <Setter Property="StrokeLineCap" Value="Round" />
-        </Style>
-        <Style Selector="Button.target-remove:pointerover Path">
-            <Setter Property="Stroke" Value="{DynamicResource GraphiteTextBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
         </Style>
         <Style Selector="AutoCompleteBox /template/ TextBox">
             <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />

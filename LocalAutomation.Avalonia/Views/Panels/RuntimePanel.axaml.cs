@@ -61,6 +61,20 @@ public partial class RuntimePanel : UserControl
     }
 
     /// <summary>
+    /// Closes a completed runtime task tab from the tab strip.
+    /// </summary>
+    private void CloseRuntimeTab_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: RuntimeTaskTabViewModel runtimeTab })
+        {
+            return;
+        }
+
+        ViewModel.CloseRuntimeTab(runtimeTab);
+        e.Handled = true;
+    }
+
+    /// <summary>
     /// Cancels the current execution session when one is active.
     /// </summary>
     private async void Terminate_Click(object? sender, RoutedEventArgs e)

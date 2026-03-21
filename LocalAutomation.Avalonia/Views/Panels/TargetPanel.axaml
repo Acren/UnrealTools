@@ -20,40 +20,48 @@
                       SelectionChanged="TargetPicker_SelectionChanged">
                 <ComboBox.SelectionBoxItemTemplate>
                     <DataTemplate x:DataType="vm:TargetPickerItemViewModel">
+                        <!-- The closed picker gets a slight text inset so the selected target does not feel cramped
+                             against the left edge of the card. -->
                         <StackPanel Spacing="2">
                             <!-- Keep the type badge on the title row so the path can use the full available width below. -->
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4,0,0,0" />
                                 <Border Grid.Column="1" Classes="pill" Padding="6,2" VerticalAlignment="Center" HorizontalAlignment="Right" IsVisible="{Binding IsTargetItem}">
                                     <TextBlock Text="{Binding TypeName}" FontSize="10" FontWeight="Bold" Classes="muted" />
                                 </Border>
                             </Grid>
-                            <TextBlock Text="{Binding TargetPath}" FontSize="12" Classes="muted" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding TargetPath}" FontSize="12" Classes="muted" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="4,0,0,0" />
                         </StackPanel>
                     </DataTemplate>
                 </ComboBox.SelectionBoxItemTemplate>
                 <ComboBox.ItemTemplate>
                     <DataTemplate x:DataType="vm:TargetPickerItemViewModel">
                         <Grid>
-                            <StackPanel IsVisible="{Binding IsTargetItem}" Spacing="2">
-                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                                    <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <Border Grid.Column="1" Classes="pill" Padding="6,2" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                        <TextBlock Text="{Binding TypeName}" FontSize="10" FontWeight="Bold" Classes="muted" />
-                                    </Border>
-                                    <Button Grid.Column="2"
-                                            Classes="small subtle target-remove"
-                                            HorizontalAlignment="Right"
-                                            VerticalAlignment="Center"
-                                            Click="RemoveTargetPickerItem_Click">
-                                        <Grid Width="10" Height="10" VerticalAlignment="Center">
-                                            <Path Data="M 1,1 L 9,9" />
-                                            <Path Data="M 9,1 L 1,9" />
-                                        </Grid>
-                                    </Button>
-                                </Grid>
-                                <TextBlock Text="{Binding TargetPath}" FontSize="12" Classes="muted" TextWrapping="Wrap" />
-                            </StackPanel>
+                            <!-- Target rows reserve the shared close-chip lane so the remove affordance uses the same
+                                 edge inset as runtime tabs while leaving the pill and path layout stable. -->
+                            <Grid IsVisible="{Binding IsTargetItem}"
+                                  RowDefinitions="Auto,Auto"
+                                  ColumnDefinitions="*,Auto,20"
+                                  ColumnSpacing="8"
+                                  RowSpacing="2">
+                                <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                <Border Grid.Column="1" Classes="pill" Padding="6,2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding TypeName}" FontSize="10" FontWeight="Bold" Classes="muted" />
+                                </Border>
+                                <Button Grid.Column="2"
+                                        Grid.RowSpan="2"
+                                        Classes="close-chip target-remove"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center"
+                                        Click="RemoveTargetPickerItem_Click" />
+                                <TextBlock Grid.Row="1"
+                                           Grid.ColumnSpan="2"
+                                           Text="{Binding TargetPath}"
+                                           FontSize="12"
+                                           Classes="muted"
+                                           TextWrapping="Wrap"
+                                           Margin="4,0,0,0" />
+                            </Grid>
                             <Border IsVisible="{Binding IsAddAction}"
                                     Padding="6,4"
                                     Background="Transparent"

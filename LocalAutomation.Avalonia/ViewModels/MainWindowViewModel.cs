@@ -525,6 +525,37 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Closes the provided runtime tab when it is not the permanent app log tab. Closing a running tab removes it from
+    /// the runtime panel but does not cancel the underlying task; termination remains an explicit action.
+    /// </summary>
+    public void CloseRuntimeTab(RuntimeTaskTabViewModel? runtimeTab)
+    {
+        if (runtimeTab == null || !runtimeTab.CanClose)
+        {
+            return;
+        }
+
+        int removedIndex = RuntimeTabs.IndexOf(runtimeTab);
+        RuntimeTabs.Remove(runtimeTab);
+
+        // Remove the session from the visible runtime collection when its tab is closed so the runtime panel reflects
+        // only open tasks. This is intentionally decoupled from cancellation, which stays under the explicit
+        // terminate command.
+        if (runtimeTab.Session != null)
+        {
+            _services.Execution.RemoveSession(runtimeTab.Session.Id);
+        }
+
+        if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+        {
+            int nextIndex = Math.Clamp(removedIndex - 1, 0, RuntimeTabs.Count - 1);
+            SelectedRuntimeTab = RuntimeTabs.Count > 0 ? RuntimeTabs[nextIndex] : null;
+        }
+
+        RaiseExecutionStateChanged();
+    }
+
+    /// <summary>
     /// Seeds the output panel with application-level log entries and keeps listening so crashes and startup errors are
     /// visible even outside operation execution.
     /// </summary>
