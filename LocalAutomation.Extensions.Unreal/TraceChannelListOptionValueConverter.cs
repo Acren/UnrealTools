@@ -43,15 +43,15 @@ public sealed class TraceChannelListOptionValueConverter : IOptionValueConverter
     /// </summary>
     public object? Deserialize(Type valueType, object? persistedValue)
     {
-        IEnumerable<string> keys = persistedValue switch
+        IEnumerable<string?> keys = persistedValue switch
         {
-            JArray jsonArray => jsonArray.Values<string>().Where(item => !string.IsNullOrWhiteSpace(item))!,
-            IEnumerable<string> rawStrings => rawStrings.Where(item => !string.IsNullOrWhiteSpace(item)),
-            _ => Array.Empty<string>()
+            JArray jsonArray => jsonArray.Values<string>(),
+            IEnumerable<string> rawStrings => rawStrings,
+            _ => Array.Empty<string?>()
         };
 
         BindingList<TraceChannel> restoredChannels = new();
-        foreach (string key in keys)
+        foreach (string key in keys.Where(static item => !string.IsNullOrWhiteSpace(item)).Select(static item => item!))
         {
             TraceChannel? channel = TraceChannels.Channels.FirstOrDefault(item => string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase));
             if (channel != null)

@@ -24,6 +24,11 @@ public interface IExtensionRegistry
     IReadOnlyList<ITargetFactory> TargetFactories { get; }
 
     /// <summary>
+    /// Gets the registered target adapters used to inspect extension-owned runtime targets.
+    /// </summary>
+    IReadOnlyList<ITargetAdapter> TargetAdapters { get; }
+
+    /// <summary>
     /// Gets the registered operation adapters used to create and inspect runtime operations.
     /// </summary>
     IReadOnlyList<IOperationAdapter> OperationAdapters { get; }
@@ -62,6 +67,11 @@ public interface IExtensionRegistry
     /// Adds a target factory to the registry.
     /// </summary>
     void RegisterTargetFactory(ITargetFactory factory);
+
+    /// <summary>
+    /// Adds a target adapter to the registry.
+    /// </summary>
+    void RegisterTargetAdapter(ITargetAdapter adapter);
 
     /// <summary>
     /// Adds an operation adapter to the registry.

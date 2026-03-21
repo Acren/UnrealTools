@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using LocalAutomation.Extensions.Abstractions;
 
 namespace LocalAutomation.Application;
@@ -84,7 +83,7 @@ public sealed class TargetDiscoveryService
     /// </summary>
     public bool IsValidTarget(object target)
     {
-        return GetRequiredPropertyValue<bool>(target, "IsValid");
+        return GetAdapter(target).IsValid(target);
     }
 
     /// <summary>
@@ -92,7 +91,7 @@ public sealed class TargetDiscoveryService
     /// </summary>
     public string GetDisplayName(object target)
     {
-        return GetRequiredPropertyValue<string>(target, "DisplayName");
+        return GetAdapter(target).GetDisplayName(target);
     }
 
     /// <summary>
@@ -100,7 +99,7 @@ public sealed class TargetDiscoveryService
     /// </summary>
     public string GetTypeName(object target)
     {
-        return GetRequiredPropertyValue<string>(target, "TypeName");
+        return GetAdapter(target).GetTypeName(target);
     }
 
     /// <summary>
@@ -108,7 +107,7 @@ public sealed class TargetDiscoveryService
     /// </summary>
     public string GetTargetPath(object target)
     {
-        return GetRequiredPropertyValue<string>(target, "TargetPath");
+        return GetAdapter(target).GetTargetPath(target);
     }
 
     /// <summary>
@@ -121,27 +120,23 @@ public sealed class TargetDiscoveryService
     }
 
     /// <summary>
-    /// Reads a required public property value from the current bridge-era runtime target object.
+    /// Resolves the adapter that can inspect the provided runtime target.
     /// </summary>
-    private static T GetRequiredPropertyValue<T>(object target, string propertyName)
+    private ITargetAdapter GetAdapter(object target)
     {
         if (target == null)
         {
             throw new ArgumentNullException(nameof(target));
         }
 
-        PropertyInfo? property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-        if (property == null)
+        foreach (ITargetAdapter adapter in _catalog.TargetAdapters)
         {
-            throw new InvalidOperationException($"Target type '{target.GetType().FullName}' does not expose required property '{propertyName}'.");
+            if (adapter.CanAdapt(target))
+            {
+                return adapter;
+            }
         }
 
-        object? value = property.GetValue(target);
-        if (value is T typedValue)
-        {
-            return typedValue;
-        }
-
-        throw new InvalidOperationException($"Target property '{propertyName}' on '{target.GetType().FullName}' is not a '{typeof(T).FullName}'.");
+        throw new InvalidOperationException($"No registered target adapter can inspect '{target.GetType().FullName}'.");
     }
 }

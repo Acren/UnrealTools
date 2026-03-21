@@ -34,27 +34,35 @@
 
   <Target Name="CopyBundledExtensions" AfterTargets="Build">
     <PropertyGroup>
-      <BundledExtensionsRoot>$(OutputPath)Extensions\Unreal\</BundledExtensionsRoot>
-      <BundledExtensionSourceRoot>..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\</BundledExtensionSourceRoot>
+      <BundledExtensionsRoot>$(OutputPath)Extensions\</BundledExtensionsRoot>
     </PropertyGroup>
-
-    <MSBuild Projects="..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj"
-             Targets="Build"
-             Properties="Configuration=$(Configuration)" />
 
     <RemoveDir Directories="$(BundledExtensionsRoot)" Condition="Exists('$(BundledExtensionsRoot)')" />
     <MakeDir Directories="$(BundledExtensionsRoot)" />
 
     <ItemGroup>
-      <BundledExtensionFiles Include="$(BundledExtensionSourceRoot)**\*.*"
-                             Exclude="$(BundledExtensionSourceRoot)LocalAutomation.Application.dll;$(BundledExtensionSourceRoot)LocalAutomation.Application.pdb;$(BundledExtensionSourceRoot)LocalAutomation.Core.dll;$(BundledExtensionSourceRoot)LocalAutomation.Core.pdb;$(BundledExtensionSourceRoot)LocalAutomation.Extensions.Abstractions.dll;$(BundledExtensionSourceRoot)LocalAutomation.Extensions.Abstractions.pdb" />
-      <BundledExtensionDirectories Include="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(RecursiveDir)')" />
+      <BundledExtensionProject Include="..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj">
+        <ExtensionFolderName>Unreal</ExtensionFolderName>
+        <ExtensionTargetFramework>netstandard2.1</ExtensionTargetFramework>
+      </BundledExtensionProject>
+    </ItemGroup>
+
+    <MSBuild Projects="@(BundledExtensionProject)"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)" />
+
+    <ItemGroup>
+      <BundledExtensionFiles Include="..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\**\*.*"
+                             Exclude="..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Application.dll;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Application.pdb;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Core.dll;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Core.pdb;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Extensions.Abstractions.dll;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Extensions.Abstractions.pdb">
+        <ExtensionFolderName>Unreal</ExtensionFolderName>
+      </BundledExtensionFiles>
+      <BundledExtensionDirectories Include="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(ExtensionFolderName)\%(RecursiveDir)')" />
     </ItemGroup>
 
     <MakeDir Directories="@(BundledExtensionDirectories)" Condition="@(BundledExtensionDirectories) != ''" />
 
     <Copy SourceFiles="@(BundledExtensionFiles)"
-          DestinationFiles="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(ExtensionFolderName)\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
           Condition="@(BundledExtensionFiles) != ''" />
   </Target>

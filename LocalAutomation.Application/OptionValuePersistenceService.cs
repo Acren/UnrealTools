@@ -50,7 +50,7 @@ public sealed class OptionValuePersistenceService
                     continue;
                 }
 
-                values[BuildPropertyKey(optionSet.GetType(), property.Name)] = token;
+                values[BuildPropertyKey(optionSet.GetType(), property.Name)] = token!;
             }
         }
 

@@ -42,13 +42,16 @@ public sealed class EngineVersionListOptionValueConverter : IOptionValueConverte
     /// </summary>
     public object? Deserialize(Type valueType, object? persistedValue)
     {
-        IEnumerable<string> versionStrings = persistedValue switch
+        IEnumerable<string?> versionStrings = persistedValue switch
         {
-            JArray jsonArray => jsonArray.Values<string>().Where(item => !string.IsNullOrWhiteSpace(item))!,
-            IEnumerable<string> rawStrings => rawStrings.Where(item => !string.IsNullOrWhiteSpace(item)),
-            _ => Array.Empty<string>()
+            JArray jsonArray => jsonArray.Values<string>(),
+            IEnumerable<string> rawStrings => rawStrings,
+            _ => Array.Empty<string?>()
         };
 
-        return versionStrings.Select(version => new EngineVersion(version)).ToList();
+        return versionStrings
+            .Where(static item => !string.IsNullOrWhiteSpace(item))
+            .Select(static version => new EngineVersion(version!))
+            .ToList();
     }
 }

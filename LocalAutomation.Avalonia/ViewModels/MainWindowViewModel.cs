@@ -458,13 +458,14 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void RefreshEnabledOptionSets()
     {
         var enabledOptionTypes = _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target).ToList();
+        List<object> existingOptionSets = _parameterSession.OptionSets.ToList();
 
         foreach (Type optionSetType in enabledOptionTypes)
         {
             _parameterSession.EnsureOptionSet(optionSetType);
         }
 
-        foreach (object options in _parameterSession.OptionSets.ToList())
+        foreach (object options in existingOptionSets)
         {
             if (!enabledOptionTypes.Contains(options.GetType()))
             {

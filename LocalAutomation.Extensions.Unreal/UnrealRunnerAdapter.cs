@@ -174,7 +174,25 @@ public sealed class UnrealRunnerAdapter : IRunnerAdapter
         /// </summary>
         public IDisposable BeginScope<TState>(TState state) where TState : notnull
         {
-            return _fallbackLogger.BeginScope(state);
+            return _fallbackLogger.BeginScope(state) ?? NullScope.Instance;
+        }
+
+        /// <summary>
+        /// Provides a no-op scope object when the fallback logger does not create real scopes.
+        /// </summary>
+        private sealed class NullScope : IDisposable
+        {
+            /// <summary>
+            /// Gets the shared no-op scope instance.
+            /// </summary>
+            public static NullScope Instance { get; } = new();
+
+            /// <summary>
+            /// Disposes the no-op scope.
+            /// </summary>
+            public void Dispose()
+            {
+            }
         }
     }
 }
