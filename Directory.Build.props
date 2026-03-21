@@ -1,0 +1,14 @@
+<Project>
+
+  <!--
+    Centralized bundled-extension declarations keep individual host projects generic. Hosts can consume the shared
+    BundledExtensionProject item list without naming specific extensions in their own project files.
+  -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'LocalAutomation.Avalonia'">
+    <BundledExtensionProject Include="$(MSBuildThisFileDirectory)LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj">
+      <ExtensionFolderName>Unreal</ExtensionFolderName>
+      <ExtensionTargetFramework>netstandard2.1</ExtensionTargetFramework>
+    </BundledExtensionProject>
+  </ItemGroup>
+
+</Project>

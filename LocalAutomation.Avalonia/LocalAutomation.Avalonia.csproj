@@ -40,21 +40,20 @@
     <RemoveDir Directories="$(BundledExtensionsRoot)" Condition="Exists('$(BundledExtensionsRoot)')" />
     <MakeDir Directories="$(BundledExtensionsRoot)" />
 
-    <ItemGroup>
-      <BundledExtensionProject Include="..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj">
-        <ExtensionFolderName>Unreal</ExtensionFolderName>
-        <ExtensionTargetFramework>netstandard2.1</ExtensionTargetFramework>
-      </BundledExtensionProject>
-    </ItemGroup>
-
     <MSBuild Projects="@(BundledExtensionProject)"
              Targets="Build"
              Properties="Configuration=$(Configuration)" />
 
     <ItemGroup>
-      <BundledExtensionFiles Include="..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\**\*.*"
-                             Exclude="..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Application.dll;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Application.pdb;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Core.dll;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Core.pdb;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Extensions.Abstractions.dll;..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\LocalAutomation.Extensions.Abstractions.pdb">
-        <ExtensionFolderName>Unreal</ExtensionFolderName>
+      <BundledExtensionProject>
+        <SourceRoot>%(RootDir)%(Directory)bin\$(Configuration)\%(ExtensionTargetFramework)\</SourceRoot>
+      </BundledExtensionProject>
+
+      <!-- Batch directly on each bundled extension project so wildcard expansion happens against a concrete source
+           root instead of being treated as a literal transformed path. -->
+      <BundledExtensionFiles Include="%(BundledExtensionProject.SourceRoot)**\*.*"
+                             Exclude="%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.pdb">
+        <ExtensionFolderName>%(BundledExtensionProject.ExtensionFolderName)</ExtensionFolderName>
       </BundledExtensionFiles>
       <BundledExtensionDirectories Include="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(ExtensionFolderName)\%(RecursiveDir)')" />
     </ItemGroup>
