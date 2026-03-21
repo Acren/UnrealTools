@@ -9,7 +9,6 @@ using LocalAutomation.Extensions.Abstractions;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
-using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -187,7 +186,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public void SetStatus(string message)
     {
         Status = message;
-        AppLogger.LoggerInstance.LogInformation(message);
+        ApplicationLogService.LogInformation(message);
     }
 
     /// <summary>

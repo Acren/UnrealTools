@@ -4,7 +4,6 @@ using System.Linq;
 using LocalAutomation.Extensions.Abstractions;
 using Microsoft.Extensions.Logging;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
-using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -268,7 +267,7 @@ public sealed class TargetPanelViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            AppLogger.LoggerInstance.LogError(ex, "Target action '{ActionName}' failed.", descriptor.DisplayName);
+            ApplicationLogService.LogError(ex, "Target action '{ActionName}' failed.", descriptor.DisplayName);
             _setStatus($"Failed to run '{descriptor.DisplayName}': {ex.Message}");
         }
     }

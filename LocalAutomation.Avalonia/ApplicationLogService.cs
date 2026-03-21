@@ -71,6 +71,22 @@ public static class ApplicationLogService
     }
 
     /// <summary>
+    /// Writes an informational message through the shared application logger bridge.
+    /// </summary>
+    public static void LogInformation(string message)
+    {
+        AppLogger.LoggerInstance.LogInformation(message);
+    }
+
+    /// <summary>
+    /// Writes an error entry with exception details through the shared application logger bridge.
+    /// </summary>
+    public static void LogError(Exception exception, string messageTemplate, params object[] args)
+    {
+        AppLogger.LoggerInstance.LogError(exception, messageTemplate, args);
+    }
+
+    /// <summary>
     /// Logs process-wide unhandled exceptions through the shared output stream.
     /// </summary>
     private static void HandleUnhandledException(object sender, UnhandledExceptionEventArgs args)
