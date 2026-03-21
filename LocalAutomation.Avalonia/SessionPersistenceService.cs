@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using LocalAutomation.Application;
 using LocalAutomation.Persistence;
+using LocalAutomation.Runtime;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
@@ -85,7 +86,7 @@ public sealed class SessionPersistenceService
     /// <summary>
     /// Creates or updates a persisted target snapshot from the provided runtime target.
     /// </summary>
-    public TargetSessionSnapshot CreateTargetSnapshot(object target)
+    public TargetSessionSnapshot CreateTargetSnapshot(IOperationTarget target)
     {
         string targetTypeId = _services.Targets.GetTargetTypeId(target) ?? throw new InvalidOperationException($"No target descriptor matched '{target.GetType().Name}'.");
         string targetPath = _services.Targets.GetTargetPath(target);
@@ -101,10 +102,10 @@ public sealed class SessionPersistenceService
     /// <summary>
     /// Attempts to recreate a runtime target from its persisted snapshot.
     /// </summary>
-    public bool TryRestoreTarget(TargetSessionSnapshot snapshot, out object? target)
+    public bool TryRestoreTarget(TargetSessionSnapshot snapshot, out IOperationTarget? target)
     {
         target = null;
-        if (!_services.Targets.TryCreateTarget(snapshot.Path, out object? createdTarget) || createdTarget == null)
+        if (!_services.Targets.TryCreateTarget(snapshot.Path, out IOperationTarget? createdTarget) || createdTarget == null)
         {
             return false;
         }
@@ -134,7 +135,7 @@ public sealed class SessionPersistenceService
             PendingTargetPath = legacyState.NewTargetPath
         };
 
-        foreach (object target in legacyState.Targets)
+        foreach (IOperationTarget target in legacyState.Targets.OfType<IOperationTarget>())
         {
             string? targetTypeId = _services.Targets.GetTargetTypeId(target);
             if (string.IsNullOrWhiteSpace(targetTypeId) || !_services.Targets.IsValidTarget(target))

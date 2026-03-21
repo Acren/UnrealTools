@@ -1,3 +1,5 @@
+using LocalAutomation.Runtime;
+
 namespace LocalAutomation.Extensions.Abstractions;
 
 /// <summary>
@@ -13,5 +15,5 @@ public interface ITargetFactory
     /// <summary>
     /// Attempts to create a target instance from the provided source value.
     /// </summary>
-    bool TryCreateTarget(string source, out object? target);
+    bool TryCreateTarget(string source, out IOperationTarget? target);
 }

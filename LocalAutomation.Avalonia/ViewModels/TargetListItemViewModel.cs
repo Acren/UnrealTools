@@ -1,4 +1,5 @@
 using System;
+using LocalAutomation.Runtime;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -13,7 +14,7 @@ public sealed class TargetListItemViewModel : ViewModelBase
     /// <summary>
      /// Creates a target list item for the provided operation target.
      /// </summary>
-    public TargetListItemViewModel(LocalAutomationApplicationHost services, object target)
+    public TargetListItemViewModel(LocalAutomationApplicationHost services, IOperationTarget target)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
         if (!_services.Targets.IsTarget(target))
@@ -27,7 +28,7 @@ public sealed class TargetListItemViewModel : ViewModelBase
     /// <summary>
      /// Gets the underlying runtime target instance.
      /// </summary>
-    public object Target { get; }
+    public IOperationTarget Target { get; }
 
     /// <summary>
      /// Gets the display name shown in the target list.

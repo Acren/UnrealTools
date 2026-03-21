@@ -24,11 +24,6 @@ public interface IExtensionRegistry
     IReadOnlyList<ITargetFactory> TargetFactories { get; }
 
     /// <summary>
-    /// Gets the registered target adapters used to inspect extension-owned runtime targets.
-    /// </summary>
-    IReadOnlyList<ITargetAdapter> TargetAdapters { get; }
-
-    /// <summary>
     /// Gets the registered target context actions.
     /// </summary>
     IReadOnlyList<ContextActionDescriptor> ContextActions { get; }
@@ -57,11 +52,6 @@ public interface IExtensionRegistry
     /// Adds a target factory to the registry.
     /// </summary>
     void RegisterTargetFactory(ITargetFactory factory);
-
-    /// <summary>
-    /// Adds a target adapter to the registry.
-    /// </summary>
-    void RegisterTargetAdapter(ITargetAdapter adapter);
 
     /// <summary>
     /// Adds a context action descriptor to the registry.

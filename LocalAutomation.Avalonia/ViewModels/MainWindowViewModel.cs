@@ -240,7 +240,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Returns the persisted snapshot for the provided runtime target when one exists.
     /// </summary>
-    private TargetSessionSnapshot? FindTargetSnapshot(object target)
+    private TargetSessionSnapshot? FindTargetSnapshot(IOperationTarget target)
     {
         string key = _sessionPersistence.CreateTargetSnapshot(target).Key;
         return _sessionSnapshot.Targets.FirstOrDefault(item => string.Equals(item.Key, key, StringComparison.Ordinal));
@@ -249,7 +249,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Captures the current operation and option values into the nested persisted state for the provided target.
     /// </summary>
-    private void CaptureTargetState(object? target)
+    private void CaptureTargetState(IOperationTarget? target)
     {
         if (target == null)
         {
@@ -314,7 +314,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             foreach (TargetSessionSnapshot targetSnapshot in _sessionSnapshot.Targets)
             {
-                if (_sessionPersistence.TryRestoreTarget(targetSnapshot, out object? target) && target != null)
+                if (_sessionPersistence.TryRestoreTarget(targetSnapshot, out IOperationTarget? target) && target != null)
                 {
                     Target.AddTargetItem(new TargetListItemViewModel(_services, target));
                     restoredSnapshots.Add(targetSnapshot);
@@ -418,7 +418,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void HandleSelectedTargetChanged(TargetListItemViewModel? previousTarget, TargetListItemViewModel? selectedTarget)
     {
-        object? previousOperationTarget = previousTarget?.Target;
+        IOperationTarget? previousOperationTarget = previousTarget?.Target;
         if (!_isHydratingSessionSelection && !_isRestoringSession && !_isApplyingTargetState && previousOperationTarget != null)
         {
             CaptureTargetState(previousOperationTarget);

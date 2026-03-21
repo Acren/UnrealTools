@@ -1,4 +1,5 @@
 using System;
+using LocalAutomation.Runtime;
 using LocalAutomation.Extensions.Abstractions;
 
 namespace LocalAutomation.Application;
@@ -22,7 +23,7 @@ public sealed class TargetDiscoveryService
     /// <summary>
     /// Tries each registered target factory until one can create a target from the provided source value.
     /// </summary>
-    public bool TryCreateTarget(string source, out object? target)
+    public bool TryCreateTarget(string source, out IOperationTarget? target)
     {
         foreach (ITargetFactory factory in _catalog.TargetFactories)
         {
@@ -39,9 +40,9 @@ public sealed class TargetDiscoveryService
     /// <summary>
     /// Creates a target from the provided source value or throws when no registered factory recognizes it.
     /// </summary>
-    public object CreateTarget(string source)
+    public IOperationTarget CreateTarget(string source)
     {
-        if (TryCreateTarget(source, out object? target) && target != null)
+        if (TryCreateTarget(source, out IOperationTarget? target) && target != null)
         {
             return target;
         }
@@ -52,7 +53,7 @@ public sealed class TargetDiscoveryService
     /// <summary>
     /// Returns the stable target descriptor identifier for the provided runtime target when one exists.
     /// </summary>
-    public string? GetTargetTypeId(object? target)
+    public string? GetTargetTypeId(IOperationTarget? target)
     {
         if (target == null)
         {
@@ -73,7 +74,7 @@ public sealed class TargetDiscoveryService
     /// <summary>
     /// Returns whether the provided object matches any registered target descriptor.
     /// </summary>
-    public bool IsTarget(object? target)
+    public bool IsTarget(IOperationTarget? target)
     {
         return GetTargetTypeId(target) != null;
     }
@@ -81,62 +82,61 @@ public sealed class TargetDiscoveryService
     /// <summary>
     /// Returns whether the provided target currently reports itself as valid.
     /// </summary>
-    public bool IsValidTarget(object target)
-    {
-        return GetAdapter(target).IsValid(target);
-    }
-
-    /// <summary>
-    /// Returns the user-facing display name for the provided target.
-    /// </summary>
-    public string GetDisplayName(object target)
-    {
-        return GetAdapter(target).GetDisplayName(target);
-    }
-
-    /// <summary>
-    /// Returns the user-facing type name for the provided target.
-    /// </summary>
-    public string GetTypeName(object target)
-    {
-        return GetAdapter(target).GetTypeName(target);
-    }
-
-    /// <summary>
-    /// Returns the stable path or source string for the provided target.
-    /// </summary>
-    public string GetTargetPath(object target)
-    {
-        return GetAdapter(target).GetTargetPath(target);
-    }
-
-    /// <summary>
-    /// Returns the runtime type name for the provided target so persistence can disambiguate target kinds that share a
-    /// path.
-    /// </summary>
-    public string GetRuntimeTypeName(object target)
-    {
-        return target?.GetType().FullName ?? throw new ArgumentNullException(nameof(target));
-    }
-
-    /// <summary>
-    /// Resolves the adapter that can inspect the provided runtime target.
-    /// </summary>
-    private ITargetAdapter GetAdapter(object target)
+    public bool IsValidTarget(IOperationTarget target)
     {
         if (target == null)
         {
             throw new ArgumentNullException(nameof(target));
         }
 
-        foreach (ITargetAdapter adapter in _catalog.TargetAdapters)
+        return target.IsValid;
+    }
+
+    /// <summary>
+    /// Returns the user-facing display name for the provided target.
+    /// </summary>
+    public string GetDisplayName(IOperationTarget target)
+    {
+        if (target == null)
         {
-            if (adapter.CanAdapt(target))
-            {
-                return adapter;
-            }
+            throw new ArgumentNullException(nameof(target));
         }
 
-        throw new InvalidOperationException($"No registered target adapter can inspect '{target.GetType().FullName}'.");
+        return target.DisplayName;
+    }
+
+    /// <summary>
+    /// Returns the user-facing type name for the provided target.
+    /// </summary>
+    public string GetTypeName(IOperationTarget target)
+    {
+        if (target == null)
+        {
+            throw new ArgumentNullException(nameof(target));
+        }
+
+        return target.TypeName;
+    }
+
+    /// <summary>
+    /// Returns the stable path or source string for the provided target.
+    /// </summary>
+    public string GetTargetPath(IOperationTarget target)
+    {
+        if (target == null)
+        {
+            throw new ArgumentNullException(nameof(target));
+        }
+
+        return target.TargetPath;
+    }
+
+    /// <summary>
+    /// Returns the runtime type name for the provided target so persistence can disambiguate target kinds that share a
+    /// path.
+    /// </summary>
+    public string GetRuntimeTypeName(IOperationTarget target)
+    {
+        return target?.GetType().FullName ?? throw new ArgumentNullException(nameof(target));
     }
 }

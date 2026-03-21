@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using LocalAutomation.Extensions.Abstractions;
+using LocalAutomation.Runtime;
 using Microsoft.Extensions.Logging;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
@@ -122,7 +123,7 @@ public sealed class TargetPanelViewModel : ViewModelBase
 
         try
         {
-            object createdTarget = _services.Targets.CreateTarget(source);
+            IOperationTarget createdTarget = _services.Targets.CreateTarget(source);
             if (!_services.Targets.IsTarget(createdTarget))
             {
                 errorMessage = $"Created target '{createdTarget.GetType().Name}' is not recognized by the registered target catalog.";

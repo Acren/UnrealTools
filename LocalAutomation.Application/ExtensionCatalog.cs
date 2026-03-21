@@ -15,7 +15,6 @@ public sealed class ExtensionCatalog : IExtensionRegistry
     private readonly List<IOptionEditorAdapter> _optionEditorAdapters = new();
     private readonly List<IOptionValueConverter> _optionValueConverters = new();
     private readonly List<OperationDescriptor> _operations = new();
-    private readonly List<ITargetAdapter> _targetAdapters = new();
     private readonly List<TargetDescriptor> _targets = new();
     private readonly List<ITargetFactory> _targetFactories = new();
 
@@ -38,11 +37,6 @@ public sealed class ExtensionCatalog : IExtensionRegistry
     /// Gets the registered target factories.
     /// </summary>
     public IReadOnlyList<ITargetFactory> TargetFactories => _targetFactories;
-
-    /// <summary>
-    /// Gets the registered target adapters.
-    /// </summary>
-    public IReadOnlyList<ITargetAdapter> TargetAdapters => _targetAdapters;
 
     /// <summary>
     /// Gets the registered target context actions.
@@ -116,23 +110,6 @@ public sealed class ExtensionCatalog : IExtensionRegistry
         _targetFactories.Add(factory);
     }
 
-    /// <summary>
-    /// Registers a target adapter after checking that its identifier is unique.
-    /// </summary>
-    public void RegisterTargetAdapter(ITargetAdapter adapter)
-    {
-        if (adapter == null)
-        {
-            throw new ArgumentNullException(nameof(adapter));
-        }
-
-        EnsureUniqueId(adapter.Id, _targetAdapters, static item => item.Id, nameof(adapter));
-        _targetAdapters.Add(adapter);
-    }
-
-    /// <summary>
-    /// Registers a runner adapter after checking that its identifier is unique.
-    /// </summary>
     /// Registers a context action after checking that its identifier is unique.
     /// </summary>
     public void RegisterContextAction(ContextActionDescriptor descriptor)

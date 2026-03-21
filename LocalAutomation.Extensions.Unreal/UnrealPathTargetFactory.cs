@@ -1,5 +1,6 @@
 using System;
 using LocalAutomation.Extensions.Abstractions;
+using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Unreal;
 
 namespace LocalAutomation.Extensions.Unreal;
@@ -17,7 +18,7 @@ public sealed class UnrealPathTargetFactory : ITargetFactory
     /// <summary>
     /// Attempts to create a supported Unreal target instance from the provided path.
     /// </summary>
-    public bool TryCreateTarget(string source, out object? target)
+    public bool TryCreateTarget(string source, out IOperationTarget? target)
     {
         if (string.IsNullOrWhiteSpace(source))
         {

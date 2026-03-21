@@ -11,7 +11,7 @@ using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
 using RuntimeTarget = global::LocalAutomation.Runtime.IOperationTarget;
 using RuntimeOperationOptions = global::LocalAutomation.Runtime.OperationOptions;
-using UnrealOperation = global::UnrealAutomationCommon.Operations.BaseOperations.Operation;
+using RuntimeOperation = global::LocalAutomation.Runtime.Operation;
 
 namespace LocalAutomation.Extensions.Unreal;
 
@@ -50,7 +50,6 @@ public sealed class UnrealExtensionModule : IExtensionModule
         registry.RegisterTarget(new TargetDescriptor("unreal.engine", "Engine", typeof(Engine)));
         registry.RegisterTarget(new TargetDescriptor("unreal.package", "Package", typeof(Package)));
         registry.RegisterTargetFactory(new UnrealPathTargetFactory());
-        registry.RegisterTargetAdapter(new UnrealTargetAdapter());
         registry.RegisterOptionEditorAdapter(new EngineVersionOptionEditorAdapter());
         registry.RegisterOptionEditorAdapter(new InsightsOptionEditorAdapter());
         registry.RegisterOptionValueConverter(new EngineVersionListOptionValueConverter());
@@ -108,13 +107,13 @@ public sealed class UnrealExtensionModule : IExtensionModule
             typeof(VerifyDeployment)
         };
 
-        orderedTypes.AddRange(TypeUtils.GetSubclassesOf(typeof(UnrealOperation)));
+        orderedTypes.AddRange(TypeUtils.GetSubclassesOf(typeof(RuntimeOperation)));
 
         int sortOrder = 0;
         List<OperationDescriptor> descriptors = new();
         foreach (Type operationType in orderedTypes.Distinct())
         {
-            UnrealOperation operation = (UnrealOperation)UnrealOperation.CreateOperation(operationType);
+            RuntimeOperation operation = RuntimeOperation.CreateOperation(operationType);
             descriptors.Add(new OperationDescriptor(
                 id: BuildOperationId(operationType),
                 displayName: operation.OperationName,
