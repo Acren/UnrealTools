@@ -10,11 +10,13 @@ namespace UnrealAutomationCommon.Operations;
 /// <summary>
 /// Adds Unreal-specific environment resolution on top of the shared runtime parameter model.
 /// </summary>
-public class OperationParameters : global::LocalAutomation.Runtime.UnrealRuntimeOperationParameters<Engine>
+public class OperationParameters : global::LocalAutomation.Runtime.OperationParameters
 {
+    private Engine? _engineOverride;
+
     /// <summary>
-    /// Gets the effective Unreal engine for the current target and option state.
-    /// </summary>
+     /// Gets the effective Unreal engine for the current target and option state.
+     /// </summary>
     [JsonIgnore]
     public Engine? Engine => GetEnvironment();
 
@@ -24,8 +26,8 @@ public class OperationParameters : global::LocalAutomation.Runtime.UnrealRuntime
     [JsonIgnore]
     public Engine? EngineOverride
     {
-        get => EnvironmentOverride;
-        set => EnvironmentOverride = value;
+        get => _engineOverride;
+        set => _engineOverride = value;
     }
 
     /// <summary>
@@ -54,11 +56,11 @@ public class OperationParameters : global::LocalAutomation.Runtime.UnrealRuntime
     /// <summary>
     /// Resolves the effective Unreal engine from explicit overrides, engine-version options, or the target itself.
     /// </summary>
-    public override Engine? GetEnvironment()
+    public Engine? GetEnvironment()
     {
-        if (EnvironmentOverride != null)
+        if (_engineOverride != null)
         {
-            return EnvironmentOverride;
+            return _engineOverride;
         }
 
         EngineVersionOptions? versionOptions = FindOptions<EngineVersionOptions>();
@@ -77,6 +79,16 @@ public class OperationParameters : global::LocalAutomation.Runtime.UnrealRuntime
         }
 
         return engineInstanceProvider.EngineInstance;
+    }
+
+    /// <summary>
+    /// Copies Unreal-specific engine overrides onto child parameter sets.
+    /// </summary>
+    public override global::LocalAutomation.Runtime.OperationParameters CreateChild()
+    {
+        OperationParameters child = (OperationParameters)base.CreateChild();
+        child.EngineOverride = EngineOverride;
+        return child;
     }
 
     /// <summary>
