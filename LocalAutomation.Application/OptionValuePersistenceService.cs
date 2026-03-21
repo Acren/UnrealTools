@@ -126,7 +126,7 @@ public sealed class OptionValuePersistenceService
     }
 
     /// <summary>
-    /// Detects and unwraps the runtime option wrapper used by the existing Unreal option model.
+    /// Detects and unwraps the runtime option wrapper used by the current bridged option model.
     /// </summary>
     private static bool TryUnwrapOptionValue(Type propertyType, object? propertyValue, out Type? wrappedValueType, out object? wrappedValue)
     {

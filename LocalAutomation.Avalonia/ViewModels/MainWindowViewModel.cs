@@ -56,11 +56,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     public TargetPanelViewModel Target { get; }
 
     /// <summary>
-    /// Gets the currently added targets shown in the shell.
-    /// </summary>
-    public ObservableCollection<TargetListItemViewModel> Targets => Target.Targets;
-
-    /// <summary>
     /// Gets the operations compatible with the current target selection.
     /// </summary>
     public ObservableCollection<OperationDescriptor> AvailableOperations { get; } = new();
@@ -76,29 +71,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     public RuntimePanelViewModel Runtime { get; }
 
     /// <summary>
-    /// Gets the path text entered into the target panel's add-target flow.
-    /// </summary>
-    public string NewTargetPath => Target.NewTargetPath;
-
-    /// <summary>
     /// Gets the currently selected target row from the target panel.
     /// </summary>
     public TargetListItemViewModel? SelectedTarget => Target.SelectedTarget;
-
-    /// <summary>
-    /// Gets the summary text for the currently selected target.
-    /// </summary>
-    public string SelectedTargetSummary => Target.SelectedTargetSummary;
-
-    /// <summary>
-    /// Gets the selected target path for detail display.
-    /// </summary>
-    public string SelectedTargetPath => Target.SelectedTargetPath;
-
-    /// <summary>
-    /// Gets the selected target engine summary.
-    /// </summary>
-    public string SelectedTargetEngine => Target.SelectedTargetEngine;
 
     /// <summary>
     /// Gets or sets the currently selected operation descriptor.
@@ -149,11 +124,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         get => _status;
         private set => SetProperty(ref _status, value);
     }
-
-    /// <summary>
-    /// Gets whether a non-empty target path can be added from the input box.
-    /// </summary>
-    public bool CanAddTarget => !string.IsNullOrWhiteSpace(NewTargetPath);
 
     /// <summary>
     /// Gets whether the current selection can produce a command preview string for copying.
@@ -358,14 +328,14 @@ public sealed class MainWindowViewModel : ViewModelBase
             _sessionSnapshot.Targets = restoredSnapshots;
             Target.NewTargetPath = _sessionSnapshot.PendingTargetPath;
 
-            TargetListItemViewModel? restoredSelection = Targets.FirstOrDefault(item =>
+            TargetListItemViewModel? restoredSelection = Target.Targets.FirstOrDefault(item =>
                 string.Equals(_sessionPersistence.CreateTargetSnapshot(item.Target).Key, _sessionSnapshot.SelectedTargetKey, StringComparison.Ordinal));
 
             // Apply the restored target and operation together before recomputing enabled option sets so the
             // hydration pass does not temporarily coerce to a different operation and replace persisted values with
             // new defaults.
             _isHydratingSessionSelection = true;
-            Target.SelectedTarget = restoredSelection ?? Targets.FirstOrDefault();
+            Target.SelectedTarget = restoredSelection ?? Target.Targets.FirstOrDefault();
             RefreshOperationSelection();
 
             _isHydratingSessionSelection = false;
@@ -374,7 +344,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             if (Target.SelectedTarget != null)
             {
-                Status = $"Restored {Targets.Count} target(s) from the previous Avalonia session.";
+                Status = $"Restored {Target.Targets.Count} target(s) from the previous Avalonia session.";
             }
         }
         finally
@@ -408,7 +378,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         _hasPendingSessionSave = false;
 
         CaptureTargetState(Target.SelectedTarget?.Target);
-        _sessionSnapshot.Targets = Targets.Select(item =>
+        _sessionSnapshot.Targets = Target.Targets.Select(item =>
         {
             TargetSessionSnapshot snapshot = FindTargetSnapshot(item.Target) ?? _sessionPersistence.CreateTargetSnapshot(item.Target);
             snapshot.TargetTypeId = _services.Targets.GetTargetTypeId(item.Target) ?? snapshot.TargetTypeId;

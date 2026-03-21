@@ -62,17 +62,9 @@ public sealed class TargetPanelViewModel : ViewModelBase
         get => _newTargetPath;
         set
         {
-            if (SetProperty(ref _newTargetPath, value))
-            {
-                RaisePropertyChanged(nameof(CanAddTarget));
-            }
+            SetProperty(ref _newTargetPath, value);
         }
     }
-
-    /// <summary>
-    /// Gets whether a non-empty target path can be added from the current input.
-    /// </summary>
-    public bool CanAddTarget => !string.IsNullOrWhiteSpace(NewTargetPath);
 
     /// <summary>
     /// Gets or sets the picker row currently shown by the target dropdown.
@@ -113,29 +105,9 @@ public sealed class TargetPanelViewModel : ViewModelBase
 
             SyncSelectedTargetPickerItem();
             RefreshTargetActions();
-            RaisePropertyChanged(nameof(SelectedTargetEngine));
-            RaisePropertyChanged(nameof(SelectedTargetPath));
-            RaisePropertyChanged(nameof(SelectedTargetSummary));
             _handleSelectedTargetChanged(previousTarget, value);
         }
     }
-
-    /// <summary>
-    /// Gets the summary text for the currently selected target.
-    /// </summary>
-    public string SelectedTargetSummary => SelectedTarget != null
-        ? $"{SelectedTarget.DisplayName} · {SelectedTarget.TypeName}"
-        : "No target selected";
-
-    /// <summary>
-    /// Gets the selected target path for detail display.
-    /// </summary>
-    public string SelectedTargetPath => SelectedTarget?.TargetPath ?? "Choose a target to see its details.";
-
-    /// <summary>
-    /// Gets the selected target engine summary.
-    /// </summary>
-    public string SelectedTargetEngine => SelectedTarget?.EngineSummary ?? "Unknown engine";
 
     /// <summary>
     /// Creates a target from the current path input and adds it to the in-memory session.
@@ -146,7 +118,7 @@ public sealed class TargetPanelViewModel : ViewModelBase
         string source = NewTargetPath.Trim();
         if (string.IsNullOrWhiteSpace(source))
         {
-            errorMessage = "Enter a project, plugin, package, or engine path first.";
+            errorMessage = "Enter a target path first.";
             return false;
         }
 

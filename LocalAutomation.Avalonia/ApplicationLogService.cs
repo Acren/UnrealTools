@@ -10,7 +10,7 @@ namespace LocalAutomation.Avalonia;
 
 /// <summary>
 /// Owns the Avalonia shell's process-wide log stream so startup diagnostics, unhandled exceptions, and forwarded
-/// Unreal logs all flow into the same output panel even when no operation is currently executing.
+/// runtime logs all flow into the same output panel even when no operation is currently executing.
 /// </summary>
 public static class ApplicationLogService
 {

@@ -1,5 +1,4 @@
 using UnrealAutomationCommon.Operations;
-using UnrealAutomationCommon.Unreal;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -36,19 +35,4 @@ public sealed class TargetListItemViewModel : ViewModelBase
     /// </summary>
     public string TargetPath => Target.TargetPath;
 
-    /// <summary>
-    /// Gets a concise engine summary when the target exposes engine information.
-    /// </summary>
-    public string EngineSummary
-    {
-        get
-        {
-            if (Target is not IEngineInstanceProvider engineProvider || engineProvider.EngineInstance == null)
-            {
-                return "Unknown engine";
-            }
-
-            return $"{engineProvider.EngineInstance.Version} ({engineProvider.EngineInstance.EngineType})";
-        }
-    }
 }
