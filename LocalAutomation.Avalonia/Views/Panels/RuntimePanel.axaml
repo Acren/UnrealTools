@@ -27,77 +27,42 @@
                                         <Button Classes="tab"
                                                 Classes.active="{Binding IsSelected}"
                                                 Classes.app-log="{Binding IsApplicationLog}"
+                                                Classes.closable="{Binding CanClose}"
                                                 Click="RuntimeTab_Click">
                                             <Button.Content>
-                                                <Grid MinHeight="34">
-                                                    <!-- Closable tabs reserve the shared close-chip lane so the text stops
-                                                         before the 12px edge inset used by the action affordance. -->
-                                                    <Grid IsVisible="{Binding CanClose}"
-                                                          MinHeight="34"
-                                                          Margin="0,0,22,0">
-                                                        <!-- Tabs with subtitles use a compact status-dot + two-line layout. -->
-                                                        <Grid IsVisible="{Binding HasSubtitle}"
-                                                              ColumnDefinitions="12,*"
-                                                              ColumnSpacing="8">
-                                                            <Border Width="6"
-                                                                    Height="6"
-                                                                    CornerRadius="999"
-                                                                    VerticalAlignment="Center"
-                                                                    IsVisible="{Binding HasStatusMarker}"
-                                                                    Classes="runtime-status-dot"
-                                                                    Classes.running="{Binding IsRunningStatus}"
-                                                                    Classes.succeeded="{Binding IsSucceededStatus}"
-                                                                    Classes.failed="{Binding IsFailedStatus}" />
-                                                            <StackPanel Grid.Column="1"
-                                                                        VerticalAlignment="Center"
-                                                                        Spacing="0">
-                                                                <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
-                                                                           Classes="panel-title" />
-                                                                <TextBlock Text="{Binding Subtitle}"
-                                                                           Classes="tab-subtitle" />
-                                                            </StackPanel>
-                                                        </Grid>
-
-                                                        <!-- Tabs without subtitles, such as the application log tab, center the
-                                                             title directly so they do not inherit extra empty line space. -->
-                                                        <TextBlock IsVisible="{Binding HasSubtitle, Converter={x:Static BoolConverters.Not}}"
-                                                                   VerticalAlignment="Center"
-                                                                   Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
-                                                                   Classes="panel-title" />
+                                                <!-- One shared tab-content layout keeps the optional status dot and
+                                                     subtitle behavior in a single place for both task tabs and the
+                                                     pinned application log tab. -->
+                                                <Grid MinHeight="34"
+                                                      ColumnDefinitions="Auto,*"
+                                                      ColumnSpacing="0">
+                                                    <!-- The marker lane owns its own trailing gap so tabs without a status
+                                                         dot do not keep a phantom left offset. -->
+                                                    <Grid Grid.Column="0"
+                                                          Width="12"
+                                                          Margin="0,0,8,0"
+                                                          VerticalAlignment="Center"
+                                                          IsVisible="{Binding HasStatusMarker}">
+                                                        <Border Width="6"
+                                                                Height="6"
+                                                                CornerRadius="999"
+                                                                HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center"
+                                                                Classes="runtime-status-dot"
+                                                                Classes.running="{Binding IsRunningStatus}"
+                                                                Classes.succeeded="{Binding IsSucceededStatus}"
+                                                                Classes.failed="{Binding IsFailedStatus}" />
                                                     </Grid>
-
-                                                    <!-- Tabs without a close affordance can use the full width, which
-                                                         prevents the app-log tab from reserving phantom space. -->
-                                                    <Grid IsVisible="{Binding CanClose, Converter={x:Static BoolConverters.Not}}"
-                                                          MinHeight="34">
-                                                        <!-- Tabs with subtitles use a compact status-dot + two-line layout. -->
-                                                        <Grid IsVisible="{Binding HasSubtitle}"
-                                                              ColumnDefinitions="12,*"
-                                                              ColumnSpacing="8">
-                                                            <Border Width="6"
-                                                                    Height="6"
-                                                                    CornerRadius="999"
-                                                                    VerticalAlignment="Center"
-                                                                    IsVisible="{Binding HasStatusMarker}"
-                                                                    Classes="runtime-status-dot"
-                                                                    Classes.running="{Binding IsRunningStatus}"
-                                                                    Classes.succeeded="{Binding IsSucceededStatus}"
-                                                                    Classes.failed="{Binding IsFailedStatus}" />
-                                                            <StackPanel Grid.Column="1"
-                                                                        VerticalAlignment="Center"
-                                                                        Spacing="0">
-                                                                <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
-                                                                           Classes="panel-title" />
-                                                                <TextBlock Text="{Binding Subtitle}"
-                                                                           Classes="tab-subtitle" />
-                                                            </StackPanel>
-                                                        </Grid>
-
-                                                        <TextBlock IsVisible="{Binding HasSubtitle, Converter={x:Static BoolConverters.Not}}"
-                                                                   VerticalAlignment="Center"
-                                                                   Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                    <StackPanel Grid.Column="1"
+                                                                VerticalAlignment="Center"
+                                                                Spacing="0">
+                                                        <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
                                                                    Classes="panel-title" />
-                                                    </Grid>
+                                                        <!-- Subtitle rows collapse cleanly for single-line tabs like the app log. -->
+                                                        <TextBlock Text="{Binding Subtitle}"
+                                                                   IsVisible="{Binding HasSubtitle}"
+                                                                   Classes="tab-subtitle" />
+                                                    </StackPanel>
                                                 </Grid>
                                             </Button.Content>
                                         </Button>

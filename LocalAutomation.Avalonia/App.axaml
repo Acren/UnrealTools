@@ -275,6 +275,10 @@
             <Setter Property="Padding" Value="16,6,18,6" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
         </Style>
+        <!-- Closable tabs reserve the close-chip lane through padding so the content tree can stay shared. -->
+        <Style Selector="Button.tab.closable /template/ ContentPresenter">
+            <Setter Property="Padding" Value="16,6,40,6" />
+        </Style>
         <Style Selector="Button.tab:pointerover">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
         </Style>
