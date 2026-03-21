@@ -26,6 +26,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly OperationParameters _operationParameters = new();
     private readonly SessionPersistenceService _sessionPersistence;
     private readonly DispatcherTimer _sessionSaveTimer;
+    private readonly DispatcherTimer _runtimeDurationTimer;
     private readonly TargetPickerItemViewModel _addTargetPickerItem = TargetPickerItemViewModel.CreateAddAction();
     private bool _isApplyingTargetState;
     private bool _isHydratingSessionSelection;
@@ -39,6 +40,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     private TargetPickerItemViewModel? _selectedTargetPickerItem;
     private TargetListItemViewModel? _selectedTarget;
     private string _status = "Add a target path to begin using the LocalAutomation shell.";
+    private RuntimeTaskTabViewModel? _observedRuntimeTab;
+    private event PropertyChangedEventHandler? _selectedRuntimeTabPropertyChanged;
 
     /// <summary>
     /// Creates the Avalonia main window view model around the shared LocalAutomation application host.
@@ -49,6 +52,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         _sessionPersistence = new SessionPersistenceService(services);
         _sessionSaveTimer = new DispatcherTimer { Interval = SessionSaveDebounceDelay };
         _sessionSaveTimer.Tick += HandleSessionSaveTimerTick;
+        _runtimeDurationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _runtimeDurationTimer.Tick += HandleRuntimeDurationTimerTick;
         _operationParameters.PropertyChanged += HandleOperationParametersChanged;
         TargetPickerItems.Add(_addTargetPickerItem);
         RuntimeTabs.Add(CreateApplicationLogTab());
@@ -97,6 +102,26 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedRuntimeTab, value))
             {
+                // Selected-task header pills bind through MainWindowViewModel, so mirror child metric changes from the
+                // active runtime tab back into top-level notifications.
+                if (_selectedRuntimeTabPropertyChanged != null)
+                {
+                    if (_observedRuntimeTab != null)
+                    {
+                        _observedRuntimeTab.PropertyChanged -= _selectedRuntimeTabPropertyChanged;
+                    }
+
+                    _selectedRuntimeTabPropertyChanged = null;
+                    _observedRuntimeTab = null;
+                }
+
+                if (value != null)
+                {
+                    _selectedRuntimeTabPropertyChanged = (_, args) => HandleSelectedRuntimeTabPropertyChanged(args.PropertyName);
+                    value.PropertyChanged += _selectedRuntimeTabPropertyChanged;
+                    _observedRuntimeTab = value;
+                }
+
                 foreach (RuntimeTaskTabViewModel tab in RuntimeTabs)
                 {
                     tab.IsSelected = ReferenceEquals(tab, value);
@@ -311,6 +336,26 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets the runtime tab title shown in the panel header when a tab is selected.
     /// </summary>
     public string SelectedRuntimeTabTitle => SelectedRuntimeTab?.Title ?? "Runtime";
+
+    /// <summary>
+    /// Gets whether the selected runtime tab should show task metrics in the panel header.
+    /// </summary>
+    public bool ShowSelectedRuntimeMetrics => SelectedRuntimeTab is { IsApplicationLog: false };
+
+    /// <summary>
+    /// Gets the warning count for the selected runtime task.
+    /// </summary>
+    public int SelectedRuntimeWarningCount => SelectedRuntimeTab?.WarningCount ?? 0;
+
+    /// <summary>
+    /// Gets the error count for the selected runtime task.
+    /// </summary>
+    public int SelectedRuntimeErrorCount => SelectedRuntimeTab?.ErrorCount ?? 0;
+
+    /// <summary>
+    /// Gets the elapsed duration text for the selected runtime task.
+    /// </summary>
+    public string SelectedRuntimeDuration => SelectedRuntimeTab?.DurationText ?? "--:--";
 
     /// <summary>
     /// Gets the summary text for the currently selected target.
@@ -822,6 +867,42 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Refreshes the selected task duration once per second while any runtime session remains active.
+    /// </summary>
+    private void HandleRuntimeDurationTimerTick(object? sender, EventArgs e)
+    {
+        // The selected header reads through MainWindowViewModel, so forward the currently selected tab's duration tick
+        // into its derived shell properties once per second.
+        HandleSelectedRuntimeTabPropertyChanged(nameof(RuntimeTaskTabViewModel.DurationText));
+
+        if (!RuntimeTabs.Any(tab => tab.IsRunning))
+        {
+            _runtimeDurationTimer.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Mirrors selected runtime-tab property changes into the derived shell properties used by the panel header.
+    /// </summary>
+    private void HandleSelectedRuntimeTabPropertyChanged(string? propertyName)
+    {
+        switch (propertyName)
+        {
+            case nameof(RuntimeTaskTabViewModel.DurationText):
+                RaisePropertyChanged(nameof(SelectedRuntimeDuration));
+                break;
+            case nameof(RuntimeTaskTabViewModel.WarningCount):
+            case nameof(RuntimeTaskTabViewModel.HasWarnings):
+                RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
+                break;
+            case nameof(RuntimeTaskTabViewModel.ErrorCount):
+            case nameof(RuntimeTaskTabViewModel.HasErrors):
+                RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
+                break;
+        }
+    }
+
+    /// <summary>
     /// Attaches the shared execution session to the shell and mirrors its log/output state into Avalonia-friendly
     /// observable collections.
     /// </summary>
@@ -836,6 +917,10 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         RuntimeTabs.Add(runtimeTab);
         SelectedRuntimeTab = runtimeTab;
+        if (!_runtimeDurationTimer.IsEnabled)
+        {
+            _runtimeDurationTimer.Start();
+        }
 
         session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
         {
@@ -1006,6 +1091,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ExecutionSummary));
         RaisePropertyChanged(nameof(IsRunning));
         RaisePropertyChanged(nameof(SelectedRuntimeLogEntries));
+        RaisePropertyChanged(nameof(SelectedRuntimeDuration));
+        RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
         RaisePropertyChanged(nameof(SelectedRuntimeTabTitle));
+        RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
+        RaisePropertyChanged(nameof(ShowSelectedRuntimeMetrics));
     }
 }

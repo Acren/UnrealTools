@@ -27,6 +27,8 @@
         <Color x:Key="GraphiteActiveBackgroundColor">#12AEB9C5</Color>
         <Color x:Key="GraphiteDangerColor">#EF8680</Color>
         <Color x:Key="GraphiteDangerBackgroundColor">#24EF8680</Color>
+        <Color x:Key="GraphiteWarningColor">#F1D479</Color>
+        <Color x:Key="GraphiteWarningBackgroundColor">#20F1D479</Color>
         <Color x:Key="RuntimeTabRunningColor">#63A8FF</Color>
         <Color x:Key="RuntimeTabSucceededColor">#7BE37B</Color>
         <Color x:Key="RuntimeTabFailedColor">#FF5C5C</Color>
@@ -53,6 +55,8 @@
         <SolidColorBrush x:Key="GraphiteActiveBackgroundBrush" Color="{StaticResource GraphiteActiveBackgroundColor}" />
         <SolidColorBrush x:Key="GraphiteDangerBrush" Color="{StaticResource GraphiteDangerColor}" />
         <SolidColorBrush x:Key="GraphiteDangerBackgroundBrush" Color="{StaticResource GraphiteDangerBackgroundColor}" />
+        <SolidColorBrush x:Key="GraphiteWarningBrush" Color="{StaticResource GraphiteWarningColor}" />
+        <SolidColorBrush x:Key="GraphiteWarningBackgroundBrush" Color="{StaticResource GraphiteWarningBackgroundColor}" />
         <SolidColorBrush x:Key="RuntimeTabRunningBrush" Color="{StaticResource RuntimeTabRunningColor}" />
         <SolidColorBrush x:Key="RuntimeTabSucceededBrush" Color="{StaticResource RuntimeTabSucceededColor}" />
         <SolidColorBrush x:Key="RuntimeTabFailedBrush" Color="{StaticResource RuntimeTabFailedColor}" />
@@ -118,6 +122,12 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="999" />
         </Style>
+        <Style Selector="Border.pill.warning-accent">
+            <Setter Property="BorderBrush" Value="#55F1D479" />
+        </Style>
+        <Style Selector="Border.pill.error-accent">
+            <Setter Property="BorderBrush" Value="#66EF8680" />
+        </Style>
         <Style Selector="GridSplitter">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Opacity" Value="0" />
@@ -157,6 +167,24 @@
         </Style>
         <Style Selector="TextBlock.muted">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+        </Style>
+        <Style Selector="TextBlock.mono">
+            <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, monospace" />
+        </Style>
+        <Style Selector="TextBlock.metric-pill-text">
+            <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, monospace" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="LineHeight" Value="10" />
+            <!-- Monospace caps sit a touch high in these compact pills, so add a tiny downward nudge. -->
+            <Setter Property="Margin" Value="0,1,0,0" />
+        </Style>
+        <Style Selector="TextBlock.warning-accent">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteWarningBrush}" />
+        </Style>
+        <Style Selector="TextBlock.error-accent">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteDangerBrush}" />
         </Style>
         <Style Selector="TextBlock.soft">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />

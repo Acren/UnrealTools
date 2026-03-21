@@ -11,6 +11,8 @@ namespace LocalAutomation.Avalonia.ViewModels;
 public sealed class RuntimeTaskTabViewModel : ViewModelBase
 {
     private bool _isSelected;
+    private int _errorCount;
+    private int _warningCount;
 
     /// <summary>
     /// Creates a runtime tab view model with the provided display metadata and optional execution session.
@@ -84,6 +86,51 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     public bool CanClose => !IsApplicationLog;
 
     /// <summary>
+    /// Gets the number of warning log entries collected for this runtime tab.
+    /// </summary>
+    public int WarningCount => _warningCount;
+
+    /// <summary>
+    /// Gets the number of error log entries collected for this runtime tab.
+    /// </summary>
+    public int ErrorCount => _errorCount;
+
+    /// <summary>
+    /// Gets whether the warning count should be accent-colored in the selected task header.
+    /// </summary>
+    public bool HasWarnings => WarningCount > 0;
+
+    /// <summary>
+    /// Gets whether the error count should be accent-colored in the selected task header.
+    /// </summary>
+    public bool HasErrors => ErrorCount > 0;
+
+    /// <summary>
+    /// Gets the elapsed runtime shown beside the terminate action for the selected task.
+    /// </summary>
+    public string DurationText
+    {
+        get
+        {
+            if (Session == null)
+            {
+                return "--:--";
+            }
+
+            DateTimeOffset endTime = Session.FinishedAt ?? DateTimeOffset.Now;
+            TimeSpan duration = endTime - Session.StartedAt;
+            if (duration < TimeSpan.Zero)
+            {
+                duration = TimeSpan.Zero;
+            }
+
+            return duration.TotalHours >= 1
+                ? duration.ToString(@"h\:mm\:ss")
+                : duration.ToString(@"mm\:ss");
+        }
+    }
+
+    /// <summary>
     /// Gets a short status label for the tab so running and completed tasks are easier to scan in the tab strip.
     /// </summary>
     public string StatusText
@@ -140,6 +187,24 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     public void AddLogEntry(LogEntryViewModel entry)
     {
         LogEntries.Add(entry);
+
+        // Runtime tabs keep their own severity tallies so the selected-task header can surface diagnostics without
+        // rescanning the full log stream on every refresh.
+        if (entry.IsWarning)
+        {
+            _warningCount++;
+        }
+
+        if (entry.IsError)
+        {
+            _errorCount++;
+        }
+
+        RaisePropertyChanged(nameof(WarningCount));
+        RaisePropertyChanged(nameof(ErrorCount));
+        RaisePropertyChanged(nameof(HasWarnings));
+        RaisePropertyChanged(nameof(HasErrors));
+        RaisePropertyChanged(nameof(DurationText));
         RaisePropertyChanged(nameof(IsRunning));
         RaisePropertyChanged(nameof(CanTerminate));
         RaiseStatusChanged();
@@ -151,6 +216,13 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     public void ClearLogEntries()
     {
         LogEntries.Clear();
+        _warningCount = 0;
+        _errorCount = 0;
+        RaisePropertyChanged(nameof(WarningCount));
+        RaisePropertyChanged(nameof(ErrorCount));
+        RaisePropertyChanged(nameof(HasWarnings));
+        RaisePropertyChanged(nameof(HasErrors));
+        RaisePropertyChanged(nameof(DurationText));
         RaisePropertyChanged(nameof(IsRunning));
         RaisePropertyChanged(nameof(CanTerminate));
         RaiseStatusChanged();
@@ -161,6 +233,7 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     /// </summary>
     public void NotifyStateChanged()
     {
+        RaisePropertyChanged(nameof(DurationText));
         RaisePropertyChanged(nameof(IsRunning));
         RaisePropertyChanged(nameof(CanTerminate));
         RaiseStatusChanged();
