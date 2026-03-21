@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using LocalAutomation.Extensions.Abstractions;
 
 namespace LocalAutomation.Application;
@@ -68,5 +69,79 @@ public sealed class TargetDiscoveryService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Returns whether the provided object matches any registered target descriptor.
+    /// </summary>
+    public bool IsTarget(object? target)
+    {
+        return GetTargetTypeId(target) != null;
+    }
+
+    /// <summary>
+    /// Returns whether the provided target currently reports itself as valid.
+    /// </summary>
+    public bool IsValidTarget(object target)
+    {
+        return GetRequiredPropertyValue<bool>(target, "IsValid");
+    }
+
+    /// <summary>
+    /// Returns the user-facing display name for the provided target.
+    /// </summary>
+    public string GetDisplayName(object target)
+    {
+        return GetRequiredPropertyValue<string>(target, "DisplayName");
+    }
+
+    /// <summary>
+    /// Returns the user-facing type name for the provided target.
+    /// </summary>
+    public string GetTypeName(object target)
+    {
+        return GetRequiredPropertyValue<string>(target, "TypeName");
+    }
+
+    /// <summary>
+    /// Returns the stable path or source string for the provided target.
+    /// </summary>
+    public string GetTargetPath(object target)
+    {
+        return GetRequiredPropertyValue<string>(target, "TargetPath");
+    }
+
+    /// <summary>
+    /// Returns the runtime type name for the provided target so persistence can disambiguate target kinds that share a
+    /// path.
+    /// </summary>
+    public string GetRuntimeTypeName(object target)
+    {
+        return target?.GetType().FullName ?? throw new ArgumentNullException(nameof(target));
+    }
+
+    /// <summary>
+    /// Reads a required public property value from the current bridge-era runtime target object.
+    /// </summary>
+    private static T GetRequiredPropertyValue<T>(object target, string propertyName)
+    {
+        if (target == null)
+        {
+            throw new ArgumentNullException(nameof(target));
+        }
+
+        PropertyInfo? property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        if (property == null)
+        {
+            throw new InvalidOperationException($"Target type '{target.GetType().FullName}' does not expose required property '{propertyName}'.");
+        }
+
+        object? value = property.GetValue(target);
+        if (value is T typedValue)
+        {
+            return typedValue;
+        }
+
+        throw new InvalidOperationException($"Target property '{propertyName}' on '{target.GetType().FullName}' is not a '{typeof(T).FullName}'.");
     }
 }

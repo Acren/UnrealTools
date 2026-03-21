@@ -9,6 +9,7 @@ namespace LocalAutomation.Core;
 public sealed class BufferedLogStream : ILogStream
 {
     private readonly List<LogEntry> _entries = new();
+    private readonly object _syncRoot = new();
 
     /// <summary>
     /// Raised whenever a new log entry is appended.
@@ -18,14 +19,27 @@ public sealed class BufferedLogStream : ILogStream
     /// <summary>
     /// Gets the current buffered entries.
     /// </summary>
-    public IReadOnlyList<LogEntry> Entries => _entries;
+    public IReadOnlyList<LogEntry> Entries
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _entries.ToArray();
+            }
+        }
+    }
 
     /// <summary>
     /// Appends a new log entry and notifies subscribers.
     /// </summary>
     public void Add(LogEntry entry)
     {
-        _entries.Add(entry);
+        lock (_syncRoot)
+        {
+            _entries.Add(entry);
+        }
+
         EntryAdded?.Invoke(entry);
     }
 
@@ -34,6 +48,9 @@ public sealed class BufferedLogStream : ILogStream
     /// </summary>
     public void Clear()
     {
-        _entries.Clear();
+        lock (_syncRoot)
+        {
+            _entries.Clear();
+        }
     }
 }

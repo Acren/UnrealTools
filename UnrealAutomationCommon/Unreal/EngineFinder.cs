@@ -1,4 +1,4 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,59 +15,69 @@ namespace UnrealAutomationCommon.Unreal
 
         public static List<Engine> GetEngineInstallsFromRegistry()
         {
-            RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-
-            RegistryKey localMachineUnrealEngine = localMachine.OpenSubKey(@"Software\EpicGames\Unreal Engine");
-            if (localMachineUnrealEngine == null)
+            try
             {
-                return new List<Engine>();
-            }
+                RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
 
-            string[] subKeys = localMachineUnrealEngine.GetSubKeyNames();
-
-            var result = new List<Engine>();
-
-            foreach (string subKeyString in subKeys)
-            {
-                RegistryKey engineVersionKey = localMachineUnrealEngine.OpenSubKey(subKeyString);
-                var directory = (string)engineVersionKey.GetValue("InstalledDirectory");
-                if (IsEngineInstallDirectory(directory))
+                RegistryKey localMachineUnrealEngine = localMachine.OpenSubKey(@"Software\EpicGames\Unreal Engine");
+                if (localMachineUnrealEngine == null)
                 {
-                    result.Add(new Engine(directory)
-                    {
-                        Key = subKeyString
-                    });
+                    return new List<Engine>();
                 }
-            }
 
-            RegistryKey currentUser = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
-            RegistryKey currentUserBuilds = currentUser.OpenSubKey(@"SOFTWARE\Epic Games\Unreal Engine\Builds");
+                string[] subKeys = localMachineUnrealEngine.GetSubKeyNames();
 
-            if(currentUserBuilds == null)
-            {
+                var result = new List<Engine>();
+
+                foreach (string subKeyString in subKeys)
+                {
+                    RegistryKey engineVersionKey = localMachineUnrealEngine.OpenSubKey(subKeyString);
+                    var directory = (string)engineVersionKey.GetValue("InstalledDirectory");
+                    if (IsEngineInstallDirectory(directory))
+                    {
+                        result.Add(new Engine(directory)
+                        {
+                            Key = subKeyString
+                        });
+                    }
+                }
+
+                RegistryKey currentUser = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+                RegistryKey currentUserBuilds = currentUser.OpenSubKey(@"SOFTWARE\Epic Games\Unreal Engine\Builds");
+
+                if(currentUserBuilds == null)
+                {
+                    return result;
+                }
+
+                string[] buildValueNames = currentUserBuilds.GetValueNames();
+                foreach (string buildName in buildValueNames)
+                {
+                    var buildPath = (string)currentUserBuilds.GetValue(buildName);
+                    if (buildPath == null)
+                    {
+                        continue;
+                    }
+
+                    buildPath = buildPath.Replace('/', '\\');
+                    if (IsEngineInstallDirectory(buildPath))
+                    {
+                        result.Add(new Engine(buildPath)
+                        {
+                            Key = buildName
+                        });
+                    }
+                }
+
                 return result;
             }
-
-            string[] buildValueNames = currentUserBuilds.GetValueNames();
-            foreach (string buildName in buildValueNames)
+            catch (PlatformNotSupportedException)
             {
-                var buildPath = (string)currentUserBuilds.GetValue(buildName);
-                if (buildPath == null)
-                {
-                    continue;
-                }
-
-                buildPath = buildPath.Replace('/', '\\');
-                if (IsEngineInstallDirectory(buildPath))
-                {
-                    result.Add(new Engine(buildPath)
-                    {
-                        Key = buildName
-                    });
-                }
+                // The generic LocalAutomation host can load Unreal extensions on non-Windows platforms or under custom
+                // load contexts where the registry-backed discovery API is unavailable. In those environments we fall
+                // back to other discovery sources instead of failing project descriptor deserialization.
+                return new List<Engine>();
             }
-
-            return result;
         }
 
         public static Engine GetEngineInstallFromRegistry(string engineAssociation)

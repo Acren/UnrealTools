@@ -56,7 +56,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public override string Name => DirectoryName;
 
-        public override bool IsValid => PluginPaths.Instance.IsTargetDirectory(TargetPath);
+        public override bool IsValid => PluginPaths.Instance.IsTargetDirectory(TargetPath) && PluginDescriptor != null;
 
         public PluginDescriptor PluginDescriptor
         {
@@ -74,16 +74,16 @@ namespace UnrealAutomationCommon.Unreal
          * Consider the plugin blueprint-only if it has zero modules
          * Alternatively it should also be possible to check the absence of a Source folder
          */
-        public bool IsBlueprintOnly => PluginDescriptor.Modules.Count == 0;
+        public bool IsBlueprintOnly => PluginDescriptor?.Modules?.Count == 0;
         
         /**
          * Check if the plugin has runtime modules (modules that will be included in packaged builds)
          * Runtime modules are those that are not editor-only types
          */
-        public bool HasRuntimeModules => PluginDescriptor.Modules.Any(m => m.Type != "Editor" && 
-                                                                           m.Type != "EditorNoCommandlet" && 
-                                                                           m.Type != "EditorAndProgram" &&
-                                                                           m.Type != "UncookedOnly");
+        public bool HasRuntimeModules => PluginDescriptor?.Modules?.Any(m => m.Type != "Editor" && 
+                                                                             m.Type != "EditorNoCommandlet" && 
+                                                                             m.Type != "EditorAndProgram" &&
+                                                                             m.Type != "UncookedOnly") == true;
 
         public string PluginPath => TargetPath;
 
@@ -127,6 +127,10 @@ namespace UnrealAutomationCommon.Unreal
         public override void LoadDescriptor()
         {
             PluginDescriptor = PluginDescriptor.Load(UPluginPath);
+            if (PluginDescriptor == null)
+            {
+                AppLogger.LoggerInstance.LogError($"Plugin descriptor could not be loaded from {UPluginPath}");
+            }
         }
 
         public override bool SupportsConfiguration(BuildConfiguration configuration)

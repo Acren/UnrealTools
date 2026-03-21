@@ -4,7 +4,6 @@ using System.Linq;
 using LocalAutomation.Extensions.Abstractions;
 using Microsoft.Extensions.Logging;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
-using UnrealAutomationCommon.Operations;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -124,15 +123,15 @@ public sealed class TargetPanelViewModel : ViewModelBase
         try
         {
             object createdTarget = _services.Targets.CreateTarget(source);
-            if (createdTarget is not IOperationTarget target)
+            if (!_services.Targets.IsTarget(createdTarget))
             {
-                errorMessage = $"Created target '{createdTarget.GetType().Name}' does not implement IOperationTarget.";
+                errorMessage = $"Created target '{createdTarget.GetType().Name}' is not recognized by the registered target catalog.";
                 return false;
             }
 
             TargetListItemViewModel? existingTarget = Targets.FirstOrDefault(item =>
-                string.Equals(item.Target.TargetPath, target.TargetPath, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(item.TypeName, target.TypeName, StringComparison.Ordinal));
+                string.Equals(item.TargetPath, _services.Targets.GetTargetPath(createdTarget), StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(item.TypeName, _services.Targets.GetTypeName(createdTarget), StringComparison.Ordinal));
 
             if (existingTarget != null)
             {
@@ -142,11 +141,11 @@ public sealed class TargetPanelViewModel : ViewModelBase
                 return true;
             }
 
-            TargetListItemViewModel targetItem = new(target);
+            TargetListItemViewModel targetItem = new(_services, createdTarget);
             AddTargetItem(targetItem);
             SelectedTarget = targetItem;
             NewTargetPath = string.Empty;
-            _setStatus($"Added {target.TypeName.ToLowerInvariant()} target '{target.DisplayName}'.");
+            _setStatus($"Added {_services.Targets.GetTypeName(createdTarget).ToLowerInvariant()} target '{_services.Targets.GetDisplayName(createdTarget)}'.");
             _handleTargetsChanged();
             return true;
         }

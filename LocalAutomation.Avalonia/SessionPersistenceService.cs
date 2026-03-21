@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LocalAutomation.Application;
@@ -7,7 +6,6 @@ using LocalAutomation.Persistence;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
-using UnrealAutomationCommon.Operations;
 
 namespace LocalAutomation.Avalonia;
 
@@ -87,14 +85,15 @@ public sealed class SessionPersistenceService
     /// <summary>
     /// Creates or updates a persisted target snapshot from the provided runtime target.
     /// </summary>
-    public TargetSessionSnapshot CreateTargetSnapshot(IOperationTarget target)
+    public TargetSessionSnapshot CreateTargetSnapshot(object target)
     {
         string targetTypeId = _services.Targets.GetTargetTypeId(target) ?? throw new InvalidOperationException($"No target descriptor matched '{target.GetType().Name}'.");
+        string targetPath = _services.Targets.GetTargetPath(target);
         return new TargetSessionSnapshot
         {
-            Key = BuildTargetKey(targetTypeId, target.TargetPath),
+            Key = BuildTargetKey(targetTypeId, targetPath),
             TargetTypeId = targetTypeId,
-            Path = target.TargetPath,
+            Path = targetPath,
             State = new TargetUiStateSnapshot()
         };
     }
@@ -102,21 +101,26 @@ public sealed class SessionPersistenceService
     /// <summary>
     /// Attempts to recreate a runtime target from its persisted snapshot.
     /// </summary>
-    public bool TryRestoreTarget(TargetSessionSnapshot snapshot, out IOperationTarget? target)
+    public bool TryRestoreTarget(TargetSessionSnapshot snapshot, out object? target)
     {
         target = null;
-        if (!_services.Targets.TryCreateTarget(snapshot.Path, out object? createdTarget) || createdTarget is not IOperationTarget operationTarget)
+        if (!_services.Targets.TryCreateTarget(snapshot.Path, out object? createdTarget) || createdTarget == null)
         {
             return false;
         }
 
-        string? restoredTypeId = _services.Targets.GetTargetTypeId(operationTarget);
+        if (!_services.Targets.IsTarget(createdTarget) || !_services.Targets.IsValidTarget(createdTarget))
+        {
+            return false;
+        }
+
+        string? restoredTypeId = _services.Targets.GetTargetTypeId(createdTarget);
         if (!string.Equals(restoredTypeId, snapshot.TargetTypeId, StringComparison.Ordinal))
         {
             return false;
         }
 
-        target = operationTarget;
+        target = createdTarget;
         return true;
     }
 
@@ -130,19 +134,20 @@ public sealed class SessionPersistenceService
             PendingTargetPath = legacyState.NewTargetPath
         };
 
-        foreach (IOperationTarget target in legacyState.Targets)
+        foreach (object target in legacyState.Targets)
         {
             string? targetTypeId = _services.Targets.GetTargetTypeId(target);
-            if (string.IsNullOrWhiteSpace(targetTypeId))
+            if (string.IsNullOrWhiteSpace(targetTypeId) || !_services.Targets.IsValidTarget(target))
             {
                 continue;
             }
 
+            string targetPath = _services.Targets.GetTargetPath(target);
             snapshot.Targets.Add(new TargetSessionSnapshot
             {
-                Key = BuildTargetKey(targetTypeId, target.TargetPath),
+                Key = BuildTargetKey(targetTypeId, targetPath),
                 TargetTypeId = targetTypeId,
-                Path = target.TargetPath,
+                Path = targetPath,
                 State = new TargetUiStateSnapshot()
             });
         }
@@ -162,11 +167,6 @@ public sealed class SessionPersistenceService
             : _services.Operations.GetOperation(legacyState.OperationType)?.Id;
 
         selectedTarget.State.OptionValues = _services.OptionValues.Capture(legacyState.OptionsInstances.Cast<object>());
-        if (!selectedTarget.State.OptionValues.ContainsKey(BuildPropertyKey(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions), "Arguments")))
-        {
-            selectedTarget.State.OptionValues[BuildPropertyKey(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions), "Arguments")] = JToken.FromObject(legacyState.AdditionalArguments ?? string.Empty);
-        }
-
         snapshot.SelectedTargetKey = selectedTarget.Key;
         return snapshot;
     }
@@ -204,13 +204,5 @@ public sealed class SessionPersistenceService
             TypeNameHandling = TypeNameHandling.Auto,
             SerializationBinder = new DefaultSerializationBinder()
         };
-    }
-
-    /// <summary>
-    /// Builds the stable option-property key used by the snapshot.
-    /// </summary>
-    private static string BuildPropertyKey(Type optionSetType, string propertyName)
-    {
-        return $"{optionSetType.FullName}.{propertyName}";
     }
 }

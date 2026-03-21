@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using LocalAutomation.Extensions.Unreal;
 using AvaloniaApplication = Avalonia.Application;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
@@ -14,10 +13,32 @@ namespace LocalAutomation.Avalonia;
 public partial class App : AvaloniaApplication
 {
     /// <summary>
-    /// Keeps the compile-time application host alive for the duration of the app so later phases can consume shared
-    /// extension-backed services from a single source.
+    /// Gets the startup discovery warning shown by the shell when bundled extensions were missing or failed to load.
     /// </summary>
-    public static LocalAutomationApplicationHost Services { get; } = CreateApplicationHost();
+    public static string StartupMessage { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Gets the application host configured by the outer launcher. The generic shell keeps this as mutable startup
+    /// state so different launcher executables can compose different compile-time extension sets without changing the
+    /// shell assembly itself.
+    /// </summary>
+    public static LocalAutomationApplicationHost Services { get; private set; } = LocalAutomationApplicationHost.Create();
+
+    /// <summary>
+    /// Replaces the current launcher-provided application host.
+    /// </summary>
+    public static void ConfigureServices(LocalAutomationApplicationHost services)
+    {
+        Services = services ?? throw new System.ArgumentNullException(nameof(services));
+    }
+
+    /// <summary>
+    /// Replaces the current startup discovery message shown by the shell.
+    /// </summary>
+    public static void ConfigureStartupMessage(string message)
+    {
+        StartupMessage = message ?? string.Empty;
+    }
 
     /// <summary>
     /// Loads the application XAML resources and theme definitions.
@@ -38,13 +59,5 @@ public partial class App : AvaloniaApplication
         }
 
         base.OnFrameworkInitializationCompleted();
-    }
-
-    /// <summary>
-    /// Registers compile-time extension modules for the current app session and exposes the resulting services.
-    /// </summary>
-    private static LocalAutomationApplicationHost CreateApplicationHost()
-    {
-        return LocalAutomationApplicationHost.Create(new UnrealExtensionModule());
     }
 }

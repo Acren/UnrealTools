@@ -45,8 +45,11 @@ public sealed class UnrealRunnerAdapter : IRunnerAdapter
         }
 
         BufferedLogStream logStream = new();
-        ILogger previousLogger = AppLogger.Instance.Logger ?? NullLogger.Instance;
-        AppLogger.Instance.Logger = new ForwardingLogger(logStream, previousLogger);
+        ILogger previousLogger = TryGetCurrentLogger();
+        ILogger previousLegacyLogger = TryGetCurrentLegacyLogger(previousLogger);
+        ForwardingLogger forwardingLogger = new(logStream, previousLogger);
+        ApplicationLogger.Logger = forwardingLogger;
+        AppLogger.Instance.Logger = forwardingLogger;
         Runner runner = new(typedOperation, typedParameters);
 
         ExecutionSession? session = null;
@@ -64,14 +67,14 @@ public sealed class UnrealRunnerAdapter : IRunnerAdapter
             TargetName = typedParameters.Target?.DisplayName ?? string.Empty
         };
 
-        _ = RunAsync(runner, session, logStream, previousLogger);
+        _ = RunAsync(runner, session, logStream, previousLogger, previousLegacyLogger);
         return session;
     }
 
     /// <summary>
     /// Runs the existing Unreal runner asynchronously and updates the shared execution session as it completes.
     /// </summary>
-    private static async Task RunAsync(Runner runner, ExecutionSession session, BufferedLogStream logStream, ILogger previousLogger)
+    private static async Task RunAsync(Runner runner, ExecutionSession session, BufferedLogStream logStream, ILogger previousLogger, ILogger previousLegacyLogger)
     {
         try
         {
@@ -91,8 +94,34 @@ public sealed class UnrealRunnerAdapter : IRunnerAdapter
         finally
         {
             session.IsRunning = false;
-            AppLogger.Instance.Logger = previousLogger;
+            AppLogger.Instance.Logger = previousLegacyLogger;
+            ApplicationLogger.Logger = previousLogger;
         }
+    }
+
+    /// <summary>
+    /// Returns the current application logger when one has been initialized, otherwise falls back to a null logger so
+    /// headless or test hosts can still execute Unreal operations safely.
+    /// </summary>
+    private static ILogger TryGetCurrentLogger()
+    {
+        try
+        {
+            return ApplicationLogger.Logger;
+        }
+        catch (InvalidOperationException)
+        {
+            return NullLogger.Instance;
+        }
+    }
+
+    /// <summary>
+    /// Returns the current legacy Unreal logger when one has already been bridged, otherwise falls back to the current
+    /// shared application logger so both logger singletons can be restored consistently after the task finishes.
+    /// </summary>
+    private static ILogger TryGetCurrentLegacyLogger(ILogger fallbackLogger)
+    {
+        return AppLogger.Instance.Logger ?? fallbackLogger;
     }
 
     /// <summary>

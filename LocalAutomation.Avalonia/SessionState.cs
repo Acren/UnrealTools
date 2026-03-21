@@ -1,36 +1,28 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Runtime.Serialization;
 using Newtonsoft.Json;
-using UnrealAutomationCommon.Operations;
 
 namespace LocalAutomation.Avalonia;
 
 /// <summary>
-/// Persists the Avalonia shell's lightweight session state so the parity shell can restore targets and selection
-/// between launches without depending on the legacy WPF persistence model.
+/// Persists the legacy live-object Avalonia session shape so newer builds can migrate old local data into the stable
+/// snapshot model without keeping generic shell code coupled to Unreal runtime types.
 /// </summary>
 [JsonObject(MemberSerialization.OptIn)]
 public sealed class SessionState
 {
     /// <summary>
-    /// Gets or sets the persisted targets restored into the Avalonia shell.
+    /// Gets or sets the persisted legacy runtime targets restored during one-way migration.
     /// </summary>
     [JsonProperty]
-    public ObservableCollection<IOperationTarget> Targets { get; set; } = new();
+    public ObservableCollection<object> Targets { get; set; } = new();
 
     /// <summary>
-    /// Gets or sets the persisted additional arguments backing the current Avalonia selection.
-    /// </summary>
-    [JsonProperty]
-    public string AdditionalArguments { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the persisted live option instances backing the current Avalonia option edits.
+    /// Gets or sets the persisted live option instances backing the legacy Avalonia option edits.
     /// </summary>
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-    public List<OperationOptions> OptionsInstances { get; set; } = new();
+    public List<object> OptionsInstances { get; set; } = new();
 
     /// <summary>
     /// Gets or sets the currently selected runtime operation type.
@@ -56,25 +48,4 @@ public sealed class SessionState
     /// </summary>
     [JsonProperty]
     public string? SelectedTargetTypeName { get; set; }
-
-    /// <summary>
-    /// Removes invalid targets after deserialization so stale paths do not keep breaking later startups.
-    /// </summary>
-    [OnDeserialized]
-    internal void OnDeserialized(StreamingContext context)
-    {
-        List<IOperationTarget> invalidTargets = new();
-        foreach (IOperationTarget target in Targets)
-        {
-            if (!target.IsValid)
-            {
-                invalidTargets.Add(target);
-            }
-        }
-
-        foreach (IOperationTarget target in invalidTargets)
-        {
-            Targets.Remove(target);
-        }
-    }
 }

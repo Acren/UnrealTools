@@ -1,8 +1,10 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using System;
 using System.IO;
 using Semver;
 using System.Collections.Generic;
+using Microsoft.Extensions.Logging;
+using LocalAutomation.Core;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -25,8 +27,16 @@ namespace UnrealAutomationCommon.Unreal
             {
                 return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                try
+                {
+                    ApplicationLogger.Logger.LogError(ex, "Failed to deserialize plugin descriptor '{PluginDescriptorPath}'.", uPluginPath);
+                }
+                catch (InvalidOperationException)
+                {
+                }
+
                 return null;
             }
         }

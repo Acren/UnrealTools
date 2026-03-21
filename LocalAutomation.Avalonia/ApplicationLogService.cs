@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
 using Serilog;
-using UnrealAutomationCommon;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace LocalAutomation.Avalonia;
@@ -27,7 +26,8 @@ public static class ApplicationLogService
     public static BufferedLogStream LogStream { get; } = new();
 
     /// <summary>
-    /// Initializes the global AppLogger bridge and hooks process-wide exception reporting once per application run.
+    /// Initializes the global application logger bridge and hooks process-wide exception reporting once per application
+    /// run.
     /// </summary>
     public static void Initialize()
     {
@@ -41,15 +41,15 @@ public static class ApplicationLogService
         BufferedLogger bufferedLogger = new(LogStream);
         _loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog(dispose: false));
         ILogger fileLogger = _loggerFactory.CreateLogger("LocalAutomation.Avalonia");
-        AppLogger.Instance.Logger = new CompositeLogger(bufferedLogger, fileLogger);
+        ApplicationLogger.Logger = new CompositeLogger(bufferedLogger, fileLogger);
 
         // Capture exceptions that escape normal async or UI flows so the output panel still shows the failure details
         // before the process tears down.
         AppDomain.CurrentDomain.UnhandledException += HandleUnhandledException;
         TaskScheduler.UnobservedTaskException += HandleUnobservedTaskException;
 
-        AppLogger.LoggerInstance.LogInformation("Writing launch log to {LaunchLogFilePath}", launchLogFilePath);
-        AppLogger.LoggerInstance.LogInformation("Avalonia shell logging initialized.");
+        ApplicationLogger.Logger.LogInformation("Writing launch log to {LaunchLogFilePath}", launchLogFilePath);
+        ApplicationLogger.Logger.LogInformation("Avalonia shell logging initialized.");
     }
 
     /// <summary>
@@ -67,7 +67,7 @@ public static class ApplicationLogService
     /// </summary>
     public static void LogStartupException(Exception exception)
     {
-        AppLogger.LoggerInstance.LogCritical(exception, "Avalonia shell failed during startup.");
+        ApplicationLogger.Logger.LogCritical(exception, "Avalonia shell failed during startup.");
     }
 
     /// <summary>
@@ -75,7 +75,7 @@ public static class ApplicationLogService
     /// </summary>
     public static void LogInformation(string message)
     {
-        AppLogger.LoggerInstance.LogInformation(message);
+        ApplicationLogger.Logger.LogInformation(message);
     }
 
     /// <summary>
@@ -83,7 +83,7 @@ public static class ApplicationLogService
     /// </summary>
     public static void LogError(Exception exception, string messageTemplate, params object[] args)
     {
-        AppLogger.LoggerInstance.LogError(exception, messageTemplate, args);
+        ApplicationLogger.Logger.LogError(exception, messageTemplate, args);
     }
 
     /// <summary>
@@ -93,11 +93,11 @@ public static class ApplicationLogService
     {
         if (args.ExceptionObject is Exception exception)
         {
-            AppLogger.LoggerInstance.LogCritical(exception, "Unhandled application exception.");
+            ApplicationLogger.Logger.LogCritical(exception, "Unhandled application exception.");
             return;
         }
 
-        AppLogger.LoggerInstance.LogCritical("Unhandled non-exception application failure: {ExceptionObject}", args.ExceptionObject);
+        ApplicationLogger.Logger.LogCritical("Unhandled non-exception application failure: {ExceptionObject}", args.ExceptionObject);
     }
 
     /// <summary>
@@ -105,7 +105,7 @@ public static class ApplicationLogService
     /// </summary>
     private static void HandleUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs args)
     {
-        AppLogger.LoggerInstance.LogCritical(args.Exception, "Unobserved task exception.");
+        ApplicationLogger.Logger.LogCritical(args.Exception, "Unobserved task exception.");
         args.SetObserved();
     }
 

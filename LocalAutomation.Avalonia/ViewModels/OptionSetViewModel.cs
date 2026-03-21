@@ -1,5 +1,5 @@
 using System;
-using UnrealAutomationCommon.Operations;
+using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -8,19 +8,22 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public class OptionSetViewModel : ViewModelBase
 {
+    private readonly LocalAutomationApplicationHost _services;
+
     /// <summary>
-     /// Creates an option set view model around a runtime operation options instance.
-     /// </summary>
-    public OptionSetViewModel(OperationOptions options, object? propertyGridTarget = null)
+      /// Creates an option set view model around a runtime operation options instance.
+      /// </summary>
+    public OptionSetViewModel(LocalAutomationApplicationHost services, object options, object? propertyGridTarget = null)
     {
+        _services = services ?? throw new ArgumentNullException(nameof(services));
         Options = options ?? throw new ArgumentNullException(nameof(options));
         PropertyGridTarget = propertyGridTarget ?? options;
     }
 
     /// <summary>
-    /// Gets the underlying runtime option set.
-    /// </summary>
-    public OperationOptions Options { get; }
+     /// Gets the underlying runtime option set.
+     /// </summary>
+    public object Options { get; }
 
     /// <summary>
     /// Gets the object currently presented to the property grid for this option set.
@@ -28,8 +31,8 @@ public class OptionSetViewModel : ViewModelBase
     public object PropertyGridTarget { get; }
 
     /// <summary>
-    /// Gets the title shown by the shell.
-    /// </summary>
-    public string Name => Options.Name;
+     /// Gets the title shown by the shell.
+     /// </summary>
+    public string Name => _services.OperationRuntime.GetOptionSetName(Options);
 
 }

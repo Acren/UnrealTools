@@ -25,6 +25,56 @@ public interface IOperationAdapter
     object CreateOperation(Type operationType);
 
     /// <summary>
+    /// Creates a runtime parameter container compatible with this adapter's operations.
+    /// </summary>
+    object CreateParameters();
+
+    /// <summary>
+    /// Assigns the current target onto the provided runtime parameter container.
+    /// </summary>
+    void SetTarget(object parameters, object? target);
+
+    /// <summary>
+    /// Gets the current target from the provided runtime parameter container.
+    /// </summary>
+    object? GetTarget(object parameters);
+
+    /// <summary>
+    /// Gets the current freeform additional-arguments value from the provided runtime parameter container.
+    /// </summary>
+    string GetAdditionalArguments(object parameters);
+
+    /// <summary>
+    /// Updates the freeform additional-arguments value on the provided runtime parameter container.
+    /// </summary>
+    void SetAdditionalArguments(object parameters, string additionalArguments);
+
+    /// <summary>
+    /// Gets the live option-set instances currently stored on the provided runtime parameter container.
+    /// </summary>
+    IReadOnlyList<object> GetOptionSets(object parameters);
+
+    /// <summary>
+    /// Ensures an option set of the provided runtime type exists on the parameter container and returns the live instance.
+    /// </summary>
+    object EnsureOptionSet(object parameters, Type optionSetType);
+
+    /// <summary>
+    /// Removes the option set of the provided runtime type from the parameter container when present.
+    /// </summary>
+    bool RemoveOptionSet(object parameters, Type optionSetType);
+
+    /// <summary>
+    /// Clears all live option-set instances from the provided runtime parameter container.
+    /// </summary>
+    void ResetOptionSets(object parameters);
+
+    /// <summary>
+    /// Gets the user-facing display name for the provided runtime option-set instance.
+    /// </summary>
+    string GetOptionSetName(object optionSet);
+
+    /// <summary>
     /// Returns the option set types required by the operation for the provided target.
     /// </summary>
     IReadOnlyList<Type> GetRequiredOptionSetTypes(object operation, object? target);

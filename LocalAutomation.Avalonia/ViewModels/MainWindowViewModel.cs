@@ -1,28 +1,26 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using System.Threading.Tasks;
 using Avalonia.Threading;
+using LocalAutomation.Application;
 using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
-using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
-using UnrealAutomationCommon.Operations;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
 /// <summary>
-/// Drives the first real Avalonia shell by exposing target selection, operation selection, command preview, and a
-/// generic option-editing surface through the shared LocalAutomation services.
+/// Drives the Avalonia shell by exposing target selection, operation selection, command preview, and generic option
+/// editing through the shared LocalAutomation services instead of extension-specific runtime types.
 /// </summary>
 public sealed class MainWindowViewModel : ViewModelBase
 {
     private static readonly TimeSpan SessionSaveDebounceDelay = TimeSpan.FromMilliseconds(350);
 
     private readonly LocalAutomationApplicationHost _services;
-    private readonly OperationParameters _operationParameters = new();
+    private readonly OperationParameterSession _parameterSession;
     private readonly SessionPersistenceService _sessionPersistence;
     private readonly DispatcherTimer _sessionSaveTimer;
     private bool _isApplyingTargetState;
@@ -35,15 +33,16 @@ public sealed class MainWindowViewModel : ViewModelBase
     private string _status = "Add a target path to begin using the LocalAutomation shell.";
 
     /// <summary>
-    /// Creates the Avalonia main window view model around the shared LocalAutomation application host.
+    /// Creates the Avalonia main-window view model around the shared LocalAutomation application host.
     /// </summary>
     public MainWindowViewModel(LocalAutomationApplicationHost services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
+        _parameterSession = _services.OperationRuntime.CreateParameterSession();
         _sessionPersistence = new SessionPersistenceService(services);
         _sessionSaveTimer = new DispatcherTimer { Interval = SessionSaveDebounceDelay };
         _sessionSaveTimer.Tick += HandleSessionSaveTimerTick;
-        _operationParameters.PropertyChanged += HandleOperationParametersChanged;
+        _parameterSession.PropertyChanged += HandleOperationParametersChanged;
         Target = new TargetPanelViewModel(services, SetStatus, HandleSelectedTargetChanged, SaveSessionState);
         Runtime = new RuntimePanelViewModel(services, SetStatus);
         RestoreSessionState();
@@ -75,6 +74,16 @@ public sealed class MainWindowViewModel : ViewModelBase
     public TargetListItemViewModel? SelectedTarget => Target.SelectedTarget;
 
     /// <summary>
+    /// Gets the startup discovery warning surfaced by the host when bundled extensions failed to load cleanly.
+    /// </summary>
+    public string StartupMessage => App.StartupMessage;
+
+    /// <summary>
+    /// Gets whether the startup discovery warning should be visible.
+    /// </summary>
+    public bool ShowStartupMessage => !string.IsNullOrWhiteSpace(StartupMessage);
+
+    /// <summary>
     /// Gets or sets the currently selected operation descriptor.
     /// </summary>
     public OperationDescriptor? SelectedOperation
@@ -82,36 +91,32 @@ public sealed class MainWindowViewModel : ViewModelBase
         get => _selectedOperation;
         set
         {
-            if (SetProperty(ref _selectedOperation, value))
+            // Capture the current target-scoped option values before changing the selected operation because operation
+            // switches can temporarily remove option sets like compiler settings from the live parameter model.
+            if (!_isHydratingSessionSelection && !_isApplyingTargetState && !_isRestoringSession && SelectedTarget?.Target != null)
             {
-                _currentOperation = value != null
-                    ? _services.OperationSession.CreateOperation(value.OperationType)
-                    : null;
-
-                if (!_isHydratingSessionSelection && !_isApplyingTargetState)
-                {
-                    RefreshEnabledOptionSets();
-                    RaiseDerivedStateChanged();
-                }
-
-                SaveSessionState();
+                CaptureTargetState(SelectedTarget.Target);
             }
-        }
-    }
 
-    /// <summary>
-    /// Gets or sets the additional arguments forwarded into the current operation parameters.
-    /// </summary>
-    public string AdditionalArguments
-    {
-        get => _operationParameters.AdditionalArguments;
-        set
-        {
-            if (_operationParameters.AdditionalArguments != value)
+            if (!SetProperty(ref _selectedOperation, value))
             {
-                _operationParameters.AdditionalArguments = value;
-                RaisePropertyChanged();
+                return;
             }
+
+            // Keep the live operation object aligned with the selected descriptor so command preview, validation, and
+            // execution all run through the same shared runtime path.
+            _currentOperation = value != null
+                ? _services.OperationSession.CreateOperation(value.OperationType)
+                : null;
+
+            if (!_isHydratingSessionSelection && !_isApplyingTargetState)
+            {
+                RefreshEnabledOptionSets();
+                ApplyPersistedOptionValuesForSelectedTarget();
+                RaiseDerivedStateChanged();
+            }
+
+            SaveSessionState();
         }
     }
 
@@ -127,12 +132,12 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Gets whether the current selection can produce a command preview string for copying.
     /// </summary>
-    public bool CanCopyCommand => !string.IsNullOrWhiteSpace(_services.OperationSession.GetPrimaryCommandText(_currentOperation, _operationParameters));
+    public bool CanCopyCommand => !string.IsNullOrWhiteSpace(_services.OperationSession.GetPrimaryCommandText(_currentOperation, _parameterSession.RawValue));
 
     /// <summary>
     /// Gets whether the selected operation currently passes its execution requirements.
     /// </summary>
-    public bool CanExecute => _services.OperationSession.CanExecute(_currentOperation, _operationParameters);
+    public bool CanExecute => _services.OperationSession.CanExecute(_currentOperation, _parameterSession.RawValue);
 
     /// <summary>
     /// Gets whether the execute warning panel should be shown.
@@ -142,12 +147,12 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Gets the current execution blocking reason shown in the warning panel.
     /// </summary>
-    public string ExecuteDisabledReason => _services.OperationSession.GetExecuteDisabledReason(_currentOperation, _operationParameters) ?? string.Empty;
+    public string ExecuteDisabledReason => _services.OperationSession.GetExecuteDisabledReason(_currentOperation, _parameterSession.RawValue) ?? string.Empty;
 
     /// <summary>
     /// Gets the current command preview text.
     /// </summary>
-    public string VisibleCommand => _services.OperationSession.GetVisibleCommandText(_currentOperation, _operationParameters);
+    public string VisibleCommand => _services.OperationSession.GetVisibleCommandText(_currentOperation, _parameterSession.RawValue);
 
     /// <summary>
     /// Gets the current operation button label.
@@ -162,11 +167,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Gets the first command preview line for clipboard copy actions.
     /// </summary>
-    public string? PrimaryCommandText => _services.OperationSession.GetPrimaryCommandText(_currentOperation, _operationParameters);
+    public string? PrimaryCommandText => _services.OperationSession.GetPrimaryCommandText(_currentOperation, _parameterSession.RawValue);
 
     /// <summary>
-    /// Flushes any queued session save immediately. Hosts should call this before shutdown so the most recent UI
-    /// edits are not lost if the debounce window has not elapsed yet.
+    /// Flushes any queued session save immediately. Hosts should call this before shutdown so the most recent UI edits
+    /// are not lost if the debounce window has not elapsed yet.
     /// </summary>
     public void FlushPendingSessionState()
     {
@@ -206,7 +211,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        LocalAutomation.Core.ExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _operationParameters);
+        ExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _parameterSession.RawValue);
         Runtime.AttachExecutionSession(session);
         _services.Execution.AddSession(session);
         SetStatus($"Started {session.OperationName} for {session.TargetName}.");
@@ -215,14 +220,12 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Responds to parameter changes by refreshing only derived shell state that depends on live parameter values.
     /// The enabled option-set list depends on the selected operation and target, not on edits within an existing
-    /// option card, so rebuilding `EnabledOptionSets` here would recreate the property-grid editors on every keystroke
-    /// and drop focus from the currently edited control.
+    /// option card, so rebuilding the cards here would recreate property-grid editors on every keystroke.
     /// </summary>
     private void HandleOperationParametersChanged(object? sender, PropertyChangedEventArgs e)
     {
         // Ignore nested parameter notifications while session hydration is still rebuilding target, operation, and
-        // option state. Refreshing too early can treat the restored options as invalid and replace them with defaults
-        // before the persisted operation selection is reapplied.
+        // option state. Refreshing too early can treat restored options as invalid and replace them with defaults.
         if (_isRestoringSession || _isApplyingTargetState)
         {
             return;
@@ -235,7 +238,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Returns the persisted snapshot for the provided runtime target when one exists.
     /// </summary>
-    private TargetSessionSnapshot? FindTargetSnapshot(IOperationTarget target)
+    private TargetSessionSnapshot? FindTargetSnapshot(object target)
     {
         string key = _sessionPersistence.CreateTargetSnapshot(target).Key;
         return _sessionSnapshot.Targets.FirstOrDefault(item => string.Equals(item.Key, key, StringComparison.Ordinal));
@@ -244,7 +247,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Captures the current operation and option values into the nested persisted state for the provided target.
     /// </summary>
-    private void CaptureTargetState(IOperationTarget? target)
+    private void CaptureTargetState(object? target)
     {
         if (target == null)
         {
@@ -253,7 +256,11 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         TargetSessionSnapshot snapshot = FindTargetSnapshot(target) ?? _sessionPersistence.CreateTargetSnapshot(target);
         snapshot.State.SelectedOperationId = SelectedOperation?.Id;
-        snapshot.State.OptionValues = _services.OptionValues.Capture(_operationParameters.OptionsInstances.Cast<object>());
+        Dictionary<string, Newtonsoft.Json.Linq.JToken> capturedValues = _services.OptionValues.Capture(_parameterSession.OptionSets);
+        foreach ((string key, Newtonsoft.Json.Linq.JToken value) in capturedValues)
+        {
+            snapshot.State.OptionValues[key] = value;
+        }
 
         int existingIndex = _sessionSnapshot.Targets.FindIndex(item => string.Equals(item.Key, snapshot.Key, StringComparison.Ordinal));
         if (existingIndex >= 0)
@@ -274,8 +281,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         _isApplyingTargetState = true;
         try
         {
-            _operationParameters.ResetOptions();
-            _operationParameters.AdditionalArguments = string.Empty;
+            _parameterSession.ResetOptionSets();
 
             TargetSessionSnapshot? targetSnapshot = SelectedTarget?.Target == null ? null : FindTargetSnapshot(SelectedTarget.Target);
             if (targetSnapshot?.State.SelectedOperationId != null)
@@ -284,16 +290,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
 
             RefreshEnabledOptionSets();
-
-            if (targetSnapshot != null)
-            {
-                _services.OptionValues.Apply(_operationParameters.OptionsInstances.Cast<object>(), targetSnapshot.State.OptionValues);
-            }
-
-            // Recreate property-grid card targets after applying restored values so adapter-backed editors (such as
-            // engine version and insights checklists) reflect the rehydrated state instead of the pre-restore values
-            // captured when the cards were first created.
-            RebuildOptionCards();
+            ApplyPersistedOptionValuesForSelectedTarget();
         }
         finally
         {
@@ -302,8 +299,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Restores the last persisted shell state so the Avalonia parity shell reopens with the previous targets,
-    /// selection, and editable options.
+    /// Restores the last persisted shell state so the Avalonia shell reopens with the previous targets, selection, and
+    /// editable options.
     /// </summary>
     private void RestoreSessionState()
     {
@@ -311,28 +308,27 @@ public sealed class MainWindowViewModel : ViewModelBase
         try
         {
             _sessionSnapshot = _sessionPersistence.Load();
-            List<TargetSessionSnapshot> restoredSnapshots = new();
+            Collection<TargetSessionSnapshot> restoredSnapshots = new();
 
             foreach (TargetSessionSnapshot targetSnapshot in _sessionSnapshot.Targets)
             {
-                if (_sessionPersistence.TryRestoreTarget(targetSnapshot, out IOperationTarget? target) && target != null)
+                if (_sessionPersistence.TryRestoreTarget(targetSnapshot, out object? target) && target != null)
                 {
-                    Target.AddTargetItem(new TargetListItemViewModel(target));
+                    Target.AddTargetItem(new TargetListItemViewModel(_services, target));
                     restoredSnapshots.Add(targetSnapshot);
                 }
             }
 
             // Keep only snapshots that successfully restored so nested per-target state survives startup; do not
             // replace them with fresh empty snapshots before the restore pass can apply option values.
-            _sessionSnapshot.Targets = restoredSnapshots;
+            _sessionSnapshot.Targets = restoredSnapshots.ToList();
             Target.NewTargetPath = _sessionSnapshot.PendingTargetPath;
 
             TargetListItemViewModel? restoredSelection = Target.Targets.FirstOrDefault(item =>
                 string.Equals(_sessionPersistence.CreateTargetSnapshot(item.Target).Key, _sessionSnapshot.SelectedTargetKey, StringComparison.Ordinal));
 
-            // Apply the restored target and operation together before recomputing enabled option sets so the
-            // hydration pass does not temporarily coerce to a different operation and replace persisted values with
-            // new defaults.
+            // Apply the restored target and operation together before recomputing enabled option sets so the hydration
+            // pass does not temporarily coerce to a different operation and replace persisted values with defaults.
             _isHydratingSessionSelection = true;
             Target.SelectedTarget = restoredSelection ?? Target.Targets.FirstOrDefault();
             RefreshOperationSelection();
@@ -381,7 +377,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             TargetSessionSnapshot snapshot = FindTargetSnapshot(item.Target) ?? _sessionPersistence.CreateTargetSnapshot(item.Target);
             snapshot.TargetTypeId = _services.Targets.GetTargetTypeId(item.Target) ?? snapshot.TargetTypeId;
-            snapshot.Path = item.Target.TargetPath;
+            snapshot.Path = _services.Targets.GetTargetPath(item.Target);
             snapshot.Key = _sessionPersistence.BuildTargetKey(snapshot.TargetTypeId, snapshot.Path);
             snapshot.State ??= new TargetUiStateSnapshot();
             return snapshot;
@@ -420,13 +416,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void HandleSelectedTargetChanged(TargetListItemViewModel? previousTarget, TargetListItemViewModel? selectedTarget)
     {
-        IOperationTarget? previousOperationTarget = previousTarget?.Target;
+        object? previousOperationTarget = previousTarget?.Target;
         if (!_isHydratingSessionSelection && !_isRestoringSession && !_isApplyingTargetState && previousOperationTarget != null)
         {
             CaptureTargetState(previousOperationTarget);
         }
 
-        _operationParameters.Target = selectedTarget?.Target;
+        _parameterSession.Target = selectedTarget?.Target;
         if (!_isHydratingSessionSelection)
         {
             RefreshOperationSelection();
@@ -438,8 +434,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Rebuilds the compatible operation list for the currently selected target and preserves the active selection
-    /// when it remains valid.
+    /// Rebuilds the compatible operation list for the currently selected target and preserves the active selection when
+    /// it remains valid.
     /// </summary>
     private void RefreshOperationSelection()
     {
@@ -457,48 +453,62 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Rebuilds the editable option set list for the currently selected operation and target.
+    /// Rebuilds the editable option-set list for the currently selected operation and target.
     /// </summary>
     private void RefreshEnabledOptionSets()
     {
         var enabledOptionTypes = _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target).ToList();
 
-        if (!enabledOptionTypes.Contains(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions)))
-        {
-            enabledOptionTypes.Add(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions));
-        }
-
         foreach (Type optionSetType in enabledOptionTypes)
         {
-            _operationParameters.EnsureOptionsInstance(optionSetType);
+            _parameterSession.EnsureOptionSet(optionSetType);
         }
 
-        foreach (OperationOptions options in _operationParameters.OptionsInstances.ToList())
+        foreach (object options in _parameterSession.OptionSets.ToList())
         {
             if (!enabledOptionTypes.Contains(options.GetType()))
             {
-                _operationParameters.RemoveOptionsInstance(options.GetType());
+                _parameterSession.RemoveOptionSet(options.GetType());
             }
         }
 
         EnabledOptionSets.Clear();
-        foreach (OperationOptions options in _operationParameters.OptionsInstances)
+        foreach (object options in _parameterSession.OptionSets)
         {
-            EnabledOptionSets.Add(new OptionSetViewModel(options, _services.OptionEditors.GetEditorTarget(options)));
+            EnabledOptionSets.Add(new OptionSetViewModel(_services, options, _services.OptionEditors.GetEditorTarget(options)));
         }
     }
 
     /// <summary>
-    /// Rebuilds the option card view models from the current live option instances without recomputing which option
+    /// Rebuilds the option-card view models from the current live option instances without recomputing which option
     /// sets are enabled.
     /// </summary>
     private void RebuildOptionCards()
     {
         EnabledOptionSets.Clear();
-        foreach (OperationOptions options in _operationParameters.OptionsInstances)
+        foreach (object options in _parameterSession.OptionSets)
         {
-            EnabledOptionSets.Add(new OptionSetViewModel(options, _services.OptionEditors.GetEditorTarget(options)));
+            EnabledOptionSets.Add(new OptionSetViewModel(_services, options, _services.OptionEditors.GetEditorTarget(options)));
         }
+    }
+
+    /// <summary>
+    /// Reapplies the current target snapshot's persisted option values onto the live enabled option sets after an
+    /// operation change or target restore re-creates option instances.
+    /// </summary>
+    private void ApplyPersistedOptionValuesForSelectedTarget()
+    {
+        TargetSessionSnapshot? targetSnapshot = SelectedTarget?.Target == null ? null : FindTargetSnapshot(SelectedTarget.Target);
+        if (targetSnapshot == null)
+        {
+            return;
+        }
+
+        _services.OptionValues.Apply(_parameterSession.OptionSets, targetSnapshot.State.OptionValues);
+
+        // Recreate property-grid card targets after applying restored values so adapter-backed editors reflect the
+        // rehydrated state instead of the pre-apply values captured when the cards were first created.
+        RebuildOptionCards();
     }
 
     /// <summary>
@@ -506,7 +516,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RaiseDerivedStateChanged()
     {
-        RaisePropertyChanged(nameof(AdditionalArguments));
         RaisePropertyChanged(nameof(CanCopyCommand));
         RaisePropertyChanged(nameof(CanExecute));
         RaisePropertyChanged(nameof(ExecuteButtonText));
@@ -514,6 +523,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(OperationSupportsMultipleEngines));
         RaisePropertyChanged(nameof(PrimaryCommandText));
         RaisePropertyChanged(nameof(ShowExecuteDisabledReason));
+        RaisePropertyChanged(nameof(ShowStartupMessage));
+        RaisePropertyChanged(nameof(StartupMessage));
         RaisePropertyChanged(nameof(VisibleCommand));
     }
 }

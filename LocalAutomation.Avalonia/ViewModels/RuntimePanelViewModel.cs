@@ -179,6 +179,14 @@ public sealed class RuntimePanelViewModel : ViewModelBase
             _runtimeDurationTimer.Start();
         }
 
+        // Execution can start logging immediately on a background thread before the UI has attached the tab. Seed the
+        // tab from the current buffered entries first so fast tasks still show their full history instead of only the
+        // tail that arrived after subscription.
+        foreach (LogEntry entry in session.LogStream.Entries)
+        {
+            runtimeTab.AddLogEntry(new LogEntryViewModel(entry.Message, entry.Verbosity));
+        }
+
         session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
         {
             runtimeTab.AddLogEntry(new LogEntryViewModel(entry.Message, entry.Verbosity));

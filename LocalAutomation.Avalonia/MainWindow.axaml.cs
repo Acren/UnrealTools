@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using LocalAutomation.Avalonia.ViewModels;
+using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
 namespace LocalAutomation.Avalonia;
 
@@ -11,11 +12,19 @@ public partial class MainWindow : Window
     /// <summary>
     /// Initializes the shell window and assigns the shared main-window view model.
     /// </summary>
-    public MainWindow()
+    public MainWindow(LocalAutomationApplicationHost services)
     {
         InitializeComponent();
-        DataContext = new MainWindowViewModel(App.Services);
+        DataContext = new MainWindowViewModel(services);
         Closed += HandleClosed;
+    }
+
+    /// <summary>
+    /// Preserves the XAML loader entry point while delegating real composition to the launcher-provided host.
+    /// </summary>
+    public MainWindow()
+        : this(App.Services)
+    {
     }
 
     /// <summary>

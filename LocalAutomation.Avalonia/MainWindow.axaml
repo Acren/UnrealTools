@@ -10,10 +10,22 @@
         MinWidth="960"
         MinHeight="680">
     <!-- The window now acts as a composition shell that delegates each workspace region to a focused panel view. -->
-    <Grid Margin="10" RowDefinitions="*">
+    <Grid Margin="10" RowDefinitions="Auto,*" RowSpacing="10">
+        <Border Grid.Row="0"
+                IsVisible="{Binding ShowStartupMessage}"
+                Background="{DynamicResource GraphiteDangerBackgroundBrush}"
+                BorderBrush="{DynamicResource GraphiteDangerBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="12,10">
+            <SelectableTextBlock Text="{Binding StartupMessage}"
+                                 Classes="status-danger"
+                                 TextWrapping="Wrap" />
+        </Border>
+
         <!-- The shell uses explicit splitter rows and columns so the options area, right rail, and output panel can
              be resized at runtime without changing panel ownership. -->
-        <Grid MinHeight="0">
+        <Grid Grid.Row="1" MinHeight="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="420" />
                 <ColumnDefinition Width="6" />

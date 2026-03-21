@@ -1,0 +1,95 @@
+using System;
+using Avalonia;
+using LocalAutomation.Application;
+using LocalAutomation.Core;
+using LocalAutomation.Extensions.Abstractions;
+using Microsoft.Extensions.Logging;
+
+namespace LocalAutomation.Avalonia.Bootstrap;
+
+/// <summary>
+/// Starts the generic Avalonia shell around a launcher-provided application host so composition stays outside the UI
+/// assembly.
+/// </summary>
+public static class AvaloniaAppBootstrapper
+{
+    /// <summary>
+    /// Starts the desktop lifetime using bundled extension discovery.
+    /// </summary>
+    public static void Run(string[] args)
+    {
+        ApplicationLogService.Initialize();
+
+        try
+        {
+            ExtensionLoadResult extensionLoadResult = BundledExtensionLoader.LoadBundledExtensions();
+            LocalAutomationApplicationHost services = CreateApplicationHost(extensionLoadResult);
+            App.ConfigureServices(services);
+            App.ConfigureStartupMessage(extensionLoadResult.CreateStartupMessage());
+            LogExtensionDiscovery(extensionLoadResult);
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        catch (Exception ex)
+        {
+            ApplicationLogService.LogStartupException(ex);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Flushes the file-backed logging pipeline when the current process exits normally.
+    /// </summary>
+    static AvaloniaAppBootstrapper()
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => ApplicationLogService.Shutdown();
+    }
+
+    /// <summary>
+    /// Configures the shared Avalonia application builder used by launcher entry points.
+    /// </summary>
+    public static AppBuilder BuildAvaloniaApp()
+    {
+        return AppBuilder.Configure<App>()
+            .UsePlatformDetect()
+            .LogToTrace();
+    }
+
+    /// <summary>
+    /// Creates an application host from all successfully discovered modules.
+    /// </summary>
+    private static LocalAutomationApplicationHost CreateApplicationHost(ExtensionLoadResult extensionLoadResult)
+    {
+        ExtensionCatalog catalog = new();
+        foreach (IExtensionModule module in extensionLoadResult.Modules)
+        {
+            try
+            {
+                catalog.RegisterModule(module);
+            }
+            catch (Exception ex)
+            {
+                extensionLoadResult.Errors.Add($"Failed to register extension module '{module.Id}': {ex.Message}");
+            }
+        }
+
+        return new LocalAutomationApplicationHost(catalog);
+    }
+
+    /// <summary>
+    /// Emits a concise discovery summary plus detailed warnings and errors into the startup log.
+    /// </summary>
+    private static void LogExtensionDiscovery(ExtensionLoadResult extensionLoadResult)
+    {
+        ApplicationLogService.LogInformation($"Discovered {extensionLoadResult.Modules.Count} extension module(s) during startup.");
+
+        foreach (string warning in extensionLoadResult.Warnings)
+        {
+            ApplicationLogger.Logger.LogWarning("Extension discovery warning: {Warning}", warning);
+        }
+
+        foreach (string error in extensionLoadResult.Errors)
+        {
+            ApplicationLogger.Logger.LogError("Extension discovery error: {Error}", error);
+        }
+    }
+}

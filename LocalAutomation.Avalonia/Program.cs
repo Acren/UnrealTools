@@ -1,48 +1,19 @@
-using Avalonia;
 using System;
+using LocalAutomation.Avalonia.Bootstrap;
 
 namespace LocalAutomation.Avalonia;
 
 /// <summary>
-/// Boots the Avalonia desktop shell so Phase 1 has a runnable placeholder app while the architecture is
-/// extracted in later phases.
+/// Starts the LocalAutomation Avalonia desktop host using bundled extension discovery.
 /// </summary>
 internal static class Program
 {
     /// <summary>
-    /// Starts the Avalonia desktop lifetime for the LocalAutomation shell.
+    /// Starts the Avalonia desktop lifetime.
     /// </summary>
     [STAThread]
     public static void Main(string[] args)
     {
-        ApplicationLogService.Initialize();
-
-        try
-        {
-            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
-        }
-        catch (Exception ex)
-        {
-            ApplicationLogService.LogStartupException(ex);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Flushes the file-backed logging pipeline when the Avalonia process exits normally.
-    /// </summary>
-    static Program()
-    {
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => ApplicationLogService.Shutdown();
-    }
-
-    /// <summary>
-    /// Configures the shared Avalonia application builder used by the desktop entry point.
-    /// </summary>
-    public static AppBuilder BuildAvaloniaApp()
-    {
-        return AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .LogToTrace();
+        AvaloniaAppBootstrapper.Run(args);
     }
 }

@@ -30,8 +30,33 @@
     <ProjectReference Include="..\LocalAutomation.Application\LocalAutomation.Application.csproj" />
     <ProjectReference Include="..\LocalAutomation.Persistence\LocalAutomation.Persistence.csproj" />
     <ProjectReference Include="..\LocalAutomation.Extensions.Abstractions\LocalAutomation.Extensions.Abstractions.csproj" />
-    <ProjectReference Include="..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj" />
-    <ProjectReference Include="..\UnrealAutomationCommon\UnrealAutomationCommon.csproj" />
   </ItemGroup>
+
+  <Target Name="CopyBundledExtensions" AfterTargets="Build">
+    <PropertyGroup>
+      <BundledExtensionsRoot>$(OutputPath)Extensions\Unreal\</BundledExtensionsRoot>
+      <BundledExtensionSourceRoot>..\LocalAutomation.Extensions.Unreal\bin\$(Configuration)\netstandard2.1\</BundledExtensionSourceRoot>
+    </PropertyGroup>
+
+    <MSBuild Projects="..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)" />
+
+    <RemoveDir Directories="$(BundledExtensionsRoot)" Condition="Exists('$(BundledExtensionsRoot)')" />
+    <MakeDir Directories="$(BundledExtensionsRoot)" />
+
+    <ItemGroup>
+      <BundledExtensionFiles Include="$(BundledExtensionSourceRoot)**\*.*"
+                             Exclude="$(BundledExtensionSourceRoot)LocalAutomation.Application.dll;$(BundledExtensionSourceRoot)LocalAutomation.Application.pdb;$(BundledExtensionSourceRoot)LocalAutomation.Core.dll;$(BundledExtensionSourceRoot)LocalAutomation.Core.pdb;$(BundledExtensionSourceRoot)LocalAutomation.Extensions.Abstractions.dll;$(BundledExtensionSourceRoot)LocalAutomation.Extensions.Abstractions.pdb" />
+      <BundledExtensionDirectories Include="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(RecursiveDir)')" />
+    </ItemGroup>
+
+    <MakeDir Directories="@(BundledExtensionDirectories)" Condition="@(BundledExtensionDirectories) != ''" />
+
+    <Copy SourceFiles="@(BundledExtensionFiles)"
+          DestinationFiles="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="@(BundledExtensionFiles) != ''" />
+  </Target>
 
 </Project>

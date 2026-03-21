@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon;
 using UnrealAutomationCommon.Operations;
@@ -38,6 +39,7 @@ public sealed class UnrealExtensionModule : IExtensionModule
             throw new ArgumentNullException(nameof(registry));
         }
 
+        RegisterLegacyLoggerBridge();
         RegisterTypeDescriptionProviders();
 
         registry.RegisterTarget(new TargetDescriptor("unreal.project", "Project", typeof(Project)));
@@ -57,6 +59,15 @@ public sealed class UnrealExtensionModule : IExtensionModule
         {
             registry.RegisterOperation(descriptor);
         }
+    }
+
+    /// <summary>
+    /// Bridges the legacy UnrealAutomationCommon logger singleton onto the shared LocalAutomation application logger so
+    /// old Unreal runtime code can log safely inside the new host.
+    /// </summary>
+    private static void RegisterLegacyLoggerBridge()
+    {
+        UnrealAutomationCommon.AppLogger.Instance.Logger = ApplicationLogger.Logger;
     }
 
     /// <summary>
