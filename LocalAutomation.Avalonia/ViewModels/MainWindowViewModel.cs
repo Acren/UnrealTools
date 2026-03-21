@@ -525,22 +525,37 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Closes the provided runtime tab when it is not the permanent app log tab. Closing a running tab removes it from
-    /// the runtime panel but does not cancel the underlying task; termination remains an explicit action.
+    /// Closes the provided runtime tab when it is not the permanent app log tab. Running tabs are cancelled first so
+    /// the close affordance does not leave background work orphaned after the tab disappears.
     /// </summary>
-    public void CloseRuntimeTab(RuntimeTaskTabViewModel? runtimeTab)
+    public async Task CloseRuntimeTabAsync(RuntimeTaskTabViewModel? runtimeTab)
     {
         if (runtimeTab == null || !runtimeTab.CanClose)
         {
             return;
         }
 
+        // Closing a running tab should behave like terminate-and-dismiss so the session is asked to stop before it is
+        // removed from the visible runtime collection.
+        if (runtimeTab.Session is { IsRunning: true } session)
+        {
+            await session.CancelAsync();
+            SetStatus($"Cancelling {session.OperationName} before closing its tab.");
+        }
+
+        RemoveRuntimeTab(runtimeTab);
+    }
+
+    /// <summary>
+    /// Removes a runtime tab from the visible collection and picks the next selected tab.
+    /// </summary>
+    private void RemoveRuntimeTab(RuntimeTaskTabViewModel runtimeTab)
+    {
         int removedIndex = RuntimeTabs.IndexOf(runtimeTab);
         RuntimeTabs.Remove(runtimeTab);
 
-        // Remove the session from the visible runtime collection when its tab is closed so the runtime panel reflects
-        // only open tasks. This is intentionally decoupled from cancellation, which stays under the explicit
-        // terminate command.
+        // Once the UI tab is dismissed, drop the backing session from the shared session list so shell state and any
+        // persisted execution history only track tabs that remain visible.
         if (runtimeTab.Session != null)
         {
             _services.Execution.RemoveSession(runtimeTab.Session.Id);
