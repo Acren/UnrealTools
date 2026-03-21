@@ -26,17 +26,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly OperationParameters _operationParameters = new();
     private readonly SessionPersistenceService _sessionPersistence;
     private readonly DispatcherTimer _sessionSaveTimer;
-    private readonly TargetPickerItemViewModel _addTargetPickerItem = TargetPickerItemViewModel.CreateAddAction();
     private bool _isApplyingTargetState;
     private bool _isHydratingSessionSelection;
     private bool _isRestoringSession;
     private bool _hasPendingSessionSave;
     private object? _currentOperation;
-    private string _newTargetPath = string.Empty;
     private OperationDescriptor? _selectedOperation;
     private SessionSnapshot _sessionSnapshot = new();
-    private TargetPickerItemViewModel? _selectedTargetPickerItem;
-    private TargetListItemViewModel? _selectedTarget;
     private string _status = "Add a target path to begin using the LocalAutomation shell.";
 
     /// <summary>
@@ -49,30 +45,25 @@ public sealed class MainWindowViewModel : ViewModelBase
         _sessionSaveTimer = new DispatcherTimer { Interval = SessionSaveDebounceDelay };
         _sessionSaveTimer.Tick += HandleSessionSaveTimerTick;
         _operationParameters.PropertyChanged += HandleOperationParametersChanged;
+        Target = new TargetPanelViewModel(services, SetStatus, HandleSelectedTargetChanged, SaveSessionState);
         Runtime = new RuntimePanelViewModel(services, SetStatus);
-        TargetPickerItems.Add(_addTargetPickerItem);
         RestoreSessionState();
     }
 
     /// <summary>
-    /// Gets the currently added targets shown in the shell.
+    /// Gets the target panel view model that owns target-picker state and target-scoped actions.
     /// </summary>
-    public ObservableCollection<TargetListItemViewModel> Targets { get; } = new();
+    public TargetPanelViewModel Target { get; }
 
     /// <summary>
-    /// Gets the target-picker rows, including the synthetic add-target action shown at the bottom of the dropdown.
+    /// Gets the currently added targets shown in the shell.
     /// </summary>
-    public ObservableCollection<TargetPickerItemViewModel> TargetPickerItems { get; } = new();
+    public ObservableCollection<TargetListItemViewModel> Targets => Target.Targets;
 
     /// <summary>
     /// Gets the operations compatible with the current target selection.
     /// </summary>
     public ObservableCollection<OperationDescriptor> AvailableOperations { get; } = new();
-
-    /// <summary>
-    /// Gets the target actions currently available for the selected target.
-    /// </summary>
-    public ObservableCollection<TargetContextActionViewModel> TargetActions { get; } = new();
 
     /// <summary>
     /// Gets the editable option sets for the current target and operation selection.
@@ -85,73 +76,29 @@ public sealed class MainWindowViewModel : ViewModelBase
     public RuntimePanelViewModel Runtime { get; }
 
     /// <summary>
-    /// Gets or sets the path text entered into the Add Target input.
+    /// Gets the path text entered into the target panel's add-target flow.
     /// </summary>
-    public string NewTargetPath
-    {
-        get => _newTargetPath;
-        set
-        {
-            if (SetProperty(ref _newTargetPath, value))
-            {
-                RaisePropertyChanged(nameof(CanAddTarget));
-            }
-        }
-    }
+    public string NewTargetPath => Target.NewTargetPath;
 
     /// <summary>
-    /// Gets or sets the picker row currently shown by the target dropdown.
+    /// Gets the currently selected target row from the target panel.
     /// </summary>
-    public TargetPickerItemViewModel? SelectedTargetPickerItem
-    {
-        get => _selectedTargetPickerItem;
-        set
-        {
-            // The synthetic add-target row is handled by the view, so keep the last real target selected in the view
-            // model while still allowing the popup to surface the action entry.
-            if (value?.IsAddAction == true)
-            {
-                RaisePropertyChanged();
-                return;
-            }
-
-            if (SetProperty(ref _selectedTargetPickerItem, value) && !ReferenceEquals(SelectedTarget, value?.TargetItem))
-            {
-                SelectedTarget = value?.TargetItem;
-            }
-        }
-    }
+    public TargetListItemViewModel? SelectedTarget => Target.SelectedTarget;
 
     /// <summary>
-    /// Gets or sets the currently selected target row.
+    /// Gets the summary text for the currently selected target.
     /// </summary>
-    public TargetListItemViewModel? SelectedTarget
-    {
-        get => _selectedTarget;
-        set
-        {
-            IOperationTarget? previousTarget = _selectedTarget?.Target;
-            if (!_isHydratingSessionSelection && !_isRestoringSession && !_isApplyingTargetState && previousTarget != null)
-            {
-                CaptureTargetState(previousTarget);
-            }
+    public string SelectedTargetSummary => Target.SelectedTargetSummary;
 
-            if (SetProperty(ref _selectedTarget, value))
-            {
-                _operationParameters.Target = value?.Target;
-                SyncSelectedTargetPickerItem();
-                if (!_isHydratingSessionSelection)
-                {
-                    RefreshOperationSelection();
-                    RestoreSelectedTargetState();
-                    RefreshTargetActions();
-                    RaiseDerivedStateChanged();
-                }
+    /// <summary>
+    /// Gets the selected target path for detail display.
+    /// </summary>
+    public string SelectedTargetPath => Target.SelectedTargetPath;
 
-                SaveSessionState();
-            }
-        }
-    }
+    /// <summary>
+    /// Gets the selected target engine summary.
+    /// </summary>
+    public string SelectedTargetEngine => Target.SelectedTargetEngine;
 
     /// <summary>
     /// Gets or sets the currently selected operation descriptor.
@@ -239,23 +186,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     public string ExecuteButtonText => SelectedOperation?.DisplayName ?? "Execute";
 
     /// <summary>
-    /// Gets the summary text for the currently selected target.
-    /// </summary>
-    public string SelectedTargetSummary => SelectedTarget != null
-        ? $"{SelectedTarget.DisplayName} · {SelectedTarget.TypeName}"
-        : "No target selected";
-
-    /// <summary>
-    /// Gets the selected target path for detail display.
-    /// </summary>
-    public string SelectedTargetPath => SelectedTarget?.TargetPath ?? "Choose a target to see its details.";
-
-    /// <summary>
-    /// Gets the selected target engine summary.
-    /// </summary>
-    public string SelectedTargetEngine => SelectedTarget?.EngineSummary ?? "Unknown engine";
-
-    /// <summary>
     /// Gets whether the current target/operation selection supports selecting multiple engines.
     /// </summary>
     public bool OperationSupportsMultipleEngines => _services.OperationSession.SupportsMultipleEngines(_currentOperation);
@@ -264,93 +194,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets the first command preview line for clipboard copy actions.
     /// </summary>
     public string? PrimaryCommandText => _services.OperationSession.GetPrimaryCommandText(_currentOperation, _operationParameters);
-
-    /// <summary>
-    /// Creates a target from the current path input and adds it to the in-memory session.
-    /// </summary>
-    public bool TryAddTargetFromInput(out string? errorMessage)
-    {
-        errorMessage = null;
-        string source = NewTargetPath.Trim();
-        if (string.IsNullOrWhiteSpace(source))
-        {
-            errorMessage = "Enter a project, plugin, package, or engine path first.";
-            return false;
-        }
-
-        try
-        {
-            object createdTarget = _services.Targets.CreateTarget(source);
-            if (createdTarget is not IOperationTarget target)
-            {
-                errorMessage = $"Created target '{createdTarget.GetType().Name}' does not implement IOperationTarget.";
-                return false;
-            }
-
-            TargetListItemViewModel? existingTarget = Targets.FirstOrDefault(item =>
-                string.Equals(item.Target.TargetPath, target.TargetPath, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(item.TypeName, target.TypeName, StringComparison.Ordinal));
-
-            if (existingTarget != null)
-            {
-                SelectedTarget = existingTarget;
-                Status = $"Selected existing {existingTarget.TypeName.ToLowerInvariant()} target '{existingTarget.DisplayName}'.";
-                SaveSessionState();
-                return true;
-            }
-
-            TargetListItemViewModel targetItem = new(target);
-            AddTargetItem(targetItem);
-            SelectedTarget = targetItem;
-            NewTargetPath = string.Empty;
-            Status = $"Added {target.TypeName.ToLowerInvariant()} target '{target.DisplayName}'.";
-            SaveSessionState();
-            return true;
-        }
-        catch (Exception ex)
-        {
-            errorMessage = ex.Message;
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Removes the currently selected target from the in-memory session.
-    /// </summary>
-    public void RemoveSelectedTarget()
-    {
-        if (SelectedTarget == null)
-        {
-            return;
-        }
-
-        string removedTargetName = SelectedTarget.DisplayName;
-        int removedIndex = Targets.IndexOf(SelectedTarget);
-        RemoveTargetItem(SelectedTarget);
-
-        if (Targets.Count == 0)
-        {
-            SelectedTarget = null;
-            Status = $"Removed target '{removedTargetName}'. Add another target path to continue.";
-            RefreshTargetActions();
-            SaveSessionState();
-            return;
-        }
-
-        int nextIndex = Math.Clamp(removedIndex, 0, Targets.Count - 1);
-        SelectedTarget = Targets[nextIndex];
-        Status = $"Removed target '{removedTargetName}'.";
-        RefreshTargetActions();
-        SaveSessionState();
-    }
-
-    /// <summary>
-    /// Executes one of the currently available target actions.
-    /// </summary>
-    public void ExecuteTargetAction(TargetContextActionViewModel? action)
-    {
-        action?.Execute();
-    }
 
     /// <summary>
     /// Flushes any queued session save immediately. Hosts should call this before shutdown so the most recent UI
@@ -418,42 +261,6 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         RaiseDerivedStateChanged();
         QueueSessionStateSave();
-    }
-
-    /// <summary>
-    /// Recomputes the target actions available for the selected target from the shared extension catalog.
-    /// </summary>
-    private void RefreshTargetActions()
-    {
-        TargetActions.Clear();
-
-        if (SelectedTarget?.Target == null)
-        {
-            return;
-        }
-
-        foreach (ContextActionDescriptor descriptor in _services.ContextActions.GetActionsForTarget(SelectedTarget.Target))
-        {
-            object target = SelectedTarget.Target;
-            TargetActions.Add(new TargetContextActionViewModel(descriptor, () => ExecuteTargetAction(descriptor, target)));
-        }
-    }
-
-    /// <summary>
-    /// Executes a selected target action and reports the result through the shared status text and application log.
-    /// </summary>
-    private void ExecuteTargetAction(ContextActionDescriptor descriptor, object target)
-    {
-        try
-        {
-            descriptor.Execute(target);
-            SetStatus($"Executed '{descriptor.DisplayName}' for '{SelectedTarget?.DisplayName}'.");
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LoggerInstance.LogError(ex, "Target action '{ActionName}' failed.", descriptor.DisplayName);
-            SetStatus($"Failed to run '{descriptor.DisplayName}': {ex.Message}");
-        }
     }
 
     /// <summary>
@@ -541,7 +348,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 if (_sessionPersistence.TryRestoreTarget(targetSnapshot, out IOperationTarget? target) && target != null)
                 {
-                    AddTargetItem(new TargetListItemViewModel(target));
+                    Target.AddTargetItem(new TargetListItemViewModel(target));
                     restoredSnapshots.Add(targetSnapshot);
                 }
             }
@@ -549,7 +356,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             // Keep only snapshots that successfully restored so nested per-target state survives startup; do not
             // replace them with fresh empty snapshots before the restore pass can apply option values.
             _sessionSnapshot.Targets = restoredSnapshots;
-            NewTargetPath = _sessionSnapshot.PendingTargetPath;
+            Target.NewTargetPath = _sessionSnapshot.PendingTargetPath;
 
             TargetListItemViewModel? restoredSelection = Targets.FirstOrDefault(item =>
                 string.Equals(_sessionPersistence.CreateTargetSnapshot(item.Target).Key, _sessionSnapshot.SelectedTargetKey, StringComparison.Ordinal));
@@ -558,15 +365,14 @@ public sealed class MainWindowViewModel : ViewModelBase
             // hydration pass does not temporarily coerce to a different operation and replace persisted values with
             // new defaults.
             _isHydratingSessionSelection = true;
-            SelectedTarget = restoredSelection ?? Targets.FirstOrDefault();
+            Target.SelectedTarget = restoredSelection ?? Targets.FirstOrDefault();
             RefreshOperationSelection();
 
             _isHydratingSessionSelection = false;
             RestoreSelectedTargetState();
-            RefreshTargetActions();
             RaiseDerivedStateChanged();
 
-            if (SelectedTarget != null)
+            if (Target.SelectedTarget != null)
             {
                 Status = $"Restored {Targets.Count} target(s) from the previous Avalonia session.";
             }
@@ -601,7 +407,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         _hasPendingSessionSave = false;
 
-        CaptureTargetState(SelectedTarget?.Target);
+        CaptureTargetState(Target.SelectedTarget?.Target);
         _sessionSnapshot.Targets = Targets.Select(item =>
         {
             TargetSessionSnapshot snapshot = FindTargetSnapshot(item.Target) ?? _sessionPersistence.CreateTargetSnapshot(item.Target);
@@ -611,8 +417,8 @@ public sealed class MainWindowViewModel : ViewModelBase
             snapshot.State ??= new TargetUiStateSnapshot();
             return snapshot;
         }).ToList();
-        _sessionSnapshot.SelectedTargetKey = SelectedTarget?.Target == null ? null : _sessionPersistence.CreateTargetSnapshot(SelectedTarget.Target).Key;
-        _sessionSnapshot.PendingTargetPath = NewTargetPath;
+        _sessionSnapshot.SelectedTargetKey = Target.SelectedTarget?.Target == null ? null : _sessionPersistence.CreateTargetSnapshot(Target.SelectedTarget.Target).Key;
+        _sessionSnapshot.PendingTargetPath = Target.NewTargetPath;
 
         _sessionPersistence.Save(_sessionSnapshot);
     }
@@ -637,6 +443,28 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void QueueSessionStateSave()
     {
+        SaveSessionState();
+    }
+
+    /// <summary>
+    /// Applies shell-level side effects after the target panel changes the selected target.
+    /// </summary>
+    private void HandleSelectedTargetChanged(TargetListItemViewModel? previousTarget, TargetListItemViewModel? selectedTarget)
+    {
+        IOperationTarget? previousOperationTarget = previousTarget?.Target;
+        if (!_isHydratingSessionSelection && !_isRestoringSession && !_isApplyingTargetState && previousOperationTarget != null)
+        {
+            CaptureTargetState(previousOperationTarget);
+        }
+
+        _operationParameters.Target = selectedTarget?.Target;
+        if (!_isHydratingSessionSelection)
+        {
+            RefreshOperationSelection();
+            RestoreSelectedTargetState();
+            RaiseDerivedStateChanged();
+        }
+
         SaveSessionState();
     }
 
@@ -710,7 +538,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void RaiseDerivedStateChanged()
     {
         RaisePropertyChanged(nameof(AdditionalArguments));
-        RaisePropertyChanged(nameof(CanAddTarget));
         RaisePropertyChanged(nameof(CanCopyCommand));
         RaisePropertyChanged(nameof(CanExecute));
         RaisePropertyChanged(nameof(ExecuteButtonText));
@@ -718,46 +545,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(OperationSupportsMultipleEngines));
         RaisePropertyChanged(nameof(PrimaryCommandText));
         RaisePropertyChanged(nameof(ShowExecuteDisabledReason));
-        RaisePropertyChanged(nameof(SelectedTargetEngine));
-        RaisePropertyChanged(nameof(SelectedTargetPath));
-        RaisePropertyChanged(nameof(SelectedTargetSummary));
         RaisePropertyChanged(nameof(VisibleCommand));
-    }
-
-    /// <summary>
-    /// Adds a real target row to both the session-backed target list and the picker list while keeping the synthetic
-    /// add-target action anchored at the bottom of the dropdown.
-    /// </summary>
-    private void AddTargetItem(TargetListItemViewModel targetItem)
-    {
-        Targets.Add(targetItem);
-        TargetPickerItems.Insert(Math.Max(0, TargetPickerItems.Count - 1), new TargetPickerItemViewModel(targetItem));
-    }
-
-    /// <summary>
-    /// Removes a real target row from both the working target list and the dropdown picker entries.
-    /// </summary>
-    private void RemoveTargetItem(TargetListItemViewModel targetItem)
-    {
-        Targets.Remove(targetItem);
-
-        TargetPickerItemViewModel? pickerItem = TargetPickerItems.FirstOrDefault(item => ReferenceEquals(item.TargetItem, targetItem));
-        if (pickerItem != null)
-        {
-            TargetPickerItems.Remove(pickerItem);
-        }
-    }
-
-    /// <summary>
-    /// Mirrors the real selected target into the dropdown selection so the collapsed picker always shows the active
-    /// target instead of the synthetic add row.
-    /// </summary>
-    private void SyncSelectedTargetPickerItem()
-    {
-        TargetPickerItemViewModel? pickerItem = SelectedTarget == null
-            ? null
-            : TargetPickerItems.FirstOrDefault(item => ReferenceEquals(item.TargetItem, SelectedTarget));
-
-        SetProperty(ref _selectedTargetPickerItem, pickerItem, nameof(SelectedTargetPickerItem));
     }
 }

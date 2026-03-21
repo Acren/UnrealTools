@@ -20,9 +20,9 @@ public partial class TargetPanel : UserControl
     }
 
     /// <summary>
-    /// Gets the shared shell view model backing this panel.
+    /// Gets the target panel view model backing this panel.
     /// </summary>
-    private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext!;
+    private TargetPanelViewModel ViewModel => (TargetPanelViewModel)DataContext!;
 
     /// <summary>
     /// Opens the folder picker when the synthetic add-target row is selected.
@@ -81,20 +81,7 @@ public partial class TargetPanel : UserControl
 
         e.Handled = true;
 
-        if (ReferenceEquals(ViewModel.SelectedTarget, targetItem))
-        {
-            ViewModel.RemoveSelectedTarget();
-            return;
-        }
-
-        TargetListItemViewModel? previousTarget = ViewModel.SelectedTarget;
-        ViewModel.SelectedTarget = targetItem;
-        ViewModel.RemoveSelectedTarget();
-
-        if (previousTarget != null && !ReferenceEquals(ViewModel.SelectedTarget, previousTarget))
-        {
-            ViewModel.SelectedTarget = previousTarget;
-        }
+        ViewModel.RemoveTarget(targetItem);
     }
 
     /// <summary>
