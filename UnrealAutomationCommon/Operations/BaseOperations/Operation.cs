@@ -53,46 +53,6 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
     }
 
     /// <summary>
-    /// Bridges the shared runtime validation flow onto the Unreal-specific parameter type.
-    /// </summary>
-    public sealed override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
-    {
-        return CheckRequirementsSatisfied((UnrealAutomationCommon.Operations.OperationParameters)operationParameters);
-    }
-
-    /// <summary>
-    /// Lets Unreal operations validate against the Unreal-specific parameter model.
-    /// </summary>
-    public virtual string? CheckRequirementsSatisfied(UnrealAutomationCommon.Operations.OperationParameters operationParameters)
-    {
-        return base.CheckRequirementsSatisfied(operationParameters);
-    }
-
-    /// <summary>
-    /// Bridges the shared runtime log-path query onto the Unreal-specific parameter type.
-    /// </summary>
-    public sealed override string? GetLogsPath(global::LocalAutomation.Runtime.OperationParameters operationParameters)
-    {
-        return GetLogsPath((UnrealAutomationCommon.Operations.OperationParameters)operationParameters);
-    }
-
-    /// <summary>
-    /// Lets Unreal operations return log paths from the Unreal-specific parameter model.
-    /// </summary>
-    public virtual string? GetLogsPath(UnrealAutomationCommon.Operations.OperationParameters operationParameters)
-    {
-        return base.GetLogsPath(operationParameters);
-    }
-
-    /// <summary>
-    /// Returns whether the current target can resolve an Unreal engine install.
-    /// </summary>
-    public bool TargetProvidesEngineInstall(UnrealAutomationCommon.Operations.OperationParameters operationParameters)
-    {
-        return GetTarget(operationParameters) is UnrealAutomationCommon.Unreal.IEngineInstanceProvider;
-    }
-
-    /// <summary>
     /// Returns the effective Unreal engine install for the current parameter state.
     /// </summary>
     public UnrealAutomationCommon.Unreal.Engine? GetTargetEngineInstall(UnrealAutomationCommon.Operations.OperationParameters operationParameters)
@@ -164,12 +124,4 @@ public abstract class Operation<T> : Operation where T : global::LocalAutomation
         return (T?)operationParameters.Target;
     }
 
-    /// <summary>
-    /// Creates a new Unreal parameter object so Unreal-specific engine resolution remains available during option
-    /// discovery and child operation flows.
-    /// </summary>
-    protected override global::LocalAutomation.Runtime.OperationParameters CreateOperationParameters()
-    {
-        return new UnrealAutomationCommon.Operations.OperationParameters();
-    }
 }

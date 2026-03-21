@@ -9,21 +9,22 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     public abstract class BuildBatOperation<T> : CommandProcessOperation<T> where T : RuntimeTarget
     {
         // Validate shared direct-UBT overrides once so every Build.bat-backed operation enforces the same limits.
-        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
+        public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
+            UnrealAutomationCommon.Operations.OperationParameters typedParameters = (UnrealAutomationCommon.Operations.OperationParameters)operationParameters;
             string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
                 return requirementsError;
             }
 
-            UbtCompilerOptions buildBatOptions = operationParameters.FindOptions<UbtCompilerOptions>();
+            UbtCompilerOptions buildBatOptions = typedParameters.FindOptions<UbtCompilerOptions>();
             if (buildBatOptions == null)
             {
                 return null;
             }
 
-            Engine engine = GetTargetEngineInstall(operationParameters);
+            Engine engine = GetTargetEngineInstall(typedParameters);
             if (engine?.Version == null)
             {
                 return null;

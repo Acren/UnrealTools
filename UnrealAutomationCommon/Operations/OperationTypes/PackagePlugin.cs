@@ -14,21 +14,22 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private List<string> _builtTargetPlatforms = new();
 
         // Fail early when the selected engine cannot even advertise the requested code platforms.
-        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
+        public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
+            OperationParameters typedParameters = (OperationParameters)operationParameters;
             string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
                 return requirementsError;
             }
 
-            Engine engine = GetTargetEngineInstall(operationParameters);
+            Engine engine = GetTargetEngineInstall(typedParameters);
             if (engine == null)
             {
                 return null;
             }
 
-            return PluginBuildPlatformValidation.CheckRequirementsSatisfied(operationParameters, engine);
+            return PluginBuildPlatformValidation.CheckRequirementsSatisfied(typedParameters, engine);
         }
 
         protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)

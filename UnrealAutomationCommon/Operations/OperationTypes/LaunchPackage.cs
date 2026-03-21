@@ -11,15 +11,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public abstract class LaunchPackage<T> : UnrealProcessOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget, IPackageProvider
     {
-        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
+        public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
+            OperationParameters typedParameters = (OperationParameters)operationParameters;
             string baseError = base.CheckRequirementsSatisfied(operationParameters);
             if (baseError != null)
             {
                 return baseError;
             }
 
-            if (GetTarget(operationParameters).GetProvidedPackage(operationParameters.Engine) == null)
+            if (GetTarget(typedParameters).GetProvidedPackage(typedParameters.Engine) == null)
             {
                 return "Provided package is null";
             }
@@ -70,9 +71,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return "Launch Package";
         }
 
-        public override string GetLogsPath(OperationParameters operationParameters)
+        public override string GetLogsPath(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            return GetTarget(operationParameters).GetProvidedPackage(operationParameters.Engine).LogsPath;
+            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            return GetTarget(typedParameters).GetProvidedPackage(typedParameters.Engine).LogsPath;
         }
     }
 

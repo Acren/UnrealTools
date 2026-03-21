@@ -7,15 +7,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     public class BuildPlugin : BuildBatOperation<Plugin>
     {
         // Direct Build.bat plugin compilation needs a host project and only applies to code plugins.
-        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
+        public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
+            OperationParameters typedParameters = (OperationParameters)operationParameters;
             string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
                 return requirementsError;
             }
 
-            Plugin plugin = GetTarget(operationParameters);
+            Plugin plugin = GetTarget(typedParameters);
             if (plugin.IsBlueprintOnly)
             {
                 return "Build Plugin only supports code plugins";

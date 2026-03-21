@@ -37,15 +37,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Rejects unsupported build configurations before command generation so the user sees a clear validation
         /// message instead of a misleading UAT invocation.
         /// </summary>
-        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
+        public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
+            OperationParameters typedParameters = (OperationParameters)operationParameters;
             string baseError = base.CheckRequirementsSatisfied(operationParameters);
             if (baseError != null)
             {
                 return baseError;
             }
 
-            BuildConfiguration configuration = operationParameters.RequestOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration;
+            BuildConfiguration configuration = typedParameters.RequestOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration;
             if (!SupportsRequestedConfiguration(configuration))
             {
                 return "Configuration is not supported";

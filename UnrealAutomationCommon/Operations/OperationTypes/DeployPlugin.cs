@@ -827,15 +827,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     
     public class DeployPlugin : Operation<Plugin>
     {
-        public override string CheckRequirementsSatisfied(OperationParameters operationParameters)
+        public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
+            OperationParameters typedParameters = (OperationParameters)operationParameters;
             string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
                 return requirementsError;
             }
 
-            EngineVersionOptions engineVersionOptions = operationParameters.FindOptions<EngineVersionOptions>();
+            EngineVersionOptions engineVersionOptions = typedParameters.FindOptions<EngineVersionOptions>();
             if (engineVersionOptions == null || engineVersionOptions.EnabledVersions.Value.Count == 0)
             {
                 return null;
@@ -849,7 +850,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     return $"Engine {engineVersion.MajorMinorString} not found";
                 }
 
-                string platformRequirementsError = PluginBuildPlatformValidation.CheckRequirementsSatisfied(operationParameters, engine);
+                string platformRequirementsError = PluginBuildPlatformValidation.CheckRequirementsSatisfied(typedParameters, engine);
                 if (platformRequirementsError != null)
                 {
                     return $"Engine {engineVersion.MajorMinorString}: {platformRequirementsError}";
