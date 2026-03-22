@@ -85,7 +85,9 @@ public abstract class Operation
             parameters.OutputPathOverride = existing.OutputPathOverride;
             parameters.AdditionalArguments = existing.AdditionalArguments;
 
-            foreach (OperationOptions options in existing.OptionsInstances)
+            // Clone from a stable snapshot because some option setters update sibling option state or target-derived
+            // values as they are copied, which can mutate the live binding list during enumeration.
+            foreach (OperationOptions options in existing.OptionsInstances.ToList())
             {
                 if (parameters.GetOptionsInstance(options.GetType()) == null)
                 {

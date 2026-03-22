@@ -92,6 +92,10 @@ public sealed class MainWindowViewModel : ViewModelBase
         get => _selectedOperation;
         set
         {
+            OperationDescriptor? previousSelection = _selectedOperation;
+            Operation? previousOperation = _currentOperation;
+            OperationParameters previousParameters = _parameterSession.RawValue;
+
             // Capture the current target-scoped option values before changing the selected operation because operation
             // switches can temporarily remove option sets like compiler settings from the live parameter model.
             if (!_isHydratingSessionSelection && !_isApplyingTargetState && !_isRestoringSession && SelectedTarget?.Target != null)
@@ -104,12 +108,29 @@ public sealed class MainWindowViewModel : ViewModelBase
                 return;
             }
 
-            // Keep the live operation object aligned with the selected descriptor so command preview, validation, and
-            // execution all run through the same shared runtime path.
-            OperationParameters existingParameters = _parameterSession.RawValue;
-            _currentOperation = value != null ? _services.OperationSession.CreateOperation(value.OperationType) : null;
-            OperationParameters replacementParameters = _currentOperation?.CreateParameters(existingParameters) ?? new OperationParameters();
-            _parameterSession.Replace(replacementParameters);
+            try
+            {
+                // Keep the live operation object aligned with the selected descriptor so command preview, validation,
+                // and execution all run through the same shared runtime path.
+                OperationParameters existingParameters = _parameterSession.RawValue;
+                _currentOperation = value != null ? _services.OperationSession.CreateOperation(value.OperationType) : null;
+                OperationParameters replacementParameters = _currentOperation?.CreateParameters(existingParameters) ?? new OperationParameters();
+                _parameterSession.Replace(replacementParameters);
+            }
+            catch (Exception ex)
+            {
+                // Never let operation activation failures escape the binding setter, because Avalonia will surface the
+                // raw exception inline under the ComboBox as a validation error. Log the failure, restore the previous
+                // runtime state, and report a normal status message instead.
+                _selectedOperation = previousSelection;
+                _currentOperation = previousOperation;
+                _parameterSession.Replace(previousParameters);
+                RaisePropertyChanged();
+                RaiseDerivedStateChanged();
+                ApplicationLogService.LogError(ex, "Failed to activate operation '{OperationName}'.", value?.DisplayName ?? "<none>");
+                SetStatus($"Failed to load '{value?.DisplayName ?? "the selected operation"}'. See the application log for details.");
+                return;
+            }
 
             if (!_isHydratingSessionSelection && !_isApplyingTargetState)
             {
