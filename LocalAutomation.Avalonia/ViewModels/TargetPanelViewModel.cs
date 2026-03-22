@@ -89,6 +89,11 @@ public sealed class TargetPanelViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Gets the inline helper text shown before the user has selected or added a target.
+    /// </summary>
+    public string TargetPickerPlaceholderText => "Select or add a target...";
+
+    /// <summary>
     /// Gets or sets the currently selected target row.
     /// </summary>
     public TargetListItemViewModel? SelectedTarget

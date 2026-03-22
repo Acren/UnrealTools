@@ -12,9 +12,14 @@
             <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
                 <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
                     <TextBlock Text="OPERATION" Classes="panel-title" VerticalAlignment="Center" />
+                    <!-- Keep the operation control visually present even before it has choices so the dependency on
+                         target selection is explained in place instead of by an empty dropdown. -->
                     <ComboBox Grid.Column="1"
                               Width="260"
+                              Classes="operation-picker"
                               HorizontalAlignment="Left"
+                              IsEnabled="{Binding IsOperationPickerEnabled}"
+                              PlaceholderText="{Binding OperationPickerPlaceholderText}"
                               ItemsSource="{Binding AvailableOperations}"
                               SelectedItem="{Binding SelectedOperation}">
                         <ComboBox.ItemTemplate>

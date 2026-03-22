@@ -123,6 +123,32 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Gets whether the operation picker currently has a valid target and at least one compatible operation to show.
+    /// </summary>
+    public bool IsOperationPickerEnabled => SelectedTarget != null && AvailableOperations.Count > 0;
+
+    /// <summary>
+    /// Gets the inline helper text shown by the operation picker before the user chooses an operation.
+    /// </summary>
+    public string OperationPickerPlaceholderText
+    {
+        get
+        {
+            if (SelectedTarget == null)
+            {
+                return "Select a target first";
+            }
+
+            if (AvailableOperations.Count == 0)
+            {
+                return "No operations available";
+            }
+
+            return "Select an operation...";
+        }
+    }
+
+    /// <summary>
     /// Gets the current status message shown in the header area.
     /// </summary>
     public string Status
@@ -448,10 +474,16 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         Type? selectedOperationType = SelectedOperation?.OperationType;
-        Type? coercedOperationType = _services.OperationSession.CoerceSelectedOperationType(SelectedTarget?.Target, selectedOperationType);
-        SelectedOperation = coercedOperationType == null
+        Type? retainedOperationType = selectedOperationType != null && AvailableOperations.Any(descriptor => descriptor.OperationType == selectedOperationType)
+            ? selectedOperationType
+            : null;
+
+        // Keep the previous operation only when it is still compatible with the current target. Leaving the picker
+        // empty in every other case makes the target -> operation dependency explicit instead of silently choosing a
+        // new default that the user did not select.
+        SelectedOperation = retainedOperationType == null
             ? null
-            : AvailableOperations.FirstOrDefault(descriptor => descriptor.OperationType == coercedOperationType);
+            : AvailableOperations.FirstOrDefault(descriptor => descriptor.OperationType == retainedOperationType);
     }
 
     /// <summary>
@@ -523,7 +555,9 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(CanExecute));
         RaisePropertyChanged(nameof(ExecuteButtonText));
         RaisePropertyChanged(nameof(ExecuteDisabledReason));
+        RaisePropertyChanged(nameof(IsOperationPickerEnabled));
         RaisePropertyChanged(nameof(OperationSupportsMultipleEngines));
+        RaisePropertyChanged(nameof(OperationPickerPlaceholderText));
         RaisePropertyChanged(nameof(PrimaryCommandText));
         RaisePropertyChanged(nameof(ShowExecuteDisabledReason));
         RaisePropertyChanged(nameof(ShowStartupMessage));

@@ -13,6 +13,7 @@
             <ComboBox Grid.Row="1"
                       Margin="8,8,8,0"
                       Classes="target-picker"
+                      PlaceholderText="{Binding TargetPickerPlaceholderText}"
                       ItemsSource="{Binding TargetPickerItems}"
                       SelectedItem="{Binding SelectedTargetPickerItem}"
                       MaxDropDownHeight="360"

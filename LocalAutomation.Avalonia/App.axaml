@@ -469,6 +469,9 @@
         <Style Selector="ComboBox /template/ ContentPresenter">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
         </Style>
+        <Style Selector="ComboBox:not(:selected) /template/ ContentControl#PlaceholderTextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+        </Style>
         <Style Selector="ComboBox /template/ ToggleButton">
             <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
@@ -487,6 +490,21 @@
         </Style>
         <Style Selector="ComboBox.target-picker:focus /template/ ToggleButton">
             <Setter Property="BorderBrush" Value="{DynamicResource GraphiteAccentBrush}" />
+        </Style>
+        <!-- Override the Fluent disabled brushes at the same template parts Fluent uses so the intentionally disabled
+             operation picker still reads like one of our graphite inputs instead of falling back to a washed-out gray. -->
+        <Style Selector="ComboBox.operation-picker:disabled /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource GraphiteLineSubtleBrush}" />
+        </Style>
+        <Style Selector="ComboBox.operation-picker:disabled /template/ ContentControl#ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+        </Style>
+        <Style Selector="ComboBox.operation-picker:disabled /template/ TextBlock#PlaceholderTextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+        </Style>
+        <Style Selector="ComboBox.operation-picker:disabled /template/ PathIcon#DropDownGlyph">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
         </Style>
         <Style Selector="ComboBox /template/ PopupRoot Border">
             <Setter Property="Background" Value="{DynamicResource GraphiteDropdownBrush}" />
