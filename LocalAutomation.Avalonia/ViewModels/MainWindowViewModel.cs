@@ -31,7 +31,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private Operation? _currentOperation;
     private OperationDescriptor? _selectedOperation;
     private SessionSnapshot _sessionSnapshot = new();
-    private string _status = "Add a target path to begin using the LocalAutomation shell.";
+    private string _status = $"Add a target path to begin using the {App.Branding.ApplicationName} shell.";
 
     /// <summary>
     /// Creates the Avalonia main-window view model around the shared LocalAutomation application host.

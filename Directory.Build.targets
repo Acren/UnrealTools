@@ -1,0 +1,3 @@
+<Project>
+  <Import Project="Build\BundledExtensions.targets" Condition="Exists('Build\BundledExtensions.targets')" />
+</Project>

@@ -4,7 +4,6 @@
         xmlns:panels="clr-namespace:LocalAutomation.Avalonia.Views.Panels"
         x:Class="LocalAutomation.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="LocalAutomation"
         Width="1240"
         Height="820"
         MinWidth="960"

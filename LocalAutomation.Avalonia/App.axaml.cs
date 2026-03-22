@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using AvaloniaApplication = Avalonia.Application;
+using LocalAutomation.Avalonia.Bootstrap;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
 namespace LocalAutomation.Avalonia;
@@ -12,6 +13,11 @@ namespace LocalAutomation.Avalonia;
 /// </summary>
 public partial class App : AvaloniaApplication
 {
+    /// <summary>
+    /// Gets the launcher-provided branding values that control product naming and host-owned storage locations.
+    /// </summary>
+    public static AvaloniaHostBranding Branding { get; private set; } = AvaloniaHostBranding.LocalAutomation;
+
     /// <summary>
     /// Gets the startup discovery warning shown by the shell when bundled extensions were missing or failed to load.
     /// </summary>
@@ -30,6 +36,14 @@ public partial class App : AvaloniaApplication
     public static void ConfigureServices(LocalAutomationApplicationHost services)
     {
         Services = services ?? throw new System.ArgumentNullException(nameof(services));
+    }
+
+    /// <summary>
+    /// Replaces the current launcher-provided branding before the shell initializes any windows or host-owned files.
+    /// </summary>
+    public static void ConfigureBranding(AvaloniaHostBranding branding)
+    {
+        Branding = branding ?? throw new System.ArgumentNullException(nameof(branding));
     }
 
     /// <summary>
@@ -55,7 +69,9 @@ public partial class App : AvaloniaApplication
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow();
+            MainWindow mainWindow = new();
+            mainWindow.Title = Branding.WindowTitle;
+            desktop.MainWindow = mainWindow;
         }
 
         base.OnFrameworkInitializationCompleted();

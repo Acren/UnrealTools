@@ -24,6 +24,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalAutomation.Extensions.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LocalAutomation.Avalonia", "LocalAutomation.Avalonia\LocalAutomation.Avalonia.csproj", "{FD9315E3-37F1-401D-A6F4-85A6C3234E7A}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnrealCommander.Avalonia", "UnrealCommander.Avalonia\UnrealCommander.Avalonia.csproj", "{8BBFEA76-724F-4C73-8C57-D774A0F740B2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -181,6 +183,24 @@ Global
 		{FD9315E3-37F1-401D-A6F4-85A6C3234E7A}.Release|x64.Build.0 = Release|Any CPU
 		{FD9315E3-37F1-401D-A6F4-85A6C3234E7A}.Release|x86.ActiveCfg = Release|Any CPU
 		{FD9315E3-37F1-401D-A6F4-85A6C3234E7A}.Release|x86.Build.0 = Release|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Debug|x64.Build.0 = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Debug|x86.Build.0 = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Development|Any CPU.ActiveCfg = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Development|Any CPU.Build.0 = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Development|x64.ActiveCfg = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Development|x64.Build.0 = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Development|x86.ActiveCfg = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Development|x86.Build.0 = Debug|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Release|x64.ActiveCfg = Release|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Release|x64.Build.0 = Release|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Release|x86.ActiveCfg = Release|Any CPU
+		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

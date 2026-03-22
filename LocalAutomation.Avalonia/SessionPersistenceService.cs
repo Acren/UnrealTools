@@ -16,13 +16,8 @@ namespace LocalAutomation.Avalonia;
 /// </summary>
 public sealed class SessionPersistenceService
 {
-    private static readonly string DataFolder = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "LocalAutomation");
-
-    private static readonly string DataFilePath = Path.Combine(DataFolder, "avalonia-session.json");
-
     private readonly LocalAutomationApplicationHost _services;
+    private readonly string _dataFilePath;
 
     /// <summary>
     /// Creates a session persistence service around the shared application host.
@@ -30,6 +25,13 @@ public sealed class SessionPersistenceService
     public SessionPersistenceService(LocalAutomationApplicationHost services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
+
+        // Keep each launcher's persisted shell state inside its own LocalAppData root so branded hosts do not overwrite
+        // one another's target lists, selected operations, or option values.
+        string dataFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            App.Branding.DataFolderName);
+        _dataFilePath = Path.Combine(dataFolder, App.Branding.SessionFileName);
     }
 
     /// <summary>
@@ -37,14 +39,14 @@ public sealed class SessionPersistenceService
     /// </summary>
     public SessionSnapshot Load()
     {
-        if (!File.Exists(DataFilePath))
+        if (!File.Exists(_dataFilePath))
         {
             return new SessionSnapshot();
         }
 
         try
         {
-            string jsonText = File.ReadAllText(DataFilePath);
+            string jsonText = File.ReadAllText(_dataFilePath);
             JToken token = JToken.Parse(jsonText);
 
             if (token["Version"] != null || token["version"] != null)
@@ -68,7 +70,7 @@ public sealed class SessionPersistenceService
     public void Save(SessionSnapshot snapshot)
     {
         JsonFileStateStore<SessionSnapshot> store = new(
-            filePath: DataFilePath,
+            filePath: _dataFilePath,
             createDefaultState: static () => new SessionSnapshot(),
             createSerializer: CreateSnapshotSerializer);
 

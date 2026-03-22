@@ -1,0 +1,21 @@
+using LocalAutomation.Avalonia.Bootstrap;
+
+namespace UnrealCommander.Avalonia;
+
+/// <summary>
+/// Centralizes the Unreal Commander launcher identity so process metadata, window title, logs, and session files all
+/// use the same branded values.
+/// </summary>
+internal static class UnrealCommanderBranding
+{
+    /// <summary>
+    /// Gets the branded host settings used by the Unreal Commander launcher.
+    /// </summary>
+    public static AvaloniaHostBranding Instance { get; } = new(
+        applicationName: "Unreal Commander",
+        windowTitle: "Unreal Commander",
+        dataFolderName: "UnrealCommander",
+        sessionFileName: "avalonia-session.json",
+        launchLogFilePrefix: "UnrealCommander.Avalonia",
+        loggerCategoryName: "UnrealCommander.Avalonia");
+}

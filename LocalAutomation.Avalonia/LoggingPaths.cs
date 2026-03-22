@@ -9,9 +9,12 @@ namespace LocalAutomation.Avalonia;
 /// </summary>
 internal static class LoggingPaths
 {
-    private static readonly string DataFolder = Path.Combine(
+    /// <summary>
+    /// Gets the host-specific LocalAppData folder for the currently configured launcher.
+    /// </summary>
+    private static string DataFolder => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "LocalAutomation");
+        App.Branding.DataFolderName);
 
     /// <summary>
     /// Stores per-launch Avalonia logs next to the shell's persisted state under LocalAppData.
@@ -24,7 +27,7 @@ internal static class LoggingPaths
     public static string CreateLaunchLogFilePath()
     {
         Directory.CreateDirectory(LogsFolder);
-        return Path.Combine(LogsFolder, $"LocalAutomation.Avalonia_{DateTime.Now:yyyyMMdd_HHmmss}_{Environment.ProcessId}.log");
+        return Path.Combine(LogsFolder, $"{App.Branding.LaunchLogFilePrefix}_{DateTime.Now:yyyyMMdd_HHmmss}_{Environment.ProcessId}.log");
     }
 
     /// <summary>
@@ -33,9 +36,10 @@ internal static class LoggingPaths
     public static void CleanupOldLaunchLogs(int maxLogFiles)
     {
         Directory.CreateDirectory(LogsFolder);
+        string searchPattern = $"{App.Branding.LaunchLogFilePrefix}_*.log";
 
         foreach (FileInfo logFile in new DirectoryInfo(LogsFolder)
-                     .GetFiles("LocalAutomation.Avalonia_*.log")
+                     .GetFiles(searchPattern)
                      .OrderByDescending(file => file.LastWriteTimeUtc)
                      .ThenByDescending(file => file.Name)
                      .Skip(maxLogFiles))

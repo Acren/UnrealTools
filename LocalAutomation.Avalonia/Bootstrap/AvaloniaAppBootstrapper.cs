@@ -14,10 +14,19 @@ namespace LocalAutomation.Avalonia.Bootstrap;
 public static class AvaloniaAppBootstrapper
 {
     /// <summary>
-    /// Starts the desktop lifetime using bundled extension discovery.
-    /// </summary>
+     /// Starts the desktop lifetime using bundled extension discovery.
+     /// </summary>
     public static void Run(string[] args)
     {
+        Run(args, AvaloniaHostBranding.LocalAutomation);
+    }
+
+    /// <summary>
+    /// Starts the desktop lifetime using the provided launcher branding and bundled extension discovery.
+    /// </summary>
+    public static void Run(string[] args, AvaloniaHostBranding branding)
+    {
+        App.ConfigureBranding(branding);
         ApplicationLogService.Initialize();
 
         try

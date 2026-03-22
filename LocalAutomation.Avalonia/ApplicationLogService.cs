@@ -40,7 +40,7 @@ public static class ApplicationLogService
         string launchLogFilePath = ConfigureDiskLogging();
         BufferedLogger bufferedLogger = new(LogStream);
         _loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog(dispose: false));
-        ILogger fileLogger = _loggerFactory.CreateLogger("LocalAutomation.Avalonia");
+        ILogger fileLogger = _loggerFactory.CreateLogger(App.Branding.LoggerCategoryName);
         ApplicationLogger.Logger = new CompositeLogger(bufferedLogger, fileLogger);
 
         // Capture exceptions that escape normal async or UI flows so the output panel still shows the failure details

@@ -1,0 +1,43 @@
+<Project>
+
+  <!--
+    Keep bundled-extension copy logic shared so multiple launcher executables can emit the same compile-time extension
+    set without duplicating the target in every host project file.
+  -->
+  <Target Name="CopyBundledExtensions"
+          AfterTargets="Build"
+          Condition="'@(BundledExtensionProject)' != ''">
+    <PropertyGroup>
+      <BundledExtensionsRoot>$(OutputPath)Extensions\</BundledExtensionsRoot>
+    </PropertyGroup>
+
+    <RemoveDir Directories="$(BundledExtensionsRoot)" Condition="Exists('$(BundledExtensionsRoot)')" />
+    <MakeDir Directories="$(BundledExtensionsRoot)" />
+
+    <MSBuild Projects="@(BundledExtensionProject)"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)" />
+
+    <ItemGroup>
+      <BundledExtensionProject>
+        <SourceRoot>%(RootDir)%(Directory)bin\$(Configuration)\%(ExtensionTargetFramework)\</SourceRoot>
+      </BundledExtensionProject>
+
+      <!-- Batch directly on each bundled extension project so wildcard expansion happens against a concrete source
+           root instead of being treated as a literal transformed path. -->
+      <BundledExtensionFiles Include="%(BundledExtensionProject.SourceRoot)**\*.*"
+                             Exclude="%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Runtime.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Runtime.pdb">
+        <ExtensionFolderName>%(BundledExtensionProject.ExtensionFolderName)</ExtensionFolderName>
+      </BundledExtensionFiles>
+      <BundledExtensionDirectories Include="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(ExtensionFolderName)\%(RecursiveDir)')" />
+    </ItemGroup>
+
+    <MakeDir Directories="@(BundledExtensionDirectories)" Condition="@(BundledExtensionDirectories) != ''" />
+
+    <Copy SourceFiles="@(BundledExtensionFiles)"
+          DestinationFiles="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(ExtensionFolderName)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="@(BundledExtensionFiles) != ''" />
+  </Target>
+
+</Project>

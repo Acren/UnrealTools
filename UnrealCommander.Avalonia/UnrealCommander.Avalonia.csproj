@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\App.ico</ApplicationIcon>
+    <AssemblyName>UnrealCommander.Avalonia</AssemblyName>
+    <RootNamespace>UnrealCommander.Avalonia</RootNamespace>
+    <Product>Unreal Commander</Product>
+    <Title>Unreal Commander</Title>
+    <Company>Unreal Commander</Company>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\.editorconfig" Link=".editorconfig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LocalAutomation.Avalonia\LocalAutomation.Avalonia.csproj" />
+  </ItemGroup>
+
+</Project>
