@@ -9,9 +9,10 @@
         MinWidth="960"
         MinHeight="680">
     <!-- The window now acts as a composition shell that delegates each workspace region to a focused panel view. -->
-    <Grid Margin="10" RowDefinitions="Auto,*" RowSpacing="10">
+    <Grid Margin="10" RowDefinitions="Auto,*">
         <Border Grid.Row="0"
                 IsVisible="{Binding ShowStartupMessage}"
+                Margin="0,0,0,10"
                 Background="{DynamicResource GraphiteDangerBackgroundBrush}"
                 BorderBrush="{DynamicResource GraphiteDangerBrush}"
                 BorderThickness="1"
