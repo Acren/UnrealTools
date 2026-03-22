@@ -28,6 +28,7 @@
                                                 Classes.active="{Binding IsSelected}"
                                                 Classes.app-log="{Binding IsApplicationLog}"
                                                 Classes.closable="{Binding CanClose}"
+                                                PointerPressed="RuntimeTab_PointerPressed"
                                                 Click="RuntimeTab_Click">
                                             <Button.Content>
                                                 <!-- One shared tab-content layout keeps the optional status dot and

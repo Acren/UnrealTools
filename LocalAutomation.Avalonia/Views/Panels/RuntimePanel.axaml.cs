@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Avalonia.Input;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Interactivity;
@@ -58,6 +59,25 @@ public partial class RuntimePanel : UserControl
         }
 
         ViewModel.SelectedRuntimeTab = runtimeTab;
+    }
+
+    /// <summary>
+    /// Lets users close closable runtime tabs with a middle click while keeping the permanent app log tab protected.
+    /// </summary>
+    private void RuntimeTab_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)
+        {
+            return;
+        }
+
+        if (sender is not Control { DataContext: RuntimeTaskTabViewModel runtimeTab } || !runtimeTab.CanClose)
+        {
+            return;
+        }
+
+        _ = ViewModel.CloseRuntimeTabAsync(runtimeTab);
+        e.Handled = true;
     }
 
     /// <summary>
