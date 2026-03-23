@@ -225,11 +225,12 @@ public sealed class ExtensionCatalog : IExtensionRegistry
     /// <summary>
     /// Prevents duplicate identifiers inside a single descriptor category so future lookup remains deterministic.
     /// </summary>
-    private static void EnsureUniqueId<T>(string id, IEnumerable<T> items, Func<T, string> selector, string paramName)
+    private static void EnsureUniqueId<TId, T>(TId id, IEnumerable<T> items, Func<T, TId> selector, string paramName)
+        where TId : notnull
     {
         foreach (T item in items)
         {
-            if (string.Equals(selector(item), id, StringComparison.OrdinalIgnoreCase))
+            if (EqualityComparer<TId>.Default.Equals(selector(item), id))
             {
                 throw new InvalidOperationException($"A descriptor with id '{id}' is already registered.");
             }

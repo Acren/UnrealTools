@@ -45,10 +45,10 @@ public sealed class UnrealExtensionModule : IExtensionModule
         RegisterLegacyLoggerBridge();
         RegisterTypeDescriptionProviders();
 
-        registry.RegisterTarget(new TargetDescriptor("unreal.project", "Project", typeof(Project)));
-        registry.RegisterTarget(new TargetDescriptor("unreal.plugin", "Plugin", typeof(Plugin)));
-        registry.RegisterTarget(new TargetDescriptor("unreal.engine", "Engine", typeof(Engine)));
-        registry.RegisterTarget(new TargetDescriptor("unreal.package", "Package", typeof(Package)));
+        registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.project"), "Project", typeof(Project)));
+        registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.plugin"), "Plugin", typeof(Plugin)));
+        registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.engine"), "Engine", typeof(Engine)));
+        registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.package"), "Package", typeof(Package)));
         registry.RegisterTargetFactory(new UnrealPathTargetFactory());
         registry.RegisterOptionEditorAdapter(new EngineVersionOptionEditorAdapter());
         registry.RegisterOptionEditorAdapter(new InsightsOptionEditorAdapter());
@@ -130,9 +130,9 @@ public sealed class UnrealExtensionModule : IExtensionModule
     /// <summary>
     /// Builds a stable operation identifier from its current runtime type.
     /// </summary>
-    private static string BuildOperationId(Type operationType)
+    private static OperationId BuildOperationId(Type operationType)
     {
-        return "unreal.operation." + operationType.Name;
+        return new OperationId("unreal.operation." + operationType.Name);
     }
 
     /// <summary>
@@ -168,19 +168,19 @@ public sealed class UnrealExtensionModule : IExtensionModule
     private static void RegisterContextActions(IExtensionRegistry registry)
     {
         registry.RegisterContextAction(new ContextActionDescriptor(
-            id: "unreal.target.open-directory",
+            id: new ContextActionId("unreal.target.open-directory"),
             displayName: "Open Directory",
             targetType: typeof(RuntimeTarget),
             execute: target => RunProcess.OpenDirectory(((RuntimeTarget)target).TargetDirectory)));
 
         registry.RegisterContextAction(new ContextActionDescriptor(
-            id: "unreal.target.open-output",
+            id: new ContextActionId("unreal.target.open-output"),
             displayName: "Open Output",
             targetType: typeof(RuntimeTarget),
             execute: target => RunProcess.OpenDirectory(((RuntimeTarget)target).OutputDirectory)));
 
         registry.RegisterContextAction(new ContextActionDescriptor(
-            id: "unreal.project.open-staged-build",
+            id: new ContextActionId("unreal.project.open-staged-build"),
             displayName: "Open Staged Build",
             targetType: typeof(Project),
             execute: target =>

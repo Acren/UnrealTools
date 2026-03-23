@@ -12,9 +12,9 @@ public sealed class OptionFieldDescriptor
     /// <summary>
     /// Creates an option field descriptor with a stable identifier, display name, and field kind.
     /// </summary>
-    public OptionFieldDescriptor(string id, string displayName, OptionFieldKind fieldKind, IEnumerable<OptionChoiceDescriptor>? choices = null)
+    public OptionFieldDescriptor(OptionFieldId id, string displayName, OptionFieldKind fieldKind, IEnumerable<OptionChoiceDescriptor>? choices = null)
     {
-        Id = id ?? throw new ArgumentNullException(nameof(id));
+        Id = id;
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
         FieldKind = fieldKind;
         Choices = choices?.ToArray() ?? Array.Empty<OptionChoiceDescriptor>();
@@ -23,7 +23,7 @@ public sealed class OptionFieldDescriptor
     /// <summary>
     /// Gets the stable identifier used to persist or look up this field.
     /// </summary>
-    public string Id { get; }
+    public OptionFieldId Id { get; }
 
     /// <summary>
     /// Gets the user-facing label shown in generic editors.

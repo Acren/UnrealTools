@@ -23,9 +23,9 @@ public sealed class LayeredSettingsPersistenceService
     private readonly string _globalSettingsFilePath;
     private readonly string _targetSettingsFileName;
     private readonly string _userTargetSettingsDirectoryPath;
-    private readonly Dictionary<Type, IReadOnlyList<PersistedSettingDescriptor>> _descriptorCache = new();
-    private readonly Dictionary<Type, string> _optionSetPrefixCache = new();
-    private readonly Dictionary<Type, string> _targetSettingsPrefixCache = new();
+    private readonly Dictionary<(Type OwnerType, string Prefix), IReadOnlyList<PersistedSettingDescriptor>> _descriptorCache = new();
+    private readonly Dictionary<(Type OwnerType, string TargetTypeId), string> _optionSetPrefixCache = new();
+    private readonly Dictionary<(Type OwnerType, string TargetTypeId), string> _targetSettingsPrefixCache = new();
     private readonly Dictionary<Type, string> _typeOwnerPrefixCache = new();
 
     /// <summary>
@@ -62,18 +62,26 @@ public sealed class LayeredSettingsPersistenceService
             throw new ArgumentNullException(nameof(target));
         }
 
-        string targetTypeId = targets.GetTargetTypeId(target) ?? throw new InvalidOperationException($"No target descriptor matched '{target.GetType().Name}'.");
+        TargetTypeId targetTypeId = targets.GetTargetTypeId(target) ?? throw new InvalidOperationException($"No target descriptor matched '{target.GetType().Name}'.");
         string targetPath = targets.GetTargetPath(target);
-        string targetKey = BuildTargetKey(targetTypeId, targetPath);
+        TargetKey targetKey = BuildTargetKey(targetTypeId, targetPath);
         return new TargetSettingsContext(target, targetTypeId, targetPath, targetKey);
     }
 
     /// <summary>
     /// Builds the stable appdata key used for one target's override file.
     /// </summary>
-    public string BuildTargetKey(string targetTypeId, string targetPath)
+    public TargetKey BuildTargetKey(TargetTypeId targetTypeId, string targetPath)
     {
         return TargetKeyUtility.BuildTargetKey(targetTypeId, targetPath);
+    }
+
+    /// <summary>
+    /// Builds the stable appdata key used for one target's override file from serialized values.
+    /// </summary>
+    public string BuildTargetKey(string targetTypeId, string targetPath)
+    {
+        return BuildTargetKey(new TargetTypeId(targetTypeId), targetPath).Value;
     }
 
     /// <summary>
@@ -177,7 +185,7 @@ public sealed class LayeredSettingsPersistenceService
     /// </summary>
     public string GetUserTargetOverrideFilePath(TargetSettingsContext context)
     {
-        string fileName = SanitizeFileName(context.TargetKey) + ".json";
+        string fileName = SanitizeFileName(context.TargetKey.Value) + ".json";
         return Path.Combine(_userTargetSettingsDirectoryPath, fileName);
     }
 
@@ -302,31 +310,33 @@ public sealed class LayeredSettingsPersistenceService
     /// <summary>
     /// Returns the descriptors for one option-set type and caches the reflected metadata.
     /// </summary>
-    private IReadOnlyList<PersistedSettingDescriptor> GetOptionSetDescriptors(Type optionSetType, string targetTypeId)
+    private IReadOnlyList<PersistedSettingDescriptor> GetOptionSetDescriptors(Type optionSetType, TargetTypeId targetTypeId)
     {
-        return GetOrCreateDescriptors(optionSetType, () => BuildDescriptors(optionSetType, GetOptionSetOwnerPrefix(optionSetType, targetTypeId)));
+        string ownerPrefix = GetOptionSetOwnerPrefix(optionSetType, targetTypeId);
+        return GetOrCreateDescriptors(optionSetType, ownerPrefix, () => BuildDescriptors(optionSetType, ownerPrefix));
     }
 
     /// <summary>
     /// Returns the descriptors for one target-settings type and caches the reflected metadata.
     /// </summary>
-    private IReadOnlyList<PersistedSettingDescriptor> GetTargetSettingsDescriptors(Type settingsType, string targetTypeId)
+    private IReadOnlyList<PersistedSettingDescriptor> GetTargetSettingsDescriptors(Type settingsType, TargetTypeId targetTypeId)
     {
-        return GetOrCreateDescriptors(settingsType, () => BuildDescriptors(settingsType, GetTargetSettingsOwnerPrefix(settingsType, targetTypeId)));
+        string ownerPrefix = GetTargetSettingsOwnerPrefix(settingsType, targetTypeId);
+        return GetOrCreateDescriptors(settingsType, ownerPrefix, () => BuildDescriptors(settingsType, ownerPrefix));
     }
 
     /// <summary>
     /// Returns cached descriptors for a type or creates them on first use.
     /// </summary>
-    private IReadOnlyList<PersistedSettingDescriptor> GetOrCreateDescriptors(Type ownerType, Func<IReadOnlyList<PersistedSettingDescriptor>> createDescriptors)
+    private IReadOnlyList<PersistedSettingDescriptor> GetOrCreateDescriptors(Type ownerType, string ownerPrefix, Func<IReadOnlyList<PersistedSettingDescriptor>> createDescriptors)
     {
-        if (_descriptorCache.TryGetValue(ownerType, out IReadOnlyList<PersistedSettingDescriptor>? cachedDescriptors))
+        if (_descriptorCache.TryGetValue((ownerType, ownerPrefix), out IReadOnlyList<PersistedSettingDescriptor>? cachedDescriptors))
         {
             return cachedDescriptors;
         }
 
         IReadOnlyList<PersistedSettingDescriptor> descriptors = createDescriptors();
-        _descriptorCache[ownerType] = descriptors;
+        _descriptorCache[(ownerType, ownerPrefix)] = descriptors;
         return descriptors;
     }
 
@@ -353,9 +363,9 @@ public sealed class LayeredSettingsPersistenceService
     /// <summary>
     /// Produces the stable generated-key owner prefix for an option set.
     /// </summary>
-    private string GetOptionSetOwnerPrefix(Type optionSetType, string targetTypeId)
+    private string GetOptionSetOwnerPrefix(Type optionSetType, TargetTypeId targetTypeId)
     {
-        if (_optionSetPrefixCache.TryGetValue(optionSetType, out string? cachedPrefix))
+        if (_optionSetPrefixCache.TryGetValue((optionSetType, targetTypeId.Value), out string? cachedPrefix))
         {
             return cachedPrefix;
         }
@@ -365,23 +375,23 @@ public sealed class LayeredSettingsPersistenceService
         string prefix = string.IsNullOrWhiteSpace(extensionId)
             ? ownerSegment
             : extensionId + "." + ownerSegment;
-        _optionSetPrefixCache[optionSetType] = prefix;
+        _optionSetPrefixCache[(optionSetType, targetTypeId.Value)] = prefix;
         return prefix;
     }
 
     /// <summary>
     /// Produces the stable generated-key owner prefix for a target-settings owner.
     /// </summary>
-    private string GetTargetSettingsOwnerPrefix(Type settingsType, string targetTypeId)
+    private string GetTargetSettingsOwnerPrefix(Type settingsType, TargetTypeId targetTypeId)
     {
-        if (_targetSettingsPrefixCache.TryGetValue(settingsType, out string? cachedPrefix))
+        if (_targetSettingsPrefixCache.TryGetValue((settingsType, targetTypeId.Value), out string? cachedPrefix))
         {
             return cachedPrefix;
         }
 
         string ownerSegment = ResolveOwnerSegment(settingsType);
-        string prefix = string.IsNullOrWhiteSpace(ownerSegment) ? targetTypeId : targetTypeId + "." + ownerSegment;
-        _targetSettingsPrefixCache[settingsType] = prefix;
+        string prefix = string.IsNullOrWhiteSpace(ownerSegment) ? targetTypeId.Value : targetTypeId.Value + "." + ownerSegment;
+        _targetSettingsPrefixCache[(settingsType, targetTypeId.Value)] = prefix;
         return prefix;
     }
 
@@ -618,11 +628,11 @@ public sealed class LayeredSettingsPersistenceService
         {
             foreach (Type optionSetType in assembly.GetTypes().Where(type => typeof(OperationOptions).IsAssignableFrom(type) && !type.IsAbstract))
             {
-                ValidateDescriptorsForOwner(optionSetType, GetOptionSetOwnerPrefix(optionSetType, "target"), seenKeys);
+                ValidateDescriptorsForOwner(optionSetType, GetOptionSetOwnerPrefix(optionSetType, new TargetTypeId("target")), seenKeys);
             }
         }
 
-        ValidateDescriptorsForOwner(typeof(TargetSettings), GetTargetSettingsOwnerPrefix(typeof(TargetSettings), "target"), seenKeys);
+        ValidateDescriptorsForOwner(typeof(TargetSettings), GetTargetSettingsOwnerPrefix(typeof(TargetSettings), new TargetTypeId("target")), seenKeys);
     }
 
     /// <summary>

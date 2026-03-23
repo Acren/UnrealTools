@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using LocalAutomation.Application;
+using LocalAutomation.Extensions.Abstractions;
 using Newtonsoft.Json;
 
 namespace LocalAutomation.Avalonia;
@@ -28,6 +30,16 @@ public sealed class SessionSnapshot
     public string? SelectedTargetKey { get; set; }
 
     /// <summary>
+    /// Gets or sets the selected target key as a typed value for in-memory business logic.
+    /// </summary>
+    [JsonIgnore]
+    public TargetKey? TypedSelectedTargetKey
+    {
+        get => TargetKey.FromNullable(SelectedTargetKey);
+        set => SelectedTargetKey = value?.Value;
+    }
+
+    /// <summary>
     /// Gets or sets the in-progress target path text.
     /// </summary>
     [JsonProperty]
@@ -39,6 +51,42 @@ public sealed class SessionSnapshot
     /// </summary>
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public Dictionary<string, string?> SelectedOperationIdsByTargetType { get; set; } = new();
+
+    /// <summary>
+    /// Gets the remembered selected operation identifiers keyed by typed target type ids for in-memory business logic.
+    /// </summary>
+    [JsonIgnore]
+    public Dictionary<TargetTypeId, OperationId?> TypedSelectedOperationIdsByTargetType
+    {
+        get
+        {
+            Dictionary<TargetTypeId, OperationId?> typedValues = new();
+            foreach ((string targetTypeId, string? operationId) in SelectedOperationIdsByTargetType)
+            {
+                if (string.IsNullOrWhiteSpace(targetTypeId))
+                {
+                    continue;
+                }
+
+                typedValues[new TargetTypeId(targetTypeId)] = OperationId.FromNullable(operationId);
+            }
+
+            return typedValues;
+        }
+        set
+        {
+            SelectedOperationIdsByTargetType = new Dictionary<string, string?>();
+            if (value == null)
+            {
+                return;
+            }
+
+            foreach ((TargetTypeId targetTypeId, OperationId? operationId) in value)
+            {
+                SelectedOperationIdsByTargetType[targetTypeId.Value] = operationId?.Value;
+            }
+        }
+    }
 }
 
 /// <summary>
@@ -54,10 +102,30 @@ public sealed class TargetSessionSnapshot
     public string Key { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the stable target key as a typed value for in-memory business logic.
+    /// </summary>
+    [JsonIgnore]
+    public TargetKey TypedKey
+    {
+        get => new(Key);
+        set => Key = value.Value;
+    }
+
+    /// <summary>
     /// Gets or sets the extension target descriptor identifier.
     /// </summary>
     [JsonProperty]
     public string TargetTypeId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the extension target descriptor identifier as a typed value for in-memory business logic.
+    /// </summary>
+    [JsonIgnore]
+    public TargetTypeId TypedTargetTypeId
+    {
+        get => new(TargetTypeId);
+        set => TargetTypeId = value.Value;
+    }
 
     /// <summary>
     /// Gets or sets the target path used to recreate the runtime target.

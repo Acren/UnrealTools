@@ -36,7 +36,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private ObservableCollection<OperationDescriptor> _availableOperations = new();
     private bool _hasPendingSessionSave;
     private Operation? _currentOperation;
-    private string? _selectedOperationId;
+    private OperationId? _selectedOperationId;
     private SessionSnapshot _sessionSnapshot = new();
     private string _status = $"Add a target path to begin using the {App.Branding.ApplicationName} shell.";
     private SelectionTransitionState _selectionTransitionState;
@@ -109,13 +109,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets or sets the stable identifier of the currently selected operation so the picker can preserve selection
     /// across operation-list refreshes without depending on object identity.
     /// </summary>
-    public string? SelectedOperationId
+    public OperationId? SelectedOperationId
     {
         get => _selectedOperationId;
         set
         {
-            string? normalizedOperationId = ResolveAvailableOperationById(value)?.Id;
-            if (string.Equals(_selectedOperationId, normalizedOperationId, StringComparison.Ordinal))
+            OperationId? normalizedOperationId = ResolveAvailableOperationById(value)?.Id;
+            if (_selectedOperationId == normalizedOperationId)
             {
                 return;
             }
@@ -129,14 +129,14 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Applies a selected operation identifier to both the view-model state and the runtime parameter session.
     /// </summary>
-    private void ApplySelectedOperationSelection(string? selectedOperationId)
+    private void ApplySelectedOperationSelection(OperationId? selectedOperationId)
     {
         Operation? previousOperation = _currentOperation;
         OperationParameters previousParameters = _parameterSession.RawValue;
-        string? previousSelectedOperationId = _selectedOperationId;
+        OperationId? previousSelectedOperationId = _selectedOperationId;
         OperationDescriptor? selectedOperation = ResolveAvailableOperationById(selectedOperationId);
 
-        if (string.Equals(previousSelectedOperationId, selectedOperationId, StringComparison.Ordinal))
+        if (previousSelectedOperationId == selectedOperationId)
         {
             return;
         }
@@ -347,20 +347,22 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Remembers the selected operation for the provided target type so target switches can restore the user's last
     /// compatible operation preference for that target kind.
     /// </summary>
-    private void RememberOperationForTargetType(IOperationTarget? target, string? operationId)
+    private void RememberOperationForTargetType(IOperationTarget? target, OperationId? operationId)
     {
         if (target == null)
         {
             return;
         }
 
-        string? targetTypeId = _services.Targets.GetTargetTypeId(target);
-        if (string.IsNullOrWhiteSpace(targetTypeId))
+        TargetTypeId? targetTypeId = _services.Targets.GetTargetTypeId(target);
+        if (targetTypeId == null)
         {
             return;
         }
 
-        _sessionSnapshot.SelectedOperationIdsByTargetType[targetTypeId] = operationId;
+        Dictionary<TargetTypeId, OperationId?> typedSelections = _sessionSnapshot.TypedSelectedOperationIdsByTargetType;
+        typedSelections[targetTypeId.Value] = operationId;
+        _sessionSnapshot.TypedSelectedOperationIdsByTargetType = typedSelections;
     }
 
     /// <summary>
@@ -403,7 +405,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             Target.NewTargetPath = _sessionSnapshot.PendingTargetPath;
 
             TargetListItemViewModel? restoredSelection = Target.Targets.FirstOrDefault(item =>
-                string.Equals(_sessionPersistence.CreateTargetSnapshot(item.Target).Key, _sessionSnapshot.SelectedTargetKey, StringComparison.Ordinal));
+                _sessionPersistence.CreateTargetSnapshot(item.Target).TypedKey == _sessionSnapshot.TypedSelectedTargetKey);
 
             // Apply the restored target and operation together before recomputing enabled option sets so the hydration
             // pass does not temporarily coerce to a different operation and replace persisted values with defaults.
@@ -452,12 +454,12 @@ public sealed class MainWindowViewModel : ViewModelBase
         _sessionSnapshot.Targets = Target.Targets.Select(item =>
         {
             TargetSessionSnapshot snapshot = FindTargetSnapshot(item.Target) ?? _sessionPersistence.CreateTargetSnapshot(item.Target);
-            snapshot.TargetTypeId = _services.Targets.GetTargetTypeId(item.Target) ?? snapshot.TargetTypeId;
+            snapshot.TypedTargetTypeId = _services.Targets.GetTargetTypeId(item.Target) ?? snapshot.TypedTargetTypeId;
             snapshot.Path = _services.Targets.GetTargetPath(item.Target);
-            snapshot.Key = _sessionPersistence.BuildTargetKey(snapshot.TargetTypeId, snapshot.Path);
+            snapshot.TypedKey = _sessionPersistence.BuildTargetKey(snapshot.TypedTargetTypeId, snapshot.Path);
             return snapshot;
         }).ToList();
-        _sessionSnapshot.SelectedTargetKey = Target.SelectedTarget?.Target == null ? null : _sessionPersistence.CreateTargetSnapshot(Target.SelectedTarget.Target).Key;
+        _sessionSnapshot.TypedSelectedTargetKey = Target.SelectedTarget?.Target == null ? null : _sessionPersistence.CreateTargetSnapshot(Target.SelectedTarget.Target).TypedKey;
         _sessionSnapshot.PendingTargetPath = Target.NewTargetPath;
 
         _sessionPersistence.Save(_sessionSnapshot);
@@ -492,10 +494,10 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RefreshOperationSelection()
     {
-        string? previousSelectedOperationId = _selectedOperationId;
+        OperationId? previousSelectedOperationId = _selectedOperationId;
         IReadOnlyList<OperationDescriptor> compatibleOperations = _services.Operations.GetAvailableOperations(SelectedTarget?.Target);
 
-        string? retainedOperationId = _services.OperationSession.ResolveSelectedOperationId(
+        OperationId? retainedOperationId = _services.OperationSession.ResolveSelectedOperationId(
             compatibleOperations,
             previousSelectedOperationId,
             GetRememberedOperationIdForSelectedTargetType());
@@ -514,7 +516,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         OperationDescriptor? selectedOperation,
         Operation? previousOperation,
         OperationParameters previousParameters,
-        string? previousSelectedOperationId)
+        OperationId? previousSelectedOperationId)
     {
         try
         {
@@ -538,7 +540,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         OperationDescriptor? requestedSelection,
         Operation? previousOperation,
         OperationParameters previousParameters,
-        string? previousSelectedOperationId,
+        OperationId? previousSelectedOperationId,
         Exception ex)
     {
         _selectedOperationId = previousSelectedOperationId;
@@ -578,15 +580,15 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Returns the last remembered operation identifier for the currently selected target type when one exists.
     /// </summary>
-    private string? GetRememberedOperationIdForSelectedTargetType()
+    private OperationId? GetRememberedOperationIdForSelectedTargetType()
     {
-        string? selectedTargetTypeId = GetSelectedTargetTypeId();
-        if (string.IsNullOrWhiteSpace(selectedTargetTypeId))
+        TargetTypeId? selectedTargetTypeId = GetSelectedTargetTypeId();
+        if (selectedTargetTypeId == null)
         {
             return null;
         }
 
-        if (!_sessionSnapshot.SelectedOperationIdsByTargetType.TryGetValue(selectedTargetTypeId, out string? rememberedOperationId) || string.IsNullOrWhiteSpace(rememberedOperationId))
+        if (!_sessionSnapshot.TypedSelectedOperationIdsByTargetType.TryGetValue(selectedTargetTypeId.Value, out OperationId? rememberedOperationId))
         {
             return null;
         }
@@ -597,7 +599,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Returns the currently compatible operation descriptor for the provided stable identifier.
     /// </summary>
-    private OperationDescriptor? ResolveAvailableOperationById(string? operationId)
+    private OperationDescriptor? ResolveAvailableOperationById(OperationId? operationId)
     {
         return ResolveOperationById(AvailableOperations, operationId);
     }
@@ -605,26 +607,26 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Returns the operation descriptor with the provided identifier from the supplied compatible operation list.
     /// </summary>
-    private static OperationDescriptor? ResolveOperationById(IEnumerable<OperationDescriptor> operations, string? operationId)
+    private static OperationDescriptor? ResolveOperationById(IEnumerable<OperationDescriptor> operations, OperationId? operationId)
     {
         if (operations == null)
         {
             throw new ArgumentNullException(nameof(operations));
         }
 
-        if (string.IsNullOrWhiteSpace(operationId))
+        if (operationId == null)
         {
             return null;
         }
 
-        return operations.FirstOrDefault(descriptor => string.Equals(descriptor.Id, operationId, StringComparison.Ordinal));
+        return operations.FirstOrDefault(descriptor => descriptor.Id == operationId.Value);
     }
 
     /// <summary>
     /// Returns the descriptor id of the currently selected target type so operation memory can be shared across targets
     /// of the same kind.
     /// </summary>
-    private string? GetSelectedTargetTypeId()
+    private TargetTypeId? GetSelectedTargetTypeId()
     {
         return SelectedTarget?.Target == null ? null : _services.Targets.GetTargetTypeId(SelectedTarget.Target);
     }

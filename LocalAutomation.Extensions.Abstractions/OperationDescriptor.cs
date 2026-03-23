@@ -13,9 +13,9 @@ public sealed class OperationDescriptor
     /// Creates an operation descriptor with a stable identifier, display name, runtime type, and compatible target
     /// types.
     /// </summary>
-    public OperationDescriptor(string id, string displayName, Type operationType, IEnumerable<Type> supportedTargetTypes, int sortOrder = 0)
+    public OperationDescriptor(OperationId id, string displayName, Type operationType, IEnumerable<Type> supportedTargetTypes, int sortOrder = 0)
     {
-        Id = id ?? throw new ArgumentNullException(nameof(id));
+        Id = id;
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
         OperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
         SupportedTargetTypes = (supportedTargetTypes ?? throw new ArgumentNullException(nameof(supportedTargetTypes))).ToArray();
@@ -25,7 +25,7 @@ public sealed class OperationDescriptor
     /// <summary>
     /// Gets the stable identifier used to reference the operation.
     /// </summary>
-    public string Id { get; }
+    public OperationId Id { get; }
 
     /// <summary>
     /// Gets the display name shown by host UIs.

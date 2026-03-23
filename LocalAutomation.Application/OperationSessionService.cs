@@ -44,22 +44,22 @@ public sealed class OperationSessionService
     /// Resolves the operation identifier that should remain selected after the target changes by first keeping the
     /// current compatible selection and then falling back to the remembered operation for the new target type.
     /// </summary>
-    public string? ResolveSelectedOperationId(
+    public OperationId? ResolveSelectedOperationId(
         IReadOnlyList<OperationDescriptor> availableOperations,
-        string? currentSelectedOperationId,
-        string? rememberedOperationId)
+        OperationId? currentSelectedOperationId,
+        OperationId? rememberedOperationId)
     {
         if (availableOperations == null)
         {
             throw new ArgumentNullException(nameof(availableOperations));
         }
 
-        if (!string.IsNullOrWhiteSpace(currentSelectedOperationId) && availableOperations.Any(descriptor => string.Equals(descriptor.Id, currentSelectedOperationId, StringComparison.Ordinal)))
+        if (currentSelectedOperationId != null && availableOperations.Any(descriptor => descriptor.Id == currentSelectedOperationId.Value))
         {
             return currentSelectedOperationId;
         }
 
-        if (!string.IsNullOrWhiteSpace(rememberedOperationId) && availableOperations.Any(descriptor => string.Equals(descriptor.Id, rememberedOperationId, StringComparison.Ordinal)))
+        if (rememberedOperationId != null && availableOperations.Any(descriptor => descriptor.Id == rememberedOperationId.Value))
         {
             return rememberedOperationId;
         }

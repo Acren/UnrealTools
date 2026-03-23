@@ -11,9 +11,9 @@ public sealed class ContextActionDescriptor
     /// Creates a context action descriptor with a stable identifier, a user-facing label, and the target type it
     /// applies to.
     /// </summary>
-    public ContextActionDescriptor(string id, string displayName, Type targetType, Action<object> execute, Func<object, bool>? canExecute = null)
+    public ContextActionDescriptor(ContextActionId id, string displayName, Type targetType, Action<object> execute, Func<object, bool>? canExecute = null)
     {
-        Id = id ?? throw new ArgumentNullException(nameof(id));
+        Id = id;
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
         TargetType = targetType ?? throw new ArgumentNullException(nameof(targetType));
         Execute = execute ?? throw new ArgumentNullException(nameof(execute));
@@ -23,7 +23,7 @@ public sealed class ContextActionDescriptor
     /// <summary>
     /// Gets the stable identifier used to reference this action across the host application.
     /// </summary>
-    public string Id { get; }
+    public ContextActionId Id { get; }
 
     /// <summary>
     /// Gets the label that should be shown to users when the host renders this action.

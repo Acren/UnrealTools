@@ -53,7 +53,7 @@ public sealed class TargetDiscoveryService
     /// <summary>
     /// Returns the stable target descriptor identifier for the provided runtime target when one exists.
     /// </summary>
-    public string? GetTargetTypeId(IOperationTarget? target)
+    public TargetTypeId? GetTargetTypeId(IOperationTarget? target)
     {
         if (target == null)
         {

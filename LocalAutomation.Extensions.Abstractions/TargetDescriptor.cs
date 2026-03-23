@@ -10,9 +10,9 @@ public sealed class TargetDescriptor
     /// <summary>
     /// Creates a target descriptor with a stable identifier, display name, and runtime target type.
     /// </summary>
-    public TargetDescriptor(string id, string displayName, Type targetType)
+    public TargetDescriptor(TargetTypeId id, string displayName, Type targetType)
     {
-        Id = id ?? throw new ArgumentNullException(nameof(id));
+        Id = id;
         DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
         TargetType = targetType ?? throw new ArgumentNullException(nameof(targetType));
     }
@@ -20,7 +20,7 @@ public sealed class TargetDescriptor
     /// <summary>
     /// Gets the stable identifier used to reference this target type.
     /// </summary>
-    public string Id { get; }
+    public TargetTypeId Id { get; }
 
     /// <summary>
     /// Gets the user-facing target type name shown by hosts.

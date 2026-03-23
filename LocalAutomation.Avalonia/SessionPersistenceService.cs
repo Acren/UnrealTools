@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using LocalAutomation.Application;
+using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Persistence;
 using LocalAutomation.Runtime;
 using Newtonsoft.Json;
@@ -80,9 +81,17 @@ public sealed class SessionPersistenceService
     /// <summary>
     /// Builds the stable key used to persist target-scoped UI state.
     /// </summary>
-    public string BuildTargetKey(string targetTypeId, string targetPath)
+    public TargetKey BuildTargetKey(TargetTypeId targetTypeId, string targetPath)
     {
         return TargetKeyUtility.BuildTargetKey(targetTypeId, targetPath);
+    }
+
+    /// <summary>
+    /// Builds the stable key used to persist target-scoped UI state from serialized values.
+    /// </summary>
+    public string BuildTargetKey(string targetTypeId, string targetPath)
+    {
+        return BuildTargetKey(new TargetTypeId(targetTypeId), targetPath).Value;
     }
 
     /// <summary>
@@ -90,12 +99,12 @@ public sealed class SessionPersistenceService
     /// </summary>
     public TargetSessionSnapshot CreateTargetSnapshot(IOperationTarget target)
     {
-        string targetTypeId = _services.Targets.GetTargetTypeId(target) ?? throw new InvalidOperationException($"No target descriptor matched '{target.GetType().Name}'.");
+        TargetTypeId targetTypeId = _services.Targets.GetTargetTypeId(target) ?? throw new InvalidOperationException($"No target descriptor matched '{target.GetType().Name}'.");
         string targetPath = _services.Targets.GetTargetPath(target);
         return new TargetSessionSnapshot
         {
-            Key = BuildTargetKey(targetTypeId, targetPath),
-            TargetTypeId = targetTypeId,
+            Key = BuildTargetKey(targetTypeId, targetPath).Value,
+            TargetTypeId = targetTypeId.Value,
             Path = targetPath
         };
     }
@@ -116,8 +125,8 @@ public sealed class SessionPersistenceService
             return false;
         }
 
-        string? restoredTypeId = _services.Targets.GetTargetTypeId(createdTarget);
-        if (!string.Equals(restoredTypeId, snapshot.TargetTypeId, StringComparison.Ordinal))
+        TargetTypeId? restoredTypeId = _services.Targets.GetTargetTypeId(createdTarget);
+        if (restoredTypeId == null || restoredTypeId.Value != snapshot.TypedTargetTypeId)
         {
             return false;
         }
@@ -138,8 +147,8 @@ public sealed class SessionPersistenceService
 
         foreach (IOperationTarget target in legacyState.Targets.OfType<IOperationTarget>())
         {
-            string? targetTypeId = _services.Targets.GetTargetTypeId(target);
-            if (string.IsNullOrWhiteSpace(targetTypeId) || !_services.Targets.IsValidTarget(target))
+            TargetTypeId? targetTypeId = _services.Targets.GetTargetTypeId(target);
+            if (targetTypeId == null || !_services.Targets.IsValidTarget(target))
             {
                 continue;
             }
@@ -147,15 +156,15 @@ public sealed class SessionPersistenceService
             string targetPath = _services.Targets.GetTargetPath(target);
             snapshot.Targets.Add(new TargetSessionSnapshot
             {
-                Key = BuildTargetKey(targetTypeId, targetPath),
-                TargetTypeId = targetTypeId,
+                Key = BuildTargetKey(targetTypeId.Value, targetPath).Value,
+                TargetTypeId = targetTypeId.Value.Value,
                 Path = targetPath
             });
         }
 
         TargetSessionSnapshot? selectedTarget = snapshot.Targets.FirstOrDefault(item =>
             string.Equals(item.Path, legacyState.SelectedTargetPath, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(item.TargetTypeId, ResolveLegacyTargetTypeId(legacyState.SelectedTargetTypeName), StringComparison.Ordinal));
+            item.TypedTargetTypeId == ResolveLegacyTargetTypeId(legacyState.SelectedTargetTypeName));
 
         selectedTarget ??= snapshot.Targets.FirstOrDefault();
         if (selectedTarget == null)
@@ -163,15 +172,17 @@ public sealed class SessionPersistenceService
             return snapshot;
         }
 
-        snapshot.SelectedOperationIdsByTargetType[selectedTarget.TargetTypeId] = legacyState.OperationType == null
+        Dictionary<TargetTypeId, OperationId?> typedSelections = snapshot.TypedSelectedOperationIdsByTargetType;
+        typedSelections[selectedTarget.TypedTargetTypeId] = legacyState.OperationType == null
             ? null
             : _services.Operations.GetOperation(legacyState.OperationType)?.Id;
+        snapshot.TypedSelectedOperationIdsByTargetType = typedSelections;
 
         // Migrate legacy option values into the new layered setting files for the selected target so existing user
         // edits are preserved when upgrading from the old session-owned persistence model.
         IOperationTarget? selectedRuntimeTarget = legacyState.Targets.OfType<IOperationTarget>().FirstOrDefault(item =>
             string.Equals(_services.Targets.GetTargetPath(item), selectedTarget.Path, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(_services.Targets.GetTargetTypeId(item), selectedTarget.TargetTypeId, StringComparison.Ordinal));
+            _services.Targets.GetTargetTypeId(item) == selectedTarget.TypedTargetTypeId);
         selectedRuntimeTarget ??= legacyState.Targets.OfType<IOperationTarget>().FirstOrDefault();
         if (selectedRuntimeTarget != null)
         {
@@ -186,7 +197,7 @@ public sealed class SessionPersistenceService
     /// <summary>
     /// Resolves the target descriptor identifier from the legacy runtime type name.
     /// </summary>
-    private string? ResolveLegacyTargetTypeId(string? legacyTypeName)
+    private TargetTypeId? ResolveLegacyTargetTypeId(string? legacyTypeName)
     {
         if (string.IsNullOrWhiteSpace(legacyTypeName))
         {

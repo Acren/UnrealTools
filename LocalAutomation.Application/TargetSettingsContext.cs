@@ -1,4 +1,5 @@
 using System;
+using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
 
 namespace LocalAutomation.Application;
@@ -11,12 +12,12 @@ public sealed class TargetSettingsContext
     /// <summary>
     /// Creates a persistence context for one target.
     /// </summary>
-    public TargetSettingsContext(IOperationTarget target, string targetTypeId, string targetPath, string targetKey)
+    public TargetSettingsContext(IOperationTarget target, TargetTypeId targetTypeId, string targetPath, TargetKey targetKey)
     {
         Target = target ?? throw new ArgumentNullException(nameof(target));
-        TargetTypeId = targetTypeId ?? throw new ArgumentNullException(nameof(targetTypeId));
+        TargetTypeId = targetTypeId;
         TargetPath = targetPath ?? throw new ArgumentNullException(nameof(targetPath));
-        TargetKey = targetKey ?? throw new ArgumentNullException(nameof(targetKey));
+        TargetKey = targetKey;
     }
 
     /// <summary>
@@ -27,7 +28,7 @@ public sealed class TargetSettingsContext
     /// <summary>
     /// Gets the registered target descriptor id.
     /// </summary>
-    public string TargetTypeId { get; }
+    public TargetTypeId TargetTypeId { get; }
 
     /// <summary>
     /// Gets the stable path used to recreate the target.
@@ -37,5 +38,5 @@ public sealed class TargetSettingsContext
     /// <summary>
     /// Gets the appdata key used for per-target overrides.
     /// </summary>
-    public string TargetKey { get; }
+    public TargetKey TargetKey { get; }
 }

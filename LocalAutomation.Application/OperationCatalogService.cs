@@ -35,9 +35,18 @@ public sealed class OperationCatalogService
     /// <summary>
     /// Returns the descriptor with the provided stable identifier when one exists.
     /// </summary>
+    public OperationDescriptor? GetOperation(OperationId operationId)
+    {
+        return GetAllOperations().FirstOrDefault(descriptor => descriptor.Id == operationId);
+    }
+
+    /// <summary>
+    /// Returns the descriptor with the provided serialized identifier when one exists.
+    /// </summary>
     public OperationDescriptor? GetOperation(string operationId)
     {
-        return GetAllOperations().FirstOrDefault(descriptor => string.Equals(descriptor.Id, operationId, StringComparison.Ordinal));
+        OperationId? typedOperationId = OperationId.FromNullable(operationId);
+        return typedOperationId == null ? null : GetOperation(typedOperationId.Value);
     }
 
     /// <summary>
