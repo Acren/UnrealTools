@@ -24,7 +24,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         None = 0,
         ApplyingTargetState = 1,
         HydratingSessionSelection = 2,
-        RestoringSession = 4
+        RestoringSession = 4,
+        ApplyingOperationState = 8
     }
 
     private static readonly TimeSpan SessionSaveDebounceDelay = TimeSpan.FromMilliseconds(350);
@@ -160,17 +161,23 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SelectedOperationId));
         RaisePropertyChanged(nameof(SelectedOperation));
 
-        if (!TryApplySelectedOperation(selectedOperation, previousOperation, previousParameters, previousSelectedOperationId))
+        // Batch operation activation, option-set enablement, and persisted-value hydration into one transition so the
+        // binding layer does not re-run validation and command preview after every intermediate parameter mutation.
+        using (BeginSelectionTransition(SelectionTransitionState.ApplyingOperationState))
         {
-            return;
+            if (!TryApplySelectedOperation(selectedOperation, previousOperation, previousParameters, previousSelectedOperationId))
+            {
+                return;
+            }
+
+            if (!IsSelectionTransitionActive(SelectionTransitionState.HydratingSessionSelection | SelectionTransitionState.ApplyingTargetState))
+            {
+                RefreshEnabledOptionSets();
+                ApplyPersistedSettingsForSelectedTarget();
+            }
         }
 
-        if (!IsSelectionTransitionActive(SelectionTransitionState.HydratingSessionSelection | SelectionTransitionState.ApplyingTargetState))
-        {
-            RefreshEnabledOptionSets();
-            ApplyPersistedSettingsForSelectedTarget();
-            RaiseDerivedStateChanged();
-        }
+        RaiseDerivedStateChanged();
 
         SaveSessionState();
     }
@@ -302,7 +309,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         // Ignore nested parameter notifications while session hydration is still rebuilding target, operation, and
         // option state. Refreshing too early can treat restored options as invalid and replace them with defaults.
-        if (IsSelectionTransitionActive(SelectionTransitionState.RestoringSession | SelectionTransitionState.ApplyingTargetState))
+        if (IsSelectionTransitionActive(SelectionTransitionState.RestoringSession | SelectionTransitionState.ApplyingTargetState | SelectionTransitionState.ApplyingOperationState))
         {
             return;
         }
