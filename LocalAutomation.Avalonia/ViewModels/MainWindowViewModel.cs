@@ -95,6 +95,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             OperationDescriptor? previousSelection = _selectedOperation;
             Operation? previousOperation = _currentOperation;
             OperationParameters previousParameters = _parameterSession.RawValue;
+            IOperationTarget? selectedOperationTarget = SelectedTarget?.Target as IOperationTarget;
 
             // Capture the current target-scoped option values before changing the selected operation because operation
             // switches can temporarily remove option sets like compiler settings from the live parameter model.
@@ -115,6 +116,10 @@ public sealed class MainWindowViewModel : ViewModelBase
                 OperationParameters existingParameters = _parameterSession.RawValue;
                 _currentOperation = value != null ? _services.OperationSession.CreateOperation(value.OperationType) : null;
                 OperationParameters replacementParameters = _currentOperation?.CreateParameters(existingParameters) ?? new OperationParameters();
+
+                // Reapply the current UI target explicitly before swapping parameter objects so a fast target ->
+                // operation selection sequence cannot leave the new runtime parameter state without a target.
+                replacementParameters.Target = selectedOperationTarget ?? existingParameters.Target;
                 _parameterSession.Replace(replacementParameters);
             }
             catch (Exception ex)
