@@ -68,14 +68,6 @@ public sealed class OperationSessionService
     }
 
     /// <summary>
-    /// Returns whether the selected operation supports multiple engine selections.
-    /// </summary>
-    public bool SupportsMultipleEngines(Operation? operation)
-    {
-        return _runtime.SupportsMultipleEngines(operation);
-    }
-
-    /// <summary>
     /// Returns the required option set types for the selected operation and target.
     /// </summary>
     public IReadOnlyList<Type> GetEnabledOptionSetTypes(Operation? operation, IOperationTarget? target)

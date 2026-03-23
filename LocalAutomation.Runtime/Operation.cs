@@ -23,13 +23,8 @@ public abstract class Operation
     public string OperationName => GetOperationName();
 
     /// <summary>
-     /// Gets whether the operation supports multiple engine selections.
+     /// Gets whether the operation is currently executing.
      /// </summary>
-    public virtual bool SupportsMultipleEngines => false;
-
-    /// <summary>
-    /// Gets whether the operation is currently executing.
-    /// </summary>
     public bool Executing { get; private set; }
 
     /// <summary>

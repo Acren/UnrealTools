@@ -234,11 +234,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     public string ExecuteButtonText => SelectedOperation?.DisplayName ?? "Execute";
 
     /// <summary>
-    /// Gets whether the current target/operation selection supports selecting multiple engines.
-    /// </summary>
-    public bool OperationSupportsMultipleEngines => _services.OperationSession.SupportsMultipleEngines(_currentOperation);
-
-    /// <summary>
     /// Gets the first command preview line for clipboard copy actions.
     /// </summary>
     public string? PrimaryCommandText => _services.OperationSession.GetPrimaryCommandText(_currentOperation, _parameterSession.RawValue);
@@ -757,7 +752,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ExecuteButtonText));
         RaisePropertyChanged(nameof(ExecuteDisabledReason));
         RaisePropertyChanged(nameof(IsOperationPickerEnabled));
-        RaisePropertyChanged(nameof(OperationSupportsMultipleEngines));
         RaisePropertyChanged(nameof(OperationPickerPlaceholderText));
         RaisePropertyChanged(nameof(PrimaryCommandText));
         RaisePropertyChanged(nameof(ShowExecuteDisabledReason));

@@ -35,27 +35,6 @@ public sealed class OperationRuntimeService
     }
 
     /// <summary>
-    /// Returns whether the provided operation instance supports multiple engines.
-    /// </summary>
-    public bool SupportsMultipleEngines(Operation? operation)
-    {
-        if (operation == null)
-        {
-            return false;
-        }
-
-        try
-        {
-            return operation.SupportsMultipleEngines;
-        }
-        catch (Exception ex)
-        {
-            LogOperationRuntimeFailure(operation.GetType(), "check whether the operation supports multiple engines", ex);
-            return false;
-        }
-    }
-
-    /// <summary>
     /// Returns the option set types required by the provided operation and target combination.
     /// </summary>
     public IReadOnlyList<Type> GetRequiredOptionSetTypes(Operation? operation, IOperationTarget? target)
