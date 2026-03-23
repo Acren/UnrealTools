@@ -25,6 +25,7 @@ public sealed class LayeredSettingsPersistenceService
     private readonly string _targetSettingsFileName;
     private readonly string _userTargetSettingsDirectoryPath;
     private readonly Dictionary<(Type OwnerType, string Prefix), IReadOnlyList<PersistedSettingDescriptor>> _descriptorCache = new();
+    private readonly Dictionary<Type, string> _globalSettingsPrefixCache = new();
     private readonly Dictionary<(Type OwnerType, string TargetTypeId), string> _optionSetPrefixCache = new();
     private readonly Dictionary<(Type OwnerType, string TargetTypeId), string> _targetSettingsPrefixCache = new();
     private readonly Dictionary<Type, string> _typeOwnerPrefixCache = new();
@@ -114,6 +115,20 @@ public sealed class LayeredSettingsPersistenceService
     }
 
     /// <summary>
+    /// Loads global persisted values and applies them to the provided application settings owner.
+    /// </summary>
+    public void ApplyGlobalSettings(object settingsOwner)
+    {
+        if (settingsOwner == null)
+        {
+            throw new ArgumentNullException(nameof(settingsOwner));
+        }
+
+        PersistedSettingValueCollection globalValues = LoadCollection(_globalSettingsFilePath, "global");
+        ApplyResolvedValues(settingsOwner, GetGlobalSettingsDescriptors(settingsOwner.GetType()), globalValues.Values);
+    }
+
+    /// <summary>
     /// Loads layered values and applies the effective result to the provided target settings object.
     /// </summary>
     public void ApplyTargetSettings(object settingsOwner, TargetSettingsContext? context)
@@ -182,6 +197,35 @@ public sealed class LayeredSettingsPersistenceService
         }
 
         SaveCollections(context, globalValues, targetLocalValues, userOverrideValues);
+    }
+
+    /// <summary>
+    /// Writes the current global settings values to the host-wide appdata settings file.
+    /// </summary>
+    public void SaveGlobalSettings(object settingsOwner)
+    {
+        if (settingsOwner == null)
+        {
+            throw new ArgumentNullException(nameof(settingsOwner));
+        }
+
+        PersistedSettingValueCollection globalValues = LoadCollection(_globalSettingsFilePath, "global");
+        foreach (PersistedSettingDescriptor descriptor in GetGlobalSettingsDescriptors(settingsOwner.GetType()))
+        {
+            if (descriptor.WriteScope != PersistenceScope.Global)
+            {
+                throw new InvalidOperationException($"Global settings owner '{settingsOwner.GetType().FullName}' contains non-global setting '{descriptor.Key}'.");
+            }
+
+            if (!TryReadValueToken(settingsOwner, descriptor, out JToken? token))
+            {
+                continue;
+            }
+
+            globalValues.Values[descriptor.Key] = token!.DeepClone();
+        }
+
+        SaveCollection(_globalSettingsFilePath, globalValues);
     }
 
     /// <summary>
@@ -379,6 +423,15 @@ public sealed class LayeredSettingsPersistenceService
     }
 
     /// <summary>
+    /// Returns the descriptors for one global-settings type and caches the reflected metadata.
+    /// </summary>
+    private IReadOnlyList<PersistedSettingDescriptor> GetGlobalSettingsDescriptors(Type settingsType)
+    {
+        string ownerPrefix = GetGlobalSettingsOwnerPrefix(settingsType);
+        return GetOrCreateDescriptors(settingsType, ownerPrefix, () => BuildDescriptors(settingsType, ownerPrefix));
+    }
+
+    /// <summary>
     /// Returns cached descriptors for a type or creates them on first use.
     /// </summary>
     private IReadOnlyList<PersistedSettingDescriptor> GetOrCreateDescriptors(Type ownerType, string ownerPrefix, Func<IReadOnlyList<PersistedSettingDescriptor>> createDescriptors)
@@ -431,7 +484,7 @@ public sealed class LayeredSettingsPersistenceService
             return cachedPrefix;
         }
 
-        string extensionId = ResolveExtensionIdForOptionSet(optionSetType);
+        string extensionId = ResolveOwningModuleId(optionSetType);
         string ownerSegment = ResolveOwnerSegment(optionSetType);
         string prefix = string.IsNullOrWhiteSpace(extensionId)
             ? ownerSegment
@@ -457,11 +510,30 @@ public sealed class LayeredSettingsPersistenceService
     }
 
     /// <summary>
+    /// Produces the stable generated-key owner prefix for a host-global settings owner.
+    /// </summary>
+    private string GetGlobalSettingsOwnerPrefix(Type settingsType)
+    {
+        if (_globalSettingsPrefixCache.TryGetValue(settingsType, out string? cachedPrefix))
+        {
+            return cachedPrefix;
+        }
+
+        string extensionId = ResolveOwningModuleId(settingsType);
+        string ownerSegment = ResolveOwnerSegment(settingsType);
+        string prefix = string.IsNullOrWhiteSpace(extensionId)
+            ? ownerSegment
+            : extensionId + "." + ownerSegment;
+        _globalSettingsPrefixCache[settingsType] = prefix;
+        return prefix;
+    }
+
+    /// <summary>
     /// Resolves the extension id that owns one option-set type.
     /// </summary>
-    private string ResolveExtensionIdForOptionSet(Type optionSetType)
+    private string ResolveOwningModuleId(Type ownerType)
     {
-        string? ownedModuleId = _catalog.GetOwningModuleId(optionSetType.Assembly);
+        string? ownedModuleId = _catalog.GetOwningModuleId(ownerType.Assembly);
         if (!string.IsNullOrWhiteSpace(ownedModuleId))
         {
             return ownedModuleId;
@@ -693,6 +765,7 @@ public sealed class LayeredSettingsPersistenceService
             }
         }
 
+        ValidateDescriptorsForOwner(typeof(ApplicationSettings), GetGlobalSettingsOwnerPrefix(typeof(ApplicationSettings)), seenKeys);
         ValidateDescriptorsForOwner(typeof(TargetSettings), GetTargetSettingsOwnerPrefix(typeof(TargetSettings), new TargetTypeId("target")), seenKeys);
     }
 

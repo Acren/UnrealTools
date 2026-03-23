@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
+        xmlns:pgc="clr-namespace:Avalonia.PropertyGrid.Controls;assembly=Avalonia.PropertyGrid"
+        x:Class="LocalAutomation.Avalonia.SettingsWindow"
+        x:DataType="vm:SettingsWindowViewModel"
+        Width="640"
+        Height="480"
+        MinWidth="540"
+        MinHeight="380"
+        Title="Settings">
+    <!-- This window keeps global preferences isolated from target or session editing flows. -->
+    <Grid Margin="10" RowDefinitions="*,Auto" RowSpacing="10">
+        <Border Classes="panel" Padding="10" MinHeight="0">
+            <pgc:PropertyGrid DataContext="{Binding PropertyGridTarget}"
+                              IsQuickFilterVisible="False"
+                              IsCategoryVisible="False"
+                              IsHeaderVisible="False"
+                              IsTitleVisible="False" />
+        </Border>
+
+        <Border Grid.Row="1" Classes="panel" Padding="12,10">
+            <Grid ColumnDefinitions="*,Auto">
+                <Button Grid.Column="1"
+                        Classes="primary small"
+                        Content="Close"
+                        Click="Close_Click" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

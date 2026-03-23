@@ -48,8 +48,23 @@ public partial class CommandPanel : UserControl
     /// <summary>
     /// Starts the selected operation from the shell.
     /// </summary>
-    private void Execute_Click(object? sender, RoutedEventArgs e)
+    private async void Execute_Click(object? sender, RoutedEventArgs e)
     {
-        ViewModel.Execute();
+        string? commandText = ViewModel.PrimaryCommandText;
+        if (!ViewModel.Execute() || !ViewModel.ShouldAutoCopyPrimaryCommandAfterExecute || string.IsNullOrWhiteSpace(commandText))
+        {
+            return;
+        }
+
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard == null)
+        {
+            ViewModel.SetStatus("Started the selected operation, but clipboard access is not available in this window.");
+            return;
+        }
+
+        await clipboard.SetTextAsync(commandText);
+        ViewModel.SetStatus("Started the selected operation and copied the current command preview to the clipboard.");
     }
+
 }

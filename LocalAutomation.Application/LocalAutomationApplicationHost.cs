@@ -27,6 +27,8 @@ public sealed class LocalAutomationApplicationHost
         ExecutionRuntime = new ExecutionRuntimeService();
         OptionEditors = new OptionEditorService(catalog);
         OptionValues = new LayeredSettingsPersistenceService(catalog, resolvedAppDataRootPath, resolvedTargetSettingsFileName);
+        ApplicationSettings = new ApplicationSettings();
+        OptionValues.ApplyGlobalSettings(ApplicationSettings);
         Operations = new OperationCatalogService(catalog);
         OperationRuntime = new OperationRuntimeService();
         OperationSession = new OperationSessionService(Operations, OperationRuntime);
@@ -62,6 +64,11 @@ public sealed class LocalAutomationApplicationHost
     /// Gets the service used to resolve property-grid editor targets for option sets.
     /// </summary>
     public OptionEditorService OptionEditors { get; }
+
+    /// <summary>
+    /// Gets the shared host-global application settings instance.
+    /// </summary>
+    public ApplicationSettings ApplicationSettings { get; }
 
     /// <summary>
     /// Gets the service used to capture and reapply stable option values for persistence.
