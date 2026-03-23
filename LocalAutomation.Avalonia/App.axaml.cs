@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using LocalAutomation.Avalonia.Diagnostics;
 using AvaloniaApplication = Avalonia.Application;
 using LocalAutomation.Avalonia.Bootstrap;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
@@ -44,6 +45,7 @@ public partial class App : AvaloniaApplication
     public static void ConfigureShellIdentity(ShellIdentity shellIdentity)
     {
         ShellIdentity = shellIdentity ?? throw new System.ArgumentNullException(nameof(shellIdentity));
+        OperationSwitchDiagnosticsListener.Start(ShellIdentity.EnablePerformanceDiagnostics);
     }
 
     /// <summary>

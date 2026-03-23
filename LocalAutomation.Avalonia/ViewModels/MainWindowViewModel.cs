@@ -2,9 +2,11 @@ using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using Avalonia.Threading;
 using LocalAutomation.Application;
+using LocalAutomation.Application.Diagnostics;
 using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
@@ -140,6 +142,13 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             return;
         }
+
+        using Activity? activity = OperationSwitchTelemetry.StartActivity("OperationSwitch");
+        OperationSwitchTelemetry.SetTag(activity, "operation.id", selectedOperationId?.Value ?? string.Empty);
+        OperationSwitchTelemetry.SetTag(activity, "operation.name", selectedOperation?.DisplayName ?? string.Empty);
+        OperationSwitchTelemetry.SetTag(activity, "previous_operation.id", previousSelectedOperationId?.Value ?? string.Empty);
+        OperationSwitchTelemetry.SetTag(activity, "target.type", GetSelectedTargetTypeId()?.Value ?? string.Empty);
+        OperationSwitchTelemetry.SetTag(activity, "available_operation.count", AvailableOperations.Count);
 
         // Capture the current target-scoped option values before changing the selected operation because operation
         // switches can temporarily remove option sets like compiler settings from the live parameter model.
@@ -513,15 +522,23 @@ public sealed class MainWindowViewModel : ViewModelBase
         OperationParameters previousParameters,
         OperationId? previousSelectedOperationId)
     {
+        using Activity? activity = OperationSwitchTelemetry.StartActivity("ActivateOperation");
+        OperationSwitchTelemetry.SetTag(activity, "operation.id", selectedOperation?.Id.Value ?? string.Empty);
+        OperationSwitchTelemetry.SetTag(activity, "operation.name", selectedOperation?.DisplayName ?? string.Empty);
+        OperationSwitchTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
+        OperationSwitchTelemetry.SetTag(activity, "previous_option_set.count", previousParameters.OptionsInstances.Count);
+
         try
         {
             _currentOperation = selectedOperation != null ? _services.OperationSession.CreateOperation(selectedOperation.OperationType) : null;
             OperationParameters replacementParameters = _currentOperation?.CreateParameters(previousParameters) ?? new OperationParameters();
             _parameterSession.Replace(replacementParameters, SelectedTarget?.Target as IOperationTarget);
+            OperationSwitchTelemetry.SetTag(activity, "new_option_set.count", replacementParameters.OptionsInstances.Count);
             return true;
         }
         catch (Exception ex)
         {
+            OperationSwitchTelemetry.SetTag(activity, "error.type", ex.GetType().FullName ?? ex.GetType().Name);
             HandleOperationActivationFailure(selectedOperation, previousOperation, previousParameters, previousSelectedOperationId, ex);
             return false;
         }
@@ -690,22 +707,40 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RefreshEnabledOptionSets()
     {
+        using Activity? activity = OperationSwitchTelemetry.StartActivity("RefreshEnabledOptionSets");
         var enabledOptionTypes = _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target as IOperationTarget).ToList();
         List<OperationOptions> existingOptionSets = _parameterSession.OptionSets.ToList();
+        int addedOptionSetCount = 0;
+        int removedOptionSetCount = 0;
 
         foreach (Type optionSetType in enabledOptionTypes)
         {
+            bool alreadyPresent = _parameterSession.OptionSets.Any(options => options.GetType() == optionSetType);
             _parameterSession.EnsureOptionSet(optionSetType);
+            if (!alreadyPresent)
+            {
+                addedOptionSetCount++;
+            }
         }
 
         foreach (OperationOptions options in existingOptionSets)
         {
             if (!enabledOptionTypes.Contains(options.GetType()))
             {
-                _parameterSession.RemoveOptionSet(options.GetType());
+                if (_parameterSession.RemoveOptionSet(options.GetType()))
+                {
+                    removedOptionSetCount++;
+                }
             }
         }
 
+        OperationSwitchTelemetry.SetTag(activity, "operation.id", _selectedOperationId?.Value ?? string.Empty);
+        OperationSwitchTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
+        OperationSwitchTelemetry.SetTag(activity, "existing_option_set.count", existingOptionSets.Count);
+        OperationSwitchTelemetry.SetTag(activity, "enabled_option_type.count", enabledOptionTypes.Count);
+        OperationSwitchTelemetry.SetTag(activity, "added_option_set.count", addedOptionSetCount);
+        OperationSwitchTelemetry.SetTag(activity, "removed_option_set.count", removedOptionSetCount);
+        OperationSwitchTelemetry.SetTag(activity, "final_option_set.count", _parameterSession.OptionSets.Count);
         RebuildOptionCards();
     }
 
@@ -715,12 +750,16 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RebuildOptionCards()
     {
+        using Activity? activity = OperationSwitchTelemetry.StartActivity("RebuildOptionCards");
+        OperationSwitchTelemetry.SetTag(activity, "count", _parameterSession.OptionSets.Count);
         EnabledOptionSets.Clear();
 
         foreach (OperationOptions options in _parameterSession.OptionSets)
         {
             EnabledOptionSets.Add(new OptionSetViewModel(_services, options, _services.OptionEditors.GetEditorTarget(options)));
         }
+
+        OperationSwitchTelemetry.SetTag(activity, "option_card.count", EnabledOptionSets.Count);
     }
 
     /// <summary>
@@ -734,7 +773,11 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        using Activity? activity = OperationSwitchTelemetry.StartActivity("ApplyPersistedSettings");
+
         TargetSettingsContext context = _services.OptionValues.CreateTargetContext(_services.Targets, SelectedTarget.Target);
+        OperationSwitchTelemetry.SetTag(activity, "target.type", context.TargetTypeId.Value);
+        OperationSwitchTelemetry.SetTag(activity, "count", _parameterSession.OptionSets.Count);
         _services.OptionValues.ApplyOptionValues(_parameterSession.OptionSets, context);
 
         // Recreate property-grid card targets after applying restored values so adapter-backed editors reflect the

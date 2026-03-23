@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using LocalAutomation.Core;
+using LocalAutomation.Application.Diagnostics;
 using LocalAutomation.Runtime;
 using Microsoft.Extensions.Logging;
 
@@ -51,7 +53,13 @@ public sealed class OperationRuntimeService
                 return Array.Empty<Type>();
             }
 
-            return operation.GetRequiredOptionSetTypes(target).ToList();
+            using Activity? activity = OperationSwitchTelemetry.StartActivity("GetRequiredOptionSetTypes");
+            OperationSwitchTelemetry.SetTag(activity, "operation.type", operation.GetType().Name);
+            OperationSwitchTelemetry.SetTag(activity, "target.type", target.GetType().Name);
+
+            IReadOnlyList<Type> optionTypes = operation.GetRequiredOptionSetTypes(target).ToList();
+            OperationSwitchTelemetry.SetTag(activity, "count", optionTypes.Count);
+            return optionTypes;
         }
         catch (Exception ex)
         {
