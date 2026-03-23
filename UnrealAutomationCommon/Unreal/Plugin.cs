@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -6,6 +6,7 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Semver;
+using LocalAutomation.Core;
 using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations;
 
@@ -51,7 +52,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public string UPluginPath => PluginPaths.Instance.FindTargetFile(TargetPath);
 
-        public Project HostProject => new(HostProjectPath);
+        public Project HostProject => GetHostProjectForDiagnostics();
 
         public override IOperationTarget ParentTarget => HostProject;
 
@@ -132,6 +133,19 @@ namespace UnrealAutomationCommon.Unreal
             {
                 AppLogger.LoggerInstance.LogError($"Plugin descriptor could not be loaded from {UPluginPath}");
             }
+        }
+
+        /// <summary>
+        /// Creates the host project while recording the cost of that resolution for operation-switch diagnostics.
+        /// </summary>
+        public Project GetHostProjectForDiagnostics()
+        {
+            using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("Plugin.GetHostProject");
+            OperationSwitchTelemetry.SetTag(activity, "host_project.path", HostProjectPath);
+            Project hostProject = new(HostProjectPath);
+            OperationSwitchTelemetry.SetTag(activity, "target.type", hostProject.GetType().Name);
+            OperationSwitchTelemetry.SetTag(activity, "is_valid", hostProject.IsValid);
+            return hostProject;
         }
 
         public bool UpdateVersionInteger()

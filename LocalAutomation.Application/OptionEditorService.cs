@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using LocalAutomation.Application.Diagnostics;
+using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 
 namespace LocalAutomation.Application;
@@ -33,7 +32,7 @@ public sealed class OptionEditorService
             throw new ArgumentNullException(nameof(optionSet));
         }
 
-        using Activity? activity = OperationSwitchTelemetry.StartActivity("GetEditorTarget");
+        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("GetEditorTarget");
         OperationSwitchTelemetry.SetTag(activity, "option_set.type", optionSet.GetType().Name);
 
         if (_bindings.TryGetValue(optionSet, out EditorBinding? binding))

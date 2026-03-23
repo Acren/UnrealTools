@@ -3,11 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using LocalAutomation.Application.Diagnostics;
+using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Persistence;
 using LocalAutomation.Runtime;
@@ -97,7 +96,7 @@ public sealed class LayeredSettingsPersistenceService
         }
 
         List<object> optionSetList = optionSets.ToList();
-        using Activity? activity = OperationSwitchTelemetry.StartActivity("ApplyOptionValues");
+        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("ApplyOptionValues");
         OperationSwitchTelemetry.SetTag(activity, "target.type", context.TargetTypeId.Value);
         OperationSwitchTelemetry.SetTag(activity, "count", optionSetList.Count);
 
@@ -207,7 +206,7 @@ public sealed class LayeredSettingsPersistenceService
     /// </summary>
     private IReadOnlyDictionary<string, JToken> ResolveEffectiveValues(TargetSettingsContext context)
     {
-        using Activity? activity = OperationSwitchTelemetry.StartActivity("ResolveEffectiveValues");
+        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("ResolveEffectiveValues");
         OperationSwitchTelemetry.SetTag(activity, "target.type", context.TargetTypeId.Value);
 
         PersistedSettingValueCollection globalValues = LoadCollection(_globalSettingsFilePath, "Global");
@@ -319,7 +318,7 @@ public sealed class LayeredSettingsPersistenceService
     /// </summary>
     private static PersistedSettingValueCollection LoadCollection(string filePath, string layerName)
     {
-        using Activity? activity = OperationSwitchTelemetry.StartActivity("LoadSettingsFile");
+        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("LoadSettingsFile");
         bool fileExists = File.Exists(filePath);
         OperationSwitchTelemetry.SetTag(activity, "layer.name", layerName);
         OperationSwitchTelemetry.SetTag(activity, "file.exists", fileExists);
@@ -384,7 +383,7 @@ public sealed class LayeredSettingsPersistenceService
     /// </summary>
     private IReadOnlyList<PersistedSettingDescriptor> GetOrCreateDescriptors(Type ownerType, string ownerPrefix, Func<IReadOnlyList<PersistedSettingDescriptor>> createDescriptors)
     {
-        using Activity? activity = OperationSwitchTelemetry.StartActivity("ResolveDescriptors");
+        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("ResolveDescriptors");
         OperationSwitchTelemetry.SetTag(activity, "owner.type", ownerType.FullName ?? ownerType.Name);
         OperationSwitchTelemetry.SetTag(activity, "owner.prefix", ownerPrefix);
 

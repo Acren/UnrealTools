@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LocalAutomation.Core;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 #nullable enable
@@ -32,11 +33,17 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
     /// </summary>
     public override global::LocalAutomation.Runtime.OperationParameters CreateParameters(global::LocalAutomation.Runtime.OperationParameters? existing = null)
     {
+        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("CreateOperationParameters");
+        OperationSwitchTelemetry.SetTag(activity, "operation.type", GetType().Name);
+        OperationSwitchTelemetry.SetTag(activity, "existing_option_set.count", existing?.OptionsInstances.Count ?? 0);
+
         UnrealAutomationCommon.Operations.UnrealOperationParameters parameters = (UnrealAutomationCommon.Operations.UnrealOperationParameters)base.CreateParameters(existing);
         if (parameters.GetOptionsInstance(typeof(AdditionalArgumentsOptions)) == null)
         {
             parameters.EnsureOptionsInstance(typeof(AdditionalArgumentsOptions));
         }
+
+        OperationSwitchTelemetry.SetTag(activity, "new_option_set.count", parameters.OptionsInstances.Count);
 
         return parameters;
     }

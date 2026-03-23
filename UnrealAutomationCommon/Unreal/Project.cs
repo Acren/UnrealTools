@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using LocalAutomation.Core;
 using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations;
 
@@ -126,6 +127,19 @@ namespace UnrealAutomationCommon.Unreal
         {
             FileUtils.WaitForFileReadable(UProjectPath);
             ProjectDescriptor = ProjectDescriptor.Load(UProjectPath);
+        }
+
+        /// <summary>
+        /// Resolves the effective engine instance while recording the cost of descriptor-driven engine lookup for
+        /// operation-switch diagnostics.
+        /// </summary>
+        public Engine GetEngineInstanceForDiagnostics()
+        {
+            using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("Project.GetEngineInstance");
+            OperationSwitchTelemetry.SetTag(activity, "descriptor.path", UProjectPath);
+            Engine engine = EngineInstance;
+            OperationSwitchTelemetry.SetTag(activity, "engine.name", engine?.DisplayName ?? string.Empty);
+            return engine;
         }
 
         public string GetStagedBuildWindowsPath(Engine engineContext)

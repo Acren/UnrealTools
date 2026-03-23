@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using LocalAutomation.Application.Diagnostics;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
 
@@ -192,6 +191,9 @@ public static class OperationSwitchDiagnosticsListener
             string? optionSetType = activity.GetTagItem("option_set.type")?.ToString();
             string? count = activity.GetTagItem("count")?.ToString();
             string? cacheHit = activity.GetTagItem("cache.hit")?.ToString();
+            string? hostProjectPath = activity.GetTagItem("host_project.path")?.ToString();
+            string? engineDisplayName = activity.GetTagItem("engine.name")?.ToString();
+            string? descriptorPath = activity.GetTagItem("descriptor.path")?.ToString();
 
             if (!string.IsNullOrWhiteSpace(operationName))
             {
@@ -220,6 +222,21 @@ public static class OperationSwitchDiagnosticsListener
             if (!string.IsNullOrWhiteSpace(cacheHit))
             {
                 parts.Add($"cache={cacheHit}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(hostProjectPath))
+            {
+                parts.Add($"host={hostProjectPath}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(engineDisplayName))
+            {
+                parts.Add($"engine={engineDisplayName}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(descriptorPath))
+            {
+                parts.Add($"path={descriptorPath}");
             }
 
             return parts.Count == 0 ? string.Empty : string.Join(" ", parts);

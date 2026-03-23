@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using LocalAutomation.Core;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -73,6 +74,8 @@ namespace UnrealAutomationCommon.Unreal
 
         public static ProjectDescriptor Load(string uProjectPath)
         {
+            using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("ProjectDescriptor.Load");
+            OperationSwitchTelemetry.SetTag(activity, "descriptor.path", uProjectPath);
             return JsonConvert.DeserializeObject<ProjectDescriptor>(File.ReadAllText(uProjectPath));
         }
 

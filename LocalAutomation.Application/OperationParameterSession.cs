@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using LocalAutomation.Core;
 using LocalAutomation.Runtime;
 
 namespace LocalAutomation.Application;
@@ -46,6 +47,10 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
     /// </summary>
     public void Replace(OperationParameters parameters, IOperationTarget? target)
     {
+        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("ReplaceParameters");
+        OperationSwitchTelemetry.SetTag(activity, "incoming_option_set.count", parameters?.OptionsInstances.Count ?? 0);
+        OperationSwitchTelemetry.SetTag(activity, "target.type", target?.GetType().Name ?? string.Empty);
+
         if (parameters == null)
         {
             throw new ArgumentNullException(nameof(parameters));
@@ -66,6 +71,8 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Target)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AdditionalArguments)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OptionSets)));
+
+        OperationSwitchTelemetry.SetTag(activity, "final_option_set.count", _parameters.OptionsInstances.Count);
     }
 
     /// <summary>
