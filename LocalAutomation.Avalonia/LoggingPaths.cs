@@ -5,7 +5,7 @@ using System.Linq;
 namespace LocalAutomation.Avalonia;
 
 /// <summary>
-/// Centralizes the disk locations used for Avalonia launch logs so file-backed diagnostics remain predictable.
+/// Centralizes the disk locations used for shell launch logs so file-backed diagnostics remain predictable.
 /// </summary>
 internal static class LoggingPaths
 {
@@ -14,20 +14,20 @@ internal static class LoggingPaths
     /// </summary>
     private static string DataFolder => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        App.Branding.DataFolderName);
+        App.ShellIdentity.DataFolderName);
 
     /// <summary>
-    /// Stores per-launch Avalonia logs next to the shell's persisted state under LocalAppData.
+    /// Stores per-launch shell logs next to the shell's persisted state under LocalAppData.
     /// </summary>
     public static string LogsFolder => Path.Combine(DataFolder, "Logs");
 
     /// <summary>
-    /// Creates a unique log file path for the current Avalonia app launch.
+    /// Creates a unique log file path for the current shell launch.
     /// </summary>
     public static string CreateLaunchLogFilePath()
     {
         Directory.CreateDirectory(LogsFolder);
-        return Path.Combine(LogsFolder, $"{App.Branding.LaunchLogFilePrefix}_{DateTime.Now:yyyyMMdd_HHmmss}_{Environment.ProcessId}.log");
+        return Path.Combine(LogsFolder, $"{App.ShellIdentity.LaunchLogFilePrefix}_{DateTime.Now:yyyyMMdd_HHmmss}_{Environment.ProcessId}.log");
     }
 
     /// <summary>
@@ -36,7 +36,7 @@ internal static class LoggingPaths
     public static void CleanupOldLaunchLogs(int maxLogFiles)
     {
         Directory.CreateDirectory(LogsFolder);
-        string searchPattern = $"{App.Branding.LaunchLogFilePrefix}_*.log";
+        string searchPattern = $"{App.ShellIdentity.LaunchLogFilePrefix}_*.log";
 
         foreach (FileInfo logFile in new DirectoryInfo(LogsFolder)
                      .GetFiles(searchPattern)

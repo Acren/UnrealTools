@@ -6,17 +6,17 @@ namespace UnrealCommander.Avalonia;
 /// Centralizes the Unreal Commander launcher identity so process metadata, window title, logs, and session files all
 /// use the same branded values.
 /// </summary>
-internal static class UnrealCommanderBranding
+internal static class UnrealCommanderShellIdentity
 {
     /// <summary>
-    /// Gets the branded host settings used by the Unreal Commander launcher.
+    /// Gets the shell identity used by the Unreal Commander launcher.
     /// </summary>
-    public static AvaloniaHostBranding Instance { get; } = new(
+    public static ShellIdentity Instance { get; } = new(
         applicationName: "Unreal Commander",
         windowTitle: "Unreal Commander",
         dataFolderName: "UnrealCommander",
         targetSettingsFileName: ".ucmdr.json",
-        sessionFileName: "avalonia-session.json",
+        sessionFileName: "session.json",
         launchLogFilePrefix: "UnrealCommander.Avalonia",
         loggerCategoryName: "UnrealCommander.Avalonia");
 }

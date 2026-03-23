@@ -9,25 +9,25 @@ using Microsoft.Extensions.Logging;
 namespace LocalAutomation.Avalonia.Bootstrap;
 
 /// <summary>
-/// Starts the generic Avalonia shell around a launcher-provided application host so composition stays outside the UI
+/// Starts the shared shell around a launcher-provided application host so composition stays outside the UI
 /// assembly.
 /// </summary>
-public static class AvaloniaAppBootstrapper
+public static class ShellAppBootstrapper
 {
     /// <summary>
      /// Starts the desktop lifetime using bundled extension discovery.
      /// </summary>
     public static void Run(string[] args)
     {
-        Run(args, AvaloniaHostBranding.LocalAutomation);
+        Run(args, ShellIdentity.LocalAutomation);
     }
 
     /// <summary>
     /// Starts the desktop lifetime using the provided launcher branding and bundled extension discovery.
     /// </summary>
-    public static void Run(string[] args, AvaloniaHostBranding branding)
+    public static void Run(string[] args, ShellIdentity shellIdentity)
     {
-        App.ConfigureBranding(branding);
+        App.ConfigureShellIdentity(shellIdentity);
         ApplicationLogService.Initialize();
 
         try
@@ -37,7 +37,7 @@ public static class AvaloniaAppBootstrapper
             App.ConfigureServices(services);
             App.ConfigureStartupMessage(extensionLoadResult.CreateStartupMessage());
             LogExtensionDiscovery(extensionLoadResult);
-            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            BuildApp().StartWithClassicDesktopLifetime(args);
         }
         catch (Exception ex)
         {
@@ -49,15 +49,15 @@ public static class AvaloniaAppBootstrapper
     /// <summary>
     /// Flushes the file-backed logging pipeline when the current process exits normally.
     /// </summary>
-    static AvaloniaAppBootstrapper()
+    static ShellAppBootstrapper()
     {
         AppDomain.CurrentDomain.ProcessExit += (_, _) => ApplicationLogService.Shutdown();
     }
 
     /// <summary>
-    /// Configures the shared Avalonia application builder used by launcher entry points.
+    /// Configures the shared desktop application builder used by launcher entry points.
     /// </summary>
-    public static AppBuilder BuildAvaloniaApp()
+    public static AppBuilder BuildApp()
     {
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
@@ -84,8 +84,8 @@ public static class AvaloniaAppBootstrapper
 
         string appDataRootPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            App.Branding.DataFolderName);
-        return new LocalAutomationApplicationHost(catalog, appDataRootPath, App.Branding.TargetSettingsFileName);
+            App.ShellIdentity.DataFolderName);
+        return new LocalAutomationApplicationHost(catalog, appDataRootPath, App.ShellIdentity.TargetSettingsFileName);
     }
 
     /// <summary>

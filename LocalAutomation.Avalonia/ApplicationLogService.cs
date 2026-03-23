@@ -8,7 +8,7 @@ using ILogger = Microsoft.Extensions.Logging.ILogger;
 namespace LocalAutomation.Avalonia;
 
 /// <summary>
-/// Owns the Avalonia shell's process-wide log stream so startup diagnostics, unhandled exceptions, and forwarded
+/// Owns the shared shell's process-wide log stream so startup diagnostics, unhandled exceptions, and forwarded
 /// runtime logs all flow into the same output panel even when no operation is currently executing.
 /// </summary>
 public static class ApplicationLogService
@@ -21,7 +21,7 @@ public static class ApplicationLogService
     private static ILoggerFactory? _loggerFactory;
 
     /// <summary>
-    /// Gets the shared in-memory log stream rendered by the Avalonia shell.
+    /// Gets the shared in-memory log stream rendered by the shell.
     /// </summary>
     public static BufferedLogStream LogStream { get; } = new();
 
@@ -40,7 +40,7 @@ public static class ApplicationLogService
         string launchLogFilePath = ConfigureDiskLogging();
         BufferedLogger bufferedLogger = new(LogStream);
         _loggerFactory = LoggerFactory.Create(builder => builder.AddSerilog(dispose: false));
-        ILogger fileLogger = _loggerFactory.CreateLogger(App.Branding.LoggerCategoryName);
+        ILogger fileLogger = _loggerFactory.CreateLogger(App.ShellIdentity.LoggerCategoryName);
         ApplicationLogger.Logger = new CompositeLogger(bufferedLogger, fileLogger);
 
         // Capture exceptions that escape normal async or UI flows so the output panel still shows the failure details
@@ -49,11 +49,11 @@ public static class ApplicationLogService
         TaskScheduler.UnobservedTaskException += HandleUnobservedTaskException;
 
         ApplicationLogger.Logger.LogInformation("Writing launch log to {LaunchLogFilePath}", launchLogFilePath);
-        ApplicationLogger.Logger.LogInformation("Avalonia shell logging initialized.");
+        ApplicationLogger.Logger.LogInformation("Shell logging initialized.");
     }
 
     /// <summary>
-    /// Flushes the file logger pipeline when the Avalonia app closes so the latest crash details land on disk.
+    /// Flushes the file logger pipeline when the shell closes so the latest crash details land on disk.
     /// </summary>
     public static void Shutdown()
     {
@@ -67,7 +67,7 @@ public static class ApplicationLogService
     /// </summary>
     public static void LogStartupException(Exception exception)
     {
-        ApplicationLogger.Logger.LogCritical(exception, "Avalonia shell failed during startup.");
+        ApplicationLogger.Logger.LogCritical(exception, "Shell failed during startup.");
     }
 
     /// <summary>

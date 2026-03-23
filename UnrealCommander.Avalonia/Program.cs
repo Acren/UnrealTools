@@ -4,16 +4,16 @@ using LocalAutomation.Avalonia.Bootstrap;
 namespace UnrealCommander.Avalonia;
 
 /// <summary>
-/// Starts the Unreal Commander branded launcher while reusing the shared generic Avalonia shell.
+/// Starts the Unreal Commander launcher while reusing the shared desktop shell.
 /// </summary>
 internal static class Program
 {
     /// <summary>
-    /// Starts the Avalonia desktop lifetime with Unreal Commander branding and isolated local state.
+    /// Starts the desktop lifetime with Unreal Commander shell identity and isolated local state.
     /// </summary>
     [STAThread]
     public static void Main(string[] args)
     {
-        AvaloniaAppBootstrapper.Run(args, UnrealCommanderBranding.Instance);
+        ShellAppBootstrapper.Run(args, UnrealCommanderShellIdentity.Instance);
     }
 }

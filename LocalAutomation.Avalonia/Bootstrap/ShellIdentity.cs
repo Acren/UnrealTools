@@ -3,27 +3,27 @@ using System;
 namespace LocalAutomation.Avalonia.Bootstrap;
 
 /// <summary>
-/// Describes the launcher-controlled identity values that let the shared Avalonia shell present different product
+/// Describes the launcher-controlled identity values that let the shared shell present different product
 /// names, data folders, and log streams without duplicating the UI implementation.
 /// </summary>
-public sealed class AvaloniaHostBranding
+public sealed class ShellIdentity
 {
     /// <summary>
-    /// Gets the default branding used by the generic LocalAutomation launcher.
+    /// Gets the default shell identity used by the generic LocalAutomation launcher.
     /// </summary>
-    public static AvaloniaHostBranding LocalAutomation { get; } = new(
+    public static ShellIdentity LocalAutomation { get; } = new(
         applicationName: "LocalAutomation",
         windowTitle: "LocalAutomation",
         dataFolderName: "LocalAutomation",
         targetSettingsFileName: ".localautomation.json",
-        sessionFileName: "avalonia-session.json",
+        sessionFileName: "session.json",
         launchLogFilePrefix: "LocalAutomation.Avalonia",
         loggerCategoryName: "LocalAutomation.Avalonia");
 
     /// <summary>
-    /// Creates a branded host descriptor for one launcher executable.
+    /// Creates a shell identity descriptor for one launcher executable.
     /// </summary>
-    public AvaloniaHostBranding(
+    public ShellIdentity(
         string applicationName,
         string windowTitle,
         string dataFolderName,
@@ -82,7 +82,7 @@ public sealed class AvaloniaHostBranding
     private static string Validate(string value, string parameterName)
     {
         return string.IsNullOrWhiteSpace(value)
-            ? throw new ArgumentException("Branding values must not be empty.", parameterName)
+            ? throw new ArgumentException("Shell identity values must not be empty.", parameterName)
             : value;
     }
 }

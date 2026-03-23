@@ -21,7 +21,7 @@ public sealed class TargetListItemViewModel : ViewModelBase
         {
             // Keep host-facing validation errors aligned with the active launcher branding so branded shells do not leak
             // the generic LocalAutomation product name in user-visible diagnostics.
-            throw new ArgumentException($"Target is not recognized by the registered {App.Branding.ApplicationName} target catalog.", nameof(target));
+            throw new ArgumentException($"Target is not recognized by the registered {App.ShellIdentity.ApplicationName} target catalog.", nameof(target));
         }
 
         Target = target;

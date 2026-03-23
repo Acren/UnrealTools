@@ -38,7 +38,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private Operation? _currentOperation;
     private OperationId? _selectedOperationId;
     private SessionSnapshot _sessionSnapshot = new();
-    private string _status = $"Add a target path to begin using the {App.Branding.ApplicationName} shell.";
+    private string _status = $"Add a target path to begin using the {App.ShellIdentity.ApplicationName} shell.";
     private SelectionTransitionState _selectionTransitionState;
 
     /// <summary>

@@ -31,8 +31,8 @@ public sealed class SessionPersistenceService
         // one another's target lists, selected operations, or option values.
         string dataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            App.Branding.DataFolderName);
-        _dataFilePath = Path.Combine(dataFolder, App.Branding.SessionFileName);
+            App.ShellIdentity.DataFolderName);
+        _dataFilePath = Path.Combine(dataFolder, App.ShellIdentity.SessionFileName);
     }
 
     /// <summary>
