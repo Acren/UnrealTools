@@ -1,21 +1,13 @@
 ﻿using UnrealAutomationCommon.Unreal;
+using LocalAutomation.Runtime;
+
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class BuildConfigurationOptions : global::LocalAutomation.Runtime.OperationOptions
+    public class BuildConfigurationOptions : OperationOptions
     {
-        private BuildConfiguration _configuration = BuildConfiguration.Development;
-
         public override int SortIndex => 20;
 
-        public BuildConfiguration Configuration
-        {
-            get => _configuration;
-            set
-            {
-                _configuration = value;
-                OnPropertyChanged();
-            }
-        }
+        public Option<BuildConfiguration> Configuration { get; } = BuildConfiguration.Development;
     }
 }

@@ -1,13 +1,14 @@
 ﻿using System.Collections.Generic;
-using global::LocalAutomation.Runtime;
 using UnrealAutomationCommon.Unreal;
+using LocalAutomation.Runtime;
+
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class EngineVersionOptions : global::LocalAutomation.Runtime.OperationOptions
+    public class EngineVersionOptions : OperationOptions
     {
         public override int SortIndex => 10;
 
-        public global::LocalAutomation.Runtime.Option<List<EngineVersion>> EnabledVersions { get; } = new(new());
+        public Option<List<EngineVersion>> EnabledVersions { get; } = new(new());
     }
 }

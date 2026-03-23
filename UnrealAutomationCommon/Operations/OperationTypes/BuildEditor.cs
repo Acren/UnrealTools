@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class BuildEditor : CommandProcessOperation<Project>
     {
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             Arguments args = UATArguments.MakeBuildArguments(operationParameters);
             if (args.GetArgument("ubtargs") != null)
@@ -39,7 +39,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// </summary>
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             string baseError = base.CheckRequirementsSatisfied(operationParameters);
             if (baseError != null)
             {

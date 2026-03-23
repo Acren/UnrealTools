@@ -1,11 +1,11 @@
-﻿using global::LocalAutomation.Runtime;
+﻿using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class VerifyDeploymentOptions : global::LocalAutomation.Runtime.OperationOptions
+    public class VerifyDeploymentOptions : OperationOptions
     {
         public override int SortIndex => 80;
 
-        public global::LocalAutomation.Runtime.Option<string> ExampleProjectsPath { get; } = "";
+        public Option<string> ExampleProjectsPath { get; } = "";
     }
 }

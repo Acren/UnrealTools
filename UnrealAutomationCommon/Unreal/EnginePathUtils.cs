@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
@@ -74,7 +74,7 @@ namespace UnrealAutomationCommon.Unreal
             return GetEditorExe(engine, configuration, true);
         }
 
-        public static string GetEditorExe(this Engine engine, OperationParameters operationParameters)
+        public static string GetEditorExe(this Engine engine, UnrealOperationParameters operationParameters)
         {
             BuildConfigurationOptions buildOptions = operationParameters.RequestOptions<BuildConfigurationOptions>();
             if (buildOptions == null)
@@ -82,7 +82,7 @@ namespace UnrealAutomationCommon.Unreal
                 return null;
             }
 
-            return GetEditorExe(engine, buildOptions.Configuration);
+            return GetEditorExe(engine, buildOptions.Configuration.Value);
         }
 
         public static string GetUBTExe(this Engine engine)

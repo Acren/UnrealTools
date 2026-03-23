@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,7 +10,7 @@ namespace UnrealAutomationCommon.Operations
     public static class PluginBuildPlatformValidation
     {
         // Validate the effective requested plugin target platforms against the selected engine.
-        public static string CheckRequirementsSatisfied(OperationParameters operationParameters, Engine engine)
+        public static string CheckRequirementsSatisfied(UnrealOperationParameters operationParameters, Engine engine)
         {
             if (engine == null)
             {
@@ -47,7 +47,7 @@ namespace UnrealAutomationCommon.Operations
         }
 
         // Resolve the final TargetPlatforms value after AdditionalArguments overrides so validation matches execution.
-        public static List<string> GetRequestedTargetPlatforms(OperationParameters operationParameters, PluginBuildOptions pluginBuildOptions)
+        public static List<string> GetRequestedTargetPlatforms(UnrealOperationParameters operationParameters, PluginBuildOptions pluginBuildOptions)
         {
             Arguments arguments = new();
             arguments.SetKeyValue("TargetPlatforms", string.Join('+', GetSelectedTargetPlatforms(pluginBuildOptions)));

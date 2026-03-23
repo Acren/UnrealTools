@@ -1,11 +1,11 @@
-using UnrealAutomationCommon.Operations;
+﻿using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal
 {
     public static class UATArguments
     {
-        public static Arguments MakeBuildArguments(OperationParameters operationParameters)
+        public static Arguments MakeBuildArguments(UnrealOperationParameters operationParameters)
         {
             Arguments arguments = new();
             arguments.SetArgument("BuildCookRun");
@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             arguments.SetFlag("build");
-            var configuration = operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString();
+            var configuration = operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.Value.ToString();
             arguments.SetKeyValue("clientconfig", configuration);
             arguments.SetKeyValue("serverconfig", configuration);
 
@@ -31,7 +31,7 @@ namespace UnrealAutomationCommon.Unreal
             return arguments;
         }
 
-        public static void ApplyCommonUATArguments(this Arguments arguments, OperationParameters operationParameters)
+        public static void ApplyCommonUATArguments(this Arguments arguments, UnrealOperationParameters operationParameters)
         {
             if (operationParameters.Engine.Version >= new EngineVersion(5, 0))
             {

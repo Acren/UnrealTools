@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class CleanProject : Operation<Project>
+    public class CleanProject : UnrealOperation<Project>
     {
         protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
@@ -19,7 +19,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Logger.LogInformation("Cleaning binaries");
 
-            Project project = GetTarget(OperationParameters);
+            Project project = GetTarget(UnrealOperationParameters);
             Engine engine = project.EngineInstance;
 
             // Clean targets

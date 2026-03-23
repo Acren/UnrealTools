@@ -145,7 +145,7 @@ public sealed class UnrealExtensionModule : IExtensionModule
         Type? currentType = operationType;
         while (currentType != null)
         {
-            if (currentType.IsGenericType && currentType.GetGenericTypeDefinition() == typeof(global::UnrealAutomationCommon.Operations.BaseOperations.Operation<>))
+            if (currentType.IsGenericType && currentType.GetGenericTypeDefinition() == typeof(global::UnrealAutomationCommon.Operations.BaseOperations.UnrealOperation<>))
             {
                 supportedTargetTypes.Add(currentType.GetGenericArguments()[0]);
                 break;

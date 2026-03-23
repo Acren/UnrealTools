@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon.Unreal
 {
     public class UnrealArguments
     {
-        public static Arguments MakeArguments(OperationParameters operationParameters, string outputhPath, bool uProjectPath = false)
+        public static Arguments MakeArguments(UnrealOperationParameters operationParameters, string outputhPath, bool uProjectPath = false)
         {
             Arguments arguments = new();
 

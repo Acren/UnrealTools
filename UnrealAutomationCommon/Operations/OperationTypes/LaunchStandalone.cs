@@ -5,7 +5,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class LaunchStandalone : UnrealProcessOperation<Project>
     {
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             Arguments args = UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true);
             args.SetFlag("game");

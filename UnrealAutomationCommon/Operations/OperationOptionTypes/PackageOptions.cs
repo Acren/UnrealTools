@@ -1,11 +1,11 @@
-﻿using global::LocalAutomation.Runtime;
+﻿using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class PackageOptions : global::LocalAutomation.Runtime.OperationOptions
+    public class PackageOptions : OperationOptions
     {
         public override int SortIndex => 60;
-        public global::LocalAutomation.Runtime.Option<bool> NoDebugInfo { get; } = false;
-        public global::LocalAutomation.Runtime.Option<bool> Archive { get; } = true;
+        public Option<bool> NoDebugInfo { get; } = false;
+        public Option<bool> Archive { get; } = true;
     }
 }

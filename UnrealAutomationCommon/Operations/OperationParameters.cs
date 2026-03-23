@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using Newtonsoft.Json;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
@@ -10,7 +10,7 @@ namespace UnrealAutomationCommon.Operations;
 /// <summary>
 /// Adds Unreal-specific environment resolution on top of the shared runtime parameter model.
 /// </summary>
-public class OperationParameters : global::LocalAutomation.Runtime.OperationParameters
+public class UnrealOperationParameters : global::LocalAutomation.Runtime.OperationParameters
 {
     private Engine? _engineOverride;
 
@@ -86,7 +86,7 @@ public class OperationParameters : global::LocalAutomation.Runtime.OperationPara
     /// </summary>
     public override global::LocalAutomation.Runtime.OperationParameters CreateChild()
     {
-        OperationParameters child = (OperationParameters)base.CreateChild();
+        UnrealOperationParameters child = (UnrealOperationParameters)base.CreateChild();
         child.EngineOverride = EngineOverride;
         return child;
     }

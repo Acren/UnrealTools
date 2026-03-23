@@ -11,7 +11,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class PackageProject : CommandProcessOperation<Project>
     {
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             Arguments arguments = UATArguments.MakeBuildArguments(operationParameters);
             arguments.SetFlag("cook");
@@ -28,7 +28,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             // Set cooker exe
-            BuildConfiguration cookerConfiguration = operationParameters.RequestOptions<CookOptions>().CookerConfiguration;
+            BuildConfiguration cookerConfiguration = operationParameters.RequestOptions<CookOptions>().CookerConfiguration.Value;
             if (cookerConfiguration != BuildConfiguration.Development)
             {
                 string unrealExe = operationParameters.Engine.GetEditorCmdExe(cookerConfiguration);

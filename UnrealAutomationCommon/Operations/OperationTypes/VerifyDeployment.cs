@@ -13,14 +13,14 @@ using Semver;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class VerifyDeployment : Operation<Plugin>
+    public class VerifyDeployment : UnrealOperation<Plugin>
     {
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
-            Plugin plugin = GetTarget(OperationParameters);
+            Plugin plugin = GetTarget(UnrealOperationParameters);
 
-            Logger.LogInformation($"Versions: {string.Join(", ", OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
-            foreach (EngineVersion engineVersion in OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
+            Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
+            foreach (EngineVersion engineVersion in UnrealOperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
             {
                 Engine engine = EngineFinder.GetEngineInstall(engineVersion);
                 if (engine == null)
@@ -40,7 +40,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task<global::LocalAutomation.Runtime.OperationResult> VerifyForEngine(Engine engine, CancellationToken token)
         {
-            Plugin plugin = GetTarget(OperationParameters);
+            Plugin plugin = GetTarget(UnrealOperationParameters);
             EngineVersion engineVersion = engine.Version;
             Logger.LogInformation($"Verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
 
@@ -61,7 +61,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception($"Installed plugin version {installedPluginVersionName} does not include reference version {pluginVersionName}");
             }
 
-            string exampleProjects = OperationParameters.FindOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
+            string exampleProjects = UnrealOperationParameters.FindOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
             string exampleProjectZip = FindExampleProjectZip(plugin, exampleProjects, engine);
             if (exampleProjectZip == null)
             {
@@ -85,13 +85,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Launch and test example project editor
 
-            AutomationOptions automationOpts = OperationParameters.FindOptions<AutomationOptions>();
+            AutomationOptions automationOpts = UnrealOperationParameters.FindOptions<AutomationOptions>();
 
             if (automationOpts.RunTests)
             {
                 Logger.LogInformation("Launching and testing example project editor");
 
-                OperationParameters launchEditorParams = new()
+                UnrealOperationParameters launchEditorParams = new()
                 {
                     Target = exampleProject,
                     EngineOverride = engine
@@ -110,7 +110,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 Logger.LogInformation("Launching and testing standalone");
 
-                OperationParameters launchStandaloneParams = new()
+                UnrealOperationParameters launchStandaloneParams = new()
                 {
                     Target = exampleProject,
                     EngineOverride = engine
@@ -130,7 +130,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteDirectoryIfExists(packageOutput);
 
             PackageProject packageExampleProject = new();
-            OperationParameters packageExampleProjectParams = new()
+            UnrealOperationParameters packageExampleProjectParams = new()
             {
                 Target = exampleProject,
                 EngineOverride = engine,
@@ -148,7 +148,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (automationOpts.RunTests)
             {
-                OperationParameters testPackageParams = new()
+                UnrealOperationParameters testPackageParams = new()
                 {
                     Target = exampleProject,
                     EngineOverride = engine
@@ -170,7 +170,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             typedParameters.RequestOptions<EngineVersionOptions>();
             typedParameters.RequestOptions<AutomationOptions>();
             typedParameters.RequestOptions<VerifyDeploymentOptions>();

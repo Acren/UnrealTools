@@ -1,9 +1,11 @@
 ﻿using System.ComponentModel;
 using UnrealAutomationCommon.Unreal;
+using LocalAutomation.Runtime;
+
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class InsightsOptions : global::LocalAutomation.Runtime.OperationOptions
+    public class InsightsOptions : OperationOptions
     {
         private BindingList<TraceChannel> _traceChannels;
 

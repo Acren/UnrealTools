@@ -10,7 +10,7 @@ using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Operations.BaseOperations
 {
-    public abstract class CommandProcessOperation<T> : Operation<T> where T : global::LocalAutomation.Runtime.OperationTarget
+    public abstract class CommandProcessOperation<T> : UnrealOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget
     {
         private string _fileName;
         private Process _process;
@@ -18,7 +18,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         private string FileAndProcess => $"{_fileName}:{_processName}";
 
-        protected abstract global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters);
+        protected abstract global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters);
 
         // Derived operations can inspect output as it streams without retaining the full process log in memory.
         protected virtual void OnOutputLine(string line)
@@ -27,12 +27,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         protected override IEnumerable<global::LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            return new List<global::LocalAutomation.Runtime.Command> { BuildCommand((UnrealAutomationCommon.Operations.OperationParameters)operationParameters) };
+            return new List<global::LocalAutomation.Runtime.Command> { BuildCommand((UnrealAutomationCommon.Operations.UnrealOperationParameters)operationParameters) };
         }
 
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
-            global::LocalAutomation.Runtime.Command command = BuildCommand(OperationParameters);
+            global::LocalAutomation.Runtime.Command command = BuildCommand(UnrealOperationParameters);
 
             _fileName = Path.GetFileName(command.File);
 

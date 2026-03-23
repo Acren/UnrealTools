@@ -14,7 +14,7 @@ using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class DeployPluginForEngine : Operation<Plugin>
+    public class DeployPluginForEngine : UnrealOperation<Plugin>
     {
         public Engine Engine { get; set; }
         
@@ -79,7 +79,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string archivePrefix;
             using (Logger.BeginSection("Preparing plugin"))
             {
-                Plugin = GetTarget(OperationParameters);
+                Plugin = GetTarget(UnrealOperationParameters);
                 PluginDescriptor pluginDescriptor = Plugin.PluginDescriptor;
                 HostProject = Plugin.HostProject;
                 ProjectDescriptor projectDescriptor = HostProject.ProjectDescriptor;
@@ -169,7 +169,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     .RetryForever((ex, retryAttempt, ctx) =>
                     {
                         Logger.LogInformation(ex.ToString());
-                        OperationParameters.RetryHandler(ex);
+                        UnrealOperationParameters.RetryHandler(ex);
                     });
                 policy.Execute(() => { FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath); });
 
@@ -237,7 +237,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Logger.LogInformation($"Updated plugin descriptor for staging: {StagingPlugin.PluginDescriptor.VersionName}");
             }
             
-            AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
+            AutomationOptions automationOptions = UnrealOperationParameters.FindOptions<AutomationOptions>();
 
             // Build host project editor
 
@@ -296,7 +296,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using (Logger.BeginSection("Building host project editor"))
             {
-                OperationParameters buildEditorParams = new()
+                UnrealOperationParameters buildEditorParams = new()
                 {
                     Target = HostProject,
                     EngineOverride = Engine
@@ -315,7 +315,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 using (Logger.BeginSection("Launching and testing host project editor"))
                 {
-                    OperationParameters launchEditorParams = new()
+                    UnrealOperationParameters launchEditorParams = new()
                     {
                         Target = HostProject,
                         EngineOverride = Engine
@@ -332,11 +332,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task TestStandalone(AutomationOptions automationOptions)
         {
-            if (automationOptions.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestStandalone)
+            if (automationOptions.RunTests && UnrealOperationParameters.RequestOptions<PluginDeployOptions>().TestStandalone)
             {
                 using (Logger.BeginSection("Launching and testing standalone"))
                 {
-                    OperationParameters launchStandaloneParams = new()
+                    UnrealOperationParameters launchStandaloneParams = new()
                     {
                         Target = HostProject,
                         EngineOverride = Engine
@@ -359,13 +359,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string pluginBuildPath = Path.Combine(GetOperationTempPath(), @"PluginBuild", Plugin.Name);
                 FileUtils.DeleteDirectoryIfExists(pluginBuildPath);
 
-                OperationParameters buildPluginParams = new()
+                UnrealOperationParameters buildPluginParams = new()
                 {
                     Target = StagingPlugin,
                     EngineOverride = Engine,
                     OutputPathOverride = pluginBuildPath
                 };
-                buildPluginParams.SetOptions(OperationParameters.RequestOptions<PluginBuildOptions>());
+                buildPluginParams.SetOptions(UnrealOperationParameters.RequestOptions<PluginBuildOptions>());
 
                 global::LocalAutomation.Runtime.OperationResult buildResult = await new PackagePlugin().Execute(buildPluginParams, Logger, Token);
 
@@ -439,7 +439,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Logger.LogInformation("Building example project with modules");
             // Note: Modules and source are required to build any code plugins that are used for testing
 
-            OperationParameters buildExampleProjectParams = new()
+            UnrealOperationParameters buildExampleProjectParams = new()
             {
                 Target = ExampleProject,
                 EngineOverride = Engine
@@ -453,9 +453,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         // Reuse the example project's prebuilt editor binaries so the packaging validation passes do not spend time
         // recompiling the editor target before cooking and staging.
-        private OperationParameters CreateExampleProjectPackageParams(string outputPath)
+        private UnrealOperationParameters CreateExampleProjectPackageParams(string outputPath)
         {
-            return new OperationParameters
+            return new UnrealOperationParameters
             {
                 Target = ExampleProject,
                 EngineOverride = Engine,
@@ -467,7 +467,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         // Rebuild the packaged plugin in-place with Clang so validation matches the project-plugin flow Fab uses.
         private async Task RunClangCompileCheck()
         {
-            PluginDeployOptions pluginDeployOptions = OperationParameters.RequestOptions<PluginDeployOptions>();
+            PluginDeployOptions pluginDeployOptions = UnrealOperationParameters.RequestOptions<PluginDeployOptions>();
             if (!pluginDeployOptions.RunClangCompileCheck)
             {
                 return;
@@ -481,7 +481,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     throw new Exception("Could not find packaged plugin inside example project for Clang validation");
                 }
 
-                OperationParameters clangBuildParams = new()
+                UnrealOperationParameters clangBuildParams = new()
                 {
                     Target = exampleProjectPlugin,
                     EngineOverride = Engine
@@ -490,11 +490,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Run the Fab-style Clang validation through the direct plugin build path.
                 clangBuildParams.SetOptions(new BuildConfigurationOptions
                 {
-                    Configuration = BuildConfiguration.Development
+                    Configuration = { Value = BuildConfiguration.Development }
                 });
                 clangBuildParams.SetOptions(new UbtCompilerOptions
                 {
-                    Compiler = UbtCompiler.Clang
+                    Compiler = { Value = UbtCompiler.Clang }
                 });
 
                 global::LocalAutomation.Runtime.OperationResult clangBuildResult = await new BuildPlugin().Execute(clangBuildParams, Logger, Token);
@@ -512,7 +512,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string projectPluginPackagePath = Path.Combine(GetOperationTempPath(), @"ProjectPluginPackage");
                 FileUtils.DeleteDirectoryIfExists(projectPluginPackagePath);
 
-                OperationParameters packageWithPluginParams = CreateExampleProjectPackageParams(projectPluginPackagePath);
+                UnrealOperationParameters packageWithPluginParams = CreateExampleProjectPackageParams(projectPluginPackagePath);
 
                 global::LocalAutomation.Runtime.OperationResult buildWithProjectPluginResult = await new PackageProject().Execute(packageWithPluginParams, Logger, Token);
 
@@ -521,13 +521,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     throw new Exception("Package project with included plugin failed");
                 }
                 
-                if (automationOptions.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestPackageWithProjectPlugin)
+                if (automationOptions.RunTests && UnrealOperationParameters.RequestOptions<PluginDeployOptions>().TestPackageWithProjectPlugin)
                 {
                     using (Logger.BeginSection("Testing code project package with project plugin"))
                     {
                         Package projectPluginPackage = new (Path.Combine(projectPluginPackagePath, Engine.GetWindowsPlatformName()));
 
-                        OperationParameters testProjectPluginPackageParams = new()
+                        UnrealOperationParameters testProjectPluginPackageParams = new()
                         {
                             Target = projectPluginPackage,
                             EngineOverride = Engine
@@ -570,7 +570,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string enginePluginPackagePath = Path.Combine(GetOperationTempPath(), @"EnginePluginPackage");
                 FileUtils.DeleteDirectoryIfExists(enginePluginPackagePath);
 
-                OperationParameters installedPluginPackageParams = CreateExampleProjectPackageParams(enginePluginPackagePath);
+                UnrealOperationParameters installedPluginPackageParams = CreateExampleProjectPackageParams(enginePluginPackagePath);
 
                 global::LocalAutomation.Runtime.OperationResult installedPluginPackageOperationResult = await new PackageProject().Execute(installedPluginPackageParams, Logger, Token);
 
@@ -580,13 +580,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
 
                 // Test the package
-                if (automationOptions.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestPackageWithEnginePlugin)
+                if (automationOptions.RunTests && UnrealOperationParameters.RequestOptions<PluginDeployOptions>().TestPackageWithEnginePlugin)
                 {
                     using (Logger.BeginSection("Testing code project package with installed plugin"))
                     {
                         Package enginePluginPackage = new Package(Path.Combine(enginePluginPackagePath, Engine.GetWindowsPlatformName()));
 
-                        OperationParameters testEnginePluginPackageParams = new()
+                        UnrealOperationParameters testEnginePluginPackageParams = new()
                         {
                             Target = enginePluginPackage,
                             EngineOverride = Engine
@@ -615,7 +615,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string blueprintOnlyPackagePath = Path.Combine(GetOperationTempPath(), @"BlueprintOnlyPackage");
                 FileUtils.DeleteDirectoryIfExists(blueprintOnlyPackagePath);
 
-                OperationParameters blueprintOnlyPackageParams = CreateExampleProjectPackageParams(blueprintOnlyPackagePath);
+                UnrealOperationParameters blueprintOnlyPackageParams = CreateExampleProjectPackageParams(blueprintOnlyPackagePath);
 
                 global::LocalAutomation.Runtime.OperationResult blueprintOnlyPackageOperationResult = await new PackageProject().Execute(blueprintOnlyPackageParams, Logger, Token);
 
@@ -625,13 +625,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
                 
                 // Test the package
-                if (automationOptions.RunTests && OperationParameters.RequestOptions<PluginDeployOptions>().TestPackageWithEnginePlugin)
+                if (automationOptions.RunTests && UnrealOperationParameters.RequestOptions<PluginDeployOptions>().TestPackageWithEnginePlugin)
                 {
                     using (Logger.BeginSection("Testing blueprint project package with installed plugin"))
                     {
                         Package enginePluginPackage = new Package(Path.Combine(blueprintOnlyPackagePath, Engine.GetWindowsPlatformName()));
 
-                        OperationParameters testEnginePluginPackageParams = new()
+                        UnrealOperationParameters testEnginePluginPackageParams = new()
                         {
                             Target = enginePluginPackage,
                             EngineOverride = Engine
@@ -678,10 +678,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 FileUtils.DeleteDirectoryIfExists(demoPackagePath);
 
                 PackageProject demoPackageOperation = new();
-                OperationParameters demoPackageParams = CreateExampleProjectPackageParams(demoPackagePath);
+                UnrealOperationParameters demoPackageParams = CreateExampleProjectPackageParams(demoPackagePath);
 
                 // Set options for demo exe
-                demoPackageParams.RequestOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
+                demoPackageParams.RequestOptions<BuildConfigurationOptions>().Configuration.Value = BuildConfiguration.Shipping;
                 demoPackageParams.RequestOptions<PackageOptions>().NoDebugInfo.Value = true;
 
                 global::LocalAutomation.Runtime.OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, Logger, Token);
@@ -701,10 +701,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             var exampleProjectPlugins = ExampleProject.Plugins;
             
-            string[] excludePlugins = OperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ", "").Split(",");
+            string[] excludePlugins = UnrealOperationParameters.RequestOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ", "").Split(",");
             foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
             {
-                if (exampleProjectPlugin.Name == Plugin.Name || !OperationParameters.RequestOptions<PluginDeployOptions>().IncludeOtherPlugins || excludePlugins.Contains(exampleProjectPlugin.Name))
+                if (exampleProjectPlugin.Name == Plugin.Name || !UnrealOperationParameters.RequestOptions<PluginDeployOptions>().IncludeOtherPlugins || excludePlugins.Contains(exampleProjectPlugin.Name))
                 {
                     // Delete target or excluded plugin from example project
                     FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
@@ -722,14 +722,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using (Logger.BeginSection("Archiving"))
             {
-                string archivePath = Path.Combine(GetOutputPath(OperationParameters), "Archives");
+                string archivePath = Path.Combine(GetOutputPath(UnrealOperationParameters), "Archives");
 
                 Directory.CreateDirectory(archivePath);
 
                 // Archive plugin build
 
                 string pluginBuildZipPath = Path.Combine(archivePath, archivePrefix + "PluginBuild.zip");
-                bool archivePluginBuild = OperationParameters.RequestOptions<PluginDeployOptions>().ArchivePluginBuild;
+                bool archivePluginBuild = UnrealOperationParameters.RequestOptions<PluginDeployOptions>().ArchivePluginBuild;
                 if (archivePluginBuild)
                 {
                     Logger.LogInformation("Archiving plugin build");
@@ -740,7 +740,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Archive demo exe
 
                 string demoPackageZipPath = Path.Combine(archivePath, archivePrefix + "DemoPackage.zip");
-                bool archiveDemoPackage = OperationParameters.RequestOptions<PluginDeployOptions>().ArchiveDemoPackage;
+                bool archiveDemoPackage = UnrealOperationParameters.RequestOptions<PluginDeployOptions>().ArchiveDemoPackage;
                 if (archiveDemoPackage)
                 {
                     Logger.LogInformation("Archiving demo");
@@ -752,7 +752,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Archive example project
 
                 string exampleProjectZipPath = Path.Combine(archivePath, archivePrefix + "ExampleProject.zip");
-                bool archiveExampleProject = OperationParameters.RequestOptions<PluginDeployOptions>().ArchiveExampleProject;
+                bool archiveExampleProject = UnrealOperationParameters.RequestOptions<PluginDeployOptions>().ArchiveExampleProject;
 
                 if (archiveExampleProject)
                 {
@@ -790,7 +790,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 FileUtils.DeleteFileIfExists(pluginSourceArchiveZipPath);
                 ZipFile.CreateFromDirectory(pluginSourcePath, pluginSourceArchiveZipPath, CompressionLevel.Optimal, true);
 
-                string archiveOutputPath = OperationParameters.RequestOptions<PluginDeployOptions>().ArchivePath;
+                string archiveOutputPath = UnrealOperationParameters.RequestOptions<PluginDeployOptions>().ArchivePath;
                 if (!string.IsNullOrEmpty(archiveOutputPath))
                 {
                     Logger.LogInformation("Copying to archive output path");
@@ -824,11 +824,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
     }
     
-    public class DeployPlugin : Operation<Plugin>
+    public class DeployPlugin : UnrealOperation<Plugin>
     {
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
@@ -861,10 +861,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
-            Plugin plugin = GetTarget(OperationParameters);
+            Plugin plugin = GetTarget(UnrealOperationParameters);
 
-            Logger.LogInformation($"Versions: {string.Join(", ", OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
-            foreach (EngineVersion engineVersion in OperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
+            Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
+            foreach (EngineVersion engineVersion in UnrealOperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
             {
                 Engine engine = EngineFinder.GetEngineInstall(engineVersion);
                 if (engine == null)
@@ -885,12 +885,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task<global::LocalAutomation.Runtime.OperationResult> DeployForEngine(Engine engine, CancellationToken token)
         {
             DeployPluginForEngine deployForEngineOp = new() { Engine = engine };
-            return await deployForEngineOp.Execute(OperationParameters, Logger, token);
+            return await deployForEngineOp.Execute(UnrealOperationParameters, Logger, token);
         }
 
         protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             typedParameters.RequestOptions<EngineVersionOptions>();
             typedParameters.RequestOptions<AutomationOptions>();
             typedParameters.RequestOptions<PluginBuildOptions>();

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,12 +11,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations;
 /// Preserves the historical Unreal base operation type name while the canonical implementation lives in the shared
 /// runtime project.
 /// </summary>
-public abstract class Operation : global::LocalAutomation.Runtime.Operation
+public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operation
 {
     /// <summary>
     /// Returns the active parameter object cast back to the Unreal-specific parameter type.
     /// </summary>
-    protected new UnrealAutomationCommon.Operations.OperationParameters OperationParameters => (UnrealAutomationCommon.Operations.OperationParameters)base.OperationParameters;
+    protected UnrealAutomationCommon.Operations.UnrealOperationParameters UnrealOperationParameters => (UnrealAutomationCommon.Operations.UnrealOperationParameters)base.OperationParameters;
 
     /// <summary>
     /// Creates a new Unreal parameter object so Unreal-specific engine resolution remains available during option
@@ -24,7 +24,7 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
     /// </summary>
     protected override global::LocalAutomation.Runtime.OperationParameters CreateOperationParameters()
     {
-        return new UnrealAutomationCommon.Operations.OperationParameters();
+        return new UnrealAutomationCommon.Operations.UnrealOperationParameters();
     }
 
     /// <summary>
@@ -32,7 +32,7 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
     /// </summary>
     public override global::LocalAutomation.Runtime.OperationParameters CreateParameters(global::LocalAutomation.Runtime.OperationParameters? existing = null)
     {
-        UnrealAutomationCommon.Operations.OperationParameters parameters = (UnrealAutomationCommon.Operations.OperationParameters)base.CreateParameters(existing);
+        UnrealAutomationCommon.Operations.UnrealOperationParameters parameters = (UnrealAutomationCommon.Operations.UnrealOperationParameters)base.CreateParameters(existing);
         if (parameters.GetOptionsInstance(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions)) == null)
         {
             parameters.SetOptions(new UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions());
@@ -55,7 +55,7 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
     /// <summary>
     /// Returns the effective Unreal engine install for the current parameter state.
     /// </summary>
-    public UnrealAutomationCommon.Unreal.Engine? GetTargetEngineInstall(UnrealAutomationCommon.Operations.OperationParameters operationParameters)
+    public UnrealAutomationCommon.Unreal.Engine? GetTargetEngineInstall(UnrealAutomationCommon.Operations.UnrealOperationParameters operationParameters)
     {
         return operationParameters.Engine;
     }
@@ -65,14 +65,14 @@ public abstract class Operation : global::LocalAutomation.Runtime.Operation
 /// <summary>
 /// Preserves the historical generic Unreal base operation type while using the shared runtime implementation.
 /// </summary>
-public abstract class Operation<T> : Operation where T : global::LocalAutomation.Runtime.IOperationTarget
+public abstract class UnrealOperation<T> : UnrealOperation where T : global::LocalAutomation.Runtime.IOperationTarget
 {
     /// <summary>
     /// Creates a typed Unreal operation instance for the provided runtime type.
     /// </summary>
-    public new static Operation<T> CreateOperation(System.Type operationType)
+    public new static UnrealOperation<T> CreateOperation(System.Type operationType)
     {
-        return (Operation<T>)System.Activator.CreateInstance(operationType)!;
+        return (UnrealOperation<T>)System.Activator.CreateInstance(operationType)!;
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ public abstract class Operation<T> : Operation where T : global::LocalAutomation
     /// <summary>
     /// Returns the current target cast to the required Unreal target type.
     /// </summary>
-    public T? GetTarget(UnrealAutomationCommon.Operations.OperationParameters operationParameters)
+    public T? GetTarget(UnrealAutomationCommon.Operations.UnrealOperationParameters operationParameters)
     {
         return (T?)operationParameters.Target;
     }

@@ -1,4 +1,4 @@
-using UnrealAutomationCommon.Operations.BaseOperations;
+﻿using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
@@ -9,7 +9,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         // Direct Build.bat plugin compilation needs a host project and only applies to code plugins.
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
@@ -37,7 +37,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         // Build the plugin against its host project through Build.bat so plugin compilation stays in place.
-        protected override void ConfigureBuildArguments(OperationParameters operationParameters, Arguments args)
+        protected override void ConfigureBuildArguments(UnrealOperationParameters operationParameters, Arguments args)
         {
             Plugin plugin = GetTarget(operationParameters);
             Project hostProject = plugin.HostProject;
@@ -45,7 +45,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Match Unreal's direct plugin build flow: editor target, platform, configuration, host project, then plugin path.
             args.SetArgument(GetTargetEngineInstall(operationParameters).BaseEditorName);
             args.SetArgument("Win64");
-            args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.ToString());
+            args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.Value.ToString());
             args.SetPath(hostProject.UProjectPath);
             args.SetKeyPath("plugin", plugin.UPluginPath);
         }

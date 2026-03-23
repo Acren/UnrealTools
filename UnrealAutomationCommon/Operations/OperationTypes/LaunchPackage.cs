@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,7 +13,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             string baseError = base.CheckRequirementsSatisfied(operationParameters);
             if (baseError != null)
             {
@@ -28,7 +28,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return null;
         }
 
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             Arguments args = UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters));
             args.SetFlag("windowed");
@@ -39,7 +39,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
-            AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
+            AutomationOptions automationOptions = UnrealOperationParameters.FindOptions<AutomationOptions>();
             if (automationOptions is { RunTests: { Value: true } })
             {
                 // Packages don't have a test report template, but the engine still expects it
@@ -47,12 +47,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 var reportTemplateName = "Report-Template.html";
                 var reportTemplateSubdir = "Engine/Content/Automation";
                 string reportTemplateSubpath = Path.Combine(reportTemplateSubdir, reportTemplateName);
-                string packageDir = GetTarget(OperationParameters).GetProvidedPackage(OperationParameters.Engine).TargetDirectory;
+                string packageDir = GetTarget(UnrealOperationParameters).GetProvidedPackage(UnrealOperationParameters.Engine).TargetDirectory;
                 string reportTemplateDir = Path.Combine(packageDir, reportTemplateSubdir);
                 string reportTemplatePath = Path.Combine(packageDir, reportTemplateSubpath);
                 if (!File.Exists(reportTemplatePath))
                 {
-                    string engineReportTemplate = Path.Combine(GetTargetEngineInstall(OperationParameters).TargetPath, reportTemplateSubpath);
+                    string engineReportTemplate = Path.Combine(GetTargetEngineInstall(UnrealOperationParameters).TargetPath, reportTemplateSubpath);
                     if (!File.Exists(engineReportTemplate))
                     {
                         throw new Exception("Expected engine report template");
@@ -73,7 +73,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         public override string GetLogsPath(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             return GetTarget(typedParameters).GetProvidedPackage(typedParameters.Engine).LogsPath;
         }
     }

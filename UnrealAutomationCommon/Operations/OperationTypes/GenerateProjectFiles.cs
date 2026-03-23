@@ -5,7 +5,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class GenerateProjectFiles : CommandProcessOperation<Project>
     {
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             Arguments args = new();
             args.SetFlag("projectfiles");

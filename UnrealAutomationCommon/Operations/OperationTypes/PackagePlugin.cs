@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging;
@@ -16,7 +16,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         // Fail early when the selected engine cannot even advertise the requested code platforms.
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            OperationParameters typedParameters = (OperationParameters)operationParameters;
+            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
@@ -32,7 +32,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return PluginBuildPlatformValidation.CheckRequirementsSatisfied(typedParameters, engine);
         }
 
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             // Package the plugin into a distributable output folder through UAT's BuildPlugin flow.
             PluginBuildOptions pluginBuildOptions = operationParameters.RequestOptions<PluginBuildOptions>();
@@ -98,7 +98,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         // Build the final UAT argument list once so validation and execution inspect the same effective request.
-        private Arguments BuildPluginArguments(OperationParameters operationParameters, PluginBuildOptions pluginBuildOptions)
+        private Arguments BuildPluginArguments(UnrealOperationParameters operationParameters, PluginBuildOptions pluginBuildOptions)
         {
             Arguments buildPluginArguments = new();
             buildPluginArguments.SetArgument("BuildPlugin");

@@ -1,25 +1,16 @@
-﻿using global::LocalAutomation.Runtime;
-using UnrealAutomationCommon.Unreal;
+﻿using UnrealAutomationCommon.Unreal;
+using LocalAutomation.Runtime;
+
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class CookOptions : global::LocalAutomation.Runtime.OperationOptions
+    public class CookOptions : OperationOptions
     {
-        private BuildConfiguration _cookerConfiguration = BuildConfiguration.Development;
-
         public override int SortIndex => 30;
         public override string Name => "Cooker";
 
-        public BuildConfiguration CookerConfiguration
-        {
-            get => _cookerConfiguration;
-            set
-            {
-                _cookerConfiguration = value;
-                OnPropertyChanged();
-            }
-        }
+        public Option<BuildConfiguration> CookerConfiguration { get; } = BuildConfiguration.Development;
 
-        public global::LocalAutomation.Runtime.Option<bool> WaitForAttach { get; } = false;
+        public Option<bool> WaitForAttach { get; } = false;
     }
 }

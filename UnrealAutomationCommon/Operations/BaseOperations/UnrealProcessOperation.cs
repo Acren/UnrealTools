@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
@@ -13,10 +13,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         protected override void OnProcessEnded(global::LocalAutomation.Runtime.OperationResult result)
         {
             // Report test results
-            AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
+            AutomationOptions automationOptions = UnrealOperationParameters.FindOptions<AutomationOptions>();
             if (!Cancelled && automationOptions is { RunTests: { Value: true } })
             {
-                IEngineInstanceProvider engineInstanceProvider = OperationParameters.Target as IEngineInstanceProvider;
+                IEngineInstanceProvider engineInstanceProvider = UnrealOperationParameters.Target as IEngineInstanceProvider;
                 if (engineInstanceProvider == null)
                 {
                     throw new Exception("Target does not provide engine install");
@@ -28,7 +28,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 }
                 else
                 {
-                    string reportFilePath = OutputPaths.GetTestReportFilePath(GetOutputPath(OperationParameters));
+                    string reportFilePath = OutputPaths.GetTestReportFilePath(GetOutputPath(UnrealOperationParameters));
                     TestReport report = TestReport.Load(reportFilePath);
                     if (report == null)
                     {

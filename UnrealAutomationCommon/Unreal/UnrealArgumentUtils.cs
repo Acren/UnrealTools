@@ -1,10 +1,10 @@
-using UnrealAutomationCommon.Operations;
+﻿using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
     public static class UnrealArgumentUtils
     {
-        public static void AddAdditionalArguments(this Arguments arguments, OperationParameters operationParameters)
+        public static void AddAdditionalArguments(this Arguments arguments, UnrealOperationParameters operationParameters)
         {
             if (!string.IsNullOrWhiteSpace(operationParameters.AdditionalArguments))
             {

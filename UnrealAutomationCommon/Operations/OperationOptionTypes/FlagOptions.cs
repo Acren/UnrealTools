@@ -1,31 +1,14 @@
-﻿namespace UnrealAutomationCommon.Operations.OperationOptionTypes
-{
-    public class FlagOptions : global::LocalAutomation.Runtime.OperationOptions
-    {
-        private bool _stompMalloc;
-        private bool _waitForAttach;
+﻿using LocalAutomation.Runtime;
 
+namespace UnrealAutomationCommon.Operations.OperationOptionTypes
+{
+    public class FlagOptions : OperationOptions
+    {
         public override int SortIndex => 40;
         public override string Name => "Flags";
 
-        public bool StompMalloc
-        {
-            get => _stompMalloc;
-            set
-            {
-                _stompMalloc = value;
-                OnPropertyChanged();
-            }
-        }
+        public Option<bool> StompMalloc { get; } = false;
 
-        public bool WaitForAttach
-        {
-            get => _waitForAttach;
-            set
-            {
-                _waitForAttach = value;
-                OnPropertyChanged();
-            }
-        }
+        public Option<bool> WaitForAttach { get; } = false;
     }
 }

@@ -1,4 +1,4 @@
-using UnrealAutomationCommon.Operations;
+﻿using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 using RuntimeTarget = LocalAutomation.Runtime.OperationTarget;
@@ -11,7 +11,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         // Validate shared direct-UBT overrides once so every Build.bat-backed operation enforces the same limits.
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            UnrealAutomationCommon.Operations.OperationParameters typedParameters = (UnrealAutomationCommon.Operations.OperationParameters)operationParameters;
+            UnrealAutomationCommon.Operations.UnrealOperationParameters typedParameters = (UnrealAutomationCommon.Operations.UnrealOperationParameters)operationParameters;
             string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
@@ -39,7 +39,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return null;
         }
 
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(OperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             Arguments args = new();
 
@@ -50,10 +50,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         }
 
         // Derived operations provide the target name, platform/config, project path, and any target-specific flags.
-        protected abstract void ConfigureBuildArguments(OperationParameters operationParameters, Arguments args);
+        protected abstract void ConfigureBuildArguments(UnrealOperationParameters operationParameters, Arguments args);
 
         // Apply the shared direct-UBT overrides only for Build.bat flows that are known to respect them.
-        protected void ApplySharedBuildArguments(OperationParameters operationParameters, Arguments args)
+        protected void ApplySharedBuildArguments(UnrealOperationParameters operationParameters, Arguments args)
         {
             UbtCompilerOptions buildBatOptions = operationParameters.RequestOptions<UbtCompilerOptions>();
             UbtCompiler compiler = buildBatOptions.Compiler;
