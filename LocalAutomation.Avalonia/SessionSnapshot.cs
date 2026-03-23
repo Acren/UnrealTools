@@ -13,7 +13,7 @@ public sealed class SessionSnapshot
     /// Gets or sets the snapshot schema version.
     /// </summary>
     [JsonProperty]
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
 
     /// <summary>
     /// Gets or sets the persisted targets and their nested UI state.
@@ -32,6 +32,13 @@ public sealed class SessionSnapshot
     /// </summary>
     [JsonProperty]
     public string PendingTargetPath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the last selected operation identifier for each target type so switching between targets of the
+    /// same kind can retain the user's preferred operation.
+    /// </summary>
+    [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+    public Dictionary<string, string?> SelectedOperationIdsByTargetType { get; set; } = new();
 }
 
 /// <summary>
@@ -57,23 +64,4 @@ public sealed class TargetSessionSnapshot
     /// </summary>
     [JsonProperty]
     public string Path { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the nested per-target UI state.
-    /// </summary>
-    [JsonProperty]
-    public TargetUiStateSnapshot State { get; set; } = new();
-}
-
-/// <summary>
-/// Stores the target-scoped UI state restored when a target becomes active.
-/// </summary>
-[JsonObject(MemberSerialization.OptIn)]
-public sealed class TargetUiStateSnapshot
-{
-    /// <summary>
-    /// Gets or sets the selected operation identifier for the target.
-    /// </summary>
-    [JsonProperty]
-    public string? SelectedOperationId { get; set; }
 }

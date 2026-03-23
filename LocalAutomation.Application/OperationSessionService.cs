@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
 
 namespace LocalAutomation.Application;
@@ -36,6 +38,33 @@ public sealed class OperationSessionService
     public Operation? CreateOperation(Type? operationType)
     {
         return _runtime.CreateOperation(operationType);
+    }
+
+    /// <summary>
+    /// Resolves the operation identifier that should remain selected after the target changes by first keeping the
+    /// current compatible selection and then falling back to the remembered operation for the new target type.
+    /// </summary>
+    public string? ResolveSelectedOperationId(
+        IReadOnlyList<OperationDescriptor> availableOperations,
+        string? currentSelectedOperationId,
+        string? rememberedOperationId)
+    {
+        if (availableOperations == null)
+        {
+            throw new ArgumentNullException(nameof(availableOperations));
+        }
+
+        if (!string.IsNullOrWhiteSpace(currentSelectedOperationId) && availableOperations.Any(descriptor => string.Equals(descriptor.Id, currentSelectedOperationId, StringComparison.Ordinal)))
+        {
+            return currentSelectedOperationId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(rememberedOperationId) && availableOperations.Any(descriptor => string.Equals(descriptor.Id, rememberedOperationId, StringComparison.Ordinal)))
+        {
+            return rememberedOperationId;
+        }
+
+        return null;
     }
 
     /// <summary>

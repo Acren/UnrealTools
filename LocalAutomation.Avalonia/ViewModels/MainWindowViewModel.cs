@@ -18,20 +18,28 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class MainWindowViewModel : ViewModelBase
 {
+    [Flags]
+    private enum SelectionTransitionState
+    {
+        None = 0,
+        ApplyingTargetState = 1,
+        HydratingSessionSelection = 2,
+        RestoringSession = 4
+    }
+
     private static readonly TimeSpan SessionSaveDebounceDelay = TimeSpan.FromMilliseconds(350);
 
     private readonly LocalAutomationApplicationHost _services;
     private readonly OperationParameterSession _parameterSession;
     private readonly SessionPersistenceService _sessionPersistence;
     private readonly DispatcherTimer _sessionSaveTimer;
-    private bool _isApplyingTargetState;
-    private bool _isHydratingSessionSelection;
-    private bool _isRestoringSession;
+    private ObservableCollection<OperationDescriptor> _availableOperations = new();
     private bool _hasPendingSessionSave;
     private Operation? _currentOperation;
-    private OperationDescriptor? _selectedOperation;
+    private string? _selectedOperationId;
     private SessionSnapshot _sessionSnapshot = new();
     private string _status = $"Add a target path to begin using the {App.Branding.ApplicationName} shell.";
+    private SelectionTransitionState _selectionTransitionState;
 
     /// <summary>
     /// Creates the Avalonia main-window view model around the shared LocalAutomation application host.
@@ -57,7 +65,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Gets the operations compatible with the current target selection.
     /// </summary>
-    public ObservableCollection<OperationDescriptor> AvailableOperations { get; } = new();
+    public ObservableCollection<OperationDescriptor> AvailableOperations
+    {
+        get => _availableOperations;
+        private set => SetProperty(ref _availableOperations, value);
+    }
 
     /// <summary>
     /// Gets the editable option sets for the current target and operation selection.
@@ -85,67 +97,75 @@ public sealed class MainWindowViewModel : ViewModelBase
     public bool ShowStartupMessage => !string.IsNullOrWhiteSpace(StartupMessage);
 
     /// <summary>
-    /// Gets or sets the currently selected operation descriptor.
+    /// Gets the currently selected operation descriptor resolved from the current compatible operation list.
     /// </summary>
     public OperationDescriptor? SelectedOperation
     {
-        get => _selectedOperation;
+        get => ResolveOperationById(AvailableOperations, _selectedOperationId);
+        set => SelectedOperationId = value?.Id;
+    }
+
+    /// <summary>
+    /// Gets or sets the stable identifier of the currently selected operation so the picker can preserve selection
+    /// across operation-list refreshes without depending on object identity.
+    /// </summary>
+    public string? SelectedOperationId
+    {
+        get => _selectedOperationId;
         set
         {
-            OperationDescriptor? previousSelection = _selectedOperation;
-            Operation? previousOperation = _currentOperation;
-            OperationParameters previousParameters = _parameterSession.RawValue;
-            IOperationTarget? selectedOperationTarget = SelectedTarget?.Target as IOperationTarget;
-
-            // Capture the current target-scoped option values before changing the selected operation because operation
-            // switches can temporarily remove option sets like compiler settings from the live parameter model.
-            if (!_isHydratingSessionSelection && !_isApplyingTargetState && !_isRestoringSession && SelectedTarget?.Target != null)
-            {
-                CaptureTargetState(SelectedTarget.Target);
-            }
-
-            if (!SetProperty(ref _selectedOperation, value))
+            string? normalizedOperationId = ResolveAvailableOperationById(value)?.Id;
+            if (string.Equals(_selectedOperationId, normalizedOperationId, StringComparison.Ordinal))
             {
                 return;
             }
 
-            try
-            {
-                // Keep the live operation object aligned with the selected descriptor so command preview, validation,
-                // and execution all run through the same shared runtime path.
-                OperationParameters existingParameters = _parameterSession.RawValue;
-                _currentOperation = value != null ? _services.OperationSession.CreateOperation(value.OperationType) : null;
-                OperationParameters replacementParameters = _currentOperation?.CreateParameters(existingParameters) ?? new OperationParameters();
-
-                // Reapply the current UI target explicitly before swapping parameter objects so a fast target ->
-                // operation selection sequence cannot leave the new runtime parameter state without a target.
-                replacementParameters.Target = selectedOperationTarget ?? existingParameters.Target;
-                _parameterSession.Replace(replacementParameters);
-            }
-            catch (Exception ex)
-            {
-                // Never let operation activation failures escape the binding setter, because Avalonia will surface the
-                // raw exception inline under the ComboBox as a validation error. Log the failure, restore the previous
-                // runtime state, and report a normal status message instead.
-                _selectedOperation = previousSelection;
-                _currentOperation = previousOperation;
-                _parameterSession.Replace(previousParameters);
-                RaisePropertyChanged();
-                RaiseDerivedStateChanged();
-                ApplicationLogService.LogError(ex, "Failed to activate operation '{OperationName}'.", value?.DisplayName ?? "<none>");
-                SetStatus($"Failed to load '{value?.DisplayName ?? "the selected operation"}'. See the application log for details.");
-                return;
-            }
-
-            if (!_isHydratingSessionSelection && !_isApplyingTargetState)
-            {
-                RefreshEnabledOptionSets();
-                ApplyPersistedSettingsForSelectedTarget();
-                RaiseDerivedStateChanged();
-            }
-
-            SaveSessionState();
+            // Resolve the requested identifier against the currently compatible operations so user-driven picker
+            // changes always activate a runtime operation that the selected target can actually execute.
+            ApplySelectedOperationSelection(normalizedOperationId);
         }
+    }
+
+    /// <summary>
+    /// Applies a selected operation identifier to both the view-model state and the runtime parameter session.
+    /// </summary>
+    private void ApplySelectedOperationSelection(string? selectedOperationId)
+    {
+        Operation? previousOperation = _currentOperation;
+        OperationParameters previousParameters = _parameterSession.RawValue;
+        string? previousSelectedOperationId = _selectedOperationId;
+        OperationDescriptor? selectedOperation = ResolveAvailableOperationById(selectedOperationId);
+
+        if (string.Equals(previousSelectedOperationId, selectedOperationId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        // Capture the current target-scoped option values before changing the selected operation because operation
+        // switches can temporarily remove option sets like compiler settings from the live parameter model.
+        if (!IsSelectionTransitionActive(SelectionTransitionState.HydratingSessionSelection | SelectionTransitionState.ApplyingTargetState | SelectionTransitionState.RestoringSession) && SelectedTarget?.Target != null)
+        {
+            PersistTargetOptionValues(SelectedTarget.Target);
+            RememberOperationForTargetType(SelectedTarget.Target, previousSelectedOperationId);
+        }
+
+        _selectedOperationId = selectedOperationId;
+        RaisePropertyChanged(nameof(SelectedOperationId));
+        RaisePropertyChanged(nameof(SelectedOperation));
+
+        if (!TryApplySelectedOperation(selectedOperation, previousOperation, previousParameters, previousSelectedOperationId))
+        {
+            return;
+        }
+
+        if (!IsSelectionTransitionActive(SelectionTransitionState.HydratingSessionSelection | SelectionTransitionState.ApplyingTargetState))
+        {
+            RefreshEnabledOptionSets();
+            ApplyPersistedSettingsForSelectedTarget();
+            RaiseDerivedStateChanged();
+        }
+
+        SaveSessionState();
     }
 
     /// <summary>
@@ -280,13 +300,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         // Ignore nested parameter notifications while session hydration is still rebuilding target, operation, and
         // option state. Refreshing too early can treat restored options as invalid and replace them with defaults.
-        if (_isRestoringSession || _isApplyingTargetState)
+        if (IsSelectionTransitionActive(SelectionTransitionState.RestoringSession | SelectionTransitionState.ApplyingTargetState))
         {
             return;
         }
 
         RaiseDerivedStateChanged();
-        QueueSessionStateSave();
+        SaveSessionState();
     }
 
     /// <summary>
@@ -299,9 +319,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Captures the current selected operation and layered config state for the provided target.
+    /// Persists the current target-scoped option values for the provided runtime target.
     /// </summary>
-    private void CaptureTargetState(IOperationTarget? target)
+    private void PersistTargetOptionValues(IOperationTarget? target)
     {
         if (target == null)
         {
@@ -309,7 +329,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         TargetSessionSnapshot snapshot = FindTargetSnapshot(target) ?? _sessionPersistence.CreateTargetSnapshot(target);
-        snapshot.State.SelectedOperationId = SelectedOperation?.Id;
         TargetSettingsContext context = _services.OptionValues.CreateTargetContext(_services.Targets, target);
         _services.OptionValues.SaveOptionValues(_parameterSession.OptionSets, context);
 
@@ -325,27 +344,36 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Remembers the selected operation for the provided target type so target switches can restore the user's last
+    /// compatible operation preference for that target kind.
+    /// </summary>
+    private void RememberOperationForTargetType(IOperationTarget? target, string? operationId)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        string? targetTypeId = _services.Targets.GetTargetTypeId(target);
+        if (string.IsNullOrWhiteSpace(targetTypeId))
+        {
+            return;
+        }
+
+        _sessionSnapshot.SelectedOperationIdsByTargetType[targetTypeId] = operationId;
+    }
+
+    /// <summary>
     /// Restores the selected target's persisted operation choice and layered settings into the live editing state.
     /// </summary>
     private void RestoreSelectedTargetState()
     {
-        _isApplyingTargetState = true;
-        try
+        using (BeginSelectionTransition(SelectionTransitionState.ApplyingTargetState))
         {
             _parameterSession.ResetOptionSets();
 
-            TargetSessionSnapshot? targetSnapshot = SelectedTarget?.Target == null ? null : FindTargetSnapshot(SelectedTarget.Target);
-            if (targetSnapshot?.State.SelectedOperationId != null)
-            {
-                SelectedOperation = AvailableOperations.FirstOrDefault(descriptor => string.Equals(descriptor.Id, targetSnapshot.State.SelectedOperationId, StringComparison.Ordinal)) ?? SelectedOperation;
-            }
-
             RefreshEnabledOptionSets();
             ApplyPersistedSettingsForSelectedTarget();
-        }
-        finally
-        {
-            _isApplyingTargetState = false;
         }
     }
 
@@ -355,8 +383,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RestoreSessionState()
     {
-        _isRestoringSession = true;
-        try
+        using (BeginSelectionTransition(SelectionTransitionState.RestoringSession))
         {
             _sessionSnapshot = _sessionPersistence.Load();
             Collection<TargetSessionSnapshot> restoredSnapshots = new();
@@ -380,11 +407,12 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             // Apply the restored target and operation together before recomputing enabled option sets so the hydration
             // pass does not temporarily coerce to a different operation and replace persisted values with defaults.
-            _isHydratingSessionSelection = true;
-            Target.SelectedTarget = restoredSelection ?? Target.Targets.FirstOrDefault();
-            RefreshOperationSelection();
+            using (BeginSelectionTransition(SelectionTransitionState.HydratingSessionSelection))
+            {
+                Target.SelectedTarget = restoredSelection ?? Target.Targets.FirstOrDefault();
+                RefreshOperationSelection();
+            }
 
-            _isHydratingSessionSelection = false;
             RestoreSelectedTargetState();
             RaiseDerivedStateChanged();
 
@@ -393,12 +421,8 @@ public sealed class MainWindowViewModel : ViewModelBase
                 Status = $"Restored {Target.Targets.Count} target(s) from the previous Avalonia session.";
             }
         }
-        finally
-        {
-            _isHydratingSessionSelection = false;
-            _isRestoringSession = false;
-            RaiseDerivedStateChanged();
-        }
+
+        RaiseDerivedStateChanged();
     }
 
     /// <summary>
@@ -406,7 +430,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void SaveSessionState()
     {
-        if (_isRestoringSession || _isApplyingTargetState)
+        if (IsSelectionTransitionActive(SelectionTransitionState.RestoringSession | SelectionTransitionState.ApplyingTargetState))
         {
             return;
         }
@@ -423,14 +447,14 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         _hasPendingSessionSave = false;
 
-        CaptureTargetState(Target.SelectedTarget?.Target);
+        PersistTargetOptionValues(Target.SelectedTarget?.Target);
+        RememberOperationForTargetType(Target.SelectedTarget?.Target, SelectedOperationId);
         _sessionSnapshot.Targets = Target.Targets.Select(item =>
         {
             TargetSessionSnapshot snapshot = FindTargetSnapshot(item.Target) ?? _sessionPersistence.CreateTargetSnapshot(item.Target);
             snapshot.TargetTypeId = _services.Targets.GetTargetTypeId(item.Target) ?? snapshot.TargetTypeId;
             snapshot.Path = _services.Targets.GetTargetPath(item.Target);
             snapshot.Key = _sessionPersistence.BuildTargetKey(snapshot.TargetTypeId, snapshot.Path);
-            snapshot.State ??= new TargetUiStateSnapshot();
             return snapshot;
         }).ToList();
         _sessionSnapshot.SelectedTargetKey = Target.SelectedTarget?.Target == null ? null : _sessionPersistence.CreateTargetSnapshot(Target.SelectedTarget.Target).Key;
@@ -446,7 +470,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         _sessionSaveTimer.Stop();
 
-        if (_isRestoringSession || !_hasPendingSessionSave)
+        if (IsSelectionTransitionActive(SelectionTransitionState.RestoringSession) || !_hasPendingSessionSave)
         {
             return;
         }
@@ -455,26 +479,93 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Queues a debounced session save for the current shell state.
-    /// </summary>
-    private void QueueSessionStateSave()
-    {
-        SaveSessionState();
-    }
-
-    /// <summary>
     /// Applies shell-level side effects after the target panel changes the selected target.
     /// </summary>
     private void HandleSelectedTargetChanged(TargetListItemViewModel? previousTarget, TargetListItemViewModel? selectedTarget)
     {
-        IOperationTarget? previousOperationTarget = previousTarget?.Target;
-        if (!_isHydratingSessionSelection && !_isRestoringSession && !_isApplyingTargetState && previousOperationTarget != null)
+        ApplySelectedTargetChange(previousTarget, selectedTarget);
+    }
+
+    /// <summary>
+    /// Rebuilds the compatible operation list for the currently selected target and preserves the active selection when
+    /// it remains valid.
+    /// </summary>
+    private void RefreshOperationSelection()
+    {
+        string? previousSelectedOperationId = _selectedOperationId;
+        IReadOnlyList<OperationDescriptor> compatibleOperations = _services.Operations.GetAvailableOperations(SelectedTarget?.Target);
+
+        string? retainedOperationId = _services.OperationSession.ResolveSelectedOperationId(
+            compatibleOperations,
+            previousSelectedOperationId,
+            GetRememberedOperationIdForSelectedTargetType());
+
+        // Publish the rebuilt compatible list and the resolved selected item together so the picker never observes a
+        // transient state where the retained operation id points at a list that no longer contains its descriptor.
+        AvailableOperations = new ObservableCollection<OperationDescriptor>(compatibleOperations);
+        ApplySelectedOperationSelection(retainedOperationId);
+    }
+
+    /// <summary>
+    /// Applies the newly selected operation by creating the matching runtime operation and parameter object while
+    /// preserving the current target and any reusable option state.
+    /// </summary>
+    private bool TryApplySelectedOperation(
+        OperationDescriptor? selectedOperation,
+        Operation? previousOperation,
+        OperationParameters previousParameters,
+        string? previousSelectedOperationId)
+    {
+        try
         {
-            CaptureTargetState(previousOperationTarget);
+            _currentOperation = selectedOperation != null ? _services.OperationSession.CreateOperation(selectedOperation.OperationType) : null;
+            OperationParameters replacementParameters = _currentOperation?.CreateParameters(previousParameters) ?? new OperationParameters();
+            _parameterSession.Replace(replacementParameters, SelectedTarget?.Target as IOperationTarget);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            HandleOperationActivationFailure(selectedOperation, previousOperation, previousParameters, previousSelectedOperationId, ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Restores the previous operation state when activation fails so the binding surface never exposes raw exceptions
+    /// or leaves the shell with partially-applied runtime state.
+    /// </summary>
+    private void HandleOperationActivationFailure(
+        OperationDescriptor? requestedSelection,
+        Operation? previousOperation,
+        OperationParameters previousParameters,
+        string? previousSelectedOperationId,
+        Exception ex)
+    {
+        _selectedOperationId = previousSelectedOperationId;
+        _currentOperation = previousOperation;
+        _parameterSession.Replace(previousParameters, SelectedTarget?.Target as IOperationTarget);
+        RaisePropertyChanged(nameof(SelectedOperationId));
+        RaisePropertyChanged(nameof(SelectedOperation));
+        RaiseDerivedStateChanged();
+        ApplicationLogService.LogError(ex, "Failed to activate operation '{OperationName}'.", requestedSelection?.DisplayName ?? "<none>");
+        SetStatus($"Failed to load '{requestedSelection?.DisplayName ?? "the selected operation"}'. See the application log for details.");
+    }
+
+    /// <summary>
+    /// Applies the selected target to the live parameter state, refreshes the compatible operation list, restores any
+    /// persisted target-specific state, and then queues persistence for the updated selection.
+    /// </summary>
+    private void ApplySelectedTargetChange(TargetListItemViewModel? previousTarget, TargetListItemViewModel? selectedTarget)
+    {
+        IOperationTarget? previousOperationTarget = previousTarget?.Target;
+        if (!IsSelectionTransitionActive(SelectionTransitionState.HydratingSessionSelection | SelectionTransitionState.RestoringSession | SelectionTransitionState.ApplyingTargetState) && previousOperationTarget != null)
+        {
+            PersistTargetOptionValues(previousOperationTarget);
+            RememberOperationForTargetType(previousOperationTarget, _selectedOperationId);
         }
 
         _parameterSession.Target = selectedTarget?.Target as IOperationTarget;
-        if (!_isHydratingSessionSelection)
+        if (!IsSelectionTransitionActive(SelectionTransitionState.HydratingSessionSelection))
         {
             RefreshOperationSelection();
             RestoreSelectedTargetState();
@@ -485,28 +576,116 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Rebuilds the compatible operation list for the currently selected target and preserves the active selection when
-    /// it remains valid.
+    /// Returns the last remembered operation identifier for the currently selected target type when one exists.
     /// </summary>
-    private void RefreshOperationSelection()
+    private string? GetRememberedOperationIdForSelectedTargetType()
     {
-        AvailableOperations.Clear();
-        foreach (OperationDescriptor descriptor in _services.Operations.GetAvailableOperations(SelectedTarget?.Target))
+        string? selectedTargetTypeId = GetSelectedTargetTypeId();
+        if (string.IsNullOrWhiteSpace(selectedTargetTypeId))
         {
-            AvailableOperations.Add(descriptor);
+            return null;
         }
 
-        Type? selectedOperationType = SelectedOperation?.OperationType;
-        Type? retainedOperationType = selectedOperationType != null && AvailableOperations.Any(descriptor => descriptor.OperationType == selectedOperationType)
-            ? selectedOperationType
-            : null;
+        if (!_sessionSnapshot.SelectedOperationIdsByTargetType.TryGetValue(selectedTargetTypeId, out string? rememberedOperationId) || string.IsNullOrWhiteSpace(rememberedOperationId))
+        {
+            return null;
+        }
 
-        // Keep the previous operation only when it is still compatible with the current target. Leaving the picker
-        // empty in every other case makes the target -> operation dependency explicit instead of silently choosing a
-        // new default that the user did not select.
-        SelectedOperation = retainedOperationType == null
-            ? null
-            : AvailableOperations.FirstOrDefault(descriptor => descriptor.OperationType == retainedOperationType);
+        return rememberedOperationId;
+    }
+
+    /// <summary>
+    /// Returns the currently compatible operation descriptor for the provided stable identifier.
+    /// </summary>
+    private OperationDescriptor? ResolveAvailableOperationById(string? operationId)
+    {
+        return ResolveOperationById(AvailableOperations, operationId);
+    }
+
+    /// <summary>
+    /// Returns the operation descriptor with the provided identifier from the supplied compatible operation list.
+    /// </summary>
+    private static OperationDescriptor? ResolveOperationById(IEnumerable<OperationDescriptor> operations, string? operationId)
+    {
+        if (operations == null)
+        {
+            throw new ArgumentNullException(nameof(operations));
+        }
+
+        if (string.IsNullOrWhiteSpace(operationId))
+        {
+            return null;
+        }
+
+        return operations.FirstOrDefault(descriptor => string.Equals(descriptor.Id, operationId, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Returns the descriptor id of the currently selected target type so operation memory can be shared across targets
+    /// of the same kind.
+    /// </summary>
+    private string? GetSelectedTargetTypeId()
+    {
+        return SelectedTarget?.Target == null ? null : _services.Targets.GetTargetTypeId(SelectedTarget.Target);
+    }
+
+    /// <summary>
+    /// Returns whether any of the provided transition states are currently suppressing selection side effects.
+    /// </summary>
+    private bool IsSelectionTransitionActive(SelectionTransitionState transitionState)
+    {
+        return (_selectionTransitionState & transitionState) != SelectionTransitionState.None;
+    }
+
+    /// <summary>
+    /// Marks one selection transition state as active for the lifetime of the returned scope so nested restore flows
+    /// can suppress saves and refreshes without juggling multiple boolean fields.
+    /// </summary>
+    private IDisposable BeginSelectionTransition(SelectionTransitionState transitionState)
+    {
+        _selectionTransitionState |= transitionState;
+        return new SelectionTransitionScope(this, transitionState);
+    }
+
+    /// <summary>
+    /// Clears one transition flag when a scoped target or session update finishes.
+    /// </summary>
+    private void EndSelectionTransition(SelectionTransitionState transitionState)
+    {
+        _selectionTransitionState &= ~transitionState;
+    }
+
+    /// <summary>
+    /// Tracks one active transition flag and clears it automatically when the surrounding update scope exits.
+    /// </summary>
+    private sealed class SelectionTransitionScope : IDisposable
+    {
+        private readonly MainWindowViewModel _owner;
+        private readonly SelectionTransitionState _transitionState;
+        private bool _disposed;
+
+        /// <summary>
+        /// Creates a scope that keeps one transition flag active until disposal.
+        /// </summary>
+        public SelectionTransitionScope(MainWindowViewModel owner, SelectionTransitionState transitionState)
+        {
+            _owner = owner;
+            _transitionState = transitionState;
+        }
+
+        /// <summary>
+        /// Clears the transition flag once the guarded update finishes.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _owner.EndSelectionTransition(_transitionState);
+        }
     }
 
     /// <summary>

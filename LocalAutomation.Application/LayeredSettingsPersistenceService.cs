@@ -73,7 +73,7 @@ public sealed class LayeredSettingsPersistenceService
     /// </summary>
     public string BuildTargetKey(string targetTypeId, string targetPath)
     {
-        return $"{targetTypeId}|{targetPath}";
+        return TargetKeyUtility.BuildTargetKey(targetTypeId, targetPath);
     }
 
     /// <summary>

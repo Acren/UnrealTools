@@ -82,7 +82,7 @@ public sealed class SessionPersistenceService
     /// </summary>
     public string BuildTargetKey(string targetTypeId, string targetPath)
     {
-        return $"{targetTypeId}|{targetPath}";
+        return TargetKeyUtility.BuildTargetKey(targetTypeId, targetPath);
     }
 
     /// <summary>
@@ -96,8 +96,7 @@ public sealed class SessionPersistenceService
         {
             Key = BuildTargetKey(targetTypeId, targetPath),
             TargetTypeId = targetTypeId,
-            Path = targetPath,
-            State = new TargetUiStateSnapshot()
+            Path = targetPath
         };
     }
 
@@ -150,8 +149,7 @@ public sealed class SessionPersistenceService
             {
                 Key = BuildTargetKey(targetTypeId, targetPath),
                 TargetTypeId = targetTypeId,
-                Path = targetPath,
-                State = new TargetUiStateSnapshot()
+                Path = targetPath
             });
         }
 
@@ -165,7 +163,7 @@ public sealed class SessionPersistenceService
             return snapshot;
         }
 
-        selectedTarget.State.SelectedOperationId = legacyState.OperationType == null
+        snapshot.SelectedOperationIdsByTargetType[selectedTarget.TargetTypeId] = legacyState.OperationType == null
             ? null
             : _services.Operations.GetOperation(legacyState.OperationType)?.Id;
 

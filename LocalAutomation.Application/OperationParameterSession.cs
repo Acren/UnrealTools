@@ -37,10 +37,21 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
     /// </summary>
     public void Replace(OperationParameters parameters)
     {
+        Replace(parameters, parameters?.Target);
+    }
+
+    /// <summary>
+    /// Replaces the wrapped runtime parameter object while explicitly applying the active target so callers can keep
+    /// target selection stable across operation-specific parameter recreation.
+    /// </summary>
+    public void Replace(OperationParameters parameters, IOperationTarget? target)
+    {
         if (parameters == null)
         {
             throw new ArgumentNullException(nameof(parameters));
         }
+
+        parameters.Target = target;
 
         if (ReferenceEquals(_parameters, parameters))
         {
