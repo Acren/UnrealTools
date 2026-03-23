@@ -135,7 +135,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             if (!_isHydratingSessionSelection && !_isApplyingTargetState)
             {
                 RefreshEnabledOptionSets();
-                ApplyPersistedOptionValuesForSelectedTarget();
+                ApplyPersistedSettingsForSelectedTarget();
                 RaiseDerivedStateChanged();
             }
 
@@ -294,7 +294,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Captures the current operation and option values into the nested persisted state for the provided target.
+    /// Captures the current selected operation and layered config state for the provided target.
     /// </summary>
     private void CaptureTargetState(IOperationTarget? target)
     {
@@ -305,11 +305,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         TargetSessionSnapshot snapshot = FindTargetSnapshot(target) ?? _sessionPersistence.CreateTargetSnapshot(target);
         snapshot.State.SelectedOperationId = SelectedOperation?.Id;
-        Dictionary<string, Newtonsoft.Json.Linq.JToken> capturedValues = _services.OptionValues.Capture(_parameterSession.OptionSets);
-        foreach ((string key, Newtonsoft.Json.Linq.JToken value) in capturedValues)
-        {
-            snapshot.State.OptionValues[key] = value;
-        }
+        TargetSettingsContext context = _services.OptionValues.CreateTargetContext(_services.Targets, target);
+        _services.OptionValues.SaveOptionValues(_parameterSession.OptionSets, context);
 
         int existingIndex = _sessionSnapshot.Targets.FindIndex(item => string.Equals(item.Key, snapshot.Key, StringComparison.Ordinal));
         if (existingIndex >= 0)
@@ -323,7 +320,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Restores the selected target's persisted operation and option values into the live editing state.
+    /// Restores the selected target's persisted operation choice and layered settings into the live editing state.
     /// </summary>
     private void RestoreSelectedTargetState()
     {
@@ -339,7 +336,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
 
             RefreshEnabledOptionSets();
-            ApplyPersistedOptionValuesForSelectedTarget();
+            ApplyPersistedSettingsForSelectedTarget();
         }
         finally
         {
@@ -528,11 +525,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
         }
 
-        EnabledOptionSets.Clear();
-        foreach (OperationOptions options in _parameterSession.OptionSets)
-        {
-            EnabledOptionSets.Add(new OptionSetViewModel(_services, options, _services.OptionEditors.GetEditorTarget(options)));
-        }
+        RebuildOptionCards();
     }
 
     /// <summary>
@@ -542,6 +535,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void RebuildOptionCards()
     {
         EnabledOptionSets.Clear();
+
         foreach (OperationOptions options in _parameterSession.OptionSets)
         {
             EnabledOptionSets.Add(new OptionSetViewModel(_services, options, _services.OptionEditors.GetEditorTarget(options)));
@@ -549,18 +543,18 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Reapplies the current target snapshot's persisted option values onto the live enabled option sets after an
-    /// operation change or target restore re-creates option instances.
+    /// Reapplies the selected target's layered settings onto the live target and option editors after an operation
+    /// change or target restore re-creates option instances.
     /// </summary>
-    private void ApplyPersistedOptionValuesForSelectedTarget()
+    private void ApplyPersistedSettingsForSelectedTarget()
     {
-        TargetSessionSnapshot? targetSnapshot = SelectedTarget?.Target == null ? null : FindTargetSnapshot(SelectedTarget.Target);
-        if (targetSnapshot == null)
+        if (SelectedTarget?.Target == null)
         {
             return;
         }
 
-        _services.OptionValues.Apply(_parameterSession.OptionSets, targetSnapshot.State.OptionValues);
+        TargetSettingsContext context = _services.OptionValues.CreateTargetContext(_services.Targets, SelectedTarget.Target);
+        _services.OptionValues.ApplyOptionValues(_parameterSession.OptionSets, context);
 
         // Recreate property-grid card targets after applying restored values so adapter-backed editors reflect the
         // rehydrated state instead of the pre-apply values captured when the cards were first created.

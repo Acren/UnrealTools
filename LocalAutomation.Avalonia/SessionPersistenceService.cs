@@ -169,7 +169,18 @@ public sealed class SessionPersistenceService
             ? null
             : _services.Operations.GetOperation(legacyState.OperationType)?.Id;
 
-        selectedTarget.State.OptionValues = _services.OptionValues.Capture(legacyState.OptionsInstances.Cast<object>());
+        // Migrate legacy option values into the new layered setting files for the selected target so existing user
+        // edits are preserved when upgrading from the old session-owned persistence model.
+        IOperationTarget? selectedRuntimeTarget = legacyState.Targets.OfType<IOperationTarget>().FirstOrDefault(item =>
+            string.Equals(_services.Targets.GetTargetPath(item), selectedTarget.Path, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_services.Targets.GetTargetTypeId(item), selectedTarget.TargetTypeId, StringComparison.Ordinal));
+        selectedRuntimeTarget ??= legacyState.Targets.OfType<IOperationTarget>().FirstOrDefault();
+        if (selectedRuntimeTarget != null)
+        {
+            TargetSettingsContext context = _services.OptionValues.CreateTargetContext(_services.Targets, selectedRuntimeTarget);
+            _services.OptionValues.SaveOptionValues(legacyState.OptionsInstances.Cast<object>(), context);
+        }
+
         snapshot.SelectedTargetKey = selectedTarget.Key;
         return snapshot;
     }

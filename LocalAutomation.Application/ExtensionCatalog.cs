@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using LocalAutomation.Extensions.Abstractions;
 
 namespace LocalAutomation.Application;
@@ -10,7 +11,9 @@ namespace LocalAutomation.Application;
 /// </summary>
 public sealed class ExtensionCatalog : IExtensionRegistry
 {
+    private readonly Dictionary<Assembly, string> _assemblyOwners = new();
     private readonly List<ContextActionDescriptor> _contextActions = new();
+    private IExtensionModule? _currentRegisteringModule;
     private readonly List<IExtensionModule> _modules = new();
     private readonly List<IOptionEditorAdapter> _optionEditorAdapters = new();
     private readonly List<IOptionValueConverter> _optionValueConverters = new();
@@ -64,8 +67,30 @@ public sealed class ExtensionCatalog : IExtensionRegistry
         }
 
         EnsureUniqueModule(module);
-        module.Register(this);
+        _currentRegisteringModule = module;
+        try
+        {
+            module.Register(this);
+        }
+        finally
+        {
+            _currentRegisteringModule = null;
+        }
+
         _modules.Add(module);
+    }
+
+    /// <summary>
+    /// Returns the module id that contributed the provided assembly when one is known.
+    /// </summary>
+    public string? GetOwningModuleId(Assembly assembly)
+    {
+        if (assembly == null)
+        {
+            throw new ArgumentNullException(nameof(assembly));
+        }
+
+        return _assemblyOwners.TryGetValue(assembly, out string? moduleId) ? moduleId : null;
     }
 
     /// <summary>
@@ -80,6 +105,7 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(descriptor.Id, _targets, static item => item.Id, nameof(descriptor));
         _targets.Add(descriptor);
+        RecordAssemblyOwner(descriptor.TargetType.Assembly);
     }
 
     /// <summary>
@@ -94,6 +120,7 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(descriptor.Id, _operations, static item => item.Id, nameof(descriptor));
         _operations.Add(descriptor);
+        RecordAssemblyOwner(descriptor.OperationType.Assembly);
     }
 
     /// <summary>
@@ -108,6 +135,7 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(factory.Id, _targetFactories, static item => item.Id, nameof(factory));
         _targetFactories.Add(factory);
+        RecordAssemblyOwner(factory.GetType().Assembly);
     }
 
     /// Registers a context action after checking that its identifier is unique.
@@ -121,6 +149,7 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(descriptor.Id, _contextActions, static item => item.Id, nameof(descriptor));
         _contextActions.Add(descriptor);
+        RecordAssemblyOwner(descriptor.TargetType.Assembly);
     }
 
     /// <summary>
@@ -135,6 +164,7 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(adapter.Id, _optionEditorAdapters, static item => item.Id, nameof(adapter));
         _optionEditorAdapters.Add(adapter);
+        RecordAssemblyOwner(adapter.GetType().Assembly);
     }
 
     /// <summary>
@@ -149,6 +179,32 @@ public sealed class ExtensionCatalog : IExtensionRegistry
 
         EnsureUniqueId(converter.Id, _optionValueConverters, static item => item.Id, nameof(converter));
         _optionValueConverters.Add(converter);
+        RecordAssemblyOwner(converter.GetType().Assembly);
+    }
+
+    /// <summary>
+    /// Associates the currently registering module with a contributed assembly so later services can derive stable
+    /// ownership metadata for generated keys.
+    /// </summary>
+    private void RecordAssemblyOwner(Assembly assembly)
+    {
+        if (_currentRegisteringModule == null)
+        {
+            return;
+        }
+
+        if (_assemblyOwners.TryGetValue(assembly, out string? existingModuleId))
+        {
+            if (!string.Equals(existingModuleId, _currentRegisteringModule.Id, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Assembly '{assembly.GetName().Name}' is already owned by module '{existingModuleId}' and cannot also be owned by '{_currentRegisteringModule.Id}'.");
+            }
+
+            return;
+        }
+
+        _assemblyOwners[assembly] = _currentRegisteringModule.Id;
     }
 
     /// <summary>

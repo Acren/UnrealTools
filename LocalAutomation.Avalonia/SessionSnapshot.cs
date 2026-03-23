@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace LocalAutomation.Avalonia;
 
@@ -77,10 +76,4 @@ public sealed class TargetUiStateSnapshot
     /// </summary>
     [JsonProperty]
     public string? SelectedOperationId { get; set; }
-
-    /// <summary>
-    /// Gets or sets the stable persisted option values keyed by option property identifier.
-    /// </summary>
-    [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-    public Dictionary<string, JToken> OptionValues { get; set; } = new();
 }

@@ -15,6 +15,7 @@ public sealed class AvaloniaHostBranding
         applicationName: "LocalAutomation",
         windowTitle: "LocalAutomation",
         dataFolderName: "LocalAutomation",
+        targetSettingsFileName: ".localautomation.json",
         sessionFileName: "avalonia-session.json",
         launchLogFilePrefix: "LocalAutomation.Avalonia",
         loggerCategoryName: "LocalAutomation.Avalonia");
@@ -26,6 +27,7 @@ public sealed class AvaloniaHostBranding
         string applicationName,
         string windowTitle,
         string dataFolderName,
+        string targetSettingsFileName,
         string sessionFileName,
         string launchLogFilePrefix,
         string loggerCategoryName)
@@ -33,6 +35,7 @@ public sealed class AvaloniaHostBranding
         ApplicationName = Validate(applicationName, nameof(applicationName));
         WindowTitle = Validate(windowTitle, nameof(windowTitle));
         DataFolderName = Validate(dataFolderName, nameof(dataFolderName));
+        TargetSettingsFileName = Validate(targetSettingsFileName, nameof(targetSettingsFileName));
         SessionFileName = Validate(sessionFileName, nameof(sessionFileName));
         LaunchLogFilePrefix = Validate(launchLogFilePrefix, nameof(launchLogFilePrefix));
         LoggerCategoryName = Validate(loggerCategoryName, nameof(loggerCategoryName));
@@ -52,6 +55,11 @@ public sealed class AvaloniaHostBranding
     /// Gets the LocalAppData child folder that stores session state and launch logs for this host.
     /// </summary>
     public string DataFolderName { get; }
+
+    /// <summary>
+    /// Gets the repo-local layered settings filename used by this host.
+    /// </summary>
+    public string TargetSettingsFileName { get; }
 
     /// <summary>
     /// Gets the session-state filename used by this host inside its LocalAppData folder.

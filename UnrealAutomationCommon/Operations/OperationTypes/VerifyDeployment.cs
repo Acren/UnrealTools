@@ -86,7 +86,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Launch and test example project editor
 
             AutomationOptions automationOpts = OperationParameters.FindOptions<AutomationOptions>();
-            automationOpts.TestNameOverride = plugin.TestName;
 
             if (automationOpts.RunTests)
             {

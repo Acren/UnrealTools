@@ -238,7 +238,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
             
             AutomationOptions automationOptions = OperationParameters.FindOptions<AutomationOptions>();
-            automationOptions.TestNameOverride = Plugin.TestName;
 
             // Build host project editor
 

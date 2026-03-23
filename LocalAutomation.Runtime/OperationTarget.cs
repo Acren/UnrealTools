@@ -41,11 +41,6 @@ public interface IOperationTarget : INotifyPropertyChanged
     string TypeName { get; }
 
     /// <summary>
-    /// Gets or sets the optional test label used when reporting automation results.
-    /// </summary>
-    string TestName { get; set; }
-
-    /// <summary>
     /// Gets whether the target currently resolves to valid underlying data on disk.
     /// </summary>
     bool IsValid { get; }
@@ -88,8 +83,6 @@ public interface IOperationTarget : INotifyPropertyChanged
 [JsonObject(MemberSerialization.OptIn)]
 public abstract class OperationTarget : IOperationTarget
 {
-    private string _testName = string.Empty;
-
     /// <summary>
     /// Gets the serialized target path used to restore the target later.
     /// </summary>
@@ -125,20 +118,6 @@ public abstract class OperationTarget : IOperationTarget
     /// Gets whether this target is the root of its hierarchy.
     /// </summary>
     public bool IsRoot => ParentTarget == null;
-
-    /// <summary>
-    /// Gets or sets the optional test name used by reporting flows.
-    /// </summary>
-    [JsonProperty]
-    public string TestName
-    {
-        get => _testName;
-        set
-        {
-            _testName = value;
-            OnPropertyChanged();
-        }
-    }
 
     /// <summary>
     /// Gets the shared output directory for this target.

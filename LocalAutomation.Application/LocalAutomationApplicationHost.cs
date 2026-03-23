@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using LocalAutomation.Extensions.Abstractions;
 
 namespace LocalAutomation.Application;
@@ -12,14 +13,20 @@ public sealed class LocalAutomationApplicationHost
     /// <summary>
     /// Creates an application host around a populated extension catalog.
     /// </summary>
-    public LocalAutomationApplicationHost(ExtensionCatalog catalog)
+    public LocalAutomationApplicationHost(ExtensionCatalog catalog, string? appDataRootPath = null, string? targetSettingsFileName = null)
     {
         Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        string resolvedAppDataRootPath = appDataRootPath ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            LocalAutomationHostStorage.DefaultDataFolderName);
+        string resolvedTargetSettingsFileName = string.IsNullOrWhiteSpace(targetSettingsFileName)
+            ? LocalAutomationHostStorage.DefaultTargetSettingsFileName
+            : targetSettingsFileName;
         ContextActions = new ContextActionService(catalog);
         Execution = new ExecutionService();
         ExecutionRuntime = new ExecutionRuntimeService();
         OptionEditors = new OptionEditorService(catalog);
-        OptionValues = new OptionValuePersistenceService(catalog);
+        OptionValues = new LayeredSettingsPersistenceService(catalog, resolvedAppDataRootPath, resolvedTargetSettingsFileName);
         Operations = new OperationCatalogService(catalog);
         OperationRuntime = new OperationRuntimeService();
         OperationSession = new OperationSessionService(Operations, OperationRuntime);
@@ -59,7 +66,7 @@ public sealed class LocalAutomationApplicationHost
     /// <summary>
     /// Gets the service used to capture and reapply stable option values for persistence.
     /// </summary>
-    public OptionValuePersistenceService OptionValues { get; }
+    public LayeredSettingsPersistenceService OptionValues { get; }
 
     /// <summary>
     /// Gets the service used to create and inspect runtime operations through extension-provided adapters.

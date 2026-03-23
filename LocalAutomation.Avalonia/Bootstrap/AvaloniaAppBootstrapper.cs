@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Avalonia;
 using LocalAutomation.Application;
 using LocalAutomation.Core;
@@ -81,7 +82,10 @@ public static class AvaloniaAppBootstrapper
             }
         }
 
-        return new LocalAutomationApplicationHost(catalog);
+        string appDataRootPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            App.Branding.DataFolderName);
+        return new LocalAutomationApplicationHost(catalog, appDataRootPath, App.Branding.TargetSettingsFileName);
     }
 
     /// <summary>

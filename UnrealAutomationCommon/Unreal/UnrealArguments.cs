@@ -49,9 +49,7 @@ namespace UnrealAutomationCommon.Unreal
             AutomationOptions automationOpts = operationParameters.RequestOptions<AutomationOptions>();
             if (automationOpts.RunTests)
             {
-                string testNameOverride = automationOpts.TestNameOverride;
-                string testName = !string.IsNullOrEmpty(testNameOverride) ? testNameOverride : operationParameters.Target.TestName;
-                string execCmds = $"Automation RunTests {testName};Quit";
+                string execCmds = $"Automation RunTests {automationOpts.TestName};Quit";
                 arguments.SetKeyValue("ExecCmds", execCmds);
                 arguments.SetKeyPath("ReportExportPath", OutputPaths.GetTestReportPath(outputhPath));
                 if (automationOpts.Headless)

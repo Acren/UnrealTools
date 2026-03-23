@@ -15,6 +15,7 @@ internal static class UnrealCommanderBranding
         applicationName: "Unreal Commander",
         windowTitle: "Unreal Commander",
         dataFolderName: "UnrealCommander",
+        targetSettingsFileName: ".ucmdr.json",
         sessionFileName: "avalonia-session.json",
         launchLogFilePrefix: "UnrealCommander.Avalonia",
         loggerCategoryName: "UnrealCommander.Avalonia");
