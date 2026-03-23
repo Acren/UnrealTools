@@ -1,4 +1,3 @@
-﻿using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 using RuntimeTarget = LocalAutomation.Runtime.OperationTarget;
@@ -8,6 +7,16 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     // Centralize the direct Build.bat wiring so all UBT-backed compile operations stay consistent.
     public abstract class BuildBatOperation<T> : CommandProcessOperation<T> where T : RuntimeTarget
     {
+        /// <summary>
+        /// Direct Build.bat-backed operations always expose configuration and direct-UBT compiler override options.
+        /// </summary>
+        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        {
+            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+            optionSetTypes.Add(typeof(BuildConfigurationOptions));
+            optionSetTypes.Add(typeof(UbtCompilerOptions));
+        }
+
         // Validate shared direct-UBT overrides once so every Build.bat-backed operation enforces the same limits.
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {

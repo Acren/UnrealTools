@@ -6,6 +6,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class BuildEditor : CommandProcessOperation<Project>
     {
+        /// <summary>
+        /// BuildCookRun editor builds always expose build configuration selection.
+        /// </summary>
+        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        {
+            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+            optionSetTypes.Add(typeof(OperationOptionTypes.BuildConfigurationOptions));
+        }
+
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             Arguments args = UATArguments.MakeBuildArguments(operationParameters);

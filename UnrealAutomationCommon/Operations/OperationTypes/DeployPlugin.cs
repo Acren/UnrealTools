@@ -888,13 +888,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return await deployForEngineOp.Execute(UnrealOperationParameters, Logger, token);
         }
 
+        /// <summary>
+        /// Plugin deployment exposes engine selection, automation toggles, plugin build settings, and deployment
+        /// packaging controls so the user can configure the full archive/test flow up front.
+        /// </summary>
+        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        {
+            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+            optionSetTypes.Add(typeof(EngineVersionOptions));
+            optionSetTypes.Add(typeof(AutomationOptions));
+            optionSetTypes.Add(typeof(PluginBuildOptions));
+            optionSetTypes.Add(typeof(PluginDeployOptions));
+        }
+
         protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            typedParameters.RequestOptions<EngineVersionOptions>();
-            typedParameters.RequestOptions<AutomationOptions>();
-            typedParameters.RequestOptions<PluginBuildOptions>();
-            typedParameters.RequestOptions<PluginDeployOptions>();
             return new List<LocalAutomation.Runtime.Command>();
         }
 

@@ -11,6 +11,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public abstract class LaunchPackage<T> : UnrealProcessOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget, IPackageProvider
     {
+        /// <summary>
+        /// Package launch flows expose automation settings because tests can optionally run against the launched build.
+        /// </summary>
+        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        {
+            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+            optionSetTypes.Add(typeof(AutomationOptions));
+        }
+
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
             UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;

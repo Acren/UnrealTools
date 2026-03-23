@@ -239,31 +239,26 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Returns the option-set types required for the provided target.
+    /// Returns the option-set types required for the provided target using explicit metadata rather than command or
+    /// validation side effects.
     /// </summary>
-    public virtual HashSet<Type> GetRequiredOptionSetTypes(IOperationTarget target)
+    public virtual IReadOnlyCollection<Type> GetRequiredOptionSetTypes(IOperationTarget target)
     {
-        if (target == null)
+        if (target == null || !SupportsTarget(target))
         {
-            return new HashSet<Type>();
+            return Array.Empty<Type>();
         }
 
         HashSet<Type> result = new();
-        OperationParameters dummyParams = CreateOperationParameters();
-        dummyParams.Target = target;
-
-        if (!RequirementsSatisfied(dummyParams))
-        {
-            return new HashSet<Type>();
-        }
-
-        BuildCommands(dummyParams);
-        foreach (OperationOptions options in dummyParams.OptionsInstances)
-        {
-            result.Add(options.GetType());
-        }
-
+        CollectRequiredOptionSetTypes(target, result);
         return result;
+    }
+
+    /// <summary>
+    /// Adds the option-set types this operation exposes for the provided target.
+    /// </summary>
+    protected virtual void CollectRequiredOptionSetTypes(IOperationTarget target, ISet<Type> optionSetTypes)
+    {
     }
 
     /// <summary>

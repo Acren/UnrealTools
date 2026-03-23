@@ -1,7 +1,7 @@
-﻿using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 #nullable enable
 
@@ -33,9 +33,9 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
     public override global::LocalAutomation.Runtime.OperationParameters CreateParameters(global::LocalAutomation.Runtime.OperationParameters? existing = null)
     {
         UnrealAutomationCommon.Operations.UnrealOperationParameters parameters = (UnrealAutomationCommon.Operations.UnrealOperationParameters)base.CreateParameters(existing);
-        if (parameters.GetOptionsInstance(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions)) == null)
+        if (parameters.GetOptionsInstance(typeof(AdditionalArgumentsOptions)) == null)
         {
-            parameters.SetOptions(new UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions());
+            parameters.EnsureOptionsInstance(typeof(AdditionalArgumentsOptions));
         }
 
         return parameters;
@@ -45,11 +45,10 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
     /// Keeps freeform additional arguments available through the Unreal option pipeline without requiring app-level
     /// adapter glue.
     /// </summary>
-    public sealed override HashSet<System.Type> GetRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
+    protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
     {
-        HashSet<System.Type> optionTypes = base.GetRequiredOptionSetTypes(target);
-        optionTypes.Add(typeof(UnrealAutomationCommon.Operations.OperationOptionTypes.AdditionalArgumentsOptions));
-        return optionTypes;
+        base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+        optionSetTypes.Add(typeof(AdditionalArgumentsOptions));
     }
 
     /// <summary>

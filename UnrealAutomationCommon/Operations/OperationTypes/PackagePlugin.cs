@@ -13,6 +13,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private List<string> _requestedTargetPlatforms = new();
         private List<string> _builtTargetPlatforms = new();
 
+        /// <summary>
+        /// Packaging a plugin always exposes the plugin platform selection options used to build the final UAT request.
+        /// </summary>
+        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        {
+            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+            optionSetTypes.Add(typeof(PluginBuildOptions));
+        }
+
         // Fail early when the selected engine cannot even advertise the requested code platforms.
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {

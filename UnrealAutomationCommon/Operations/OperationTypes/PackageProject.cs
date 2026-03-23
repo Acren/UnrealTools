@@ -11,6 +11,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class PackageProject : CommandProcessOperation<Project>
     {
+        /// <summary>
+        /// Project packaging always exposes archive and cooker settings because the generated UAT request depends on
+        /// both option groups.
+        /// </summary>
+        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        {
+            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+            optionSetTypes.Add(typeof(PackageOptions));
+            optionSetTypes.Add(typeof(CookOptions));
+        }
+
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             Arguments arguments = UATArguments.MakeBuildArguments(operationParameters);

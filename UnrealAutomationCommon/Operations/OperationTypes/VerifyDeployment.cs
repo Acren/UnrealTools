@@ -38,6 +38,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new global::LocalAutomation.Runtime.OperationResult(true);
         }
 
+        /// <summary>
+        /// Deployment verification always needs engine-version selection, automation toggles, and example-project
+        /// settings to know which builds to verify and how deeply to test them.
+        /// </summary>
+        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        {
+            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+            optionSetTypes.Add(typeof(EngineVersionOptions));
+            optionSetTypes.Add(typeof(AutomationOptions));
+            optionSetTypes.Add(typeof(VerifyDeploymentOptions));
+        }
+
         private async Task<global::LocalAutomation.Runtime.OperationResult> VerifyForEngine(Engine engine, CancellationToken token)
         {
             Plugin plugin = GetTarget(UnrealOperationParameters);
@@ -170,10 +182,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            typedParameters.RequestOptions<EngineVersionOptions>();
-            typedParameters.RequestOptions<AutomationOptions>();
-            typedParameters.RequestOptions<VerifyDeploymentOptions>();
             return new List<LocalAutomation.Runtime.Command>();
         }
 
