@@ -18,6 +18,5 @@ internal static class UnrealCommanderShellIdentity
         targetSettingsFileName: ".ucmdr.json",
         sessionFileName: "session.json",
         launchLogFilePrefix: "UnrealCommander.Avalonia",
-        loggerCategoryName: "UnrealCommander.Avalonia",
-        enablePerformanceDiagnostics: true);
+        loggerCategoryName: "UnrealCommander.Avalonia");
 }

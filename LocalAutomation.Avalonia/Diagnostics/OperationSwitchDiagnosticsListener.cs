@@ -17,6 +17,7 @@ public static class OperationSwitchDiagnosticsListener
     private static readonly object Sync = new();
     private static readonly ConcurrentDictionary<string, ActivitySummary> Summaries = new();
     private static ActivityListener? _listener;
+    private static bool _enabled;
     private static bool _isStarted;
 
     /// <summary>
@@ -24,14 +25,16 @@ public static class OperationSwitchDiagnosticsListener
     /// </summary>
     public static void Start(bool enabled)
     {
-        if (!enabled)
-        {
-            return;
-        }
-
         lock (Sync)
         {
+            _enabled = enabled;
+
             if (_isStarted)
+            {
+                return;
+            }
+
+            if (!enabled)
             {
                 return;
             }
@@ -54,6 +57,11 @@ public static class OperationSwitchDiagnosticsListener
     /// </summary>
     private static void HandleActivityStopped(Activity activity)
     {
+        if (!_enabled)
+        {
+            return;
+        }
+
         string traceId = activity.TraceId.ToString();
         ActivitySummary summary = Summaries.GetOrAdd(traceId, _ => new ActivitySummary());
         summary.Add(activity);

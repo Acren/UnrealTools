@@ -40,23 +40,10 @@
         <Grid Margin="{Binding #Main.OffScreenMargin}">
             <!-- The content layout stays offset by the live window decoration margins so the title bar remains native. -->
             <Grid Margin="{Binding #Main.WindowDecorationMargin}"
-                  RowDefinitions="Auto,*">
-                <Border Grid.Row="0"
-                        IsVisible="{Binding ShowStartupMessage}"
-                        Margin="10,0,10,10"
-                        Background="{DynamicResource GraphiteDangerBackgroundBrush}"
-                        BorderBrush="{DynamicResource GraphiteDangerBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8"
-                        Padding="12,10">
-                    <SelectableTextBlock Text="{Binding StartupMessage}"
-                                         Classes="status-danger"
-                                         TextWrapping="Wrap" />
-                </Border>
-
+                  RowDefinitions="*">
                 <!-- The shell uses explicit splitter rows and columns so the options area, right rail, and output panel can
                      be resized at runtime without changing panel ownership. -->
-                <Grid Grid.Row="1" Margin="10" MinHeight="0">
+                <Grid Margin="10" MinHeight="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="420" />
                         <ColumnDefinition Width="6" />

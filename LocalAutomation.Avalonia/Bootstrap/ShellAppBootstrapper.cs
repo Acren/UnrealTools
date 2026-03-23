@@ -35,7 +35,6 @@ public static class ShellAppBootstrapper
             ExtensionLoadResult extensionLoadResult = BundledExtensionLoader.LoadBundledExtensions();
             LocalAutomationApplicationHost services = CreateApplicationHost(extensionLoadResult);
             App.ConfigureServices(services);
-            App.ConfigureStartupMessage(extensionLoadResult.CreateStartupMessage());
             LogExtensionDiscovery(extensionLoadResult);
             BuildApp().StartWithClassicDesktopLifetime(args);
         }

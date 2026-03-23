@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using Avalonia.Threading;
 using LocalAutomation.Application;
+using LocalAutomation.Avalonia.Diagnostics;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -69,6 +70,8 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void HandleApplicationSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // Apply the listener toggle immediately so telemetry can start or stop without requiring an app restart.
+        OperationSwitchDiagnosticsListener.Start(_services.ApplicationSettings.EnableOperationSwitchPerformanceTelemetry);
         _hasPendingSave = true;
         _saveTimer.Stop();
         _saveTimer.Start();

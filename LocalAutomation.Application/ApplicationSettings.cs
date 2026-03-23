@@ -10,9 +10,7 @@ namespace LocalAutomation.Application;
 [PersistedSettings("app")]
 public sealed class ApplicationSettings : INotifyPropertyChanged
 {
-    private bool _autoCopyPrimaryCommandAfterExecute;
-    private bool _retainCompletedTaskTabs = true;
-    private bool _showStartupDiscoveryWarnings = true;
+    private bool _enableOperationSwitchPerformanceTelemetry;
 
     /// <summary>
     /// Raised whenever one persisted application preference changes.
@@ -20,64 +18,22 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// Gets or sets whether executing an operation also copies the primary command line to the clipboard.
+    /// Gets or sets whether operation-switch timing summaries should be written to the shared shell log output.
     /// </summary>
-    [DisplayName("Auto-copy command after execute")]
-    [Description("Copies the first command preview line to the clipboard when an operation starts from the command panel.")]
+    [DisplayName("Enable performance telemetry")]
+    [Description("Writes readable operation-switch timing diagnostics to the application log for troubleshooting slow UI transitions.")]
     [PersistedValue(PersistenceScope.Global)]
-    public bool AutoCopyPrimaryCommandAfterExecute
+    public bool EnableOperationSwitchPerformanceTelemetry
     {
-        get => _autoCopyPrimaryCommandAfterExecute;
+        get => _enableOperationSwitchPerformanceTelemetry;
         set
         {
-            if (_autoCopyPrimaryCommandAfterExecute == value)
+            if (_enableOperationSwitchPerformanceTelemetry == value)
             {
                 return;
             }
 
-            _autoCopyPrimaryCommandAfterExecute = value;
-            OnPropertyChanged();
-        }
-    }
-
-    /// <summary>
-    /// Gets or sets whether completed runtime tabs remain visible until the user closes them.
-    /// </summary>
-    [DisplayName("Retain completed task tabs")]
-    [Description("Keeps finished runtime task tabs open so their logs remain visible after execution completes.")]
-    [PersistedValue(PersistenceScope.Global)]
-    public bool RetainCompletedTaskTabs
-    {
-        get => _retainCompletedTaskTabs;
-        set
-        {
-            if (_retainCompletedTaskTabs == value)
-            {
-                return;
-            }
-
-            _retainCompletedTaskTabs = value;
-            OnPropertyChanged();
-        }
-    }
-
-    /// <summary>
-    /// Gets or sets whether startup discovery warnings stay visible in the shell header.
-    /// </summary>
-    [DisplayName("Show startup discovery warnings")]
-    [Description("Shows the startup warning banner when bundled extensions are missing or fail to load.")]
-    [PersistedValue(PersistenceScope.Global)]
-    public bool ShowStartupDiscoveryWarnings
-    {
-        get => _showStartupDiscoveryWarnings;
-        set
-        {
-            if (_showStartupDiscoveryWarnings == value)
-            {
-                return;
-            }
-
-            _showStartupDiscoveryWarnings = value;
+            _enableOperationSwitchPerformanceTelemetry = value;
             OnPropertyChanged();
         }
     }

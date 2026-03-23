@@ -20,11 +20,6 @@ public partial class App : AvaloniaApplication
     public static ShellIdentity ShellIdentity { get; private set; } = ShellIdentity.LocalAutomation;
 
     /// <summary>
-    /// Gets the startup discovery warning shown by the shell when bundled extensions were missing or failed to load.
-    /// </summary>
-    public static string StartupMessage { get; private set; } = string.Empty;
-
-    /// <summary>
     /// Gets the application host configured by the outer launcher. The generic shell keeps this as mutable startup
     /// state so different launcher executables can compose different compile-time extension sets without changing the
     /// shell assembly itself.
@@ -45,15 +40,6 @@ public partial class App : AvaloniaApplication
     public static void ConfigureShellIdentity(ShellIdentity shellIdentity)
     {
         ShellIdentity = shellIdentity ?? throw new System.ArgumentNullException(nameof(shellIdentity));
-        OperationSwitchDiagnosticsListener.Start(ShellIdentity.EnablePerformanceDiagnostics);
-    }
-
-    /// <summary>
-    /// Replaces the current startup discovery message shown by the shell.
-    /// </summary>
-    public static void ConfigureStartupMessage(string message)
-    {
-        StartupMessage = message ?? string.Empty;
     }
 
     /// <summary>
@@ -71,6 +57,7 @@ public partial class App : AvaloniaApplication
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            OperationSwitchDiagnosticsListener.Start(Services.ApplicationSettings.EnableOperationSwitchPerformanceTelemetry);
             MainWindow mainWindow = new();
             mainWindow.Title = ShellIdentity.WindowTitle;
             desktop.MainWindow = mainWindow;

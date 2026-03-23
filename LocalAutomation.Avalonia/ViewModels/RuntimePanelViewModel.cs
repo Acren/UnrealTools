@@ -31,7 +31,6 @@ public sealed class RuntimePanelViewModel : ViewModelBase
         _setStatus = setStatus ?? throw new ArgumentNullException(nameof(setStatus));
         _runtimeDurationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _runtimeDurationTimer.Tick += HandleRuntimeDurationTimerTick;
-        _services.ApplicationSettings.PropertyChanged += HandleApplicationSettingsChanged;
 
         RuntimeTabs.Add(CreateApplicationLogTab());
         SelectedRuntimeTab = RuntimeTabs[0];
@@ -281,43 +280,7 @@ public sealed class RuntimePanelViewModel : ViewModelBase
             {
                 _setStatus($"{session.OperationName} finished with failure for {session.TargetName}.");
             }
-
-            // Respect the global runtime-tab retention preference once the completed session has finished updating its
-            // visible success state and log output.
-            if (!_services.ApplicationSettings.RetainCompletedTaskTabs)
-            {
-                RemoveRuntimeTab(runtimeTab);
-            }
         });
-    }
-
-    /// <summary>
-    /// Responds to application-level settings that affect runtime tab retention.
-    /// </summary>
-    private void HandleApplicationSettingsChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (!string.IsNullOrWhiteSpace(e.PropertyName) && !string.Equals(e.PropertyName, nameof(LocalAutomation.Application.ApplicationSettings.RetainCompletedTaskTabs), StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        if (_services.ApplicationSettings.RetainCompletedTaskTabs)
-        {
-            return;
-        }
-
-        PruneCompletedRuntimeTabs();
-    }
-
-    /// <summary>
-    /// Removes any completed runtime tabs immediately when the global retention preference is turned off.
-    /// </summary>
-    private void PruneCompletedRuntimeTabs()
-    {
-        foreach (RuntimeTaskTabViewModel completedTab in RuntimeTabs.Where(tab => !tab.IsApplicationLog && !tab.IsRunning).ToList())
-        {
-            RemoveRuntimeTab(completedTab);
-        }
     }
 
     /// <summary>

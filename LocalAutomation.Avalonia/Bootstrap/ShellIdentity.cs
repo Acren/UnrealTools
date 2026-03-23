@@ -18,8 +18,7 @@ public sealed class ShellIdentity
         targetSettingsFileName: ".localautomation.json",
         sessionFileName: "session.json",
         launchLogFilePrefix: "LocalAutomation.Avalonia",
-        loggerCategoryName: "LocalAutomation.Avalonia",
-        enablePerformanceDiagnostics: true);
+        loggerCategoryName: "LocalAutomation.Avalonia");
 
     /// <summary>
     /// Creates a shell identity descriptor for one launcher executable.
@@ -31,8 +30,7 @@ public sealed class ShellIdentity
         string targetSettingsFileName,
         string sessionFileName,
         string launchLogFilePrefix,
-        string loggerCategoryName,
-        bool enablePerformanceDiagnostics)
+        string loggerCategoryName)
     {
         ApplicationName = Validate(applicationName, nameof(applicationName));
         WindowTitle = Validate(windowTitle, nameof(windowTitle));
@@ -41,7 +39,6 @@ public sealed class ShellIdentity
         SessionFileName = Validate(sessionFileName, nameof(sessionFileName));
         LaunchLogFilePrefix = Validate(launchLogFilePrefix, nameof(launchLogFilePrefix));
         LoggerCategoryName = Validate(loggerCategoryName, nameof(loggerCategoryName));
-        EnablePerformanceDiagnostics = enablePerformanceDiagnostics;
     }
 
     /// <summary>
@@ -78,11 +75,6 @@ public sealed class ShellIdentity
     /// Gets the MEL logger category name used for file-backed application logs.
     /// </summary>
     public string LoggerCategoryName { get; }
-
-    /// <summary>
-    /// Gets whether operation-switch performance diagnostics should be written to the shared shell log output.
-    /// </summary>
-    public bool EnablePerformanceDiagnostics { get; }
 
     /// <summary>
     /// Rejects empty launcher identity values so a branded host never partially configures the shared shell.

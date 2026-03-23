@@ -52,7 +52,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         _sessionPersistence = new SessionPersistenceService(services);
         _sessionSaveTimer = new DispatcherTimer { Interval = SessionSaveDebounceDelay };
         _sessionSaveTimer.Tick += HandleSessionSaveTimerTick;
-        _services.ApplicationSettings.PropertyChanged += HandleApplicationSettingsChanged;
         _parameterSession.PropertyChanged += HandleOperationParametersChanged;
         Target = new TargetPanelViewModel(services, SetStatus, HandleSelectedTargetChanged, SaveSessionState);
         Runtime = new RuntimePanelViewModel(services, SetStatus);
@@ -87,26 +86,6 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Gets the currently selected target row from the target panel.
     /// </summary>
     public TargetListItemViewModel? SelectedTarget => Target.SelectedTarget;
-
-    /// <summary>
-    /// Gets the startup discovery warning surfaced by the host when bundled extensions failed to load cleanly.
-    /// </summary>
-    public string StartupMessage => App.StartupMessage;
-
-    /// <summary>
-    /// Gets the launcher-provided product name shown in the shell header.
-    /// </summary>
-    public string ApplicationName => App.ShellIdentity.ApplicationName;
-
-    /// <summary>
-    /// Gets whether the startup discovery warning should be visible.
-    /// </summary>
-    public bool ShowStartupMessage => _services.ApplicationSettings.ShowStartupDiscoveryWarnings && !string.IsNullOrWhiteSpace(StartupMessage);
-
-    /// <summary>
-    /// Gets whether execution should automatically copy the primary command line when the command panel starts work.
-    /// </summary>
-    public bool ShouldAutoCopyPrimaryCommandAfterExecute => _services.ApplicationSettings.AutoCopyPrimaryCommandAfterExecute;
 
     /// <summary>
     /// Gets the currently selected operation descriptor resolved from the current compatible operation list.
@@ -291,34 +270,24 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// Starts the current operation through the shared execution runtime and begins streaming logs into the shell.
     /// </summary>
-    public bool Execute()
+    public void Execute()
     {
         if (_currentOperation == null)
         {
             SetStatus("Select an operation before executing.");
-            return false;
+            return;
         }
 
         if (!CanExecute)
         {
             SetStatus(ExecuteDisabledReason);
-            return false;
+            return;
         }
 
         ExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _parameterSession.RawValue);
         Runtime.AttachExecutionSession(session);
         _services.Execution.AddSession(session);
         SetStatus($"Started {session.OperationName} for {session.TargetName}.");
-        return true;
-    }
-
-    /// <summary>
-    /// Refreshes derived shell bindings when a global application setting changes.
-    /// </summary>
-    private void HandleApplicationSettingsChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        RaisePropertyChanged(nameof(ShowStartupMessage));
-        RaisePropertyChanged(nameof(ShouldAutoCopyPrimaryCommandAfterExecute));
     }
 
     /// <summary>
@@ -824,8 +793,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(OperationPickerPlaceholderText));
         RaisePropertyChanged(nameof(PrimaryCommandText));
         RaisePropertyChanged(nameof(ShowExecuteDisabledReason));
-        RaisePropertyChanged(nameof(ShowStartupMessage));
-        RaisePropertyChanged(nameof(StartupMessage));
         RaisePropertyChanged(nameof(VisibleCommand));
     }
 }
