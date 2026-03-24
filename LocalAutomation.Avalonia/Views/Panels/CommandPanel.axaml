@@ -9,10 +9,13 @@
             <Border Padding="12,8" Background="{DynamicResource GraphiteCardBrush}" BorderBrush="{DynamicResource GraphiteLineBrush}" BorderThickness="0,0,0,2">
                 <TextBlock Text="COMMAND" Classes="panel-title" />
             </Border>
-            <Border Grid.Row="1" Background="{DynamicResource GraphiteTerminalBrush}">
+            <Border Grid.Row="1" Background="{DynamicResource GraphiteTerminalBrush}" MinHeight="0">
                 <ScrollViewer Margin="12,10,12,12"
+                              MinHeight="0"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
+                    <!-- Let long command previews wrap and scroll vertically so the rail can stay narrow without
+                         forcing sideways scrolling for typical multi-line command inspection. -->
                     <SelectableTextBlock Classes="mono"
                                          Text="{Binding VisibleCommand}"
                                          TextWrapping="Wrap" />
