@@ -60,14 +60,6 @@ public sealed class DebouncedBackgroundSaver<TState> : IDisposable where TState 
     /// </summary>
     public void Flush(TState? latestState = null)
     {
-        FlushAsync(latestState).GetAwaiter().GetResult();
-    }
-
-    /// <summary>
-    /// Saves the latest pending payload immediately and optionally folds in one final captured payload before writing.
-    /// </summary>
-    public async Task FlushAsync(TState? latestState = null)
-    {
         if (latestState != null)
         {
             QueueState(latestState, scheduleDelay: false);
@@ -77,7 +69,7 @@ public sealed class DebouncedBackgroundSaver<TState> : IDisposable where TState 
             CancelPendingDelay();
         }
 
-        await SavePendingAsync().ConfigureAwait(false);
+        SavePendingAsync().GetAwaiter().GetResult();
     }
 
     /// <summary>

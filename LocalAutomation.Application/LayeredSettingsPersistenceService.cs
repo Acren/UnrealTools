@@ -157,34 +157,6 @@ public sealed class LayeredSettingsPersistenceService
     }
 
     /// <summary>
-    /// Writes the current target-settings values to each property's configured write layer.
-    /// </summary>
-    public void SaveTargetSettings(object settingsOwner, TargetSettingsContext? context)
-    {
-        if (context == null || settingsOwner == null)
-        {
-            return;
-        }
-
-        PersistedSettingsWriteBatch batch = CaptureTargetSettings(settingsOwner, context);
-        SaveCapturedSettings(batch);
-    }
-
-    /// <summary>
-    /// Writes the current global settings values to the host-wide appdata settings file.
-    /// </summary>
-    public void SaveGlobalSettings(object settingsOwner)
-    {
-        if (settingsOwner == null)
-        {
-            throw new ArgumentNullException(nameof(settingsOwner));
-        }
-
-        PersistedSettingsWriteBatch batch = CaptureGlobalSettings(settingsOwner);
-        SaveCapturedSettings(batch);
-    }
-
-    /// <summary>
     /// Captures the current option-set values into detached per-file writes so callers can persist them later without
     /// re-reading live UI objects on a background thread.
     /// </summary>
@@ -213,16 +185,16 @@ public sealed class LayeredSettingsPersistenceService
     }
 
     /// <summary>
-    /// Captures the current target-settings values into detached per-file writes so callers can persist them later.
+    /// Writes the current target-settings values to each property's configured write layer.
     /// </summary>
-    public PersistedSettingsWriteBatch CaptureTargetSettings(object settingsOwner, TargetSettingsContext? context)
+    public void SaveTargetSettings(object settingsOwner, TargetSettingsContext? context)
     {
-        PersistedSettingsWriteBatch batch = new();
         if (context == null || settingsOwner == null)
         {
-            return batch;
+            return;
         }
 
+        PersistedSettingsWriteBatch batch = new();
         foreach (PersistedSettingDescriptor descriptor in GetTargetSettingsDescriptors(settingsOwner.GetType(), context.TargetTypeId))
         {
             if (!TryReadValueToken(settingsOwner, descriptor, out JToken? token))
@@ -233,7 +205,7 @@ public sealed class LayeredSettingsPersistenceService
             batch.WriteValue(GetFilePathForScope(descriptor.WriteScope, context), descriptor.Key, token!);
         }
 
-        return batch;
+        SaveCapturedSettings(batch);
     }
 
     /// <summary>
@@ -267,6 +239,19 @@ public sealed class LayeredSettingsPersistenceService
     }
 
     /// <summary>
+    /// Resolves the persistence file path that stores values for the provided write scope.
+    /// </summary>
+    private string GetFilePathForScope(PersistenceScope writeScope, TargetSettingsContext context)
+    {
+        return writeScope switch
+        {
+            PersistenceScope.Global => _globalSettingsFilePath,
+            PersistenceScope.TargetLocal => GetTargetLocalSettingsFilePath(context),
+            _ => GetUserTargetOverrideFilePath(context)
+        };
+    }
+
+    /// <summary>
     /// Applies a detached batch of persisted setting writes to disk by loading the current files and patching only the
     /// provided keys.
     /// </summary>
@@ -279,7 +264,7 @@ public sealed class LayeredSettingsPersistenceService
 
         foreach ((string filePath, PersistedSettingValueCollection fileWrites) in batch.FileWrites)
         {
-            PersistedSettingValueCollection existingValues = LoadCollection(filePath, GetLayerName(filePath));
+            PersistedSettingValueCollection existingValues = LoadCollection(filePath);
             foreach ((string key, JToken value) in fileWrites.Values)
             {
                 existingValues.Values[key] = value.DeepClone();
@@ -304,19 +289,6 @@ public sealed class LayeredSettingsPersistenceService
     {
         string fileName = SanitizeFileName(context.TargetKey.Value) + ".json";
         return Path.Combine(_userTargetSettingsDirectoryPath, fileName);
-    }
-
-    /// <summary>
-    /// Resolves the persistence file path that stores values for the provided write scope.
-    /// </summary>
-    private string GetFilePathForScope(PersistenceScope writeScope, TargetSettingsContext context)
-    {
-        return writeScope switch
-        {
-            PersistenceScope.Global => _globalSettingsFilePath,
-            PersistenceScope.TargetLocal => GetTargetLocalSettingsFilePath(context),
-            _ => GetUserTargetOverrideFilePath(context)
-        };
     }
 
     /// <summary>
@@ -424,17 +396,9 @@ public sealed class LayeredSettingsPersistenceService
     }
 
     /// <summary>
-    /// Loads one persisted value collection from disk.
-    /// </summary>
-    private static PersistedSettingValueCollection LoadCollection(string filePath)
-    {
-        return LoadCollection(filePath, string.Empty);
-    }
-
-    /// <summary>
     /// Loads one persisted value collection from disk while recording a tracing span for the storage layer involved.
     /// </summary>
-    private static PersistedSettingValueCollection LoadCollection(string filePath, string layerName)
+    private static PersistedSettingValueCollection LoadCollection(string filePath, string layerName = "")
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("LoadSettingsFile");
         bool fileExists = File.Exists(filePath);
@@ -476,24 +440,6 @@ public sealed class LayeredSettingsPersistenceService
             createSerializer: static () => new JsonSerializer());
 
         store.Save(state);
-    }
-
-    /// <summary>
-    /// Returns a readable storage-layer label for telemetry when a detached write batch reopens one persisted file.
-    /// </summary>
-    private string GetLayerName(string filePath)
-    {
-        if (string.Equals(filePath, _globalSettingsFilePath, StringComparison.OrdinalIgnoreCase))
-        {
-            return "Global";
-        }
-
-        if (filePath.StartsWith(_userTargetSettingsDirectoryPath, StringComparison.OrdinalIgnoreCase))
-        {
-            return "UserOverride";
-        }
-
-        return "TargetLocal";
     }
 
     /// <summary>
