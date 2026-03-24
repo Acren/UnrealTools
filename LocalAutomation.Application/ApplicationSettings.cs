@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using LocalAutomation.Runtime;
@@ -11,6 +12,7 @@ namespace LocalAutomation.Application;
 public sealed class ApplicationSettings : INotifyPropertyChanged
 {
     private bool _enablePerformanceTelemetry;
+    private string _outputRootPath = OutputPaths.DefaultRootPath;
 
     /// <summary>
     /// Raised whenever one persisted application preference changes.
@@ -34,6 +36,31 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
             }
 
             _enablePerformanceTelemetry = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the shared root directory under which automation output is written.
+    /// </summary>
+    [DisplayName("Output root path")]
+    [Description("Controls the base folder used for generated automation output, archives, reports, and temporary run artifacts.")]
+    [PersistedValue(PersistenceScope.Global)]
+    public string OutputRootPath
+    {
+        get => _outputRootPath;
+        set
+        {
+            string normalizedValue = string.IsNullOrWhiteSpace(value)
+                ? OutputPaths.DefaultRootPath
+                : value.Trim();
+
+            if (string.Equals(_outputRootPath, normalizedValue, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _outputRootPath = normalizedValue;
             OnPropertyChanged();
         }
     }

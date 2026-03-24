@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using LocalAutomation.Extensions.Abstractions;
+using LocalAutomation.Runtime;
 
 namespace LocalAutomation.Application;
 
@@ -29,6 +30,7 @@ public sealed class LocalAutomationApplicationHost
         OptionValues = new LayeredSettingsPersistenceService(catalog, resolvedAppDataRootPath, resolvedTargetSettingsFileName);
         ApplicationSettings = new ApplicationSettings();
         OptionValues.ApplyGlobalSettings(ApplicationSettings);
+        ApplyApplicationSettings();
         Operations = new OperationCatalogService(catalog);
         OperationRuntime = new OperationRuntimeService();
         OperationSession = new OperationSessionService(Operations, OperationRuntime);
@@ -69,6 +71,14 @@ public sealed class LocalAutomationApplicationHost
     /// Gets the shared host-global application settings instance.
     /// </summary>
     public ApplicationSettings ApplicationSettings { get; }
+
+    /// <summary>
+    /// Applies the current application settings to host-wide runtime services that need immediate updates.
+    /// </summary>
+    public void ApplyApplicationSettings()
+    {
+        OutputPaths.SetRoot(ApplicationSettings.OutputRootPath);
+    }
 
     /// <summary>
     /// Gets the service used to capture and reapply stable option values for persistence.

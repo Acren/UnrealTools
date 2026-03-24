@@ -7,12 +7,28 @@ namespace LocalAutomation.Runtime;
 /// </summary>
 public static class OutputPaths
 {
+    private const string DefaultRootPathValue = @"C:\UC";
+    private static string _rootPath = DefaultRootPathValue;
+
+    /// <summary>
+    /// Gets the default root directory used when no host-specific override has been applied.
+    /// </summary>
+    public static string DefaultRootPath => DefaultRootPathValue;
+
     /// <summary>
     /// Returns the root directory under which generated automation output is stored.
     /// </summary>
     public static string Root()
     {
-        return @"C:\UC\";
+        return _rootPath;
+    }
+
+    /// <summary>
+    /// Applies the host-wide output root override used by runtime targets and operations.
+    /// </summary>
+    public static void SetRoot(string? rootPath)
+    {
+        _rootPath = string.IsNullOrWhiteSpace(rootPath) ? DefaultRootPathValue : rootPath.Trim();
     }
 
     /// <summary>

@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon
     {
         public static string Root()
         {
-            return @"C:\UC\";
+            return global::LocalAutomation.Runtime.OutputPaths.Root();
         }
 
         public static string GetTestReportPath(string OutputPath)
