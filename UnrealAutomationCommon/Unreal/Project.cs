@@ -131,14 +131,14 @@ namespace UnrealAutomationCommon.Unreal
 
         /// <summary>
         /// Resolves the effective engine instance while recording the cost of descriptor-driven engine lookup for
-        /// operation-switch diagnostics.
+        /// performance telemetry.
         /// </summary>
         public Engine GetEngineInstanceForDiagnostics()
         {
-            using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("Project.GetEngineInstance");
-            OperationSwitchTelemetry.SetTag(activity, "descriptor.path", UProjectPath);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Project.GetEngineInstance");
+            PerformanceTelemetry.SetTag(activity, "descriptor.path", UProjectPath);
             Engine engine = EngineInstance;
-            OperationSwitchTelemetry.SetTag(activity, "engine.name", engine?.DisplayName ?? string.Empty);
+            PerformanceTelemetry.SetTag(activity, "engine.name", engine?.DisplayName ?? string.Empty);
             return engine;
         }
 

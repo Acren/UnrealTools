@@ -9,10 +9,10 @@ using Microsoft.Extensions.Logging;
 namespace LocalAutomation.Avalonia.Diagnostics;
 
 /// <summary>
-/// Listens to operation-switch activities and writes a compact, human-readable timing summary into the existing shell
-/// logs when performance diagnostics are explicitly enabled for the current host.
+/// Listens to instrumented performance activities and writes a compact, human-readable timing summary into the
+/// existing shell logs when performance telemetry is explicitly enabled for the current host.
 /// </summary>
-public static class OperationSwitchDiagnosticsListener
+public static class PerformanceTelemetryListener
 {
     private static readonly object Sync = new();
     private static readonly ConcurrentDictionary<string, ActivitySummary> Summaries = new();
@@ -21,7 +21,7 @@ public static class OperationSwitchDiagnosticsListener
     private static bool _isStarted;
 
     /// <summary>
-    /// Starts the shared listener once when diagnostics are enabled.
+    /// Starts the shared listener once when performance telemetry is enabled.
     /// </summary>
     public static void Start(bool enabled)
     {
@@ -41,7 +41,7 @@ public static class OperationSwitchDiagnosticsListener
 
             _listener = new ActivityListener
             {
-                ShouldListenTo = source => string.Equals(source.Name, OperationSwitchTelemetry.SourceName, StringComparison.Ordinal),
+                ShouldListenTo = source => string.Equals(source.Name, PerformanceTelemetry.SourceName, StringComparison.Ordinal),
                 Sample = static (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
                 SampleUsingParentId = static (ref ActivityCreationOptions<string> _) => ActivitySamplingResult.AllDataAndRecorded,
                 ActivityStopped = HandleActivityStopped
@@ -53,7 +53,7 @@ public static class OperationSwitchDiagnosticsListener
     }
 
     /// <summary>
-    /// Captures completed activities and writes the final formatted tree when the root operation-switch activity ends.
+    /// Captures completed activities and writes the final formatted tree whenever a root telemetry activity ends.
     /// </summary>
     private static void HandleActivityStopped(Activity activity)
     {
@@ -66,7 +66,8 @@ public static class OperationSwitchDiagnosticsListener
         ActivitySummary summary = Summaries.GetOrAdd(traceId, _ => new ActivitySummary());
         summary.Add(activity);
 
-        if (activity.Parent != null || !string.Equals(activity.OperationName, "OperationSwitch", StringComparison.Ordinal))
+        // Any top-level activity is a complete telemetry tree, so avoid baking in knowledge of a specific workflow name.
+        if (activity.Parent != null)
         {
             return;
         }
@@ -89,7 +90,9 @@ public static class OperationSwitchDiagnosticsListener
                 ?? "<unknown>";
 
             List<string> lines = new();
-            lines.Add($"OperationSwitch {rootOperationName} {rootActivity.Duration.TotalMilliseconds:0} ms");
+            // Prefix the summary with a generic telemetry label so the setting and log wording stay decoupled from
+            // whichever workflow currently emits the trace.
+            lines.Add($"PerformanceTelemetry {rootActivity.OperationName} {rootOperationName} {rootActivity.Duration.TotalMilliseconds:0} ms");
 
             foreach (RecordedActivity child in summary.Activities.OrderBy(item => item.StartTimeUtc).Where(item => item.ParentSpanId == rootActivity.SpanId))
             {
@@ -119,7 +122,7 @@ public static class OperationSwitchDiagnosticsListener
     }
 
     /// <summary>
-    /// Stores the activities captured for one traced operation switch.
+    /// Stores the activities captured for one traced telemetry root.
     /// </summary>
     private sealed class ActivitySummary
     {
@@ -187,7 +190,7 @@ public static class OperationSwitchDiagnosticsListener
         public string Description { get; }
 
         /// <summary>
-        /// Builds one compact description from the tags most useful for debugging the operation-switch path.
+        /// Builds one compact description from the tags most useful for debugging the current telemetry path.
         /// </summary>
         private static string BuildDescription(Activity activity)
         {

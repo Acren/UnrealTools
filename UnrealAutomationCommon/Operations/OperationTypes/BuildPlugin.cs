@@ -10,42 +10,42 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         // Direct Build.bat plugin compilation needs a host project and only applies to code plugins.
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("BuildPlugin.CheckRequirements");
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("BuildPlugin.CheckRequirements");
             UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
-            OperationSwitchTelemetry.SetTag(activity, "target.type", typedParameters.Target?.GetType().Name ?? string.Empty);
+            PerformanceTelemetry.SetTag(activity, "target.type", typedParameters.Target?.GetType().Name ?? string.Empty);
             if (requirementsError != null)
             {
-                OperationSwitchTelemetry.SetTag(activity, "result", requirementsError);
+                PerformanceTelemetry.SetTag(activity, "result", requirementsError);
                 return requirementsError;
             }
 
             Plugin plugin = GetTarget(typedParameters);
-            OperationSwitchTelemetry.SetTag(activity, "plugin.path", plugin.PluginPath);
-            OperationSwitchTelemetry.SetTag(activity, "descriptor.path", plugin.UPluginPath);
+            PerformanceTelemetry.SetTag(activity, "plugin.path", plugin.PluginPath);
+            PerformanceTelemetry.SetTag(activity, "descriptor.path", plugin.UPluginPath);
             if (plugin.IsBlueprintOnly)
             {
-                OperationSwitchTelemetry.SetTag(activity, "result", "Build Plugin only supports code plugins");
+                PerformanceTelemetry.SetTag(activity, "result", "Build Plugin only supports code plugins");
                 return "Build Plugin only supports code plugins";
             }
 
             Project hostProject = plugin.GetHostProjectForDiagnostics();
-            OperationSwitchTelemetry.SetTag(activity, "host_project.path", hostProject?.ProjectPath ?? string.Empty);
+            PerformanceTelemetry.SetTag(activity, "host_project.path", hostProject?.ProjectPath ?? string.Empty);
             if (hostProject == null || !hostProject.IsValid)
             {
-                OperationSwitchTelemetry.SetTag(activity, "result", "Build Plugin requires the plugin to live inside a valid host project");
+                PerformanceTelemetry.SetTag(activity, "result", "Build Plugin requires the plugin to live inside a valid host project");
                 return "Build Plugin requires the plugin to live inside a valid host project";
             }
 
             Engine engine = hostProject.GetEngineInstanceForDiagnostics();
-            OperationSwitchTelemetry.SetTag(activity, "engine.name", engine?.DisplayName ?? string.Empty);
+            PerformanceTelemetry.SetTag(activity, "engine.name", engine?.DisplayName ?? string.Empty);
             if (engine == null)
             {
-                OperationSwitchTelemetry.SetTag(activity, "result", "Build Plugin could not resolve a host project engine install");
+                PerformanceTelemetry.SetTag(activity, "result", "Build Plugin could not resolve a host project engine install");
                 return "Build Plugin could not resolve a host project engine install";
             }
 
-            OperationSwitchTelemetry.SetTag(activity, "result", "Success");
+            PerformanceTelemetry.SetTag(activity, "result", "Success");
             return null;
         }
 

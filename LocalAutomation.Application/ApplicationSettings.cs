@@ -10,7 +10,7 @@ namespace LocalAutomation.Application;
 [PersistedSettings("app")]
 public sealed class ApplicationSettings : INotifyPropertyChanged
 {
-    private bool _enableOperationSwitchPerformanceTelemetry;
+    private bool _enablePerformanceTelemetry;
 
     /// <summary>
     /// Raised whenever one persisted application preference changes.
@@ -18,22 +18,22 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// Gets or sets whether operation-switch timing summaries should be written to the shared shell log output.
+    /// Gets or sets whether performance telemetry should be written to the shared shell log output.
     /// </summary>
     [DisplayName("Enable performance telemetry")]
-    [Description("Writes readable operation-switch timing diagnostics to the application log for troubleshooting slow UI transitions.")]
+    [Description("Writes readable application-wide timing diagnostics to the application log for troubleshooting instrumented workflows across the shell and automation stack.")]
     [PersistedValue(PersistenceScope.Global)]
-    public bool EnableOperationSwitchPerformanceTelemetry
+    public bool EnablePerformanceTelemetry
     {
-        get => _enableOperationSwitchPerformanceTelemetry;
+        get => _enablePerformanceTelemetry;
         set
         {
-            if (_enableOperationSwitchPerformanceTelemetry == value)
+            if (_enablePerformanceTelemetry == value)
             {
                 return;
             }
 
-            _enableOperationSwitchPerformanceTelemetry = value;
+            _enablePerformanceTelemetry = value;
             OnPropertyChanged();
         }
     }

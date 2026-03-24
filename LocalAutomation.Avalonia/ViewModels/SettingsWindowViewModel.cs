@@ -71,7 +71,7 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
     private void HandleApplicationSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
         // Apply the listener toggle immediately so telemetry can start or stop without requiring an app restart.
-        OperationSwitchDiagnosticsListener.Start(_services.ApplicationSettings.EnableOperationSwitchPerformanceTelemetry);
+        PerformanceTelemetryListener.Start(_services.ApplicationSettings.EnablePerformanceTelemetry);
         _hasPendingSave = true;
         _saveTimer.Stop();
         _saveTimer.Start();

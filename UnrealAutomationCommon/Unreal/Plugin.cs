@@ -141,17 +141,17 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         /// <summary>
-        /// Creates the host project while recording the cost of that resolution for operation-switch diagnostics.
+        /// Creates the host project while recording the cost of that resolution for performance telemetry.
         /// </summary>
         public Project GetHostProjectForDiagnostics()
         {
-            using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("Plugin.GetHostProject");
-            OperationSwitchTelemetry.SetTag(activity, "host_project.path", HostProjectPath);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Plugin.GetHostProject");
+            PerformanceTelemetry.SetTag(activity, "host_project.path", HostProjectPath);
             bool cacheHit = _hostProject != null;
             Project hostProject = ResolveHostProject();
-            OperationSwitchTelemetry.SetTag(activity, "cache.hit", cacheHit);
-            OperationSwitchTelemetry.SetTag(activity, "target.type", hostProject.GetType().Name);
-            OperationSwitchTelemetry.SetTag(activity, "is_valid", hostProject.IsValid);
+            PerformanceTelemetry.SetTag(activity, "cache.hit", cacheHit);
+            PerformanceTelemetry.SetTag(activity, "target.type", hostProject.GetType().Name);
+            PerformanceTelemetry.SetTag(activity, "is_valid", hostProject.IsValid);
             return hostProject;
         }
 

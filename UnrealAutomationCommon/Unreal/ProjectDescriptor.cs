@@ -74,8 +74,8 @@ namespace UnrealAutomationCommon.Unreal
 
         public static ProjectDescriptor Load(string uProjectPath)
         {
-            using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("ProjectDescriptor.Load");
-            OperationSwitchTelemetry.SetTag(activity, "descriptor.path", uProjectPath);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ProjectDescriptor.Load");
+            PerformanceTelemetry.SetTag(activity, "descriptor.path", uProjectPath);
             return JsonConvert.DeserializeObject<ProjectDescriptor>(File.ReadAllText(uProjectPath));
         }
 

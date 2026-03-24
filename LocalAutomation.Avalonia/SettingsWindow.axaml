@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
         xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
-        xmlns:pgc="clr-namespace:Avalonia.PropertyGrid.Controls;assembly=Avalonia.PropertyGrid"
         x:Class="LocalAutomation.Avalonia.SettingsWindow"
         x:DataType="vm:SettingsWindowViewModel"
         Width="640"
@@ -12,11 +12,13 @@
     <!-- This window keeps global preferences isolated from target or session editing flows. -->
     <Grid Margin="10" RowDefinitions="*,Auto" RowSpacing="10">
         <Border Classes="panel" Padding="10" MinHeight="0">
-            <pgc:PropertyGrid DataContext="{Binding PropertyGridTarget}"
-                              IsQuickFilterVisible="False"
-                              IsCategoryVisible="False"
-                              IsHeaderVisible="False"
-                              IsTitleVisible="False" />
+            <controls:SettingsPropertyGrid DataContext="{Binding PropertyGridTarget}"
+                                           IsQuickFilterVisible="False"
+                                           IsAutoNameWidth="False"
+                                           IsCategoryVisible="False"
+                                           IsHeaderVisible="False"
+                                           IsTitleVisible="False"
+                                           NameWidth="400" />
         </Border>
 
         <Border Grid.Row="1" Classes="panel" Padding="12,10">

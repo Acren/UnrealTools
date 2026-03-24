@@ -610,6 +610,16 @@
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
             <Setter Property="FontSize" Value="12" />
         </Style>
+        <Style Selector="TextBlock.property-grid-name">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="TextBlock.property-grid-description">
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextMutedBrush}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Opacity" Value="0.95" />
+        </Style>
         <Style Selector="pgc|PropertyGrid Button">
             <Setter Property="Padding" Value="8,4" />
             <Setter Property="FontSize" Value="11" />

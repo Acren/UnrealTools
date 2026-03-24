@@ -33,9 +33,9 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
     /// </summary>
     public override global::LocalAutomation.Runtime.OperationParameters CreateParameters(global::LocalAutomation.Runtime.OperationParameters? existing = null)
     {
-        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("CreateOperationParameters");
-        OperationSwitchTelemetry.SetTag(activity, "operation.type", GetType().Name);
-        OperationSwitchTelemetry.SetTag(activity, "existing_option_set.count", existing?.OptionsInstances.Count ?? 0);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("CreateOperationParameters");
+        PerformanceTelemetry.SetTag(activity, "operation.type", GetType().Name);
+        PerformanceTelemetry.SetTag(activity, "existing_option_set.count", existing?.OptionsInstances.Count ?? 0);
 
         UnrealAutomationCommon.Operations.UnrealOperationParameters parameters = (UnrealAutomationCommon.Operations.UnrealOperationParameters)base.CreateParameters(existing);
         if (parameters.GetOptionsInstance(typeof(AdditionalArgumentsOptions)) == null)
@@ -43,7 +43,7 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
             parameters.EnsureOptionsInstance(typeof(AdditionalArgumentsOptions));
         }
 
-        OperationSwitchTelemetry.SetTag(activity, "new_option_set.count", parameters.OptionsInstances.Count);
+        PerformanceTelemetry.SetTag(activity, "new_option_set.count", parameters.OptionsInstances.Count);
 
         return parameters;
     }

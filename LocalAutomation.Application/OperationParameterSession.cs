@@ -47,9 +47,9 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
     /// </summary>
     public void Replace(OperationParameters parameters, IOperationTarget? target)
     {
-        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("ReplaceParameters");
-        OperationSwitchTelemetry.SetTag(activity, "incoming_option_set.count", parameters?.OptionsInstances.Count ?? 0);
-        OperationSwitchTelemetry.SetTag(activity, "target.type", target?.GetType().Name ?? string.Empty);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ReplaceParameters");
+        PerformanceTelemetry.SetTag(activity, "incoming_option_set.count", parameters?.OptionsInstances.Count ?? 0);
+        PerformanceTelemetry.SetTag(activity, "target.type", target?.GetType().Name ?? string.Empty);
 
         if (parameters == null)
         {
@@ -72,7 +72,7 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AdditionalArguments)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OptionSets)));
 
-        OperationSwitchTelemetry.SetTag(activity, "final_option_set.count", _parameters.OptionsInstances.Count);
+        PerformanceTelemetry.SetTag(activity, "final_option_set.count", _parameters.OptionsInstances.Count);
     }
 
     /// <summary>

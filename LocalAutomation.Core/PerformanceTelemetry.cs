@@ -7,14 +7,14 @@ namespace LocalAutomation.Core;
 /// Wraps one optional Activity so instrumentation can remain public without leaking DiagnosticSource runtime types
 /// across project boundaries.
 /// </summary>
-public readonly struct OperationSwitchActivityScope : IDisposable
+public readonly struct PerformanceActivityScope : IDisposable
 {
     private readonly Activity? _activity;
 
     /// <summary>
     /// Stores the underlying runtime Activity when tracing is enabled.
     /// </summary>
-    internal OperationSwitchActivityScope(Activity? activity)
+    internal PerformanceActivityScope(Activity? activity)
     {
         _activity = activity;
     }
@@ -37,33 +37,33 @@ public readonly struct OperationSwitchActivityScope : IDisposable
 }
 
 /// <summary>
-/// Owns the shared ActivitySource used to trace operation-switch performance across the shell, application, and
+/// Owns the shared ActivitySource used to trace performance-sensitive workflows across the shell, application, and
 /// Unreal-specific layers.
 /// </summary>
-public static class OperationSwitchTelemetry
+public static class PerformanceTelemetry
 {
     /// <summary>
-    /// Gets the source name used by listeners to subscribe to operation-switch activities.
+    /// Gets the source name used by listeners to subscribe to performance telemetry activities.
     /// </summary>
-    public const string SourceName = "LocalAutomation.OperationSwitch";
+    public const string SourceName = "LocalAutomation.PerformanceTelemetry";
 
     /// <summary>
-    /// Gets the shared ActivitySource used for operation-switch tracing.
+    /// Gets the shared ActivitySource used for performance telemetry tracing.
     /// </summary>
     public static ActivitySource Source { get; } = new(SourceName);
 
     /// <summary>
     /// Starts one traced activity when a listener is attached, otherwise returns <c>null</c> with near-zero overhead.
     /// </summary>
-    public static OperationSwitchActivityScope StartActivity(string activityName)
+    public static PerformanceActivityScope StartActivity(string activityName)
     {
-        return new OperationSwitchActivityScope(Source.StartActivity(activityName, ActivityKind.Internal));
+        return new PerformanceActivityScope(Source.StartActivity(activityName, ActivityKind.Internal));
     }
 
     /// <summary>
     /// Adds one tag value when the activity exists, avoiding repetitive null checks at instrumentation sites.
     /// </summary>
-    public static void SetTag(OperationSwitchActivityScope activity, string key, object? value)
+    public static void SetTag(PerformanceActivityScope activity, string key, object? value)
     {
         activity.SetTag(key, value);
     }

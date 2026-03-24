@@ -132,12 +132,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("OperationSwitch");
-        OperationSwitchTelemetry.SetTag(activity, "operation.id", selectedOperationId?.Value ?? string.Empty);
-        OperationSwitchTelemetry.SetTag(activity, "operation.name", selectedOperation?.DisplayName ?? string.Empty);
-        OperationSwitchTelemetry.SetTag(activity, "previous_operation.id", previousSelectedOperationId?.Value ?? string.Empty);
-        OperationSwitchTelemetry.SetTag(activity, "target.type", GetSelectedTargetTypeId()?.Value ?? string.Empty);
-        OperationSwitchTelemetry.SetTag(activity, "available_operation.count", AvailableOperations.Count);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("OperationSwitch");
+        PerformanceTelemetry.SetTag(activity, "operation.id", selectedOperationId?.Value ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "operation.name", selectedOperation?.DisplayName ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "previous_operation.id", previousSelectedOperationId?.Value ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "target.type", GetSelectedTargetTypeId()?.Value ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "available_operation.count", AvailableOperations.Count);
 
         // Capture the current target-scoped option values before changing the selected operation because operation
         // switches can temporarily remove option sets like compiler settings from the live parameter model.
@@ -517,23 +517,23 @@ public sealed class MainWindowViewModel : ViewModelBase
         OperationParameters previousParameters,
         OperationId? previousSelectedOperationId)
     {
-        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("ActivateOperation");
-        OperationSwitchTelemetry.SetTag(activity, "operation.id", selectedOperation?.Id.Value ?? string.Empty);
-        OperationSwitchTelemetry.SetTag(activity, "operation.name", selectedOperation?.DisplayName ?? string.Empty);
-        OperationSwitchTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
-        OperationSwitchTelemetry.SetTag(activity, "previous_option_set.count", previousParameters.OptionsInstances.Count);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ActivateOperation");
+        PerformanceTelemetry.SetTag(activity, "operation.id", selectedOperation?.Id.Value ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "operation.name", selectedOperation?.DisplayName ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "previous_option_set.count", previousParameters.OptionsInstances.Count);
 
         try
         {
             _currentOperation = selectedOperation != null ? _services.OperationSession.CreateOperation(selectedOperation.OperationType) : null;
             OperationParameters replacementParameters = _currentOperation?.CreateParameters(previousParameters) ?? new OperationParameters();
             _parameterSession.Replace(replacementParameters, SelectedTarget?.Target as IOperationTarget);
-            OperationSwitchTelemetry.SetTag(activity, "new_option_set.count", replacementParameters.OptionsInstances.Count);
+            PerformanceTelemetry.SetTag(activity, "new_option_set.count", replacementParameters.OptionsInstances.Count);
             return true;
         }
         catch (Exception ex)
         {
-            OperationSwitchTelemetry.SetTag(activity, "error.type", ex.GetType().FullName ?? ex.GetType().Name);
+            PerformanceTelemetry.SetTag(activity, "error.type", ex.GetType().FullName ?? ex.GetType().Name);
             HandleOperationActivationFailure(selectedOperation, previousOperation, previousParameters, previousSelectedOperationId, ex);
             return false;
         }
@@ -702,7 +702,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RefreshEnabledOptionSets()
     {
-        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("RefreshEnabledOptionSets");
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("RefreshEnabledOptionSets");
         var enabledOptionTypes = _services.OperationSession.GetEnabledOptionSetTypes(_currentOperation, SelectedTarget?.Target as IOperationTarget).ToList();
         List<OperationOptions> existingOptionSets = _parameterSession.OptionSets.ToList();
         int addedOptionSetCount = 0;
@@ -729,13 +729,13 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
         }
 
-        OperationSwitchTelemetry.SetTag(activity, "operation.id", _selectedOperationId?.Value ?? string.Empty);
-        OperationSwitchTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
-        OperationSwitchTelemetry.SetTag(activity, "existing_option_set.count", existingOptionSets.Count);
-        OperationSwitchTelemetry.SetTag(activity, "enabled_option_type.count", enabledOptionTypes.Count);
-        OperationSwitchTelemetry.SetTag(activity, "added_option_set.count", addedOptionSetCount);
-        OperationSwitchTelemetry.SetTag(activity, "removed_option_set.count", removedOptionSetCount);
-        OperationSwitchTelemetry.SetTag(activity, "final_option_set.count", _parameterSession.OptionSets.Count);
+        PerformanceTelemetry.SetTag(activity, "operation.id", _selectedOperationId?.Value ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "existing_option_set.count", existingOptionSets.Count);
+        PerformanceTelemetry.SetTag(activity, "enabled_option_type.count", enabledOptionTypes.Count);
+        PerformanceTelemetry.SetTag(activity, "added_option_set.count", addedOptionSetCount);
+        PerformanceTelemetry.SetTag(activity, "removed_option_set.count", removedOptionSetCount);
+        PerformanceTelemetry.SetTag(activity, "final_option_set.count", _parameterSession.OptionSets.Count);
         RebuildOptionCards();
     }
 
@@ -745,8 +745,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RebuildOptionCards()
     {
-        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("RebuildOptionCards");
-        OperationSwitchTelemetry.SetTag(activity, "count", _parameterSession.OptionSets.Count);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("RebuildOptionCards");
+        PerformanceTelemetry.SetTag(activity, "count", _parameterSession.OptionSets.Count);
         EnabledOptionSets.Clear();
 
         foreach (OperationOptions options in _parameterSession.OptionSets)
@@ -754,7 +754,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             EnabledOptionSets.Add(new OptionSetViewModel(_services, options, _services.OptionEditors.GetEditorTarget(options)));
         }
 
-        OperationSwitchTelemetry.SetTag(activity, "option_card.count", EnabledOptionSets.Count);
+        PerformanceTelemetry.SetTag(activity, "option_card.count", EnabledOptionSets.Count);
     }
 
     /// <summary>
@@ -768,11 +768,11 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("ApplyPersistedSettings");
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ApplyPersistedSettings");
 
         TargetSettingsContext context = _services.OptionValues.CreateTargetContext(_services.Targets, SelectedTarget.Target);
-        OperationSwitchTelemetry.SetTag(activity, "target.type", context.TargetTypeId.Value);
-        OperationSwitchTelemetry.SetTag(activity, "count", _parameterSession.OptionSets.Count);
+        PerformanceTelemetry.SetTag(activity, "target.type", context.TargetTypeId.Value);
+        PerformanceTelemetry.SetTag(activity, "count", _parameterSession.OptionSets.Count);
         _services.OptionValues.ApplyOptionValues(_parameterSession.OptionSets, context);
 
         // Recreate property-grid card targets after applying restored values so adapter-backed editors reflect the

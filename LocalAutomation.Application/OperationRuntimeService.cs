@@ -51,12 +51,12 @@ public sealed class OperationRuntimeService
                 return Array.Empty<Type>();
             }
 
-            using OperationSwitchActivityScope activity = OperationSwitchTelemetry.StartActivity("GetRequiredOptionSetTypes");
-            OperationSwitchTelemetry.SetTag(activity, "operation.type", operation.GetType().Name);
-            OperationSwitchTelemetry.SetTag(activity, "target.type", target.GetType().Name);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("GetRequiredOptionSetTypes");
+            PerformanceTelemetry.SetTag(activity, "operation.type", operation.GetType().Name);
+            PerformanceTelemetry.SetTag(activity, "target.type", target.GetType().Name);
 
             IReadOnlyList<Type> optionTypes = operation.GetRequiredOptionSetTypes(target).ToList();
-            OperationSwitchTelemetry.SetTag(activity, "count", optionTypes.Count);
+            PerformanceTelemetry.SetTag(activity, "count", optionTypes.Count);
             return optionTypes;
         }
         catch (Exception ex)
