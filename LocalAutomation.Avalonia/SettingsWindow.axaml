@@ -8,6 +8,7 @@
         Height="480"
         MinWidth="540"
         MinHeight="380"
+        WindowStartupLocation="CenterOwner"
         Title="Settings">
     <!-- This window keeps global preferences isolated from target or session editing flows. -->
     <Grid Margin="10" RowDefinitions="*,Auto" RowSpacing="10">
@@ -21,13 +22,12 @@
                                            NameWidth="400" />
         </Border>
 
-        <Border Grid.Row="1" Classes="panel" Padding="12,10">
-            <Grid ColumnDefinitions="*,Auto">
-                <Button Grid.Column="1"
-                        Classes="primary small"
-                        Content="Close"
-                        Click="Close_Click" />
-            </Grid>
-        </Border>
+        <!-- Keep the close action visually lighter than the settings content by avoiding an extra framed panel. -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+            <Button Grid.Column="1"
+                    Classes="primary small"
+                    Content="Close"
+                    Click="Close_Click" />
+        </Grid>
     </Grid>
 </Window>
