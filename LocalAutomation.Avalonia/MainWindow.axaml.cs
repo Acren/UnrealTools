@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Interactivity;
 using LocalAutomation.Avalonia.ViewModels;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
@@ -40,15 +39,6 @@ public partial class MainWindow : Window
     {
         Closed -= HandleClosed;
         ViewModel.FlushPendingSessionState();
-    }
-
-    /// <summary>
-    /// Opens the global settings window from the right-rail shell action.
-    /// </summary>
-    private async void OpenSettings_Click(object? sender, RoutedEventArgs e)
-    {
-        SettingsWindow settingsWindow = new(App.Services);
-        await settingsWindow.ShowDialog(this);
     }
 
 }

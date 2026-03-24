@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using LocalAutomation.Avalonia;
 using LocalAutomation.Avalonia.ViewModels;
 
 namespace LocalAutomation.Avalonia.Views.Panels;
@@ -95,5 +96,20 @@ public partial class TargetPanel : UserControl
         }
 
         ViewModel.ExecuteTargetAction(action);
+    }
+
+    /// <summary>
+    /// Opens the shared settings window from the target header now that settings are no longer in custom window chrome.
+    /// </summary>
+    private async void OpenSettings_Click(object? sender, RoutedEventArgs e)
+    {
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is not Window owner)
+        {
+            return;
+        }
+
+        SettingsWindow settingsWindow = new(App.Services);
+        await settingsWindow.ShowDialog(owner);
     }
 }
