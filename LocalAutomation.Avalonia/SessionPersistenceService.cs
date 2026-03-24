@@ -79,6 +79,32 @@ public sealed class SessionPersistenceService
     }
 
     /// <summary>
+    /// Creates a detached copy of the provided snapshot so background persistence can save it without reading mutable
+    /// UI-owned collections after the request is queued.
+    /// </summary>
+    public SessionSnapshot CloneSnapshot(SessionSnapshot snapshot)
+    {
+        if (snapshot == null)
+        {
+            throw new ArgumentNullException(nameof(snapshot));
+        }
+
+        return new SessionSnapshot
+        {
+            Version = snapshot.Version,
+            SelectedTargetKey = snapshot.SelectedTargetKey,
+            PendingTargetPath = snapshot.PendingTargetPath,
+            SelectedOperationIdsByTargetType = new System.Collections.Generic.Dictionary<string, string?>(snapshot.SelectedOperationIdsByTargetType, StringComparer.Ordinal),
+            Targets = snapshot.Targets.Select(target => new TargetSessionSnapshot
+            {
+                Key = target.Key,
+                TargetTypeId = target.TargetTypeId,
+                Path = target.Path
+            }).ToList()
+        };
+    }
+
+    /// <summary>
     /// Builds the stable key used to persist target-scoped UI state.
     /// </summary>
     public TargetKey BuildTargetKey(TargetTypeId targetTypeId, string targetPath)

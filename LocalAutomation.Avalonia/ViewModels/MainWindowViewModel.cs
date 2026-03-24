@@ -3,7 +3,6 @@ using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using Avalonia.Threading;
 using LocalAutomation.Application;
 using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
@@ -16,7 +15,7 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// Drives the Avalonia shell by exposing target selection, operation selection, command preview, and generic option
 /// editing through the shared LocalAutomation services instead of extension-specific runtime types.
 /// </summary>
-public sealed class MainWindowViewModel : ViewModelBase
+public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 {
     [Flags]
     private enum SelectionTransitionState
@@ -33,14 +32,15 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly LocalAutomationApplicationHost _services;
     private readonly OperationParameterSession _parameterSession;
     private readonly SessionPersistenceService _sessionPersistence;
-    private readonly DispatcherTimer _sessionSaveTimer;
+    private readonly DebouncedBackgroundSaver<SessionSnapshot> _sessionSnapshotSaver;
+    private readonly DebouncedBackgroundSaver<PersistedSettingsWriteBatch> _targetOptionValuesSaver;
     private ObservableCollection<OperationDescriptor> _availableOperations = new();
-    private bool _hasPendingSessionSave;
     private Operation? _currentOperation;
     private OperationId? _selectedOperationId;
     private SessionSnapshot _sessionSnapshot = new();
     private string _status = $"Add a target path to begin using the {App.ShellIdentity.ApplicationName} shell.";
     private SelectionTransitionState _selectionTransitionState;
+    private bool _disposed;
 
     /// <summary>
     /// Creates the Avalonia main-window view model around the shared LocalAutomation application host.
@@ -50,8 +50,15 @@ public sealed class MainWindowViewModel : ViewModelBase
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _parameterSession = _services.OperationRuntime.CreateParameterSession();
         _sessionPersistence = new SessionPersistenceService(services);
-        _sessionSaveTimer = new DispatcherTimer { Interval = SessionSaveDebounceDelay };
-        _sessionSaveTimer.Tick += HandleSessionSaveTimerTick;
+        _sessionSnapshotSaver = new DebouncedBackgroundSaver<SessionSnapshot>(
+            debounceDelay: SessionSaveDebounceDelay,
+            saveState: _sessionPersistence.Save,
+            handleSaveException: HandleSessionSaveException);
+        _targetOptionValuesSaver = new DebouncedBackgroundSaver<PersistedSettingsWriteBatch>(
+            debounceDelay: SessionSaveDebounceDelay,
+            saveState: _services.OptionValues.SaveCapturedSettings,
+            mergeStates: static (earlier, later) => earlier.Merge(later),
+            handleSaveException: HandleTargetSettingsSaveException);
         _parameterSession.PropertyChanged += HandleOperationParametersChanged;
         Target = new TargetPanelViewModel(services, SetStatus, HandleSelectedTargetChanged, SaveSessionState);
         Runtime = new RuntimePanelViewModel(services, SetStatus);
@@ -143,7 +150,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         // switches can temporarily remove option sets like compiler settings from the live parameter model.
         if (!IsSelectionTransitionActive(SelectionTransitionState.HydratingSessionSelection | SelectionTransitionState.ApplyingTargetState | SelectionTransitionState.RestoringSession) && SelectedTarget?.Target != null)
         {
-            PersistTargetOptionValues(SelectedTarget.Target);
+            QueueTargetOptionValuePersistence(SelectedTarget.Target);
             RememberOperationForTargetType(SelectedTarget.Target, previousSelectedOperationId);
         }
 
@@ -243,18 +250,32 @@ public sealed class MainWindowViewModel : ViewModelBase
     public string? PrimaryCommandText => _services.OperationSession.GetPrimaryCommandText(_currentOperation, _parameterSession.RawValue);
 
     /// <summary>
-    /// Flushes any queued session save immediately. Hosts should call this before shutdown so the most recent UI edits
-    /// are not lost if the debounce window has not elapsed yet.
+    /// Flushes any queued session and target-setting saves immediately so the most recent UI edits are persisted before
+    /// shutdown.
     /// </summary>
     public void FlushPendingSessionState()
     {
-        if (!_hasPendingSessionSave)
+        // Capture one final detached copy of the current shell state so shutdown waits for background persistence
+        // without touching live UI-owned objects from worker threads.
+        _targetOptionValuesSaver.Flush(CaptureTargetOptionValues(SelectedTarget?.Target));
+        _sessionSnapshotSaver.Flush(CaptureSessionSnapshot());
+    }
+
+    /// <summary>
+    /// Detaches the view model from persistence subscriptions and disposes the background savers once the host window
+    /// is closing.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
         {
             return;
         }
 
-        _sessionSaveTimer.Stop();
-        SaveSessionStateCore();
+        _disposed = true;
+        _parameterSession.PropertyChanged -= HandleOperationParametersChanged;
+        _targetOptionValuesSaver.Dispose();
+        _sessionSnapshotSaver.Dispose();
     }
 
     /// <summary>
@@ -309,37 +330,33 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Returns the persisted snapshot for the provided runtime target when one exists.
+    /// Captures the current target-scoped option values for one target into a detached batch that can be written later
+    /// by the shared background saver.
     /// </summary>
-    private TargetSessionSnapshot? FindTargetSnapshot(IOperationTarget target)
+    private PersistedSettingsWriteBatch CaptureTargetOptionValues(IOperationTarget? target)
     {
-        string key = _sessionPersistence.CreateTargetSnapshot(target).Key;
-        return _sessionSnapshot.Targets.FirstOrDefault(item => string.Equals(item.Key, key, StringComparison.Ordinal));
+        if (target == null)
+        {
+            return new PersistedSettingsWriteBatch();
+        }
+
+        TargetSettingsContext context = _services.OptionValues.CreateTargetContext(_services.Targets, target);
+        return _services.OptionValues.CaptureOptionValues(_parameterSession.OptionSets, context);
     }
 
     /// <summary>
-    /// Persists the current target-scoped option values for the provided runtime target.
+    /// Queues a detached copy of the current target-scoped option values so operation or target switches can persist
+    /// the outgoing editor state before the live option objects are replaced.
     /// </summary>
-    private void PersistTargetOptionValues(IOperationTarget? target)
+    private void QueueTargetOptionValuePersistence(IOperationTarget? target)
     {
-        if (target == null)
+        PersistedSettingsWriteBatch batch = CaptureTargetOptionValues(target);
+        if (batch.IsEmpty)
         {
             return;
         }
 
-        TargetSessionSnapshot snapshot = FindTargetSnapshot(target) ?? _sessionPersistence.CreateTargetSnapshot(target);
-        TargetSettingsContext context = _services.OptionValues.CreateTargetContext(_services.Targets, target);
-        _services.OptionValues.SaveOptionValues(_parameterSession.OptionSets, context);
-
-        int existingIndex = _sessionSnapshot.Targets.FindIndex(item => string.Equals(item.Key, snapshot.Key, StringComparison.Ordinal));
-        if (existingIndex >= 0)
-        {
-            _sessionSnapshot.Targets[existingIndex] = snapshot;
-        }
-        else
-        {
-            _sessionSnapshot.Targets.Add(snapshot);
-        }
+        _targetOptionValuesSaver.RequestSave(batch);
     }
 
     /// <summary>
@@ -348,8 +365,11 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void RememberOperationForTargetType(IOperationTarget? target, OperationId? operationId)
     {
-        if (target == null)
+        if (target == null || operationId == null)
         {
+            // Preserve the last successful remembered operation for this target type when target changes temporarily
+            // leave the selection empty during refresh or hydration. Writing null here would erase the preference that
+            // the next target switch is trying to restore.
             return;
         }
 
@@ -436,23 +456,22 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        _hasPendingSessionSave = true;
-        _sessionSaveTimer.Stop();
-        _sessionSaveTimer.Start();
+        // Persist the current target's layered option values alongside the shell snapshot so all host-managed state
+        // uses the same debounced background save behavior.
+        _targetOptionValuesSaver.RequestSave(CaptureTargetOptionValues(SelectedTarget?.Target));
+        _sessionSnapshotSaver.RequestSave(CaptureSessionSnapshot());
     }
 
     /// <summary>
-    /// Writes the latest session snapshot to disk immediately.
+    /// Builds a detached session snapshot from the current UI state so the background saver can persist it without
+    /// reading mutable view-model collections later.
     /// </summary>
-    private void SaveSessionStateCore()
+    private SessionSnapshot CaptureSessionSnapshot()
     {
-        _hasPendingSessionSave = false;
-
-        PersistTargetOptionValues(Target.SelectedTarget?.Target);
         RememberOperationForTargetType(Target.SelectedTarget?.Target, SelectedOperationId);
         _sessionSnapshot.Targets = Target.Targets.Select(item =>
         {
-            TargetSessionSnapshot snapshot = FindTargetSnapshot(item.Target) ?? _sessionPersistence.CreateTargetSnapshot(item.Target);
+            TargetSessionSnapshot snapshot = _sessionPersistence.CreateTargetSnapshot(item.Target);
             snapshot.TypedTargetTypeId = _services.Targets.GetTargetTypeId(item.Target) ?? snapshot.TypedTargetTypeId;
             snapshot.Path = _services.Targets.GetTargetPath(item.Target);
             snapshot.TypedKey = _sessionPersistence.BuildTargetKey(snapshot.TypedTargetTypeId, snapshot.Path);
@@ -460,23 +479,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         }).ToList();
         _sessionSnapshot.TypedSelectedTargetKey = Target.SelectedTarget?.Target == null ? null : _sessionPersistence.CreateTargetSnapshot(Target.SelectedTarget.Target).TypedKey;
         _sessionSnapshot.PendingTargetPath = Target.NewTargetPath;
-
-        _sessionPersistence.Save(_sessionSnapshot);
-    }
-
-    /// <summary>
-    /// Commits a debounced session save once the user has paused edits for a short interval.
-    /// </summary>
-    private void HandleSessionSaveTimerTick(object? sender, EventArgs e)
-    {
-        _sessionSaveTimer.Stop();
-
-        if (IsSelectionTransitionActive(SelectionTransitionState.RestoringSession) || !_hasPendingSessionSave)
-        {
-            return;
-        }
-
-        SaveSessionStateCore();
+        return _sessionPersistence.CloneSnapshot(_sessionSnapshot);
     }
 
     /// <summary>
@@ -491,9 +494,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     /// Rebuilds the compatible operation list for the currently selected target and preserves the active selection when
     /// it remains valid.
     /// </summary>
-    private void RefreshOperationSelection()
+    private void RefreshOperationSelection(OperationId? currentSelectionCandidate = null)
     {
-        OperationId? previousSelectedOperationId = _selectedOperationId;
+        OperationId? previousSelectedOperationId = currentSelectionCandidate ?? _selectedOperationId;
         IReadOnlyList<OperationDescriptor> compatibleOperations = _services.Operations.GetAvailableOperations(SelectedTarget?.Target);
 
         OperationId? retainedOperationId = _services.OperationSession.ResolveSelectedOperationId(
@@ -567,18 +570,36 @@ public sealed class MainWindowViewModel : ViewModelBase
     private void ApplySelectedTargetChange(TargetListItemViewModel? previousTarget, TargetListItemViewModel? selectedTarget)
     {
         IOperationTarget? previousOperationTarget = previousTarget?.Target;
+        TargetTypeId? previousTargetTypeId = previousOperationTarget == null ? null : _services.Targets.GetTargetTypeId(previousOperationTarget);
+        TargetTypeId? selectedTargetTypeId = selectedTarget?.Target == null ? null : _services.Targets.GetTargetTypeId(selectedTarget.Target);
         if (!IsSelectionTransitionActive(SelectionTransitionState.HydratingSessionSelection | SelectionTransitionState.RestoringSession | SelectionTransitionState.ApplyingTargetState) && previousOperationTarget != null)
         {
-            PersistTargetOptionValues(previousOperationTarget);
+            QueueTargetOptionValuePersistence(previousOperationTarget);
             RememberOperationForTargetType(previousOperationTarget, _selectedOperationId);
         }
 
-        _parameterSession.Target = selectedTarget?.Target as IOperationTarget;
         if (!IsSelectionTransitionActive(SelectionTransitionState.HydratingSessionSelection))
         {
-            RefreshOperationSelection();
+            // Keep target-change side effects suppressed from the moment the live parameter target flips to the new
+            // target until the compatible operation list has been recomputed. Otherwise the parameter target change can
+            // trigger a session save that records the old operation under the new target type before restore runs.
+            using (BeginSelectionTransition(SelectionTransitionState.ApplyingTargetState))
+            {
+                _parameterSession.Target = selectedTarget?.Target as IOperationTarget;
+
+                // Only carry the current selection forward when the target type stays the same. When the target type
+                // changes, prefer that type's remembered operation instead of temporarily applying the old target's
+                // operation to the new target.
+                OperationId? currentSelectionCandidate = previousTargetTypeId == selectedTargetTypeId ? _selectedOperationId : null;
+                RefreshOperationSelection(currentSelectionCandidate);
+            }
+
             RestoreSelectedTargetState();
             RaiseDerivedStateChanged();
+        }
+        else
+        {
+            _parameterSession.Target = selectedTarget?.Target as IOperationTarget;
         }
 
         SaveSessionState();
@@ -794,5 +815,21 @@ public sealed class MainWindowViewModel : ViewModelBase
         RaisePropertyChanged(nameof(PrimaryCommandText));
         RaisePropertyChanged(nameof(ShowExecuteDisabledReason));
         RaisePropertyChanged(nameof(VisibleCommand));
+    }
+
+    /// <summary>
+    /// Logs background session-save failures into the shared application log.
+    /// </summary>
+    private static void HandleSessionSaveException(Exception exception)
+    {
+        ApplicationLogService.LogError(exception, "Failed to save shell session state.");
+    }
+
+    /// <summary>
+    /// Logs background target-settings save failures into the shared application log.
+    /// </summary>
+    private static void HandleTargetSettingsSaveException(Exception exception)
+    {
+        ApplicationLogService.LogError(exception, "Failed to save target-scoped settings.");
     }
 }

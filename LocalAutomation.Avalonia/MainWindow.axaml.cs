@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     {
         Closed -= HandleClosed;
         ViewModel.FlushPendingSessionState();
+        ViewModel.Dispose();
     }
 
 }

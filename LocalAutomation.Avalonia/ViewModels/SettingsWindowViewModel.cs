@@ -1,25 +1,25 @@
 using System;
 using System.ComponentModel;
-using Avalonia.Threading;
 using LocalAutomation.Application;
 using LocalAutomation.Avalonia.Diagnostics;
+using LocalAutomation.Core;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 using PropertyModels.ComponentModel.DataAnnotations;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
 /// <summary>
-/// Drives the global application settings window and saves host-wide preferences with a small debounce.
+/// Drives the global application settings window and saves host-wide preferences through the shared debounced
+/// background persistence mechanism.
 /// </summary>
 public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
 {
     private static readonly TimeSpan SaveDebounceDelay = TimeSpan.FromMilliseconds(300);
 
     private readonly LocalAutomationApplicationHost _services;
-    private readonly DispatcherTimer _saveTimer;
+    private readonly DebouncedBackgroundSaver<PersistedSettingsWriteBatch> _settingsSaver;
     private readonly SettingsPropertyGridTarget _propertyGridTarget;
     private bool _disposed;
-    private bool _hasPendingSave;
 
     /// <summary>
     /// Creates the settings window view model around the shared application host.
@@ -28,8 +28,11 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _propertyGridTarget = new SettingsPropertyGridTarget(_services.ApplicationSettings);
-        _saveTimer = new DispatcherTimer { Interval = SaveDebounceDelay };
-        _saveTimer.Tick += HandleSaveTimerTick;
+        _settingsSaver = new DebouncedBackgroundSaver<PersistedSettingsWriteBatch>(
+            debounceDelay: SaveDebounceDelay,
+            saveState: _services.OptionValues.SaveCapturedSettings,
+            mergeStates: static (earlier, later) => earlier.Merge(later),
+            handleSaveException: HandleSaveException);
         _services.ApplicationSettings.PropertyChanged += HandleApplicationSettingsChanged;
     }
 
@@ -43,13 +46,8 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
     /// </summary>
     public void FlushPendingSave()
     {
-        if (!_hasPendingSave)
-        {
-            return;
-        }
-
-        _saveTimer.Stop();
-        SaveSettings();
+        // Capture one last detached batch before closing so the background saver persists the latest in-memory state.
+        _settingsSaver.Flush(_services.OptionValues.CaptureGlobalSettings(_services.ApplicationSettings));
     }
 
     /// <summary>
@@ -63,9 +61,8 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
         }
 
         _disposed = true;
-        _saveTimer.Stop();
-        _saveTimer.Tick -= HandleSaveTimerTick;
         _services.ApplicationSettings.PropertyChanged -= HandleApplicationSettingsChanged;
+        _settingsSaver.Dispose();
     }
 
     /// <summary>
@@ -78,27 +75,17 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
         _services.ApplyApplicationSettings();
 
         PerformanceTelemetryListener.Start(_services.ApplicationSettings.EnablePerformanceTelemetry);
-        _hasPendingSave = true;
-        _saveTimer.Stop();
-        _saveTimer.Start();
+        // Capture a detached persisted-value batch immediately so the background saver never touches the live settings
+        // object after the UI continues processing.
+        _settingsSaver.RequestSave(_services.OptionValues.CaptureGlobalSettings(_services.ApplicationSettings));
     }
 
     /// <summary>
-    /// Commits the latest pending global settings changes to disk.
+    /// Logs background save failures into the shared application log so settings persistence issues remain visible.
     /// </summary>
-    private void HandleSaveTimerTick(object? sender, EventArgs e)
+    private static void HandleSaveException(Exception exception)
     {
-        _saveTimer.Stop();
-        SaveSettings();
-    }
-
-    /// <summary>
-    /// Writes the shared application settings object into the host-global settings file.
-    /// </summary>
-    private void SaveSettings()
-    {
-        _hasPendingSave = false;
-        _services.OptionValues.SaveGlobalSettings(_services.ApplicationSettings);
+        ApplicationLogService.LogError(exception, "Failed to save global application settings.");
     }
 
     /// <summary>

@@ -152,24 +152,8 @@ public sealed class LayeredSettingsPersistenceService
             return;
         }
 
-        PersistedSettingValueCollection globalValues = LoadCollection(_globalSettingsFilePath);
-        PersistedSettingValueCollection targetLocalValues = LoadCollection(GetTargetLocalSettingsFilePath(context));
-        PersistedSettingValueCollection userOverrideValues = LoadCollection(GetUserTargetOverrideFilePath(context));
-
-        foreach (object optionSet in optionSets)
-        {
-            foreach (PersistedSettingDescriptor descriptor in GetOptionSetDescriptors(optionSet.GetType(), context.TargetTypeId))
-            {
-                if (!TryReadValueToken(optionSet, descriptor, out JToken? token))
-                {
-                    continue;
-                }
-
-                WriteDescriptorValue(descriptor, token!, globalValues, targetLocalValues, userOverrideValues);
-            }
-        }
-
-        SaveCollections(context, globalValues, targetLocalValues, userOverrideValues);
+        PersistedSettingsWriteBatch batch = CaptureOptionValues(optionSets, context);
+        SaveCapturedSettings(batch);
     }
 
     /// <summary>
@@ -182,21 +166,8 @@ public sealed class LayeredSettingsPersistenceService
             return;
         }
 
-        PersistedSettingValueCollection globalValues = LoadCollection(_globalSettingsFilePath);
-        PersistedSettingValueCollection targetLocalValues = LoadCollection(GetTargetLocalSettingsFilePath(context));
-        PersistedSettingValueCollection userOverrideValues = LoadCollection(GetUserTargetOverrideFilePath(context));
-
-        foreach (PersistedSettingDescriptor descriptor in GetTargetSettingsDescriptors(settingsOwner.GetType(), context.TargetTypeId))
-        {
-            if (!TryReadValueToken(settingsOwner, descriptor, out JToken? token))
-            {
-                continue;
-            }
-
-            WriteDescriptorValue(descriptor, token!, globalValues, targetLocalValues, userOverrideValues);
-        }
-
-        SaveCollections(context, globalValues, targetLocalValues, userOverrideValues);
+        PersistedSettingsWriteBatch batch = CaptureTargetSettings(settingsOwner, context);
+        SaveCapturedSettings(batch);
     }
 
     /// <summary>
@@ -209,7 +180,74 @@ public sealed class LayeredSettingsPersistenceService
             throw new ArgumentNullException(nameof(settingsOwner));
         }
 
-        PersistedSettingValueCollection globalValues = LoadCollection(_globalSettingsFilePath, "global");
+        PersistedSettingsWriteBatch batch = CaptureGlobalSettings(settingsOwner);
+        SaveCapturedSettings(batch);
+    }
+
+    /// <summary>
+    /// Captures the current option-set values into detached per-file writes so callers can persist them later without
+    /// re-reading live UI objects on a background thread.
+    /// </summary>
+    public PersistedSettingsWriteBatch CaptureOptionValues(IEnumerable<object> optionSets, TargetSettingsContext? context)
+    {
+        PersistedSettingsWriteBatch batch = new();
+        if (context == null)
+        {
+            return batch;
+        }
+
+        foreach (object optionSet in optionSets)
+        {
+            foreach (PersistedSettingDescriptor descriptor in GetOptionSetDescriptors(optionSet.GetType(), context.TargetTypeId))
+            {
+                if (!TryReadValueToken(optionSet, descriptor, out JToken? token))
+                {
+                    continue;
+                }
+
+                batch.WriteValue(GetFilePathForScope(descriptor.WriteScope, context), descriptor.Key, token!);
+            }
+        }
+
+        return batch;
+    }
+
+    /// <summary>
+    /// Captures the current target-settings values into detached per-file writes so callers can persist them later.
+    /// </summary>
+    public PersistedSettingsWriteBatch CaptureTargetSettings(object settingsOwner, TargetSettingsContext? context)
+    {
+        PersistedSettingsWriteBatch batch = new();
+        if (context == null || settingsOwner == null)
+        {
+            return batch;
+        }
+
+        foreach (PersistedSettingDescriptor descriptor in GetTargetSettingsDescriptors(settingsOwner.GetType(), context.TargetTypeId))
+        {
+            if (!TryReadValueToken(settingsOwner, descriptor, out JToken? token))
+            {
+                continue;
+            }
+
+            batch.WriteValue(GetFilePathForScope(descriptor.WriteScope, context), descriptor.Key, token!);
+        }
+
+        return batch;
+    }
+
+    /// <summary>
+    /// Captures the current global settings values into detached per-file writes so callers can debounce saves without
+    /// holding onto the live settings object.
+    /// </summary>
+    public PersistedSettingsWriteBatch CaptureGlobalSettings(object settingsOwner)
+    {
+        if (settingsOwner == null)
+        {
+            throw new ArgumentNullException(nameof(settingsOwner));
+        }
+
+        PersistedSettingsWriteBatch batch = new();
         foreach (PersistedSettingDescriptor descriptor in GetGlobalSettingsDescriptors(settingsOwner.GetType()))
         {
             if (descriptor.WriteScope != PersistenceScope.Global)
@@ -222,10 +260,33 @@ public sealed class LayeredSettingsPersistenceService
                 continue;
             }
 
-            globalValues.Values[descriptor.Key] = token!.DeepClone();
+            batch.WriteValue(_globalSettingsFilePath, descriptor.Key, token!);
         }
 
-        SaveCollection(_globalSettingsFilePath, globalValues);
+        return batch;
+    }
+
+    /// <summary>
+    /// Applies a detached batch of persisted setting writes to disk by loading the current files and patching only the
+    /// provided keys.
+    /// </summary>
+    public void SaveCapturedSettings(PersistedSettingsWriteBatch batch)
+    {
+        if (batch == null)
+        {
+            throw new ArgumentNullException(nameof(batch));
+        }
+
+        foreach ((string filePath, PersistedSettingValueCollection fileWrites) in batch.FileWrites)
+        {
+            PersistedSettingValueCollection existingValues = LoadCollection(filePath, GetLayerName(filePath));
+            foreach ((string key, JToken value) in fileWrites.Values)
+            {
+                existingValues.Values[key] = value.DeepClone();
+            }
+
+            SaveCollection(filePath, existingValues);
+        }
     }
 
     /// <summary>
@@ -243,6 +304,19 @@ public sealed class LayeredSettingsPersistenceService
     {
         string fileName = SanitizeFileName(context.TargetKey.Value) + ".json";
         return Path.Combine(_userTargetSettingsDirectoryPath, fileName);
+    }
+
+    /// <summary>
+    /// Resolves the persistence file path that stores values for the provided write scope.
+    /// </summary>
+    private string GetFilePathForScope(PersistenceScope writeScope, TargetSettingsContext context)
+    {
+        return writeScope switch
+        {
+            PersistenceScope.Global => _globalSettingsFilePath,
+            PersistenceScope.TargetLocal => GetTargetLocalSettingsFilePath(context),
+            _ => GetUserTargetOverrideFilePath(context)
+        };
     }
 
     /// <summary>
@@ -402,6 +476,24 @@ public sealed class LayeredSettingsPersistenceService
             createSerializer: static () => new JsonSerializer());
 
         store.Save(state);
+    }
+
+    /// <summary>
+    /// Returns a readable storage-layer label for telemetry when a detached write batch reopens one persisted file.
+    /// </summary>
+    private string GetLayerName(string filePath)
+    {
+        if (string.Equals(filePath, _globalSettingsFilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Global";
+        }
+
+        if (filePath.StartsWith(_userTargetSettingsDirectoryPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return "UserOverride";
+        }
+
+        return "TargetLocal";
     }
 
     /// <summary>
