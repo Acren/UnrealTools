@@ -1,4 +1,5 @@
-﻿using LocalAutomation.Runtime;
+using CommunityToolkit.Mvvm.ComponentModel;
+using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
@@ -17,17 +18,20 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
         Cpp20
     }
 
-    public class UbtCompilerOptions : OperationOptions
+    public partial class UbtCompilerOptions : OperationOptions
     {
         public override int SortIndex => 30;
+
         public override string Name => "Compiler";
 
         // Store the direct UBT overrides separately from general build options so unsupported UAT-based
         // operations do not accidentally advertise settings they cannot honor.
-        public Option<UbtCompiler> Compiler { get; } = UbtCompiler.Default;
+        [ObservableProperty]
+        private UbtCompiler compiler = UbtCompiler.Default;
 
         // Keep the direct UBT language-standard override on the same option set as compiler because both
         // settings apply to the exact same Build.bat-only execution path.
-        public Option<UbtCppStandard> CppStandard { get; } = UbtCppStandard.Default;
+        [ObservableProperty]
+        private UbtCppStandard cppStandard = UbtCppStandard.Default;
     }
 }

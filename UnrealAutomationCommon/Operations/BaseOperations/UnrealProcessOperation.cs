@@ -26,7 +26,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         {
             // Report test results
             AutomationOptions automationOptions = UnrealOperationParameters.GetOptions<AutomationOptions>();
-            if (!Cancelled && automationOptions is { RunTests: { Value: true } })
+            if (!Cancelled && automationOptions.RunTests)
             {
                 IEngineInstanceProvider engineInstanceProvider = UnrealOperationParameters.Target as IEngineInstanceProvider;
                 if (engineInstanceProvider == null)

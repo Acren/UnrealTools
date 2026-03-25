@@ -1,16 +1,19 @@
-﻿using UnrealAutomationCommon.Unreal;
+using CommunityToolkit.Mvvm.ComponentModel;
 using LocalAutomation.Runtime;
-
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class CookOptions : OperationOptions
+    public partial class CookOptions : OperationOptions
     {
         public override int SortIndex => 30;
+
         public override string Name => "Cooker";
 
-        public Option<BuildConfiguration> CookerConfiguration { get; } = BuildConfiguration.Development;
+        [ObservableProperty]
+        private BuildConfiguration cookerConfiguration = BuildConfiguration.Development;
 
-        public Option<bool> WaitForAttach { get; } = false;
+        [ObservableProperty]
+        private bool waitForAttach = false;
     }
 }

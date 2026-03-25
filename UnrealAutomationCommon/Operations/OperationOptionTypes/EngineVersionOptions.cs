@@ -31,7 +31,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
         /// </summary>
         private void HandleEnabledVersionsChanged(object? sender, ListChangedEventArgs e)
         {
-            OnPropertyChanged(nameof(EnabledVersions));
+            RaiseOptionsChanged(nameof(EnabledVersions));
         }
     }
 }

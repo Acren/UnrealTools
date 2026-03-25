@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using LocalAutomation.Avalonia.Controls;
 using LocalAutomation.Avalonia.Diagnostics;
 using AvaloniaApplication = Avalonia.Application;
 using LocalAutomation.Avalonia.Bootstrap;
@@ -47,6 +48,7 @@ public partial class App : AvaloniaApplication
     /// </summary>
     public override void Initialize()
     {
+        PropertyGridTypeDescriptorRegistrar.Register();
         AvaloniaXamlLoader.Load(this);
     }
 

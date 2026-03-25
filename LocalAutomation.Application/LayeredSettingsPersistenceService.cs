@@ -343,20 +343,13 @@ public sealed class LayeredSettingsPersistenceService
                 continue;
             }
 
-            object? propertyValue = descriptor.Property.GetValue(owner);
-            if (descriptor.IsOptionWrapper && propertyValue != null)
-            {
-                PropertyInfo? wrappedValueProperty = descriptor.Property.PropertyType.GetProperty("Value");
-                wrappedValueProperty?.SetValue(propertyValue, restoredValue);
-                continue;
-            }
-
             if (descriptor.Property.CanWrite)
             {
                 descriptor.Property.SetValue(owner, restoredValue);
                 continue;
             }
 
+            object? propertyValue = descriptor.Property.GetValue(owner);
             ApplyToExistingCollection(propertyValue, restoredValue);
         }
     }
@@ -621,12 +614,6 @@ public sealed class LayeredSettingsPersistenceService
     private bool TryReadValueToken(object owner, PersistedSettingDescriptor descriptor, out JToken? token)
     {
         object? value = descriptor.Property.GetValue(owner);
-        if (descriptor.IsOptionWrapper)
-        {
-            PropertyInfo? valueProperty = descriptor.Property.PropertyType.GetProperty("Value");
-            value = value == null ? null : valueProperty?.GetValue(value);
-        }
-
         return TrySerializeValue(descriptor.ValueType, value, out token);
     }
 

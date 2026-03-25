@@ -49,7 +49,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
             AutomationOptions automationOptions = UnrealOperationParameters.GetOptions<AutomationOptions>();
-            if (automationOptions is { RunTests: { Value: true } })
+            if (automationOptions.RunTests)
             {
                 // Packages don't have a test report template, but the engine still expects it
                 // Copy report template from engine to package, otherwise engine automation will error

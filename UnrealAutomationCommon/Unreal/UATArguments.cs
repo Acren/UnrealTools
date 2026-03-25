@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             arguments.SetFlag("build");
-            var configuration = operationParameters.GetOptions<BuildConfigurationOptions>().Configuration.Value.ToString();
+            var configuration = operationParameters.GetOptions<BuildConfigurationOptions>().Configuration.ToString();
             arguments.SetKeyValue("clientconfig", configuration);
             arguments.SetKeyValue("serverconfig", configuration);
 

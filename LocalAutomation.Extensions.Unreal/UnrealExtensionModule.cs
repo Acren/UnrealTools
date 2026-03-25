@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
@@ -10,7 +9,6 @@ using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
 using RuntimeTarget = global::LocalAutomation.Runtime.IOperationTarget;
-using RuntimeOperationOptions = global::LocalAutomation.Runtime.OperationOptions;
 using RuntimeOperation = global::LocalAutomation.Runtime.Operation;
 
 namespace LocalAutomation.Extensions.Unreal;
@@ -20,8 +18,6 @@ namespace LocalAutomation.Extensions.Unreal;
 /// </summary>
 public sealed class UnrealExtensionModule : IExtensionModule
 {
-    private static bool _registeredOperationOptionsProvider;
-
     /// <summary>
     /// Gets the stable identifier for the Unreal extension.
     /// </summary>
@@ -43,8 +39,6 @@ public sealed class UnrealExtensionModule : IExtensionModule
         }
 
         RegisterLegacyLoggerBridge();
-        RegisterTypeDescriptionProviders();
-
         registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.project"), "Project", typeof(Project)));
         registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.plugin"), "Plugin", typeof(Plugin)));
         registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.engine"), "Engine", typeof(Engine)));
@@ -69,20 +63,6 @@ public sealed class UnrealExtensionModule : IExtensionModule
     private static void RegisterLegacyLoggerBridge()
     {
         UnrealAutomationCommon.AppLogger.Instance.Logger = ApplicationLogger.Logger;
-    }
-
-    /// <summary>
-    /// Registers shared type-descriptor projections needed for property-grid rendering of Unreal option models.
-    /// </summary>
-    private static void RegisterTypeDescriptionProviders()
-    {
-        if (_registeredOperationOptionsProvider)
-        {
-            return;
-        }
-
-        TypeDescriptor.AddProviderTransparent(new OperationOptionsTypeDescriptionProvider(), typeof(RuntimeOperationOptions));
-        _registeredOperationOptionsProvider = true;
     }
 
     /// <summary>

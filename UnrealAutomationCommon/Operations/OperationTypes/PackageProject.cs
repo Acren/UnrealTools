@@ -40,7 +40,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             // Set cooker exe
-            BuildConfiguration cookerConfiguration = operationParameters.GetOptions<CookOptions>().CookerConfiguration.Value;
+            BuildConfiguration cookerConfiguration = operationParameters.GetOptions<CookOptions>().CookerConfiguration;
             if (cookerConfiguration != BuildConfiguration.Development)
             {
                 string unrealExe = operationParameters.Engine.GetEditorCmdExe(cookerConfiguration);

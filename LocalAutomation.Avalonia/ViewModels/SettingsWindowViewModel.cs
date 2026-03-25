@@ -1,7 +1,6 @@
 using System;
 using System.ComponentModel;
 using LocalAutomation.Application;
-using LocalAutomation.Avalonia.Controls;
 using LocalAutomation.Avalonia.Diagnostics;
 using LocalAutomation.Core;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
@@ -18,7 +17,6 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
 
     private readonly LocalAutomationApplicationHost _services;
     private readonly DebouncedBackgroundSaver<PersistedSettingsWriteBatch> _settingsSaver;
-    private readonly MetadataPropertyGridTarget _settings;
     private bool _disposed;
 
     /// <summary>
@@ -27,7 +25,6 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
     public SettingsWindowViewModel(LocalAutomationApplicationHost services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
-        _settings = new MetadataPropertyGridTarget(_services.ApplicationSettings);
         _settingsSaver = new DebouncedBackgroundSaver<PersistedSettingsWriteBatch>(
             debounceDelay: SaveDebounceDelay,
             saveState: _services.OptionValues.SaveCapturedSettings,
@@ -39,7 +36,7 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Gets the shared application settings object rendered directly by the property grid.
     /// </summary>
-    public object Settings => _settings;
+    public object Settings => _services.ApplicationSettings;
 
     /// <summary>
     /// Saves any pending settings changes immediately.
@@ -62,7 +59,6 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
 
         _disposed = true;
         _services.ApplicationSettings.PropertyChanged -= HandleApplicationSettingsChanged;
-        _settings.Dispose();
         _settingsSaver.Dispose();
     }
 

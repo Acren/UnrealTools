@@ -502,11 +502,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Run the Fab-style Clang validation through the direct plugin build path.
                 clangBuildParams.SetOptions(new BuildConfigurationOptions
                 {
-                    Configuration = { Value = BuildConfiguration.Development }
+                    Configuration = BuildConfiguration.Development
                 });
                 clangBuildParams.SetOptions(new UbtCompilerOptions
                 {
-                    Compiler = { Value = UbtCompiler.Clang }
+                    Compiler = UbtCompiler.Clang
                 });
 
                 global::LocalAutomation.Runtime.OperationResult clangBuildResult = await new BuildPlugin().Execute(clangBuildParams, Logger, Token);
@@ -693,8 +693,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 UnrealOperationParameters demoPackageParams = (UnrealOperationParameters)demoPackageOperation.CreateParameters(CreateExampleProjectPackageParams(demoPackagePath));
 
                 // Set options for demo exe
-                demoPackageParams.GetOptions<BuildConfigurationOptions>().Configuration.Value = BuildConfiguration.Shipping;
-                demoPackageParams.GetOptions<PackageOptions>().NoDebugInfo.Value = true;
+                demoPackageParams.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
+                demoPackageParams.GetOptions<PackageOptions>().NoDebugInfo = true;
 
                 global::LocalAutomation.Runtime.OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, Logger, Token);
 
@@ -713,7 +713,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             var exampleProjectPlugins = ExampleProject.Plugins;
             
-            string[] excludePlugins = UnrealOperationParameters.GetOptions<PluginDeployOptions>().ExcludePlugins.Value.Replace(" ", "").Split(",");
+            string[] excludePlugins = UnrealOperationParameters.GetOptions<PluginDeployOptions>().ExcludePlugins.Replace(" ", "").Split(",");
             foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
             {
                 if (exampleProjectPlugin.Name == Plugin.Name || !UnrealOperationParameters.GetOptions<PluginDeployOptions>().IncludeOtherPlugins || excludePlugins.Contains(exampleProjectPlugin.Name))

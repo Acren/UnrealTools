@@ -1,13 +1,14 @@
-﻿using UnrealAutomationCommon.Unreal;
+using CommunityToolkit.Mvvm.ComponentModel;
 using LocalAutomation.Runtime;
-
+using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class BuildConfigurationOptions : OperationOptions
+    public partial class BuildConfigurationOptions : OperationOptions
     {
         public override int SortIndex => 20;
 
-        public Option<BuildConfiguration> Configuration { get; } = BuildConfiguration.Development;
+        [ObservableProperty]
+        private BuildConfiguration configuration = BuildConfiguration.Development;
     }
 }

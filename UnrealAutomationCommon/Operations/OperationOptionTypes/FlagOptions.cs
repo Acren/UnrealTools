@@ -1,14 +1,18 @@
-﻿using LocalAutomation.Runtime;
+using CommunityToolkit.Mvvm.ComponentModel;
+using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class FlagOptions : OperationOptions
+    public partial class FlagOptions : OperationOptions
     {
         public override int SortIndex => 40;
+
         public override string Name => "Flags";
 
-        public Option<bool> StompMalloc { get; } = false;
+        [ObservableProperty]
+        private bool stompMalloc = false;
 
-        public Option<bool> WaitForAttach { get; } = false;
+        [ObservableProperty]
+        private bool waitForAttach = false;
     }
 }

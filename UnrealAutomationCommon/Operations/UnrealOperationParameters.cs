@@ -38,7 +38,7 @@ public class UnrealOperationParameters : global::LocalAutomation.Runtime.Operati
         get
         {
             AdditionalArgumentsOptions? existingOptions = GetOptionsInstance(typeof(AdditionalArgumentsOptions)) as AdditionalArgumentsOptions;
-            return existingOptions?.Arguments.Value ?? base.AdditionalArguments;
+            return existingOptions?.Arguments ?? base.AdditionalArguments;
         }
         set
         {
@@ -46,9 +46,9 @@ public class UnrealOperationParameters : global::LocalAutomation.Runtime.Operati
             base.AdditionalArguments = normalizedValue;
 
             AdditionalArgumentsOptions? existingOptions = GetOptionsInstance(typeof(AdditionalArgumentsOptions)) as AdditionalArgumentsOptions;
-            if (existingOptions != null && existingOptions.Arguments.Value != normalizedValue)
+            if (existingOptions != null && existingOptions.Arguments != normalizedValue)
             {
-                existingOptions.Arguments.Value = normalizedValue;
+                existingOptions.Arguments = normalizedValue;
             }
         }
     }

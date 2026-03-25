@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using Avalonia.Threading;
 using LocalAutomation.Application;
 using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
@@ -40,6 +41,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private SessionSnapshot _sessionSnapshot = new();
     private string _status = $"Add a target path to begin using the {App.ShellIdentity.ApplicationName} shell.";
     private SelectionTransitionState _selectionTransitionState;
+    private bool _operationParametersRefreshQueued;
     private bool _disposed;
 
     /// <summary>
@@ -325,8 +327,37 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        RaiseDerivedStateChanged();
-        SaveSessionState();
+        QueueOperationParametersRefresh();
+    }
+
+    /// <summary>
+    /// Coalesces bursts of nested option and parameter notifications into one deferred shell refresh so one property
+    /// edit does not synchronously rerun validation, command preview, and persistence capture many times.
+    /// </summary>
+    private void QueueOperationParametersRefresh()
+    {
+        if (_operationParametersRefreshQueued)
+        {
+            return;
+        }
+
+        _operationParametersRefreshQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _operationParametersRefreshQueued = false;
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (IsSelectionTransitionActive(SelectionTransitionState.RestoringSession | SelectionTransitionState.ApplyingTargetState | SelectionTransitionState.ApplyingOperationState))
+            {
+                return;
+            }
+
+            RaiseDerivedStateChanged();
+            SaveSessionState();
+        }, DispatcherPriority.Background);
     }
 
     /// <summary>

@@ -1,23 +1,45 @@
-﻿using LocalAutomation.Runtime;
+using CommunityToolkit.Mvvm.ComponentModel;
+using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class PluginDeployOptions : OperationOptions
+    public partial class PluginDeployOptions : OperationOptions
     {
         public override int SortIndex => 80;
 
         // Keep the Fab-style Clang validation opt-in because the direct plugin build path is the closest match.
-        public Option<bool> RunClangCompileCheck { get; } = false;
-        public Option<bool> TestStandalone { get; } = true;
-        public Option<bool> TestPackageWithProjectPlugin { get; } = true;
-        public Option<bool> TestPackageWithEnginePlugin { get; } = true;
-        [PersistedValue(PersistenceScope.Global)]
-        public Option<string> ArchivePath { get; } = "";
-        public Option<bool> ArchivePluginBuild { get; } = false;
-        public Option<bool> ArchiveExampleProject { get; } = true;
-        public Option<bool> ArchiveDemoPackage { get; } = true;
-        public Option<bool> IncludeOtherPlugins { get; } = false;
-        [PersistedValue(PersistenceScope.TargetLocal)]
-        public Option<string> ExcludePlugins { get; } = "";
+        [ObservableProperty]
+        private bool runClangCompileCheck = false;
+
+        [ObservableProperty]
+        private bool testStandalone = true;
+
+        [ObservableProperty]
+        private bool testPackageWithProjectPlugin = true;
+
+        [ObservableProperty]
+        private bool testPackageWithEnginePlugin = true;
+
+        // Archive output is a folder root, so expose a directory picker in hosts that understand path metadata.
+        [ObservableProperty]
+        [property: PathEditor(PathEditorKind.Directory, Title = "Select archive output folder")]
+        [property: PersistedValue(PersistenceScope.Global)]
+        private string archivePath = string.Empty;
+
+        [ObservableProperty]
+        private bool archivePluginBuild = false;
+
+        [ObservableProperty]
+        private bool archiveExampleProject = true;
+
+        [ObservableProperty]
+        private bool archiveDemoPackage = true;
+
+        [ObservableProperty]
+        private bool includeOtherPlugins = false;
+
+        [ObservableProperty]
+        [property: PersistedValue(PersistenceScope.TargetLocal)]
+        private string excludePlugins = string.Empty;
     }
 }

@@ -78,7 +78,7 @@ namespace UnrealAutomationCommon.Unreal
         {
             BuildConfigurationOptions buildOptions = operationParameters.GetOptions<BuildConfigurationOptions>();
 
-            return GetEditorExe(engine, buildOptions.Configuration.Value);
+            return GetEditorExe(engine, buildOptions.Configuration);
         }
 
         public static string GetUBTExe(this Engine engine)

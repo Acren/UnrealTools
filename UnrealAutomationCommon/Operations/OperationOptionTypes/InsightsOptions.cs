@@ -35,7 +35,7 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 
                 void CollectionChanged(object sender, ListChangedEventArgs args)
                 {
-                    OnPropertyChanged();
+                    RaiseOptionsChanged();
                 }
             }
         }

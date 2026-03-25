@@ -1,11 +1,16 @@
-﻿using LocalAutomation.Runtime;
+using CommunityToolkit.Mvvm.ComponentModel;
+using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 {
-    public class PackageOptions : OperationOptions
+    public partial class PackageOptions : OperationOptions
     {
         public override int SortIndex => 60;
-        public Option<bool> NoDebugInfo { get; } = false;
-        public Option<bool> Archive { get; } = true;
+
+        [ObservableProperty]
+        private bool noDebugInfo = false;
+
+        [ObservableProperty]
+        private bool archive = true;
     }
 }
