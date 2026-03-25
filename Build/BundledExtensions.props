@@ -9,6 +9,12 @@
       <ExtensionFolderName>Unreal</ExtensionFolderName>
       <ExtensionTargetFramework>netstandard2.1</ExtensionTargetFramework>
     </BundledExtensionProject>
+
+    <!-- Keep bundled extensions in the normal project-reference build graph so runtime API changes rebuild the
+         extension assemblies before the launcher copies them into the Extensions folder. -->
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

@@ -14,10 +14,6 @@
     <RemoveDir Directories="$(BundledExtensionsRoot)" Condition="Exists('$(BundledExtensionsRoot)')" />
     <MakeDir Directories="$(BundledExtensionsRoot)" />
 
-    <MSBuild Projects="@(BundledExtensionProject)"
-             Targets="Build"
-             Properties="Configuration=$(Configuration)" />
-
     <ItemGroup>
       <BundledExtensionProject>
         <SourceRoot>%(RootDir)%(Directory)bin\$(Configuration)\%(ExtensionTargetFramework)\</SourceRoot>
