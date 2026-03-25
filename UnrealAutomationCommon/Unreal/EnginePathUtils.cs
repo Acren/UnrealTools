@@ -76,11 +76,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public static string GetEditorExe(this Engine engine, UnrealOperationParameters operationParameters)
         {
-            BuildConfigurationOptions buildOptions = operationParameters.RequestOptions<BuildConfigurationOptions>();
-            if (buildOptions == null)
-            {
-                return null;
-            }
+            BuildConfigurationOptions buildOptions = operationParameters.GetOptions<BuildConfigurationOptions>();
 
             return GetEditorExe(engine, buildOptions.Configuration.Value);
         }

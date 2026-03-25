@@ -63,13 +63,16 @@ public class UnrealOperationParameters : global::LocalAutomation.Runtime.Operati
             return _engineOverride;
         }
 
-        EngineVersionOptions? versionOptions = FindOptions<EngineVersionOptions>();
-        if (versionOptions != null && versionOptions.EnabledVersions.Value.Count > 0)
+        if (IsOptionRegistered(typeof(EngineVersionOptions)))
         {
-            EngineVersion? version = versionOptions.EnabledVersions.Value[0];
-            if (version != null)
+            EngineVersionOptions versionOptions = GetOptions<EngineVersionOptions>();
+            if (versionOptions.EnabledVersions.Value.Count > 0)
             {
-                return EngineFinder.GetEngineInstall(version);
+                EngineVersion? version = versionOptions.EnabledVersions.Value[0];
+                if (version != null)
+                {
+                    return EngineFinder.GetEngineInstall(version);
+                }
             }
         }
 

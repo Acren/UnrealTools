@@ -1,4 +1,4 @@
-using UnrealAutomationCommon.Operations.OperationOptionTypes;
+﻿using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 using RuntimeTarget = LocalAutomation.Runtime.OperationTarget;
 
@@ -27,11 +27,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 return requirementsError;
             }
 
-            UbtCompilerOptions buildBatOptions = typedParameters.FindOptions<UbtCompilerOptions>();
-            if (buildBatOptions == null)
-            {
-                return null;
-            }
+            UbtCompilerOptions buildBatOptions = typedParameters.GetOptions<UbtCompilerOptions>();
 
             Engine engine = GetTargetEngineInstall(typedParameters);
             if (engine?.Version == null)
@@ -64,7 +60,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         // Apply the shared direct-UBT overrides only for Build.bat flows that are known to respect them.
         protected void ApplySharedBuildArguments(UnrealOperationParameters operationParameters, Arguments args)
         {
-            UbtCompilerOptions buildBatOptions = operationParameters.RequestOptions<UbtCompilerOptions>();
+            UbtCompilerOptions buildBatOptions = operationParameters.GetOptions<UbtCompilerOptions>();
             UbtCompiler compiler = buildBatOptions.Compiler;
             UbtCppStandard cppStandard = buildBatOptions.CppStandard;
 

@@ -58,7 +58,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Match Unreal's direct plugin build flow: editor target, platform, configuration, host project, then plugin path.
             args.SetArgument(GetTargetEngineInstall(operationParameters).BaseEditorName);
             args.SetArgument("Win64");
-            args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.Value.ToString());
+            args.SetArgument(operationParameters.GetOptions<BuildConfigurationOptions>().Configuration.Value.ToString());
             args.SetPath(hostProject.UProjectPath);
             args.SetKeyPath("plugin", plugin.UPluginPath);
         }

@@ -19,12 +19,12 @@ namespace UnrealAutomationCommon.Unreal
             arguments.SetFlag("FullStdOutLogOutput");
             arguments.SetFlag("nologtimes");
 
-            bool useInsights = operationParameters.RequestOptions<InsightsOptions>().TraceChannels.Count > 0;
+            bool useInsights = operationParameters.GetOptions<InsightsOptions>().TraceChannels.Count > 0;
 
             if (useInsights)
             {
                 var traceChannels = new List<string>();
-                foreach (TraceChannel channel in operationParameters.RequestOptions<InsightsOptions>().TraceChannels) traceChannels.Add(channel.Key);
+                foreach (TraceChannel channel in operationParameters.GetOptions<InsightsOptions>().TraceChannels) traceChannels.Add(channel.Key);
 
                 arguments.SetKeyValue("trace", string.Join(",", traceChannels));
 
@@ -36,17 +36,17 @@ namespace UnrealAutomationCommon.Unreal
                 arguments.SetKeyValue("tracehost", "127.0.0.1");
             }
 
-            if (operationParameters.RequestOptions<FlagOptions>().StompMalloc)
+            if (operationParameters.GetOptions<FlagOptions>().StompMalloc)
             {
                 arguments.SetFlag("stompmalloc");
             }
 
-            if (operationParameters.RequestOptions<FlagOptions>().WaitForAttach)
+            if (operationParameters.GetOptions<FlagOptions>().WaitForAttach)
             {
                 arguments.SetFlag("waitforattach");
             }
 
-            AutomationOptions automationOpts = operationParameters.RequestOptions<AutomationOptions>();
+            AutomationOptions automationOpts = operationParameters.GetOptions<AutomationOptions>();
             if (automationOpts.RunTests)
             {
                 string execCmds = $"Automation RunTests {automationOpts.TestName};Quit";

@@ -44,7 +44,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             // Package the plugin into a distributable output folder through UAT's BuildPlugin flow.
-            PluginBuildOptions pluginBuildOptions = operationParameters.RequestOptions<PluginBuildOptions>();
+            PluginBuildOptions pluginBuildOptions = operationParameters.GetOptions<PluginBuildOptions>();
             Arguments buildPluginArguments = BuildPluginArguments(operationParameters, pluginBuildOptions);
             _requestedTargetPlatforms = PluginBuildPlatformValidation.GetRequestedTargetPlatforms(buildPluginArguments);
             _builtTargetPlatforms = new List<string>();

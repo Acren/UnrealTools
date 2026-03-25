@@ -19,8 +19,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Plugin plugin = GetTarget(UnrealOperationParameters);
 
-            Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
-            foreach (EngineVersion engineVersion in UnrealOperationParameters.RequestOptions<EngineVersionOptions>().EnabledVersions.Value)
+            Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
+            foreach (EngineVersion engineVersion in UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Value)
             {
                 Engine engine = EngineFinder.GetEngineInstall(engineVersion);
                 if (engine == null)
@@ -73,7 +73,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception($"Installed plugin version {installedPluginVersionName} does not include reference version {pluginVersionName}");
             }
 
-            string exampleProjects = UnrealOperationParameters.FindOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
+            string exampleProjects = UnrealOperationParameters.GetOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
             string exampleProjectZip = FindExampleProjectZip(plugin, exampleProjects, engine);
             if (exampleProjectZip == null)
             {
@@ -97,7 +97,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             // Launch and test example project editor
 
-            AutomationOptions automationOpts = UnrealOperationParameters.FindOptions<AutomationOptions>();
+            AutomationOptions automationOpts = UnrealOperationParameters.GetOptions<AutomationOptions>();
 
             if (automationOpts.RunTests)
             {

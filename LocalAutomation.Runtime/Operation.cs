@@ -74,6 +74,7 @@ public abstract class Operation
     public virtual OperationParameters CreateParameters(OperationParameters? existing = null)
     {
         OperationParameters parameters = CreateOperationParameters();
+        parameters.SetRegisteredOptions(GetRequiredOptionSetTypes(existing?.Target ?? parameters.Target));
         if (existing != null)
         {
             parameters.Target = existing.Target;
@@ -84,6 +85,11 @@ public abstract class Operation
             // values as they are copied, which can mutate the live binding list during enumeration.
             foreach (OperationOptions options in existing.OptionsInstances.ToList())
             {
+                if (!parameters.IsOptionRegistered(options.GetType()))
+                {
+                    continue;
+                }
+
                 if (parameters.GetOptionsInstance(options.GetType()) == null)
                 {
                     parameters.SetOptions((OperationOptions)options.Clone());
@@ -124,6 +130,7 @@ public abstract class Operation
     {
         try
         {
+            PrepareRegisteredOptions(operationParameters);
             using IDisposable operationTimingScope = logger.BeginSection(OperationName);
 
             int warnings = 0;
@@ -201,6 +208,7 @@ public abstract class Operation
     /// </summary>
     public IEnumerable<Command> GetCommands(OperationParameters operationParameters)
     {
+        PrepareRegisteredOptions(operationParameters);
         if (!RequirementsSatisfied(operationParameters))
         {
             return new List<Command>();
@@ -274,6 +282,7 @@ public abstract class Operation
     /// </summary>
     public virtual string? CheckRequirementsSatisfied(OperationParameters operationParameters)
     {
+        PrepareRegisteredOptions(operationParameters);
         if (operationParameters.Target == null)
         {
             return "Target not specified";
@@ -368,6 +377,20 @@ public abstract class Operation
     protected virtual string GetOperationName()
     {
         return SplitWordsByUppercase(GetType().Name);
+    }
+
+    /// <summary>
+    /// Recomputes the registered option-set list for the current target before validation, preview, or execution touch
+    /// option values directly.
+    /// </summary>
+    private void PrepareRegisteredOptions(OperationParameters operationParameters)
+    {
+        if (operationParameters == null)
+        {
+            throw new ArgumentNullException(nameof(operationParameters));
+        }
+
+        operationParameters.SetRegisteredOptions(GetRequiredOptionSetTypes(operationParameters.Target!));
     }
 
     /// <summary>

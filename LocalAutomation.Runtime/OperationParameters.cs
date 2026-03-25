@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -20,6 +21,7 @@ public class OperationParameters : INotifyPropertyChanged
 {
     private string _additionalArguments = string.Empty;
     private BindingList<OperationOptions> _optionsInstances;
+    private HashSet<Type> _registeredOptions = new();
     private IOperationTarget? _target;
 
     /// <summary>
@@ -117,22 +119,6 @@ public class OperationParameters : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns a cloned option-set instance for legacy callers that still expect copy semantics.
-    /// </summary>
-    public T? FindOptions<T>() where T : OperationOptions
-    {
-        foreach (OperationOptions options in OptionsInstances)
-        {
-            if (options.GetType() == typeof(T))
-            {
-                return (T)options.Clone();
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
     /// Returns the live option-set instance for the provided runtime type.
     /// </summary>
     public OperationOptions? GetOptionsInstance(Type optionsType)
@@ -149,19 +135,49 @@ public class OperationParameters : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns an existing option set or creates a new one when it is currently missing.
+    /// Replaces the currently allowed option-set type list for the active operation/target combination.
     /// </summary>
-    public T RequestOptions<T>() where T : OperationOptions
+    public void SetRegisteredOptions(IEnumerable<Type> optionTypes)
     {
-        T? options = FindOptions<T>();
-        if (options != null)
+        if (optionTypes == null)
         {
-            return options;
+            throw new ArgumentNullException(nameof(optionTypes));
         }
 
-        T newOptions = (T)Activator.CreateInstance(typeof(T));
+        _registeredOptions = new HashSet<Type>(optionTypes, EqualityComparer<Type>.Default);
+    }
+
+    /// <summary>
+    /// Returns whether the provided option-set type is currently registered for this parameter object.
+    /// </summary>
+    public bool IsOptionRegistered(Type optionsType)
+    {
+        if (optionsType == null)
+        {
+            throw new ArgumentNullException(nameof(optionsType));
+        }
+
+        return _registeredOptions.Contains(optionsType);
+    }
+
+    /// <summary>
+    /// Returns the registered live option-set instance for the provided runtime type, creating it when it has not yet
+    /// been materialized for the current parameter object.
+    /// </summary>
+    public T GetOptions<T>() where T : OperationOptions
+    {
+        Type optionsType = typeof(T);
+        AssertOptionTypeRegistered(optionsType);
+
+        T? existingOptions = GetOptionsInstance(optionsType) as T;
+        if (existingOptions != null)
+        {
+            return existingOptions;
+        }
+
+        T newOptions = (T)Activator.CreateInstance(optionsType)!;
         SetOptions(newOptions);
-        return (T)newOptions.Clone();
+        return newOptions;
     }
 
     /// <summary>
@@ -169,13 +185,15 @@ public class OperationParameters : INotifyPropertyChanged
     /// </summary>
     public OperationOptions EnsureOptionsInstance(Type optionsType)
     {
+        AssertOptionTypeRegistered(optionsType);
+
         OperationOptions? existingOptions = GetOptionsInstance(optionsType);
         if (existingOptions != null)
         {
             return existingOptions;
         }
 
-        OperationOptions newOptions = (OperationOptions)Activator.CreateInstance(optionsType);
+        OperationOptions newOptions = (OperationOptions)Activator.CreateInstance(optionsType)!;
         SetOptions(newOptions);
         return newOptions;
     }
@@ -185,7 +203,7 @@ public class OperationParameters : INotifyPropertyChanged
     /// </summary>
     public void SetOptions<T>(T options) where T : OperationOptions
     {
-        if (FindOptions<T>() != null)
+        if (GetOptionsInstance(typeof(T)) != null)
         {
             throw new Exception("Parameters already has options of this type");
         }
@@ -236,6 +254,7 @@ public class OperationParameters : INotifyPropertyChanged
         child.Target = Target;
         child.OutputPathOverride = OutputPathOverride;
         child.AdditionalArguments = AdditionalArguments;
+        child.SetRegisteredOptions(_registeredOptions);
 
         foreach (OperationOptions options in OptionsInstances)
         {
@@ -265,6 +284,29 @@ public class OperationParameters : INotifyPropertyChanged
     /// </summary>
     protected virtual void OnTargetStateChanged()
     {
+    }
+
+    /// <summary>
+    /// Throws when an operation tries to access an option set that it did not declare through required-option metadata.
+    /// </summary>
+    private void AssertOptionTypeRegistered(Type optionsType)
+    {
+        if (optionsType == null)
+        {
+            throw new ArgumentNullException(nameof(optionsType));
+        }
+
+        if (!typeof(OperationOptions).IsAssignableFrom(optionsType))
+        {
+            throw new ArgumentException($"Option type '{optionsType.FullName}' must derive from {nameof(OperationOptions)}.", nameof(optionsType));
+        }
+
+        if (_registeredOptions.Contains(optionsType))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Operation parameters attempted to access option set '{optionsType.FullName}' without preregistering it through required option metadata.");
     }
 
     /// <summary>

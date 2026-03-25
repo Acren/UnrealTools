@@ -15,11 +15,11 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             arguments.SetFlag("build");
-            var configuration = operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.Value.ToString();
+            var configuration = operationParameters.GetOptions<BuildConfigurationOptions>().Configuration.Value.ToString();
             arguments.SetKeyValue("clientconfig", configuration);
             arguments.SetKeyValue("serverconfig", configuration);
 
-            if (operationParameters.RequestOptions<PackageOptions>().NoDebugInfo)
+            if (operationParameters.GetOptions<PackageOptions>().NoDebugInfo)
             {
                 arguments.SetFlag("NoDebugInfo");
             }

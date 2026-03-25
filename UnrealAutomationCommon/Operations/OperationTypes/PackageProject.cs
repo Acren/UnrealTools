@@ -18,6 +18,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
         {
             base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+            optionSetTypes.Add(typeof(BuildConfigurationOptions));
             optionSetTypes.Add(typeof(PackageOptions));
             optionSetTypes.Add(typeof(CookOptions));
         }
@@ -32,21 +33,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             //arguments.SetFlag("nocompileeditor");
 
             // Archive
-            if (operationParameters.RequestOptions<PackageOptions>().Archive)
+            if (operationParameters.GetOptions<PackageOptions>().Archive)
             {
                 arguments.SetFlag("archive");
                 arguments.SetKeyPath("archivedirectory", GetOutputPath(operationParameters));
             }
 
             // Set cooker exe
-            BuildConfiguration cookerConfiguration = operationParameters.RequestOptions<CookOptions>().CookerConfiguration.Value;
+            BuildConfiguration cookerConfiguration = operationParameters.GetOptions<CookOptions>().CookerConfiguration.Value;
             if (cookerConfiguration != BuildConfiguration.Development)
             {
                 string unrealExe = operationParameters.Engine.GetEditorCmdExe(cookerConfiguration);
                 arguments.SetKeyPath("unrealexe", unrealExe);
             }
 
-            if (operationParameters.RequestOptions<CookOptions>().WaitForAttach)
+            if (operationParameters.GetOptions<CookOptions>().WaitForAttach)
             {
                 arguments.SetKeyValue("additionalcookeroptions","-waitforattach");
             }

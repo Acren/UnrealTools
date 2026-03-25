@@ -10,10 +10,22 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     // Operation type for running Unreal processes
     public abstract class UnrealProcessOperation<T> : CommandProcessOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget
     {
+        /// <summary>
+        /// Unreal process launches always expose tracing, flag, and automation option groups because shared argument
+        /// construction reads all three when building the command line.
+        /// </summary>
+        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        {
+            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+            optionSetTypes.Add(typeof(InsightsOptions));
+            optionSetTypes.Add(typeof(FlagOptions));
+            optionSetTypes.Add(typeof(AutomationOptions));
+        }
+
         protected override void OnProcessEnded(global::LocalAutomation.Runtime.OperationResult result)
         {
             // Report test results
-            AutomationOptions automationOptions = UnrealOperationParameters.FindOptions<AutomationOptions>();
+            AutomationOptions automationOptions = UnrealOperationParameters.GetOptions<AutomationOptions>();
             if (!Cancelled && automationOptions is { RunTests: { Value: true } })
             {
                 IEngineInstanceProvider engineInstanceProvider = UnrealOperationParameters.Target as IEngineInstanceProvider;

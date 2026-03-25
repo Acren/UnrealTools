@@ -17,7 +17,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
         {
             base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-            optionSetTypes.Add(typeof(AutomationOptions));
+            optionSetTypes.Add(typeof(OperationOptionTypes.BuildConfigurationOptions));
         }
 
         public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
@@ -48,7 +48,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
-            AutomationOptions automationOptions = UnrealOperationParameters.FindOptions<AutomationOptions>();
+            AutomationOptions automationOptions = UnrealOperationParameters.GetOptions<AutomationOptions>();
             if (automationOptions is { RunTests: { Value: true } })
             {
                 // Packages don't have a test report template, but the engine still expects it

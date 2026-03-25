@@ -15,7 +15,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Build.bat forwards these arguments directly to UBT, so a compiler override is reliable here.
             args.SetArgument(editorModuleName);
             args.SetArgument("Win64");
-            args.SetArgument(operationParameters.RequestOptions<BuildConfigurationOptions>().Configuration.Value.ToString());
+            args.SetArgument(operationParameters.GetOptions<BuildConfigurationOptions>().Configuration.Value.ToString());
             args.SetPath(GetTarget(operationParameters).UProjectPath);
         }
     }

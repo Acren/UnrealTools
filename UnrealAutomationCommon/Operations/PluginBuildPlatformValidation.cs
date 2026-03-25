@@ -17,13 +17,9 @@ namespace UnrealAutomationCommon.Operations
                 return null;
             }
 
-            // Skip platform validation until the option set exists so the UI can still surface the controls
-            // that let the user fix an unsupported default selection.
-            PluginBuildOptions pluginBuildOptions = operationParameters.FindOptions<PluginBuildOptions>();
-            if (pluginBuildOptions == null)
-            {
-                return null;
-            }
+            // Package-plugin validation now relies on preregistered option metadata, so the option set can always be
+            // resolved directly here.
+            PluginBuildOptions pluginBuildOptions = operationParameters.GetOptions<PluginBuildOptions>();
 
             List<string> requestedPlatforms = GetRequestedTargetPlatforms(operationParameters, pluginBuildOptions);
             if (requestedPlatforms.Count == 0)

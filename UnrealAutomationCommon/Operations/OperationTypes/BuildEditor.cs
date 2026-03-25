@@ -13,6 +13,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             base.CollectRequiredOptionSetTypes(target, optionSetTypes);
             optionSetTypes.Add(typeof(OperationOptionTypes.BuildConfigurationOptions));
+            optionSetTypes.Add(typeof(OperationOptionTypes.PackageOptions));
         }
 
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
@@ -55,7 +56,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 return baseError;
             }
 
-            BuildConfiguration configuration = typedParameters.RequestOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration;
+            BuildConfiguration configuration = typedParameters.GetOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration;
             if (!SupportsRequestedConfiguration(configuration))
             {
                 return "Configuration is not supported";
