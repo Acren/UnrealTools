@@ -20,6 +20,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 return requirementsError;
             }
 
+            string? engineSelectionError = typedParameters.GetSingleEngineSelectionValidationMessage();
+            if (engineSelectionError != null)
+            {
+                PerformanceTelemetry.SetTag(activity, "result", engineSelectionError);
+                return engineSelectionError;
+            }
+
             Plugin plugin = GetTarget(typedParameters);
             PerformanceTelemetry.SetTag(activity, "plugin.path", plugin.PluginPath);
             PerformanceTelemetry.SetTag(activity, "descriptor.path", plugin.UPluginPath);

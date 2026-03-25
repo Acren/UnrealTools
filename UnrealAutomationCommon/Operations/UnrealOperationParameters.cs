@@ -66,9 +66,9 @@ public class UnrealOperationParameters : global::LocalAutomation.Runtime.Operati
         // Unreal operations now preregister engine-version selection up front, so engine resolution should fail loudly
         // if a caller tries to rely on the override without declaring it.
         EngineVersionOptions versionOptions = GetOptions<EngineVersionOptions>();
-        if (versionOptions.EnabledVersions.Value.Count > 0)
+        if (versionOptions.EnabledVersions.Count > 0)
         {
-            EngineVersion? version = versionOptions.EnabledVersions.Value[0];
+            EngineVersion? version = versionOptions.EnabledVersions[0];
             if (version != null)
             {
                 return EngineFinder.GetEngineInstall(version);
@@ -99,6 +99,28 @@ public class UnrealOperationParameters : global::LocalAutomation.Runtime.Operati
     protected override void OnOptionsStateChanged()
     {
         OnPropertyChanged(nameof(Engine));
+    }
+
+    /// <summary>
+    /// Returns whether the current engine-version selection fits the expected single-engine override shape used by
+    /// operations that can also fall back to the target-derived engine.
+    /// </summary>
+    public bool HasValidSingleEngineSelection()
+    {
+        return GetOptions<EngineVersionOptions>().EnabledVersions.Count <= 1;
+    }
+
+    /// <summary>
+    /// Returns the validation message for single-engine operations when too many explicit engine overrides are selected.
+    /// </summary>
+    public string? GetSingleEngineSelectionValidationMessage()
+    {
+        if (HasValidSingleEngineSelection())
+        {
+            return null;
+        }
+
+        return "Select at most one engine version, or clear the selection to use the target engine";
     }
 
     /// <summary>

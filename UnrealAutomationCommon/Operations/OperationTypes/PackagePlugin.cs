@@ -32,6 +32,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 return requirementsError;
             }
 
+            string? engineSelectionError = typedParameters.GetSingleEngineSelectionValidationMessage();
+            if (engineSelectionError != null)
+            {
+                return engineSelectionError;
+            }
+
             Engine engine = GetTargetEngineInstall(typedParameters);
             if (engine == null)
             {

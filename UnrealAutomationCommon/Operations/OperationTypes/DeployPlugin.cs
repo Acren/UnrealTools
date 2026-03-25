@@ -848,12 +848,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             EngineVersionOptions engineVersionOptions = typedParameters.GetOptions<EngineVersionOptions>();
-            if (engineVersionOptions == null || engineVersionOptions.EnabledVersions.Value.Count == 0)
+            if (engineVersionOptions == null || engineVersionOptions.EnabledVersions.Count == 0)
             {
                 return null;
             }
 
-            foreach (EngineVersion engineVersion in engineVersionOptions.EnabledVersions.Value)
+            foreach (EngineVersion engineVersion in engineVersionOptions.EnabledVersions)
             {
                 Engine engine = EngineFinder.GetEngineInstall(engineVersion);
                 if (engine == null)
@@ -875,8 +875,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Plugin plugin = GetTarget(UnrealOperationParameters);
 
-            Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
-            foreach (EngineVersion engineVersion in UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Value)
+            Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Select(x => x.MajorMinorString)) }");
+            foreach (EngineVersion engineVersion in UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions)
             {
                 Engine engine = EngineFinder.GetEngineInstall(engineVersion);
                 if (engine == null)

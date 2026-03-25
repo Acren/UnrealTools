@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using LocalAutomation.Extensions.Abstractions;
@@ -35,11 +34,14 @@ public sealed class EngineVersionOptionEditorAdapter : IOptionEditorAdapter
         return new EngineVersionOptionEditorTarget((EngineVersionOptions)optionSet);
     }
 
-    /// <summary>
-    /// The current implementation recreates adapter targets when the UI refreshes, so no in-place refresh is needed.
-    /// </summary>
     public void RefreshEditorTarget(object optionSet, object editorTarget)
     {
+        if (optionSet is not EngineVersionOptions engineVersionOptions || editorTarget is not EngineVersionOptionEditorTarget target)
+        {
+            return;
+        }
+
+        target.Refresh(engineVersionOptions);
     }
 
     /// <summary>
@@ -47,7 +49,6 @@ public sealed class EngineVersionOptionEditorAdapter : IOptionEditorAdapter
     /// </summary>
     private sealed class EngineVersionOptionEditorTarget : INotifyPropertyChanged
     {
-        private readonly List<EngineVersion> _availableVersions;
         private readonly EngineVersionOptions _options;
         private CheckedList<EngineVersion> _enabledVersions;
 
@@ -57,7 +58,6 @@ public sealed class EngineVersionOptionEditorAdapter : IOptionEditorAdapter
         public EngineVersionOptionEditorTarget(EngineVersionOptions options)
         {
             _options = options;
-            _availableVersions = EngineFinder.GetLauncherEngineInstallVersions().ToList();
             _enabledVersions = CreateCheckedList();
             _enabledVersions.SelectionChanged += HandleSelectionChanged;
         }
@@ -90,6 +90,29 @@ public sealed class EngineVersionOptionEditorAdapter : IOptionEditorAdapter
         public event PropertyChangedEventHandler? PropertyChanged;
 
         /// <summary>
+        /// Rebuilds the checklist from the current runtime option state so cached editor targets stay aligned with the
+        /// underlying options object after operation or target changes.
+        /// </summary>
+        public void Refresh(EngineVersionOptions options)
+        {
+            if (!ReferenceEquals(_options, options))
+            {
+                return;
+            }
+
+            CheckedList<EngineVersion> refreshedList = CreateCheckedList();
+            if (ReferenceEquals(_enabledVersions, refreshedList))
+            {
+                return;
+            }
+
+            _enabledVersions.SelectionChanged -= HandleSelectionChanged;
+            _enabledVersions = refreshedList;
+            _enabledVersions.SelectionChanged += HandleSelectionChanged;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EnabledVersions)));
+        }
+
+        /// <summary>
         /// Syncs checklist selection changes back into the runtime options object.
         /// </summary>
         private void HandleSelectionChanged(object? sender, EventArgs e)
@@ -102,15 +125,21 @@ public sealed class EngineVersionOptionEditorAdapter : IOptionEditorAdapter
         /// </summary>
         private CheckedList<EngineVersion> CreateCheckedList()
         {
-            return new CheckedList<EngineVersion>(_availableVersions, _options.EnabledVersions.Value);
+            return new CheckedList<EngineVersion>(EngineFinder.GetLauncherEngineInstallVersions().ToList(), _options.EnabledVersions);
         }
 
         /// <summary>
-        /// Copies the checked-list selection into the runtime options object.
-        /// </summary>
+         /// Copies the checked-list selection into the runtime options object.
+         /// </summary>
         private void SyncOptionsFromCheckedList()
         {
-            _options.EnabledVersions.Value = _enabledVersions.Items.ToList();
+            _options.EnabledVersions.Clear();
+            foreach (EngineVersion version in _enabledVersions.Items)
+            {
+                _options.EnabledVersions.Add(version);
+            }
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EnabledVersions)));
         }
     }
 }

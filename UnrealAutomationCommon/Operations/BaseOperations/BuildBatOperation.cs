@@ -27,6 +27,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 return requirementsError;
             }
 
+            string? engineSelectionError = typedParameters.GetSingleEngineSelectionValidationMessage();
+            if (engineSelectionError != null)
+            {
+                return engineSelectionError;
+            }
+
             UbtCompilerOptions buildBatOptions = typedParameters.GetOptions<UbtCompilerOptions>();
 
             Engine engine = GetTargetEngineInstall(typedParameters);

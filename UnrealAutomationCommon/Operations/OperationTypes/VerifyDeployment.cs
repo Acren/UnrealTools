@@ -19,8 +19,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Plugin plugin = GetTarget(UnrealOperationParameters);
 
-            Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Value.Select(x => x.MajorMinorString)) }");
-            foreach (EngineVersion engineVersion in UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Value)
+            Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Select(x => x.MajorMinorString)) }");
+            foreach (EngineVersion engineVersion in UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions)
             {
                 Engine engine = EngineFinder.GetEngineInstall(engineVersion);
                 if (engine == null)

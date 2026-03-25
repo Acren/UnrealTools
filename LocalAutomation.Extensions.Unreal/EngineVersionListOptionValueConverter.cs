@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using LocalAutomation.Extensions.Abstractions;
 using Newtonsoft.Json.Linq;
@@ -23,7 +24,8 @@ public sealed class EngineVersionListOptionValueConverter : IOptionValueConverte
     public bool CanConvert(Type valueType)
     {
         return valueType.IsGenericType
-               && valueType.GetGenericTypeDefinition() == typeof(List<>)
+               && (valueType.GetGenericTypeDefinition() == typeof(List<>)
+                   || valueType.GetGenericTypeDefinition() == typeof(BindingList<>))
                && valueType.GetGenericArguments()[0] == typeof(EngineVersion);
     }
 
@@ -49,9 +51,19 @@ public sealed class EngineVersionListOptionValueConverter : IOptionValueConverte
             _ => Array.Empty<string?>()
         };
 
-        return versionStrings
+        return ToBindingList(versionStrings
             .Where(static item => !string.IsNullOrWhiteSpace(item))
-            .Select(static version => new EngineVersion(version!))
-            .ToList();
+            .Select(static version => new EngineVersion(version!)));
+    }
+
+    /// <summary>
+    /// Materializes the restored engine versions into the same collection shape the runtime option model exposes.
+    /// </summary>
+    private static BindingList<EngineVersion> ToBindingList(IEnumerable<EngineVersion> versions)
+    {
+        return new BindingList<EngineVersion>(versions.ToList())
+        {
+            RaiseListChangedEvents = true
+        };
     }
 }
