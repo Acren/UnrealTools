@@ -20,31 +20,11 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// Gets or sets whether performance telemetry should be written to the shared shell log output.
-    /// </summary>
-    [DisplayName("Enable performance telemetry")]
-    [Description("Writes readable application-wide timing diagnostics to the application log for troubleshooting instrumented workflows across the shell and automation stack.")]
-    [PersistedValue(PersistenceScope.Global)]
-    public bool EnablePerformanceTelemetry
-    {
-        get => _enablePerformanceTelemetry;
-        set
-        {
-            if (_enablePerformanceTelemetry == value)
-            {
-                return;
-            }
-
-            _enablePerformanceTelemetry = value;
-            OnPropertyChanged();
-        }
-    }
-
-    /// <summary>
     /// Gets or sets the shared root directory under which automation output is written.
     /// </summary>
     [DisplayName("Output root path")]
     [Description("Controls the base folder used for generated automation output, archives, reports, and temporary run artifacts.")]
+    [PathEditor(PathEditorKind.Directory, Title = "Select output root folder")]
     [PersistedValue(PersistenceScope.Global)]
     public string OutputRootPath
     {
@@ -61,6 +41,27 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
             }
 
             _outputRootPath = normalizedValue;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether performance telemetry should be written to the shared shell log output.
+    /// </summary>
+    [DisplayName("Enable performance telemetry")]
+    [Description("Writes readable application-wide timing diagnostics to the application log for troubleshooting instrumented workflows across the shell and automation stack.")]
+    [PersistedValue(PersistenceScope.Global)]
+    public bool EnablePerformanceTelemetry
+    {
+        get => _enablePerformanceTelemetry;
+        set
+        {
+            if (_enablePerformanceTelemetry == value)
+            {
+                return;
+            }
+
+            _enablePerformanceTelemetry = value;
             OnPropertyChanged();
         }
     }
