@@ -55,6 +55,7 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
     protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
     {
         base.CollectRequiredOptionSetTypes(target, optionSetTypes);
+        optionSetTypes.Add(typeof(EngineVersionOptions));
         optionSetTypes.Add(typeof(AdditionalArgumentsOptions));
     }
 

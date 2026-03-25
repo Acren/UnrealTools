@@ -63,16 +63,15 @@ public class UnrealOperationParameters : global::LocalAutomation.Runtime.Operati
             return _engineOverride;
         }
 
-        if (IsOptionRegistered(typeof(EngineVersionOptions)))
+        // Unreal operations now preregister engine-version selection up front, so engine resolution should fail loudly
+        // if a caller tries to rely on the override without declaring it.
+        EngineVersionOptions versionOptions = GetOptions<EngineVersionOptions>();
+        if (versionOptions.EnabledVersions.Value.Count > 0)
         {
-            EngineVersionOptions versionOptions = GetOptions<EngineVersionOptions>();
-            if (versionOptions.EnabledVersions.Value.Count > 0)
+            EngineVersion? version = versionOptions.EnabledVersions.Value[0];
+            if (version != null)
             {
-                EngineVersion? version = versionOptions.EnabledVersions.Value[0];
-                if (version != null)
-                {
-                    return EngineFinder.GetEngineInstall(version);
-                }
+                return EngineFinder.GetEngineInstall(version);
             }
         }
 

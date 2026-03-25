@@ -137,7 +137,14 @@ namespace UnrealAutomationCommon.Unreal
                     versions.Add(engine.Version);
                 }
             }
-            return versions;
+
+            // Present launcher installs oldest-first so the checklist reads naturally while still staying stable
+            // regardless of the order registry/manifest discovery happened to return.
+            return versions
+                .OrderBy(version => version.MajorVersion)
+                .ThenBy(version => version.MinorVersion)
+                .ThenBy(version => version.PatchVersion)
+                .ToList();
         }
 
         public static Engine GetDefaultEngineInstall()
