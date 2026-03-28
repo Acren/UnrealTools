@@ -13,10 +13,10 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
         [ObservableProperty]
         private bool headless = true;
 
-        // Persist the effective automation test name with the target repo so test-focused targets travel with their
+        // Persist the effective automation test filter with the target repo so test-focused targets travel with their
         // own configuration instead of living only in per-user appdata state.
         [ObservableProperty]
         [property: PersistedValue(PersistenceScope.TargetLocal)]
-        private string testName = string.Empty;
+        private string testFilter = string.Empty;
     }
 }

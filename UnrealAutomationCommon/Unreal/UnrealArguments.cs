@@ -49,7 +49,7 @@ namespace UnrealAutomationCommon.Unreal
             AutomationOptions automationOpts = operationParameters.GetOptions<AutomationOptions>();
             if (automationOpts.RunTests)
             {
-                string execCmds = $"Automation RunTests {automationOpts.TestName};Quit";
+                string execCmds = $"Automation RunTests {automationOpts.TestFilter};Quit";
                 arguments.SetKeyValue("ExecCmds", execCmds);
                 arguments.SetKeyPath("ReportExportPath", OutputPaths.GetTestReportPath(outputhPath));
                 if (automationOpts.Headless)

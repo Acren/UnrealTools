@@ -10,7 +10,7 @@ namespace LocalAutomation.Application;
 [PersistedSettings("target")]
 public sealed class TargetSettings
 {
-    private string _testName = string.Empty;
+    private string _testFilter = string.Empty;
 
     /// <summary>
     /// Raised whenever one target-scoped setting changes.
@@ -18,15 +18,15 @@ public sealed class TargetSettings
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// Gets or sets the default automation test name associated with the current target.
+    /// Gets or sets the default automation test filter associated with the current target.
     /// </summary>
     [PersistedValue(PersistenceScope.TargetLocal)]
-    public string TestName
+    public string TestFilter
     {
-        get => _testName;
+        get => _testFilter;
         set
         {
-            _testName = value ?? string.Empty;
+            _testFilter = value ?? string.Empty;
             OnPropertyChanged();
         }
     }
