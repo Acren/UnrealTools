@@ -176,6 +176,14 @@ public partial class RuntimePanel : UserControl
             return;
         }
 
+        // SelectedRuntimeLogEntries is raised both when the selected tab changes and when the current tab receives
+        // more output. Only a real collection swap should reset auto-follow; otherwise users who scrolled upward would
+        // be forced back to the end on every appended line.
+        if (ReferenceEquals(_currentRuntimeLogCollection, ViewModel.SelectedRuntimeLogEntries))
+        {
+            return;
+        }
+
         AttachRuntimeLogCollection();
         RenderEntireRuntimeLog();
         _shouldAutoScrollRuntimeLog = true;
