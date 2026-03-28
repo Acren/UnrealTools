@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using System.ComponentModel;
 using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
@@ -9,6 +10,8 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 
         // Example projects are discovered under a directory root, so the property grid should offer folder browsing.
         [ObservableProperty]
+        [property: DisplayName("Example Projects Path")]
+        [property: Description("Points to the folder that contains example projects used for deployment verification.")]
         [property: PathEditor(PathEditorKind.Directory, Title = "Select example projects folder")]
         private string exampleProjectsPath = string.Empty;
     }

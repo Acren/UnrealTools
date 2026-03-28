@@ -1,6 +1,6 @@
-﻿using System.ComponentModel;
-using UnrealAutomationCommon.Unreal;
 using LocalAutomation.Runtime;
+using System.ComponentModel;
+using UnrealAutomationCommon.Unreal;
 
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
@@ -17,6 +17,8 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
 
         public override int SortIndex => 30;
 
+        [DisplayName("Trace Channels")]
+        [Description("Selects the Unreal Insights trace channels to enable for the launched process.")]
         public BindingList<TraceChannel> TraceChannels
         {
             get => _traceChannels;

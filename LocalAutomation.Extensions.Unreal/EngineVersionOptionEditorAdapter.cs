@@ -66,6 +66,7 @@ public sealed class EngineVersionOptionEditorAdapter : IOptionEditorAdapter
         /// Gets or sets the installed engine versions as a checked-list.
         /// </summary>
         [DisplayName("Enabled Versions")]
+        [Description("Selects which installed engine versions an operation should target; leaving the list empty falls back to the target's resolved engine.")]
         public CheckedList<EngineVersion> EnabledVersions
         {
             get => _enabledVersions;

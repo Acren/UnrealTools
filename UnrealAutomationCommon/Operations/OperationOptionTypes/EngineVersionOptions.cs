@@ -1,6 +1,6 @@
-﻿using System.ComponentModel;
-using UnrealAutomationCommon.Unreal;
 using LocalAutomation.Runtime;
+using System.ComponentModel;
+using UnrealAutomationCommon.Unreal;
 
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes
@@ -23,6 +23,8 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
         /// Gets the explicitly selected engine versions. Most operations use zero or one explicit selection and then
         /// fall back to the target's engine when the list is empty.
         /// </summary>
+        [DisplayName("Enabled Versions")]
+        [Description("Selects which installed engine versions an operation should target; leaving the list empty falls back to the target's resolved engine.")]
         public BindingList<EngineVersion> EnabledVersions { get; } = new();
 
         /// <summary>

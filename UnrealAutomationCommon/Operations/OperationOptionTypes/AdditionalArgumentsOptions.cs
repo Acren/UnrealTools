@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using System.ComponentModel;
 using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon.Operations.OperationOptionTypes;
@@ -24,5 +25,7 @@ public sealed partial class AdditionalArgumentsOptions : OperationOptions
     /// Gets the raw argument string appended to the generated command.
     /// </summary>
     [ObservableProperty]
+    [property: DisplayName("Arguments")]
+    [property: Description("Appends raw command-line arguments after the generated automation command.")]
     private string arguments = string.Empty;
 }

@@ -62,6 +62,7 @@ public sealed class InsightsOptionEditorAdapter : IOptionEditorAdapter
         /// Gets or sets the trace channels as a checked-list.
         /// </summary>
         [DisplayName("Trace Channels")]
+        [Description("Selects the Unreal Insights trace channels to enable for the launched process.")]
         public CheckedList<TraceChannel> TraceChannels
         {
             get => _traceChannels;
