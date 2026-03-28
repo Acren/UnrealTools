@@ -25,6 +25,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
+            Engine engine = GetRequiredTargetEngineInstall(operationParameters);
             Arguments arguments = UATArguments.MakeBuildArguments(operationParameters);
             arguments.SetFlag("cook");
             arguments.SetFlag("stage");
@@ -43,7 +44,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             BuildConfiguration cookerConfiguration = operationParameters.GetOptions<CookOptions>().CookerConfiguration;
             if (cookerConfiguration != BuildConfiguration.Development)
             {
-                string unrealExe = operationParameters.Engine.GetEditorCmdExe(cookerConfiguration);
+                string unrealExe = engine.GetEditorCmdExe(cookerConfiguration);
                 arguments.SetKeyPath("unrealexe", unrealExe);
             }
 
@@ -52,7 +53,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 arguments.SetKeyValue("additionalcookeroptions","-waitforattach");
             }
 
-            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), arguments.ToString());
+            return new global::LocalAutomation.Runtime.Command(engine.GetRunUATPath(), arguments.ToString());
         }
 
         protected override string GetOperationName()

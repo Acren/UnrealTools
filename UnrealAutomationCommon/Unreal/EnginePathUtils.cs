@@ -83,7 +83,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public static string GetUBTExe(this Engine engine)
         {
-            if (engine.Version.MajorVersion >= 5)
+            if (engine.Version?.MajorVersion >= 5)
             {
                 return Path.Combine(engine.TargetPath, "Engine", "Binaries", "DotNET", "UnrealBuildTool", "UnrealBuildTool.exe");
             }

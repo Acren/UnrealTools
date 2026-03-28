@@ -10,15 +10,15 @@ namespace UnrealAutomationCommon.Unreal
 {
     public class PluginDescriptor
     {
-        public string VersionName { get; set; }
-        public string FriendlyName { get; set; }
+        public string VersionName { get; set; } = string.Empty;
+        public string FriendlyName { get; set; } = string.Empty;
         public bool IsBetaVersion { get; set; }
-        public string EngineVersionString { get; set; }
+        public string EngineVersionString { get; set; } = string.Empty;
 
         public List<ModuleDeclaration> Modules { get; set; } = new();
 
         public SemVersion SemVersion => SemVersion.Parse(VersionName, SemVersionStyles.Strict);
-        public EngineVersion EngineVersion => string.IsNullOrEmpty(EngineVersionString) ? null : new(EngineVersionString);
+        public EngineVersion? EngineVersion => string.IsNullOrEmpty(EngineVersionString) ? null : new(EngineVersionString);
 
         public static PluginDescriptor Load(string uPluginPath)
         {
@@ -27,7 +27,8 @@ namespace UnrealAutomationCommon.Unreal
             FileUtils.WaitForFileReadable(uPluginPath);
             try
             {
-                return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath));
+                return JsonConvert.DeserializeObject<PluginDescriptor>(File.ReadAllText(uPluginPath))
+                    ?? throw new InvalidOperationException($"Could not deserialize plugin descriptor '{uPluginPath}'.");
             }
             catch (Exception ex)
             {
@@ -39,7 +40,7 @@ namespace UnrealAutomationCommon.Unreal
                 {
                 }
 
-                return null;
+                throw new InvalidOperationException($"Failed to load plugin descriptor '{uPluginPath}'.", ex);
             }
         }
     }

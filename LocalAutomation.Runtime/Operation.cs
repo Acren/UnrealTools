@@ -74,7 +74,10 @@ public abstract class Operation
     public virtual OperationParameters CreateParameters(OperationParameters? existing = null)
     {
         OperationParameters parameters = CreateOperationParameters();
-        parameters.SetRegisteredOptions(GetRequiredOptionSetTypes(existing?.Target ?? parameters.Target));
+        // Option discovery can run before a target has been selected, so only ask the operation for target-specific
+        // option sets once a concrete target exists.
+        IOperationTarget? optionTarget = existing?.Target ?? parameters.Target;
+        parameters.SetRegisteredOptions(optionTarget != null ? GetRequiredOptionSetTypes(optionTarget) : Array.Empty<Type>());
         if (existing != null)
         {
             parameters.Target = existing.Target;

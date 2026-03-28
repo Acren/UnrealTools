@@ -17,7 +17,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
-            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetEditorExe(operationParameters), UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true).ToString());
+            return new global::LocalAutomation.Runtime.Command(GetRequiredTargetEngineInstall(operationParameters).GetEditorExe(operationParameters), UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true).ToString());
         }
     }
 

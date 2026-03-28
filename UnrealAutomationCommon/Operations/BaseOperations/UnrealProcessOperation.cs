@@ -28,12 +28,17 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             AutomationOptions automationOptions = UnrealOperationParameters.GetOptions<AutomationOptions>();
             if (!Cancelled && automationOptions.RunTests)
             {
-                IEngineInstanceProvider engineInstanceProvider = UnrealOperationParameters.Target as IEngineInstanceProvider;
-                if (engineInstanceProvider == null)
+                if (UnrealOperationParameters.Target is not IEngineInstanceProvider engineInstanceProvider)
                 {
                     throw new Exception("Target does not provide engine install");
                 }
-                bool engineSupportsReports = engineInstanceProvider.EngineInstance.SupportsTestReports;
+                Engine? engine = engineInstanceProvider.EngineInstance;
+                if (engine == null)
+                {
+                    throw new Exception("Target could not resolve an engine install");
+                }
+
+                bool engineSupportsReports = engine.SupportsTestReports;
                 if (!engineSupportsReports)
                 {
                     Logger.LogWarning("Engine version does not support test reports, so results cannot be checked");
@@ -41,28 +46,25 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 else
                 {
                     string reportFilePath = OutputPaths.GetTestReportFilePath(GetOutputPath(UnrealOperationParameters));
-                    TestReport report = TestReport.Load(reportFilePath);
+                    TestReport? report = TestReport.Load(reportFilePath);
                     if (report == null)
                     {
                         throw new Exception("Expected test report at " + reportFilePath + " but didn't find one");
                     }
 
-                    if (report != null)
+                    foreach (Test test in report.Tests)
                     {
-                        foreach (Test test in report.Tests)
+                        Logger.Log(test.State == TestState.Success ? LogLevel.Information : LogLevel.Error, EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath);
+                        foreach (TestEntry entry in test.Entries)
+                            if (entry.Event.Type != TestEventType.Info)
                         {
-                            Logger.Log(test.State == TestState.Success ? LogLevel.Information : LogLevel.Error, EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath);
-                            foreach (TestEntry entry in test.Entries)
-                                if (entry.Event.Type != TestEventType.Info)
-                                {
-                                    Logger.Log(entry.Event.Type == TestEventType.Error ? LogLevel.Error : LogLevel.Warning, "".PadRight(9) + " - " + entry.Event.Message);
-                                }
+                            Logger.Log(entry.Event.Type == TestEventType.Error ? LogLevel.Error : LogLevel.Warning, "".PadRight(9) + " - " + entry.Event.Message);
                         }
-
-                        int testsPassed = report.Tests.Count(t => t.State == TestState.Success);
-                        bool allPassed = testsPassed == report.Tests.Count;
-                        Logger.Log(allPassed ? LogLevel.Information : LogLevel.Error, testsPassed + " of " + report.Tests.Count + " tests passed");
                     }
+
+                    int testsPassed = report.Tests.Count(t => t.State == TestState.Success);
+                    bool allPassed = testsPassed == report.Tests.Count;
+                    Logger.Log(allPassed ? LogLevel.Information : LogLevel.Error, testsPassed + " of " + report.Tests.Count + " tests passed");
 
                     if (report.Failed > 0)
                     {

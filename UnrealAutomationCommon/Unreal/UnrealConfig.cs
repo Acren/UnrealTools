@@ -24,7 +24,7 @@ namespace UnrealAutomationCommon.Unreal
             _values[key] = split[1];
         }
 
-        public string GetValue(string key)
+        public string? GetValue(string key)
         {
             if (_values.ContainsKey(key))
             {
@@ -57,13 +57,18 @@ namespace UnrealAutomationCommon.Unreal
             _filePath = path;
             StreamReader reader = new(path);
 
-            ConfigSection currentSection = null;
-            string currentSectionName = null;
+            ConfigSection? currentSection = null;
+            string? currentSectionName = null;
             int lineIndex = 0;
 
             while (reader.Peek() >= 0)
             {
-                string line = reader.ReadLine();
+                string? line = reader.ReadLine();
+                if (line == null)
+                {
+                    break;
+                }
+
                 _rawLines.Add(line);
 
                 if (!string.IsNullOrEmpty(line))
@@ -79,7 +84,7 @@ namespace UnrealAutomationCommon.Unreal
                     else if (currentSection != null && line.Contains('=') && !line.StartsWith("+") && !line.StartsWith("-"))
                     {
                         currentSection.AddLine(line);
-                        _lineSectionMap[lineIndex] = currentSectionName;
+                        _lineSectionMap[lineIndex] = currentSectionName!;
                     }
                 }
 
@@ -89,7 +94,7 @@ namespace UnrealAutomationCommon.Unreal
             reader.Close();
         }
 
-        public ConfigSection GetSection(string name)
+        public ConfigSection? GetSection(string name)
         {
             return _sections.ContainsKey(name) ? _sections[name] : null;
         }
@@ -126,7 +131,7 @@ namespace UnrealAutomationCommon.Unreal
                     
                     if (_sections.ContainsKey(sectionName))
                     {
-                        string newValue = _sections[sectionName].GetValue(key);
+                        string? newValue = _sections[sectionName].GetValue(key);
                         if (newValue != null)
                         {
                             newLines.Add($"{key}={newValue}");

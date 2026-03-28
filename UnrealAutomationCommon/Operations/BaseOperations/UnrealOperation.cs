@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -67,6 +68,16 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
         return operationParameters.Engine;
     }
 
+    /// <summary>
+    /// Returns the resolved Unreal engine install or throws when command generation is attempted before validation has
+    /// guaranteed one exists.
+    /// </summary>
+    protected UnrealAutomationCommon.Unreal.Engine GetRequiredTargetEngineInstall(UnrealAutomationCommon.Operations.UnrealOperationParameters operationParameters)
+    {
+        return GetTargetEngineInstall(operationParameters)
+            ?? throw new InvalidOperationException("Operation requires a resolved Unreal engine install before execution.");
+    }
+
 }
 
 /// <summary>
@@ -104,6 +115,24 @@ public abstract class UnrealOperation<T> : UnrealOperation where T : global::Loc
     public T? GetTarget(UnrealAutomationCommon.Operations.UnrealOperationParameters operationParameters)
     {
         return (T?)operationParameters.Target;
+    }
+
+    /// <summary>
+    /// Returns the current target or throws when execution reaches a path that depends on prior validation.
+    /// </summary>
+    protected T GetRequiredTarget(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+    {
+        return GetTarget(operationParameters)
+            ?? throw new InvalidOperationException($"Operation {GetType().Name} requires a target of type {typeof(T).Name}.");
+    }
+
+    /// <summary>
+    /// Returns the current target or throws when execution reaches a path that depends on prior validation.
+    /// </summary>
+    protected T GetRequiredTarget(UnrealAutomationCommon.Operations.UnrealOperationParameters operationParameters)
+    {
+        return GetTarget(operationParameters)
+            ?? throw new InvalidOperationException($"Operation {GetType().Name} requires a target of type {typeof(T).Name}.");
     }
 
 }

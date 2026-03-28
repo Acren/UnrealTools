@@ -12,8 +12,8 @@ namespace UnrealAutomationCommon.Unreal
 {
     public class Project : OperationTarget, IPackageProvider, IEngineInstanceProvider
     {
-        private ProjectDescriptor _projectDescriptor;
-        private FileSystemWatcher _watcher;
+        private ProjectDescriptor _projectDescriptor = null!;
+        private FileSystemWatcher? _watcher;
 
         [JsonConstructor]
         public Project(string targetPath)
@@ -43,7 +43,7 @@ namespace UnrealAutomationCommon.Unreal
             OnPropertyChanged(nameof(Name));
         }
 
-        public string UProjectPath => ProjectPaths.Instance.FindTargetFile(TargetPath);
+        public string UProjectPath => ProjectPaths.Instance.FindRequiredTargetFile(TargetPath);
 
         public ProjectDescriptor ProjectDescriptor
         {
@@ -57,18 +57,7 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public Engine EngineInstance
-        {
-            get
-            {
-                if (ProjectDescriptor is { Engine: { } })
-                {
-                    return ProjectDescriptor.Engine;
-                }
-
-                return null;
-            }
-        }
+        public Engine EngineInstance => ProjectDescriptor.Engine;
 
         public string EngineInstanceName
         {
@@ -84,7 +73,7 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         public override string Name => Path.GetFileNameWithoutExtension(UProjectPath) ?? "Invalid";
-        public override string DisplayName => DirectoryName;
+        public override string DisplayName => DirectoryName ?? Name;
 
         public override bool IsValid => ProjectPaths.Instance.IsTargetDirectory(TargetPath);
 
@@ -121,7 +110,7 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
-        public Package GetProvidedPackage(Engine engineContext) => GetStagedPackage(engineContext);
+        public Package? GetProvidedPackage(Engine engineContext) => GetStagedPackage(engineContext);
 
         public override void LoadDescriptor()
         {
@@ -138,16 +127,16 @@ namespace UnrealAutomationCommon.Unreal
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Project.GetEngineInstance");
             PerformanceTelemetry.SetTag(activity, "descriptor.path", UProjectPath);
             Engine engine = EngineInstance;
-            PerformanceTelemetry.SetTag(activity, "engine.name", engine?.DisplayName ?? string.Empty);
+            PerformanceTelemetry.SetTag(activity, "engine.name", engine.DisplayName);
             return engine;
         }
 
         public string GetStagedBuildWindowsPath(Engine engineContext)
         {
-            return Path.Combine(StagedBuildsPath, (engineContext ?? EngineInstance).GetWindowsPlatformName());
+            return Path.Combine(StagedBuildsPath, engineContext.GetWindowsPlatformName());
         }
 
-        public Package GetStagedPackage(Engine engineContext)
+        public Package? GetStagedPackage(Engine engineContext)
         {
             string path = GetStagedBuildWindowsPath(engineContext);
             return PackagePaths.Instance.IsTargetDirectory(path) ? new Package(path) : null;
@@ -185,7 +174,7 @@ namespace UnrealAutomationCommon.Unreal
          * Consider the project blueprint-only if it has zero modules
          * Alternatively it should also be possible to check the absence of a Source folder
          */
-        public bool IsBlueprintOnly => ProjectDescriptor.Modules.Count == 0;
+        public bool IsBlueprintOnly => ProjectDescriptor?.Modules.Count == 0;
 
         public void ConvertToBlueprintOnly()
         {
@@ -203,7 +192,7 @@ namespace UnrealAutomationCommon.Unreal
         {
             string defaultGameIniPath = Path.Combine(TargetDirectory, "Config", "DefaultGame.ini");
             UnrealConfig config = new(defaultGameIniPath);
-            ConfigSection projectSettings = config.GetSection("/Script/EngineSettings.GeneralProjectSettings");
+            ConfigSection? projectSettings = config.GetSection("/Script/EngineSettings.GeneralProjectSettings");
             if (projectSettings != null)
             {
                 projectSettings.SetValue("ProjectVersion", version);

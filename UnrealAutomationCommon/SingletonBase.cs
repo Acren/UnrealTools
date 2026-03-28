@@ -35,7 +35,8 @@ namespace UnrealAutomationCommon
         /// <returns></returns>
         private static T CreateInstanceOfT()
         {
-            return Activator.CreateInstance(typeof(T), true) as T;
+            return Activator.CreateInstance(typeof(T), true) as T
+                ?? throw new InvalidOperationException($"Could not create singleton instance for {typeof(T).FullName}.");
         }
 
         #endregion

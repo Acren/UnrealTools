@@ -6,8 +6,8 @@ namespace UnrealAutomationCommon.Unreal
 
     public class LogWatcher
     {
-        private StreamReader _reader;
-        private string _registeredLogFile;
+        private StreamReader? _reader;
+        private string? _registeredLogFile;
 
         public LogWatcher(Project project) : this(project, project.LogsPath)
         {
@@ -44,7 +44,7 @@ namespace UnrealAutomationCommon.Unreal
 
         private bool HasRegisteredLogFile => _registeredLogFile != null;
 
-        public event LineLoggedEventHandler LineLogged;
+        public event LineLoggedEventHandler? LineLogged;
 
         private bool ShouldRegisterLogFile(string logFile)
         {
@@ -62,9 +62,19 @@ namespace UnrealAutomationCommon.Unreal
 
         private void ReadToEnd()
         {
+            if (_reader == null)
+            {
+                return;
+            }
+
             while (!_reader.EndOfStream)
             {
-                string line = _reader.ReadLine();
+                string? line = _reader.ReadLine();
+                if (line == null)
+                {
+                    continue;
+                }
+
                 if (UnrealLogUtils.IsTimestampedLog(line))
                 {
                     line = UnrealLogUtils.RemoveTimestamp(line);

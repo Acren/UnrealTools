@@ -26,7 +26,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     Logger.LogWarning("BuildCookRun editor targets do not respect UbtArgs argument - consider direct UBT usage instead");
                 }
             }
-            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), args.ToString());
+            return new global::LocalAutomation.Runtime.Command(GetRequiredTargetEngineInstall(operationParameters).GetRunUATPath(), args.ToString());
         }
 
         protected override string GetOperationName()
@@ -47,10 +47,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Rejects unsupported build configurations before command generation so the user sees a clear validation
         /// message instead of a misleading UAT invocation.
         /// </summary>
-        public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        public override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
             UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            string baseError = base.CheckRequirementsSatisfied(operationParameters);
+            string? baseError = base.CheckRequirementsSatisfied(operationParameters);
             if (baseError != null)
             {
                 return baseError;

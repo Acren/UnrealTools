@@ -18,10 +18,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         }
 
         // Validate shared direct-UBT overrides once so every Build.bat-backed operation enforces the same limits.
-        public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        public override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
             UnrealAutomationCommon.Operations.UnrealOperationParameters typedParameters = (UnrealAutomationCommon.Operations.UnrealOperationParameters)operationParameters;
-            string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
+            string? requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
                 return requirementsError;
@@ -35,16 +35,17 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             UbtCompilerOptions buildBatOptions = typedParameters.GetOptions<UbtCompilerOptions>();
 
-            Engine engine = GetTargetEngineInstall(typedParameters);
+            Engine? engine = GetTargetEngineInstall(typedParameters);
             if (engine?.Version == null)
             {
                 return null;
             }
 
             // UE 5.5 and newer have dropped Cpp17 support, so fail early before invoking UBT with an invalid override.
-            if (buildBatOptions.CppStandard == UbtCppStandard.Cpp17 && engine.Version >= new EngineVersion(5, 5, 0))
+            EngineVersion engineVersion = engine.Version;
+            if (buildBatOptions.CppStandard == UbtCppStandard.Cpp17 && engineVersion >= new EngineVersion(5, 5, 0))
             {
-                return $"C++17 is not supported for Unreal Engine {engine.Version.MajorMinorString} or newer";
+                return $"C++17 is not supported for Unreal Engine {engineVersion.MajorMinorString} or newer";
             }
 
             return null;
@@ -57,7 +58,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             // Let derived operations describe the target-specific portion of the Build.bat invocation first.
             ConfigureBuildArguments(operationParameters, args);
             ApplySharedBuildArguments(operationParameters, args);
-            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetBuildPath(), args.ToString());
+            return new global::LocalAutomation.Runtime.Command(GetRequiredTargetEngineInstall(operationParameters).GetBuildPath(), args.ToString());
         }
 
         // Derived operations provide the target name, platform/config, project path, and any target-specific flags.

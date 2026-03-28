@@ -7,14 +7,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
+            Project project = GetRequiredTarget(operationParameters);
             Arguments args = new();
             args.SetFlag("projectfiles");
-            args.SetKeyPath("project", GetTarget(operationParameters).UProjectPath);
+            args.SetKeyPath("project", project.UProjectPath);
             args.SetFlag("game");
             args.SetFlag("rocket");
             args.SetFlag("progress");
             args.AddAdditionalArguments(operationParameters);
-            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetUBTExe(), args.ToString());
+            return new global::LocalAutomation.Runtime.Command(GetRequiredTargetEngineInstall(operationParameters).GetUBTExe(), args.ToString());
         }
     }
 }

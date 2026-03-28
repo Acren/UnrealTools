@@ -1,6 +1,7 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
+using System;
+using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 using System.IO;
@@ -15,16 +16,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new List<LocalAutomation.Runtime.Command>();
         }
 
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
+        protected override Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
             Logger.LogInformation("Cleaning binaries");
 
-            Project project = GetTarget(UnrealOperationParameters);
-            Engine engine = project.EngineInstance;
+            Project project = GetRequiredTarget(UnrealOperationParameters);
+            Engine engine = project.EngineInstance ?? throw new InvalidOperationException("Clean Project requires a resolved engine install.");
 
             // Clean targets
             string cleanPath = Path.Combine(engine.GetBuildFolder(), "BatchFiles", "Clean.bat");
-            List<string> targets = new List<string>() { project.Name, project.ProjectDescriptor.EditorTargetName };
+            string editorTargetName = project.ProjectDescriptor?.EditorTargetName
+                ?? throw new InvalidOperationException("Clean Project requires a loaded project descriptor.");
+            List<string> targets = new List<string>() { project.Name, editorTargetName };
             foreach (string target in targets)
             {
                 foreach (BuildConfiguration configuration in EnumUtils.GetAll<BuildConfiguration>())
@@ -44,7 +47,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Logger.LogInformation("Cleaning complete");
 
-            return new global::LocalAutomation.Runtime.OperationResult(true);
+            return Task.FromResult(new global::LocalAutomation.Runtime.OperationResult(true));
         }
     }
 }

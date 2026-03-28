@@ -17,12 +17,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
-            Plugin plugin = GetTarget(UnrealOperationParameters);
+            Plugin plugin = GetRequiredTarget(UnrealOperationParameters);
 
             Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Select(x => x.MajorMinorString)) }");
             foreach (EngineVersion engineVersion in UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions)
             {
-                Engine engine = EngineFinder.GetEngineInstall(engineVersion);
+                Engine? engine = EngineFinder.GetEngineInstall(engineVersion);
                 if (engine == null)
                 {
                     throw new Exception("Engine not found");
@@ -52,20 +52,20 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task<global::LocalAutomation.Runtime.OperationResult> VerifyForEngine(Engine engine, CancellationToken token)
         {
-            Plugin plugin = GetTarget(UnrealOperationParameters);
-            EngineVersion engineVersion = engine.Version;
+            Plugin plugin = GetRequiredTarget(UnrealOperationParameters);
+            EngineVersion engineVersion = engine.Version ?? throw new Exception("Engine version is not available");
             Logger.LogInformation($"Verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
 
-            Plugin installedPlugin = engine.FindInstalledPlugin(plugin.Name);
+            Plugin? installedPlugin = engine.FindInstalledPlugin(plugin.Name);
 
             if (installedPlugin is null)
             {
                 throw new Exception($"Could not find plugin {plugin.Name} in engine located at {engine.TargetPath}");
             }
 
-            string pluginVersionName = plugin.PluginDescriptor.VersionName;
+            string pluginVersionName = (plugin.PluginDescriptor ?? throw new Exception("Plugin descriptor is not loaded")).VersionName;
             Logger.LogInformation($"Source plugin version: {pluginVersionName}");
-            string installedPluginVersionName = installedPlugin.PluginDescriptor.VersionName;
+            string installedPluginVersionName = (installedPlugin.PluginDescriptor ?? throw new Exception("Installed plugin descriptor is not loaded")).VersionName;
             Logger.LogInformation($"Installed plugin version: {pluginVersionName}");
 
             if (!installedPluginVersionName.Contains(pluginVersionName))
@@ -90,7 +90,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Project exampleProject = new Project(exampleProjectTestPath);
 
-            if (exampleProject == null)
+            if (!exampleProject.IsValid)
             {
                 throw new Exception($"Couldn't create project from {exampleProjectZip}");
             }
@@ -189,13 +189,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             public readonly string Path;
             public readonly string PluginName;
-            public readonly SemVersion PluginVersion;
-            public readonly SemVersion EngineVersion;
+            public readonly SemVersion? PluginVersion;
+            public readonly SemVersion? EngineVersion;
             public readonly bool IsExampleProject;
 
             public ExampleProjectZipInfo(string path)
             {
                 Path = path;
+                PluginName = string.Empty;
+                PluginVersion = null;
+                EngineVersion = null;
                 string zipName = System.IO.Path.GetFileNameWithoutExtension(path);
 
                 // Expect zip to be named PluginName_PluginVersion_EngineVersion_ExampleProject.zip
@@ -213,7 +216,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private string FindExampleProjectZip(Plugin plugin, string exampleProjectsPath, Engine engine)
         {
-            SemVersion pluginVersion = plugin.PluginDescriptor.SemVersion;
+            SemVersion pluginVersion = (plugin.PluginDescriptor ?? throw new Exception("Plugin descriptor is not loaded")).SemVersion;
             string exampleProjects = exampleProjectsPath;
             string extension = "*.zip";
             string[] zipPaths = Directory.GetFiles(exampleProjects, extension, SearchOption.AllDirectories);
@@ -234,7 +237,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             ExampleProjectZipInfo selectedZip = pluginExampleProjectZips
-                .Where(z => z.PluginVersion <= pluginVersion && z.EngineVersion <= engine.SemVersion)
+                .Where(z => z.PluginVersion != null && SemVersion.CompareSortOrder(z.PluginVersion, pluginVersion) <= 0 && z.EngineVersion != null && SemVersion.CompareSortOrder(z.EngineVersion, engine.SemVersion) <= 0)
                 .OrderByDescending(z => z.PluginVersion)
                 .ThenByDescending(z => z.EngineVersion)
                 .First();

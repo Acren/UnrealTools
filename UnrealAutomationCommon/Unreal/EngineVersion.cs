@@ -68,10 +68,11 @@ namespace UnrealAutomationCommon.Unreal
         {
             if (!File.Exists(buildVersionPath))
             {
-                return null;
+                throw new FileNotFoundException($"Could not find Unreal build version file at '{buildVersionPath}'.", buildVersionPath);
             }
 
-            return JsonConvert.DeserializeObject<EngineVersion>(File.ReadAllText(buildVersionPath));
+            return JsonConvert.DeserializeObject<EngineVersion>(File.ReadAllText(buildVersionPath))
+                ?? throw new InvalidOperationException($"Could not deserialize Unreal build version file '{buildVersionPath}'.");
         }
 
         public bool MinorVersionEquals(EngineVersion other)
@@ -90,7 +91,7 @@ namespace UnrealAutomationCommon.Unreal
             return newVersion;
         }
 
-        public static bool operator ==(EngineVersion a, EngineVersion b)
+        public static bool operator ==(EngineVersion? a, EngineVersion? b)
         {
             if (a is null)
             {
@@ -99,7 +100,7 @@ namespace UnrealAutomationCommon.Unreal
             return a.Equals(b);
         }
 
-        public static bool operator !=(EngineVersion a, EngineVersion b)
+        public static bool operator !=(EngineVersion? a, EngineVersion? b)
         {
             return !(a == b);
         }
@@ -133,7 +134,7 @@ namespace UnrealAutomationCommon.Unreal
             return a > b || a == b;
         }
 
-        public bool Equals(EngineVersion other)
+        public bool Equals(EngineVersion? other)
         {
             if (ReferenceEquals(null, other))
             {

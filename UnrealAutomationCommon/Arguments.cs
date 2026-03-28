@@ -7,12 +7,16 @@ namespace UnrealAutomationCommon
 {
     public class Argument
     {
+        // Default empty strings keep parsing and round-tripping safe even when a serializer creates the object first.
         public Argument()
         {
+            Key = string.Empty;
+            Value = string.Empty;
         }
 
         // Parse argument from a string
         public Argument(string argString)
+            : this()
         {
             bool inQuote = false;
             bool inValue = false;

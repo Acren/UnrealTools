@@ -5,17 +5,17 @@ namespace UnrealAutomationCommon.Unreal
 {
     public class TraceChannel : IEquatable<TraceChannel>
     {
-        public string Key { get; set; }
-        public string Label { get; set; }
+        public string Key { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
 
         public override string ToString()
         {
             return Label;
         }
 
-        public bool Equals(TraceChannel other)
+        public bool Equals(TraceChannel? other)
         {
-            return Key == other.Key;
+            return other != null && Key == other.Key;
         }
     }
 

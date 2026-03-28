@@ -14,10 +14,10 @@ namespace UnrealAutomationCommon.Unreal
 {
     public class Plugin : OperationTarget, IEngineInstanceProvider
     {
-        private PluginDescriptor _pluginDescriptor;
-        private Project _hostProject;
+        private PluginDescriptor _pluginDescriptor = null!;
+        private Project? _hostProject;
 
-        private FileSystemWatcher _watcher;
+        private FileSystemWatcher? _watcher;
 
         [JsonConstructor]
         public Plugin(string targetPath)
@@ -51,7 +51,7 @@ namespace UnrealAutomationCommon.Unreal
             _watcher.EnableRaisingEvents = true;
         }
 
-        public string UPluginPath => PluginPaths.Instance.FindTargetFile(TargetPath);
+        public string UPluginPath => PluginPaths.Instance.FindRequiredTargetFile(TargetPath);
 
         /// <summary>
         /// Reuses the resolved host project so repeated validation and command-preview reads do not recreate the same
@@ -61,7 +61,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public override IOperationTarget ParentTarget => HostProject;
 
-        public override string Name => DirectoryName;
+        public override string Name => DirectoryName ?? "Invalid";
 
         public override bool IsValid => PluginPaths.Instance.IsTargetDirectory(TargetPath) && PluginDescriptor != null;
 
@@ -101,20 +101,14 @@ namespace UnrealAutomationCommon.Unreal
             get
             {
                 // If plugin descriptor has an engine version, find engine install using that
-                EngineVersion descriptorVersion = PluginDescriptor?.EngineVersion;
+                EngineVersion? descriptorVersion = PluginDescriptor?.EngineVersion;
                 if (descriptorVersion != null)
                 {
-                    return EngineFinder.GetEngineInstall(descriptorVersion);
+                    return EngineFinder.GetRequiredEngineInstall(descriptorVersion);
                 }
 
                 // Use host project version
-                if (HostProject != null)
-                {
-                    return HostProject.EngineInstance;
-                }
-
-                // No descriptor version and no host project, fall back to default
-                return EngineFinder.GetDefaultEngineInstall();
+                return HostProject.EngineInstance;
             }
         }
 
@@ -134,10 +128,6 @@ namespace UnrealAutomationCommon.Unreal
         public override void LoadDescriptor()
         {
             PluginDescriptor = PluginDescriptor.Load(UPluginPath);
-            if (PluginDescriptor == null)
-            {
-                AppLogger.LoggerInstance.LogError($"Plugin descriptor could not be loaded from {UPluginPath}");
-            }
         }
 
         /// <summary>
@@ -170,7 +160,8 @@ namespace UnrealAutomationCommon.Unreal
             int versionInt = version.ToInt();
             JObject descriptorJObject = JObject.Parse(File.ReadAllText(UPluginPath));
             string versionKey = "Version";
-            if (descriptorJObject[versionKey].ToObject<int>() == versionInt)
+            JToken? versionToken = descriptorJObject[versionKey];
+            if (versionToken != null && versionToken.ToObject<int>() == versionInt)
             {
                 // Already correct, did not update
                 return false;

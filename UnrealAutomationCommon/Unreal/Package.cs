@@ -10,7 +10,7 @@ namespace UnrealAutomationCommon.Unreal
 {
     public interface IPackageProvider : IOperationTarget
     {
-        public Package GetProvidedPackage(Engine engineContext);
+        public Package? GetProvidedPackage(Engine engineContext);
     }
 
     public class Package : OperationTarget, IPackageProvider, IEngineInstanceProvider
@@ -28,9 +28,9 @@ namespace UnrealAutomationCommon.Unreal
             Name = Path.GetFileNameWithoutExtension(ExecutablePath);
         }
 
-        public string ExecutablePath => PackagePaths.Instance.FindTargetFile(TargetPath);
+        public string ExecutablePath => PackagePaths.Instance.FindRequiredTargetFile(TargetPath);
 
-        public Project HostProject
+        public Project? HostProject
         {
             get
             {
@@ -46,17 +46,17 @@ namespace UnrealAutomationCommon.Unreal
 
         public string LogsPath => Path.Combine(TargetDirectory, Name, "Saved", "Logs");
 
-        private EngineVersion EngineVersion => IsValid ? new EngineVersion(FileVersionInfo.GetVersionInfo(ExecutablePath)) : null;
+        private EngineVersion EngineVersion => new(FileVersionInfo.GetVersionInfo(ExecutablePath));
 
-        public Engine EngineInstance => EngineVersion != null ? EngineFinder.GetEngineInstall(EngineVersion) : null;
+        public Engine EngineInstance => EngineFinder.GetRequiredEngineInstall(EngineVersion);
 
-        public string EngineInstanceName => EngineInstance != null ? EngineInstance.DisplayName : EngineVersion?.ToString();
+        public string EngineInstanceName => EngineInstance.DisplayName;
 
         public Package GetProvidedPackage(Engine engineContext) => this;
 
-        public override string Name { get; }
+        public override string Name { get; } = string.Empty;
 
-        public override IOperationTarget ParentTarget => HostProject;
+        public override IOperationTarget? ParentTarget => HostProject;
 
         public override bool IsValid => PackagePaths.Instance.IsTargetFile(ExecutablePath);
 

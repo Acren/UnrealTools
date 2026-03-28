@@ -20,21 +20,19 @@ namespace UnrealAutomationCommon
                 throw new Exception("No Modules property");
             }
 
-            IOperationTarget checkTarget = target;
+            IOperationTarget? checkTarget = target;
             while (checkTarget != null && checkTarget is not Project)
             {
                 checkTarget = checkTarget.ParentTarget;
             }
 
-            if (checkTarget is not Project)
+            if (checkTarget is not Project project)
             {
                 throw new Exception("Target must be a project or inside a project");
             }
 
-            Project project = checkTarget as Project;
-
             // Add module to uproject or uplugin
-            JArray modules = fileContent["Modules"] as JArray;
+            JArray modules = fileContent["Modules"] as JArray ?? throw new Exception("Modules property must be an array");
             JObject newModule = new JObject
             {
                 { "Name", moduleName },
@@ -75,7 +73,7 @@ namespace UnrealAutomationCommon
             {
                 templateContent = templateContent.Replace($"%{entry.Key}%", entry.Value);
             }
-            string directory = Path.GetDirectoryName(outputFilePath);
+            string directory = Path.GetDirectoryName(outputFilePath) ?? throw new Exception("Output file path must include a directory");
             Directory.CreateDirectory(directory);
             File.WriteAllText(outputFilePath, templateContent);
         }

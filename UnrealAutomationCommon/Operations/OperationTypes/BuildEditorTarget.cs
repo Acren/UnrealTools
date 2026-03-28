@@ -1,4 +1,5 @@
-﻿using UnrealAutomationCommon.Operations.BaseOperations;
+﻿using System;
+using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
@@ -9,14 +10,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         // Build the project's editor target directly through Build.bat so direct UBT overrides are honored.
         protected override void ConfigureBuildArguments(UnrealOperationParameters operationParameters, Arguments args)
         {
-            Project project = GetTarget(operationParameters);
-            string editorModuleName = project.ProjectDescriptor.EditorTargetName;
+            Project project = GetRequiredTarget(operationParameters);
+            string editorModuleName = project.ProjectDescriptor?.EditorTargetName
+                ?? throw new InvalidOperationException("Build Editor Target requires a loaded project descriptor.");
 
             // Build.bat forwards these arguments directly to UBT, so a compiler override is reliable here.
             args.SetArgument(editorModuleName);
             args.SetArgument("Win64");
             args.SetArgument(operationParameters.GetOptions<BuildConfigurationOptions>().Configuration.ToString());
-            args.SetPath(GetTarget(operationParameters).UProjectPath);
+            args.SetPath(project.UProjectPath);
         }
     }
 }

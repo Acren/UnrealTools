@@ -6,7 +6,7 @@ namespace UnrealAutomationCommon
 {
     public class DelegateCommand : ICommand
     {
-        private readonly Predicate<object> _canExecute;
+        private readonly Predicate<object?>? _canExecute;
         private readonly Action<object> _execute;
 
         public DelegateCommand(Action<object> execute)
@@ -15,13 +15,13 @@ namespace UnrealAutomationCommon
         }
 
         public DelegateCommand(Action<object> execute,
-            Predicate<object> canExecute)
+            Predicate<object?>? canExecute)
         {
             _execute = execute;
             _canExecute = canExecute;
         }
 
-        public event EventHandler CanExecuteChanged;
+        public event EventHandler? CanExecuteChanged;
 
         public bool CanExecute(object parameter)
         {

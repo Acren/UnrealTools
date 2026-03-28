@@ -23,10 +23,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         // Fail early when the selected engine cannot even advertise the requested code platforms.
-        public override string CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        public override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
             UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            string requirementsError = base.CheckRequirementsSatisfied(operationParameters);
+            string? requirementsError = base.CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
                 return requirementsError;
@@ -38,7 +38,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 return engineSelectionError;
             }
 
-            Engine engine = GetTargetEngineInstall(typedParameters);
+            Engine? engine = GetTargetEngineInstall(typedParameters);
             if (engine == null)
             {
                 return null;
@@ -54,7 +54,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Arguments buildPluginArguments = BuildPluginArguments(operationParameters, pluginBuildOptions);
             _requestedTargetPlatforms = PluginBuildPlatformValidation.GetRequestedTargetPlatforms(buildPluginArguments);
             _builtTargetPlatforms = new List<string>();
-            return new global::LocalAutomation.Runtime.Command(GetTargetEngineInstall(operationParameters).GetRunUATPath(), buildPluginArguments.ToString());
+            return new global::LocalAutomation.Runtime.Command(GetRequiredTargetEngineInstall(operationParameters).GetRunUATPath(), buildPluginArguments.ToString());
         }
 
         // Track Unreal's reported target platform list as it streams by so we do not need to retain the full log.
@@ -115,9 +115,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         // Build the final UAT argument list once so validation and execution inspect the same effective request.
         private Arguments BuildPluginArguments(UnrealOperationParameters operationParameters, PluginBuildOptions pluginBuildOptions)
         {
+            Plugin plugin = GetRequiredTarget(operationParameters);
             Arguments buildPluginArguments = new();
             buildPluginArguments.SetArgument("BuildPlugin");
-            buildPluginArguments.SetKeyPath("Plugin", GetTarget(operationParameters).UPluginPath);
+            buildPluginArguments.SetKeyPath("Plugin", plugin.UPluginPath);
             buildPluginArguments.SetKeyPath("Package", GetOutputPath(operationParameters));
             buildPluginArguments.SetFlag("Rocket");
 

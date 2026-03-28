@@ -12,11 +12,13 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 {
     public abstract class CommandProcessOperation<T> : UnrealOperation<T> where T : global::LocalAutomation.Runtime.OperationTarget
     {
-        private string _fileName;
-        private Process _process;
-        private string _processName;
+        private string? _fileName;
+        private Process? _process;
+        private string? _processName;
 
-        private string FileAndProcess => $"{_fileName}:{_processName}";
+        // Process metadata is populated only after launch, so diagnostics fall back to placeholders during setup or
+        // teardown paths that run before every field has been assigned.
+        private string FileAndProcess => $"{_fileName ?? "unknown-file"}:{_processName ?? "unknown-process"}";
 
         protected abstract global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters);
 
@@ -37,11 +39,6 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             _fileName = Path.GetFileName(command.File);
 
             Logger.LogInformation("Running command: " + command);
-
-            if (command == null)
-            {
-                throw new Exception("No command");
-            }
 
             if (!File.Exists(command.File))
             {
@@ -150,6 +147,11 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         private global::LocalAutomation.Runtime.OperationResult HandleProcessEnded()
         {
+            if (_process == null)
+            {
+                throw new InvalidOperationException("Process completion was reported before the process was started.");
+            }
+
             bool success = _process.ExitCode == 0 && !Cancelled;
             global::LocalAutomation.Runtime.OperationResult result = new(success)
             {

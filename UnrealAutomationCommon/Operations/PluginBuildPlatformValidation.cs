@@ -10,13 +10,8 @@ namespace UnrealAutomationCommon.Operations
     public static class PluginBuildPlatformValidation
     {
         // Validate the effective requested plugin target platforms against the selected engine.
-        public static string CheckRequirementsSatisfied(UnrealOperationParameters operationParameters, Engine engine)
+        public static string? CheckRequirementsSatisfied(UnrealOperationParameters operationParameters, Engine engine)
         {
-            if (engine == null)
-            {
-                return null;
-            }
-
             // Package-plugin validation now relies on preregistered option metadata, so the option set can always be
             // resolved directly here.
             PluginBuildOptions pluginBuildOptions = operationParameters.GetOptions<PluginBuildOptions>();

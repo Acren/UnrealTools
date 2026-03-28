@@ -68,11 +68,8 @@ public class UnrealOperationParameters : global::LocalAutomation.Runtime.Operati
         EngineVersionOptions versionOptions = GetOptions<EngineVersionOptions>();
         if (versionOptions.EnabledVersions.Count > 0)
         {
-            EngineVersion? version = versionOptions.EnabledVersions[0];
-            if (version != null)
-            {
-                return EngineFinder.GetEngineInstall(version);
-            }
+            EngineVersion version = versionOptions.EnabledVersions[0];
+            return EngineFinder.GetEngineInstall(version);
         }
 
         if (Target is not IEngineInstanceProvider engineInstanceProvider)

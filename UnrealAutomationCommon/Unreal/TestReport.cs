@@ -22,26 +22,26 @@ namespace UnrealAutomationCommon.Unreal
     public class TestEvent
     {
         public TestEventType Type { get; set; }
-        public string Message { get; set; }
+        public string Message { get; set; } = string.Empty;
     }
 
     public class TestEntry
     {
-        public TestEvent Event { get; set; }
+        public TestEvent Event { get; set; } = new();
     }
 
     public class Test
     {
-        public string TestDisplayName { get; set; }
-        public string FullTestPath { get; set; }
+        public string TestDisplayName { get; set; } = string.Empty;
+        public string FullTestPath { get; set; } = string.Empty;
         public TestState State { get; set; }
         public float Duration { get; set; }
-        public List<TestEntry> Entries { get; set; }
+        public List<TestEntry> Entries { get; set; } = new();
     }
 
     public class TestReport
     {
-        public List<Test> Tests { get; set; }
+        public List<Test> Tests { get; set; } = new();
         public int Succeeded { get; set; }
         public int SucceededWithWarnings { get; set; }
         public int Failed { get; set; }
@@ -50,7 +50,7 @@ namespace UnrealAutomationCommon.Unreal
         public int TotalSucceeded => Succeeded + SucceededWithWarnings;
         public int TotalNumTests => Tests.Count;
 
-        public static TestReport Load(string filePath)
+        public static TestReport? Load(string filePath)
         {
             if (!File.Exists(filePath))
             {
@@ -70,7 +70,7 @@ namespace UnrealAutomationCommon.Unreal
             return TestState.Success;
         }
 
-        public XmlDocument ToJUnit(bool includeWarnings, string contextLabel = null)
+        public XmlDocument ToJUnit(bool includeWarnings, string? contextLabel = null)
         {
             XmlDocument doc = new();
             XmlElement testSuites = doc.CreateElement("testsuites");

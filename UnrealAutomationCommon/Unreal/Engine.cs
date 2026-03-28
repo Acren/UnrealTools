@@ -11,16 +11,16 @@ namespace UnrealAutomationCommon.Unreal
     public class Engine : OperationTarget, IEngineInstanceProvider
     {
         [JsonProperty]
-        public string Key { get; set; }
+        public string Key { get; set; } = string.Empty;
 
         public bool IsSourceBuild { get; private set; }
 
-        public override string Name => $"{Version?.ToString() ?? "Invalid"} {EngineType}";
+        public override string Name => $"{Version} {EngineType}";
         public override string DisplayName => Name ;
 
         public string EngineType => IsSourceBuild ? "Source" : "Launcher";
 
-        public string BaseEditorName => Version?.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
+        public string BaseEditorName => Version.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
 
         public EngineVersion Version => EngineVersion.Load(this.GetBuildVersionPath());
         
@@ -68,7 +68,7 @@ namespace UnrealAutomationCommon.Unreal
             return "WindowsNoEditor";
         }
 
-        public Plugin FindInstalledPlugin(string pluginName)
+        public Plugin? FindInstalledPlugin(string pluginName)
         {
             string plugins = Path.Combine(TargetPath, "Engine", "Plugins");
             string extension = "*.uplugin";
@@ -77,7 +77,7 @@ namespace UnrealAutomationCommon.Unreal
             {
                 if (Path.GetFileNameWithoutExtension(upluginPath).Equals(pluginName, StringComparison.InvariantCultureIgnoreCase))
                 {
-                    return new Plugin(Path.GetDirectoryName(upluginPath));
+                    return new Plugin(Path.GetDirectoryName(upluginPath)!);
                 }
             }
 
@@ -91,7 +91,7 @@ namespace UnrealAutomationCommon.Unreal
 
         public void UninstallPlugin(string pluginName)
         {
-            Plugin targetPlugin = FindInstalledPlugin(pluginName);
+            Plugin? targetPlugin = FindInstalledPlugin(pluginName);
             if (targetPlugin == null)
             {
                 throw new Exception("Could not find plugin in installed plugins");
