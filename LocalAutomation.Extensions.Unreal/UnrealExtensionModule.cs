@@ -44,8 +44,6 @@ public sealed class UnrealExtensionModule : IExtensionModule
         registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.engine"), "Engine", typeof(Engine)));
         registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.package"), "Package", typeof(Package)));
         registry.RegisterTargetFactory(new UnrealPathTargetFactory());
-        registry.RegisterOptionEditorAdapter(new EngineVersionOptionEditorAdapter());
-        registry.RegisterOptionEditorAdapter(new InsightsOptionEditorAdapter());
         registry.RegisterOptionValueConverter(new EngineVersionListOptionValueConverter());
         registry.RegisterOptionValueConverter(new TraceChannelListOptionValueConverter());
         RegisterContextActions(registry);

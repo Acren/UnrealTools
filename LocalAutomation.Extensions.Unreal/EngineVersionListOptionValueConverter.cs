@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using LocalAutomation.Extensions.Abstractions;
 using Newtonsoft.Json.Linq;
@@ -19,13 +18,14 @@ public sealed class EngineVersionListOptionValueConverter : IOptionValueConverte
     public string Id => "unreal.option-values.engine-version-list";
 
     /// <summary>
-    /// Returns whether the provided value type is a list of engine versions.
-    /// </summary>
+     /// Returns whether the provided value type is a list of engine versions.
+     /// </summary>
     public bool CanConvert(Type valueType)
     {
-        return valueType.IsGenericType
+        return valueType.IsArray && valueType.GetElementType() == typeof(EngineVersion)
+               || valueType.IsGenericType
                && (valueType.GetGenericTypeDefinition() == typeof(List<>)
-                   || valueType.GetGenericTypeDefinition() == typeof(BindingList<>))
+                   || valueType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
                && valueType.GetGenericArguments()[0] == typeof(EngineVersion);
     }
 
@@ -51,19 +51,16 @@ public sealed class EngineVersionListOptionValueConverter : IOptionValueConverte
             _ => Array.Empty<string?>()
         };
 
-        return ToBindingList(versionStrings
+        return ToSelectionList(versionStrings
             .Where(static item => !string.IsNullOrWhiteSpace(item))
             .Select(static version => new EngineVersion(version!)));
     }
 
     /// <summary>
-    /// Materializes the restored engine versions into the same collection shape the runtime option model exposes.
-    /// </summary>
-    private static BindingList<EngineVersion> ToBindingList(IEnumerable<EngineVersion> versions)
+    /// Materializes the restored engine versions into the immutable selection shape the runtime option model exposes.
+     /// </summary>
+    private static IReadOnlyList<EngineVersion> ToSelectionList(IEnumerable<EngineVersion> versions)
     {
-        return new BindingList<EngineVersion>(versions.ToList())
-        {
-            RaiseListChangedEvents = true
-        };
+        return versions.ToArray();
     }
 }

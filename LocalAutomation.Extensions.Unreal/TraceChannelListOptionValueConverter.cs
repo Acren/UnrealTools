@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using LocalAutomation.Extensions.Abstractions;
 using Newtonsoft.Json.Linq;
@@ -19,12 +18,14 @@ public sealed class TraceChannelListOptionValueConverter : IOptionValueConverter
     public string Id => "unreal.option-values.trace-channel-list";
 
     /// <summary>
-    /// Returns whether the provided value type is a binding list of trace channels.
-    /// </summary>
+    /// Returns whether the provided value type is a trace-channel selection list.
+     /// </summary>
     public bool CanConvert(Type valueType)
     {
-        return valueType.IsGenericType
-               && valueType.GetGenericTypeDefinition() == typeof(BindingList<>)
+        return valueType.IsArray && valueType.GetElementType() == typeof(TraceChannel)
+               || valueType.IsGenericType
+               && (valueType.GetGenericTypeDefinition() == typeof(List<>)
+                   || valueType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
                && valueType.GetGenericArguments()[0] == typeof(TraceChannel);
     }
 
@@ -39,8 +40,8 @@ public sealed class TraceChannelListOptionValueConverter : IOptionValueConverter
     }
 
     /// <summary>
-    /// Rehydrates a trace-channel binding list from persisted channel keys.
-    /// </summary>
+    /// Rehydrates a trace-channel selection list from persisted channel keys.
+     /// </summary>
     public object? Deserialize(Type valueType, object? persistedValue)
     {
         IEnumerable<string?> keys = persistedValue switch
@@ -50,7 +51,7 @@ public sealed class TraceChannelListOptionValueConverter : IOptionValueConverter
             _ => Array.Empty<string?>()
         };
 
-        BindingList<TraceChannel> restoredChannels = new();
+        List<TraceChannel> restoredChannels = new();
         foreach (string key in keys.Where(static item => !string.IsNullOrWhiteSpace(item)).Select(static item => item!))
         {
             TraceChannel? channel = TraceChannels.Channels.FirstOrDefault(item => string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase));
@@ -60,6 +61,6 @@ public sealed class TraceChannelListOptionValueConverter : IOptionValueConverter
             }
         }
 
-        return restoredChannels;
+        return restoredChannels.ToArray();
     }
 }
