@@ -488,6 +488,11 @@ public sealed class LogViewport : Control
         // Pointer coordinates are already reported in the viewport's local content space, so adding the scroll offset a
         // second time shifts hit testing farther down the log the more the user has scrolled.
         EnsureRowHeights(ResolveLayoutWidth(Bounds.Width));
+        if (point.Y < 0 || point.Y >= _totalHeight)
+        {
+            return null;
+        }
+
         (int rowIndex, _) = FindRowAtOffset(point.Y);
         return rowIndex >= 0 && rowIndex < _entries.Count ? rowIndex : null;
     }
