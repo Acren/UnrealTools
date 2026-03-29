@@ -10,10 +10,11 @@ using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public class Project : OperationTarget, IPackageProvider, IEngineInstanceProvider
+    public class Project : OperationTarget, IPackageProvider, IEngineInstanceProvider, IDisposable
     {
         private ProjectDescriptor _projectDescriptor = null!;
         private FileSystemWatcher? _watcher;
+        private Exception? _backgroundException;
 
         [JsonConstructor]
         public Project(string targetPath)
@@ -28,26 +29,30 @@ namespace UnrealAutomationCommon.Unreal
 
             LoadDescriptor();
 
-            // Reload descriptor if it changes
-            _watcher = new FileSystemWatcher(TargetPath);
-            _watcher.Changed += (Sender, Args) =>
-            {
-                if (Args.FullPath == UProjectPath)
-                {
-                    LoadDescriptor();
-                }
-            };
-            _watcher.EnableRaisingEvents = true;
+            // Long-lived project targets keep their descriptor in sync with disk edits, but the watcher must never throw
+            // because it runs on a background thread outside normal operation failure handling.
+            InitializeWatcher();
 
             OnPropertyChanged();
             OnPropertyChanged(nameof(Name));
         }
 
-        public string UProjectPath => ProjectPaths.Instance.FindRequiredTargetFile(TargetPath);
+        public string UProjectPath
+        {
+            get
+            {
+                ThrowIfBackgroundException();
+                return ProjectPaths.Instance.FindRequiredTargetFile(TargetPath);
+            }
+        }
 
         public ProjectDescriptor ProjectDescriptor
         {
-            get => _projectDescriptor;
+            get
+            {
+                ThrowIfBackgroundException();
+                return _projectDescriptor;
+            }
             private set
             {
                 _projectDescriptor = value;
@@ -134,6 +139,74 @@ namespace UnrealAutomationCommon.Unreal
         public string GetStagedBuildWindowsPath(Engine engineContext)
         {
             return Path.Combine(StagedBuildsPath, engineContext.GetWindowsPlatformName());
+        }
+
+        /// <summary>
+        /// Stops background watcher activity when the owner is finished with this target so later temp-directory churn
+        /// cannot report stale file-system events against code that already moved on.
+        /// </summary>
+        public void Dispose()
+        {
+            _watcher?.Dispose();
+            _watcher = null;
+        }
+
+        /// <summary>
+        /// Starts the descriptor watcher for persistent project targets so editor-visible state tracks file changes.
+        /// </summary>
+        private void InitializeWatcher()
+        {
+            _watcher = new FileSystemWatcher(TargetPath);
+            _watcher.Changed += HandleWatcherChanged;
+            _watcher.EnableRaisingEvents = true;
+        }
+
+        /// <summary>
+        /// Reloads the project descriptor when the .uproject changes and records failures instead of letting the
+        /// watcher thread terminate the whole process.
+        /// </summary>
+        private void HandleWatcherChanged(object sender, FileSystemEventArgs args)
+        {
+            try
+            {
+                string? projectPath = ProjectPaths.Instance.FindTargetFile(TargetPath);
+                if (projectPath == null || !string.Equals(args.FullPath, projectPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                LoadDescriptor();
+            }
+            catch (Exception ex)
+            {
+                RecordBackgroundException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Stores and logs watcher failures so background project reload issues stay visible and can be turned into a
+        /// normal operation failure by the caller.
+        /// </summary>
+        private void RecordBackgroundException(Exception exception)
+        {
+            _backgroundException = exception;
+            AppLogger.LoggerInstance.LogError(exception, "Project background watcher failed for '{ProjectPath}'.", TargetPath);
+        }
+
+        /// <summary>
+        /// Converts a previously recorded watcher failure into a normal foreground exception so callers fail on their
+        /// own thread instead of the process dying on the watcher thread.
+        /// </summary>
+        private void ThrowIfBackgroundException()
+        {
+            Exception? backgroundException = _backgroundException;
+            if (backgroundException == null)
+            {
+                return;
+            }
+
+            _backgroundException = null;
+            throw new InvalidOperationException($"Project target '{TargetPath}' encountered a background reload failure.", backgroundException);
         }
 
         public Package? GetStagedPackage(Engine engineContext)

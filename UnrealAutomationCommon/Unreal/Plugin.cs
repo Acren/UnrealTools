@@ -12,12 +12,13 @@ using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
-    public class Plugin : OperationTarget, IEngineInstanceProvider
+    public class Plugin : OperationTarget, IEngineInstanceProvider, IDisposable
     {
         private PluginDescriptor _pluginDescriptor = null!;
         private Project? _hostProject;
 
         private FileSystemWatcher? _watcher;
+        private Exception? _backgroundException;
 
         [JsonConstructor]
         public Plugin(string targetPath)
@@ -32,26 +33,19 @@ namespace UnrealAutomationCommon.Unreal
 
             LoadDescriptor();
 
-            // Reload descriptor if it changes
-            _watcher = new FileSystemWatcher(TargetPath);
-            _watcher.Changed += (Sender, Args) =>
-            {
-                if (Args.FullPath == UPluginPath)
-                {
-                    try
-                    {
-                        LoadDescriptor();
-                    }
-                    catch (Exception)
-                    {
-                        // Ignore on exception, old descriptor will be preserved
-                    }
-                }
-            };
-            _watcher.EnableRaisingEvents = true;
+            // Long-lived plugin targets keep their descriptor in sync with disk edits, but the watcher must never throw
+            // because it runs on a background thread outside normal operation failure handling.
+            InitializeWatcher();
         }
 
-        public string UPluginPath => PluginPaths.Instance.FindRequiredTargetFile(TargetPath);
+        public string UPluginPath
+        {
+            get
+            {
+                ThrowIfBackgroundException();
+                return PluginPaths.Instance.FindRequiredTargetFile(TargetPath);
+            }
+        }
 
         /// <summary>
         /// Reuses the resolved host project so repeated validation and command-preview reads do not recreate the same
@@ -67,7 +61,11 @@ namespace UnrealAutomationCommon.Unreal
 
         public PluginDescriptor PluginDescriptor
         {
-            get => _pluginDescriptor;
+            get
+            {
+                ThrowIfBackgroundException();
+                return _pluginDescriptor;
+            }
             private set
             {
                 _pluginDescriptor = value;
@@ -152,6 +150,81 @@ namespace UnrealAutomationCommon.Unreal
         {
             _hostProject ??= new Project(HostProjectPath);
             return _hostProject;
+        }
+
+        /// <summary>
+        /// Stops background watcher activity when the owner is finished with this target so later temp-directory churn
+        /// cannot report stale file-system events against an operation that already ended.
+        /// </summary>
+        public void Dispose()
+        {
+            _watcher?.Dispose();
+            _watcher = null;
+
+            if (_hostProject is IDisposable disposableHostProject)
+            {
+                disposableHostProject.Dispose();
+            }
+
+            _hostProject = null;
+        }
+
+        /// <summary>
+        /// Starts the descriptor watcher for persistent plugin targets so UI-bound state stays in sync with disk edits.
+        /// </summary>
+        private void InitializeWatcher()
+        {
+            _watcher = new FileSystemWatcher(TargetPath);
+            _watcher.Changed += HandleWatcherChanged;
+            _watcher.EnableRaisingEvents = true;
+        }
+
+        /// <summary>
+        /// Reloads the descriptor only when the plugin file itself changed and records any failure so background watcher
+        /// errors can be surfaced to the active operation instead of crashing the process.
+        /// </summary>
+        private void HandleWatcherChanged(object sender, FileSystemEventArgs args)
+        {
+            try
+            {
+                string? pluginPath = PluginPaths.Instance.FindTargetFile(TargetPath);
+                if (pluginPath == null || !string.Equals(args.FullPath, pluginPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                LoadDescriptor();
+            }
+            catch (Exception ex)
+            {
+                RecordBackgroundException(ex);
+            }
+        }
+
+        /// <summary>
+        /// Stores the latest watcher failure and logs it immediately so background file-system issues remain visible even
+        /// before an operation turns them into a normal failure result.
+        /// </summary>
+        private void RecordBackgroundException(Exception exception)
+        {
+            _backgroundException = exception;
+            AppLogger.LoggerInstance.LogError(exception, "Plugin background watcher failed for '{PluginPath}'.", TargetPath);
+        }
+
+        /// <summary>
+        /// Converts a previously recorded watcher failure into a normal foreground exception so callers fail on their
+        /// own thread instead of the process dying on the watcher thread.
+        /// </summary>
+        private void ThrowIfBackgroundException()
+        {
+            Exception? backgroundException = _backgroundException;
+            if (backgroundException == null)
+            {
+                return;
+            }
+
+            _backgroundException = null;
+            throw new InvalidOperationException($"Plugin target '{TargetPath}' encountered a background reload failure.", backgroundException);
         }
 
         public bool UpdateVersionInteger()

@@ -35,7 +35,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private string[] _allowedPluginFileExtensions = { ".uplugin" };
         
         private Plugin StagingPlugin { get; set; } = null!;
-        
+
         private void UpdatePluginDescriptorForArchive(Plugin plugin)
         {
             Engine engine = Engine;
@@ -78,225 +78,245 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
             Token = token;
-            
-            Engine engine = Engine;
-            EngineVersion engineVersion = engine.Version;
-            Logger.LogInformation($"Deploying plugin for {engineVersion.MajorMinorString}");
 
-            string archivePrefix;
-            using (Logger.BeginSection("Preparing plugin"))
+            try
             {
-                Plugin = GetRequiredTarget(UnrealOperationParameters);
-                Plugin plugin = Plugin;
-                PluginDescriptor pluginDescriptor = plugin.PluginDescriptor;
-                HostProject = plugin.HostProject;
-                Project hostProject = HostProject;
-                ProjectDescriptor projectDescriptor = hostProject.ProjectDescriptor;
+                Engine engine = Engine;
+                EngineVersion engineVersion = engine.Version;
+                Logger.LogInformation($"Deploying plugin for {engineVersion.MajorMinorString}");
 
-                if (!projectDescriptor.HasPluginEnabled(plugin.Name))
+                string archivePrefix;
+                using (Logger.BeginSection("Preparing plugin"))
                 {
-                    throw new Exception("Host project must have plugin enabled");
-                }
+                    Plugin = GetRequiredTarget(UnrealOperationParameters);
+                    Plugin plugin = Plugin;
+                    PluginDescriptor pluginDescriptor = plugin.PluginDescriptor;
+                    HostProject = plugin.HostProject;
+                    Project hostProject = HostProject;
+                    ProjectDescriptor projectDescriptor = hostProject.ProjectDescriptor;
 
-                Logger.LogInformation($"Engine version: {engineVersion}");
-
-                bool bStandardBranch = true;
-                string branchName = VersionControlUtils.GetBranchName(HostProject.ProjectPath);
-                if (!string.IsNullOrEmpty(branchName))
-                {
-                    Logger.LogInformation($"Branch: {branchName}");
-                    // Use the version if on any of these branches
-                    string[] standardBranchNames = { "master", "develop", "development" };
-                    string[] standardBranchPrefixes = { "version/", "release/", "hotfix/" };
-
-                    bStandardBranch = standardBranchNames.Contains(branchName, StringComparer.InvariantCultureIgnoreCase);
-                    if (!bStandardBranch)
+                    if (!projectDescriptor.HasPluginEnabled(plugin.Name))
                     {
-                        foreach (string prefix in standardBranchPrefixes)
+                        throw new Exception("Host project must have plugin enabled");
+                    }
+
+                    Logger.LogInformation($"Engine version: {engineVersion}");
+
+                    bool bStandardBranch = true;
+                    string branchName = VersionControlUtils.GetBranchName(HostProject.ProjectPath);
+                    if (!string.IsNullOrEmpty(branchName))
+                    {
+                        Logger.LogInformation($"Branch: {branchName}");
+                        // Use the version if on any of these branches
+                        string[] standardBranchNames = { "master", "develop", "development" };
+                        string[] standardBranchPrefixes = { "version/", "release/", "hotfix/" };
+
+                        bStandardBranch = standardBranchNames.Contains(branchName, StringComparer.InvariantCultureIgnoreCase);
+                        if (!bStandardBranch)
                         {
-                            if (branchName.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase))
+                            foreach (string prefix in standardBranchPrefixes)
                             {
-                                bStandardBranch = true;
-                                break;
+                                if (branchName.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase))
+                                {
+                                    bStandardBranch = true;
+                                    break;
+                                }
                             }
                         }
                     }
-                }
 
-                archivePrefix = plugin.Name;
+                    archivePrefix = plugin.Name;
 
-                bool beta = pluginDescriptor.IsBetaVersion;
-                if (beta)
-                {
-                    Logger.LogInformation("Plugin is marked as beta version");
-                    archivePrefix += "_beta";
-                }
-
-                string pluginVersionString = pluginDescriptor.VersionName;
-                string fullPluginVersionString = pluginVersionString;
-
-                if (!string.IsNullOrEmpty(branchName))
-                {
-                    if (pluginDescriptor.VersionName.Contains(branchName))
+                    bool beta = pluginDescriptor.IsBetaVersion;
+                    if (beta)
                     {
-                        Logger.LogInformation("Branch is contained in plugin version name");
-                        fullPluginVersionString = pluginVersionString;
+                        Logger.LogInformation("Plugin is marked as beta version");
+                        archivePrefix += "_beta";
                     }
-                    else if (engineVersion.ToString().Contains(branchName))
-                    {
-                        Logger.LogInformation("Branch is contained in engine version");
-                        fullPluginVersionString = pluginVersionString;
-                    }
-                    else if (!bStandardBranch)
-                    {
-                        Logger.LogInformation("Branch isn't a version or standard branch");
-                        fullPluginVersionString = $"{pluginVersionString}-{branchName.Replace("/", "-")}";
-                    }
-                    else
-                    {
-                        Logger.LogInformation("Branch is a version or standard branch");
-                        fullPluginVersionString = pluginVersionString;
-                    }
-                }
 
-                archivePrefix += $"_{fullPluginVersionString}";
-                archivePrefix += $"_UE{engineVersion.MajorMinorString}";
-                archivePrefix += "_";
+                    string pluginVersionString = pluginDescriptor.VersionName;
+                    string fullPluginVersionString = pluginVersionString;
 
-                Logger.LogInformation($"Archive name prefix is '{archivePrefix}'");
+                    if (!string.IsNullOrEmpty(branchName))
+                    {
+                        if (pluginDescriptor.VersionName.Contains(branchName))
+                        {
+                            Logger.LogInformation("Branch is contained in plugin version name");
+                            fullPluginVersionString = pluginVersionString;
+                        }
+                        else if (engineVersion.ToString().Contains(branchName))
+                        {
+                            Logger.LogInformation("Branch is contained in engine version");
+                            fullPluginVersionString = pluginVersionString;
+                        }
+                        else if (!bStandardBranch)
+                        {
+                            Logger.LogInformation("Branch isn't a version or standard branch");
+                            fullPluginVersionString = $"{pluginVersionString}-{branchName.Replace("/", "-")}";
+                        }
+                        else
+                        {
+                            Logger.LogInformation("Branch is a version or standard branch");
+                            fullPluginVersionString = pluginVersionString;
+                        }
+                    }
+
+                    archivePrefix += $"_{fullPluginVersionString}";
+                    archivePrefix += $"_UE{engineVersion.MajorMinorString}";
+                    archivePrefix += "_";
+
+                    Logger.LogInformation($"Archive name prefix is '{archivePrefix}'");
 
                 // Get engine path
 
-                string enginePath = engine.TargetPath;
+                    string enginePath = engine.TargetPath;
 
-                string enginePluginsMarketplacePath = Path.Combine(enginePath, @"Engine\Plugins\Marketplace");
-                string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, plugin.Name);
+                    string enginePluginsMarketplacePath = Path.Combine(enginePath, @"Engine\Plugins\Marketplace");
+                    string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, plugin.Name);
 
                 // Delete plugin from engine if installed version exists
-                Policy policy = Policy
-                    .Handle<UnauthorizedAccessException>()
-                    .RetryForever((ex, retryAttempt, ctx) =>
-                    {
-                        Logger.LogInformation(ex.ToString());
-                        UnrealOperationParameters.RetryHandler?.Invoke(ex);
-                    });
-                policy.Execute(() => { FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath); });
+                    Policy policy = Policy
+                        .Handle<UnauthorizedAccessException>()
+                        .RetryForever((ex, retryAttempt, ctx) =>
+                        {
+                            Logger.LogInformation(ex.ToString());
+                            UnrealOperationParameters.RetryHandler?.Invoke(ex);
+                        });
+                    policy.Execute(() => { FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath); });
 
-                string workingTempPath = GetOperationTempPath();
+                    string workingTempPath = GetOperationTempPath();
 
-                Directory.CreateDirectory(workingTempPath);
+                    Directory.CreateDirectory(workingTempPath);
 
                 // Update .uplugin version if required
-                int version = pluginDescriptor.SemVersion.ToInt();
-                Logger.LogInformation($"Version '{pluginDescriptor.VersionName}' -> {version}");
-                bool updated = plugin.UpdateVersionInteger();
-                Logger.LogInformation(updated ? "Updated .uplugin version from name" : ".uplugin already has correct version");
+                    int version = pluginDescriptor.SemVersion.ToInt();
+                    Logger.LogInformation($"Version '{pluginDescriptor.VersionName}' -> {version}");
+                    bool updated = plugin.UpdateVersionInteger();
+                    Logger.LogInformation(updated ? "Updated .uplugin version from name" : ".uplugin already has correct version");
 
                 // Check copyright notice
-                string? copyrightNotice = hostProject.GetCopyrightNotice();
+                    string? copyrightNotice = hostProject.GetCopyrightNotice();
 
-                if (copyrightNotice == null)
-                {
-                    throw new Exception("Project should have a copyright notice");
-                }
-
-                string sourcePath = Path.Combine(plugin.TargetDirectory, "Source");
-                var expectedComment = $"// {copyrightNotice}";
-                foreach (string file in Directory.EnumerateFiles(sourcePath, "*.*", SearchOption.AllDirectories))
-                {
-                    string firstLine;
-                    using (StreamReader reader = new(file))
+                    if (copyrightNotice == null)
                     {
-                        firstLine = reader.ReadLine();
+                        throw new Exception("Project should have a copyright notice");
                     }
 
-                    if (firstLine != expectedComment)
+                    string sourcePath = Path.Combine(plugin.TargetDirectory, "Source");
+                    var expectedComment = $"// {copyrightNotice}";
+                    foreach (string file in Directory.EnumerateFiles(sourcePath, "*.*", SearchOption.AllDirectories))
                     {
-                        var lines = File.ReadAllLines(file).ToList();
-                        if (firstLine.StartsWith("//"))
-                        // Replace existing comment with expected comment
+                        string firstLine;
+                        using (StreamReader reader = new(file))
                         {
-                            lines[0] = expectedComment;
-                        }
-                        else
-                        // Insert expected comment
-                        {
-                            lines.Insert(0, expectedComment);
+                            firstLine = reader.ReadLine();
                         }
 
-                        File.WriteAllLines(file, lines);
-                        string relativePath = Path.GetRelativePath(sourcePath, file);
-                        Logger.LogInformation($"Updated copyright notice: {relativePath}");
+                        if (firstLine != expectedComment)
+                        {
+                            var lines = File.ReadAllLines(file).ToList();
+                            if (firstLine.StartsWith("//"))
+                            // Replace existing comment with expected comment
+                            {
+                                lines[0] = expectedComment;
+                            }
+                            else
+                            // Insert expected comment
+                            {
+                                lines.Insert(0, expectedComment);
+                            }
+
+                            File.WriteAllLines(file, lines);
+                            string relativePath = Path.GetRelativePath(sourcePath, file);
+                            Logger.LogInformation($"Updated copyright notice: {relativePath}");
+                        }
                     }
                 }
+
+                // Update host project version to match plugin version
+                Plugin selectedPlugin = Plugin;
+                Project selectedHostProject = HostProject;
+                selectedHostProject.SetProjectVersion(selectedPlugin.PluginDescriptor.VersionName, Logger);
+
+                // Create staging copy of plugin with updated descriptor
+                using (Logger.BeginSection("Preparing plugin staging copy"))
+                {
+                    string stagingPluginPath = Path.Combine(GetOperationTempPath(), @"PluginStaging", selectedPlugin.Name);
+                    FileUtils.DeleteDirectoryIfExists(stagingPluginPath);
+                    FileUtils.CopyDirectory(selectedPlugin.PluginPath, stagingPluginPath);
+
+                    StagingPlugin = new Plugin(stagingPluginPath);
+                    Plugin stagingPlugin = StagingPlugin;
+                    UpdatePluginDescriptorForArchive(stagingPlugin);
+                    Logger.LogInformation($"Updated plugin descriptor for staging: {stagingPlugin.PluginDescriptor.VersionName}");
+                }
+
+                AutomationOptions automationOptions = UnrealOperationParameters.GetOptions<AutomationOptions>();
+
+                // Build host project editor
+
+                await BuildEditor();
+
+                // Launch and test host project editor
+
+                await TestEditor(automationOptions);
+
+                // Launch and test standalone
+
+                await TestStandalone(automationOptions);
+
+                // Build plugin
+
+                await BuildPlugin();
+
+                // Set up example project
+
+                await PrepareExampleProject();
+
+                // Run the optional Clang validation while the example project still contains source modules
+                // and the built plugin is installed as a project plugin.
+                await RunClangCompileCheck();
+
+                await BuildCodeExampleProject();
+
+                // Package code example project with plugin inside project
+
+                await TestCodeExampleProjectWithProjectPlugin(automationOptions);
+
+                // Copy plugin into engine where the marketplace installs it
+
+                await TestCodeExampleProjectWithEnginePlugin(automationOptions);
+
+                // Package blueprint-only example project with plugin installed to engine
+
+                await TestBlueprintExampleProjectWithEnginePlugin(automationOptions);
+
+                await PackageDemoExecutable();
+
+                // Archiving
+                await ArchiveArtifacts(archivePrefix);
+
+                Logger.LogInformation($"Finished deploying plugin for {engineVersion.MajorMinorString}");
+
+                return new global::LocalAutomation.Runtime.OperationResult(true);
             }
-            
-            // Update host project version to match plugin version
-            Plugin selectedPlugin = Plugin;
-            Project selectedHostProject = HostProject;
-            selectedHostProject.SetProjectVersion(selectedPlugin.PluginDescriptor.VersionName, Logger);
-            
-            // Create staging copy of plugin with updated descriptor
-            using (Logger.BeginSection("Preparing plugin staging copy"))
+            finally
             {
-                string stagingPluginPath = Path.Combine(GetOperationTempPath(), @"PluginStaging", selectedPlugin.Name);
-                FileUtils.DeleteDirectoryIfExists(stagingPluginPath);
-                FileUtils.CopyDirectory(selectedPlugin.PluginPath, stagingPluginPath);
-                
-                StagingPlugin = new Plugin(stagingPluginPath);
-                Plugin stagingPlugin = StagingPlugin;
-                UpdatePluginDescriptorForArchive(stagingPlugin);
-                Logger.LogInformation($"Updated plugin descriptor for staging: {stagingPlugin.PluginDescriptor.VersionName}");
+                if (!ReferenceEquals(ExampleProject, HostProject))
+                {
+                    ExampleProject?.Dispose();
+                }
+
+                if (!ReferenceEquals(BuiltPlugin, Plugin) && !ReferenceEquals(BuiltPlugin, StagingPlugin))
+                {
+                    BuiltPlugin?.Dispose();
+                }
+
+                if (!ReferenceEquals(StagingPlugin, Plugin))
+                {
+                    StagingPlugin?.Dispose();
+                }
             }
-            
-            AutomationOptions automationOptions = UnrealOperationParameters.GetOptions<AutomationOptions>();
-
-            // Build host project editor
-
-            await BuildEditor();
-
-            // Launch and test host project editor
-
-            await TestEditor(automationOptions);
-
-            // Launch and test standalone
-
-            await TestStandalone(automationOptions);
-
-            // Build plugin
-
-            await BuildPlugin();
-
-            // Set up example project
-
-            await PrepareExampleProject();
-
-            // Run the optional Clang validation while the example project still contains source modules
-            // and the built plugin is installed as a project plugin.
-            await RunClangCompileCheck();
-
-            await BuildCodeExampleProject();
-
-            // Package code example project with plugin inside project
-
-            await TestCodeExampleProjectWithProjectPlugin(automationOptions);
-
-            // Copy plugin into engine where the marketplace installs it
-
-            await TestCodeExampleProjectWithEnginePlugin(automationOptions);
-
-            // Package blueprint-only example project with plugin installed to engine
-
-            await TestBlueprintExampleProjectWithEnginePlugin(automationOptions);
-
-            await PackageDemoExecutable();
-
-            // Archiving
-            await ArchiveArtifacts(archivePrefix);
-
-            Logger.LogInformation($"Finished deploying plugin for {engineVersion.MajorMinorString}");
-
-            return new global::LocalAutomation.Runtime.OperationResult(true);
         }
 
         /// <summary>
