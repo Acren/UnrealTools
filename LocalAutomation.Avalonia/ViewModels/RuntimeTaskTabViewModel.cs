@@ -1,5 +1,6 @@
 using System;
-using System.Collections.ObjectModel;
+using System.Collections.Generic;
+using LocalAutomation.Avalonia.Collections;
 using LocalAutomation.Core;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -59,7 +60,7 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     /// <summary>
     /// Gets the log entries displayed in the runtime panel for this tab.
     /// </summary>
-    public ObservableCollection<LogEntryViewModel> LogEntries { get; } = new();
+    public RangeObservableCollection<LogEntryViewModel> LogEntries { get; } = new();
 
     /// <summary>
     /// Gets or sets whether this tab is currently selected.
@@ -186,19 +187,45 @@ public sealed class RuntimeTaskTabViewModel : ViewModelBase
     /// </summary>
     public void AddLogEntry(LogEntryViewModel entry)
     {
-        LogEntries.Add(entry);
+        AddLogEntries(new[] { entry });
+    }
 
-        // Runtime tabs keep their own severity tallies so the selected-task header can surface diagnostics without
-        // rescanning the full log stream on every refresh.
-        if (entry.IsWarning)
+    /// <summary>
+    /// Adds a batch of log entries so one noisy process burst can update the tab with one collection notification and
+    /// one set of derived-property refreshes.
+    /// </summary>
+    public void AddLogEntries(IReadOnlyList<LogEntryViewModel> entries)
+    {
+        if (entries == null)
         {
-            _warningCount++;
+            throw new ArgumentNullException(nameof(entries));
         }
 
-        if (entry.IsError)
+        if (entries.Count == 0)
         {
-            _errorCount++;
+            return;
         }
+
+        int warningCountDelta = 0;
+        int errorCountDelta = 0;
+        foreach (LogEntryViewModel entry in entries)
+        {
+            // Runtime tabs keep their own severity tallies so the selected-task header can surface diagnostics without
+            // rescanning the full log stream on every refresh.
+            if (entry.IsWarning)
+            {
+                warningCountDelta++;
+            }
+
+            if (entry.IsError)
+            {
+                errorCountDelta++;
+            }
+        }
+
+        LogEntries.AddRange(entries);
+        _warningCount += warningCountDelta;
+        _errorCount += errorCountDelta;
 
         RaisePropertyChanged(nameof(WarningCount));
         RaisePropertyChanged(nameof(ErrorCount));

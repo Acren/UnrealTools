@@ -1,18 +1,17 @@
 using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using Avalonia.Input;
 using Avalonia.Controls;
-using Avalonia.Controls.Documents;
+using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Media;
 using Avalonia.Threading;
 using LocalAutomation.Avalonia.ViewModels;
 
 namespace LocalAutomation.Avalonia.Views.Panels;
 
 /// <summary>
-/// Hosts runtime tabs and the shared runtime log output.
+/// Hosts runtime tabs and keeps the selected runtime log pinned to the bottom when the user is already following the
+/// live output stream.
 /// </summary>
 public partial class RuntimePanel : UserControl
 {
@@ -37,16 +36,6 @@ public partial class RuntimePanel : UserControl
     /// Gets the runtime panel view model backing this panel.
     /// </summary>
     private RuntimePanelViewModel ViewModel => (RuntimePanelViewModel)DataContext!;
-
-    /// <summary>
-    /// Resolves the runtime log scroll viewer used for conditional auto-follow behavior.
-    /// </summary>
-    private ScrollViewer? RuntimeLogViewer => this.FindControl<ScrollViewer>("RuntimeLogScrollViewer");
-
-    /// <summary>
-    /// Resolves the single selectable log surface used for multi-line selection.
-    /// </summary>
-    private SelectableTextBlock? RuntimeLogSelectionSurface => this.FindControl<SelectableTextBlock>("RuntimeLogTextBlock");
 
     /// <summary>
     /// Selects a runtime tab.
@@ -103,12 +92,11 @@ public partial class RuntimePanel : UserControl
     }
 
     /// <summary>
-    /// Clears the currently selected runtime log from the context menu.
+    /// Clears the currently selected runtime log from the context menu and resets follow-tail behavior.
     /// </summary>
     private void ClearLog_Click(object? sender, RoutedEventArgs e)
     {
         ViewModel.ClearSelectedRuntimeLog();
-        RenderEntireRuntimeLog();
         _shouldAutoScrollRuntimeLog = true;
     }
 
@@ -176,29 +164,24 @@ public partial class RuntimePanel : UserControl
             return;
         }
 
-        // SelectedRuntimeLogEntries is raised both when the selected tab changes and when the current tab receives
-        // more output. Only a real collection swap should reset auto-follow; otherwise users who scrolled upward would
-        // be forced back to the end on every appended line.
         if (ReferenceEquals(_currentRuntimeLogCollection, ViewModel.SelectedRuntimeLogEntries))
         {
             return;
         }
 
         AttachRuntimeLogCollection();
-        RenderEntireRuntimeLog();
         _shouldAutoScrollRuntimeLog = true;
         ScrollRuntimeLogToEnd();
     }
 
     /// <summary>
-    /// Attaches to the selected runtime log collection so new entries can trigger conditional auto-scroll.
+    /// Attaches to the selected runtime log collection so appends can trigger conditional auto-follow.
     /// </summary>
     private void AttachRuntimeLogCollection()
     {
         DetachRuntimeLogCollection();
         _currentRuntimeLogCollection = ViewModel.SelectedRuntimeLogEntries;
         _currentRuntimeLogCollection.CollectionChanged += HandleRuntimeLogCollectionChanged;
-        RenderEntireRuntimeLog();
     }
 
     /// <summary>
@@ -220,21 +203,6 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void HandleRuntimeLogCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems != null)
-        {
-            foreach (object? item in e.NewItems)
-            {
-                if (item is LogEntryViewModel entry)
-                {
-                    AppendRuntimeLogEntry(entry);
-                }
-            }
-        }
-        else
-        {
-            RenderEntireRuntimeLog();
-        }
-
         if (!_shouldAutoScrollRuntimeLog || e.Action != NotifyCollectionChangedAction.Add)
         {
             return;
@@ -244,11 +212,11 @@ public partial class RuntimePanel : UserControl
     }
 
     /// <summary>
-    /// Scrolls the runtime log viewer to the end on the next UI tick.
+    /// Scrolls the runtime log viewer to the end on the next UI tick after the repeater has realized the latest rows.
     /// </summary>
     private void ScrollRuntimeLogToEnd()
     {
-        Dispatcher.UIThread.Post(() => RuntimeLogViewer?.ScrollToEnd());
+        Dispatcher.UIThread.Post(() => this.FindControl<ScrollViewer>("RuntimeLogScrollViewer")?.ScrollToEnd());
     }
 
     /// <summary>
@@ -256,7 +224,7 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private bool IsRuntimeLogAtBottom()
     {
-        ScrollViewer? runtimeLogViewer = RuntimeLogViewer;
+        ScrollViewer? runtimeLogViewer = this.FindControl<ScrollViewer>("RuntimeLogScrollViewer");
         if (runtimeLogViewer == null)
         {
             return true;
@@ -264,54 +232,5 @@ public partial class RuntimePanel : UserControl
 
         double remaining = runtimeLogViewer.Extent.Height - runtimeLogViewer.Viewport.Height - runtimeLogViewer.Offset.Y;
         return remaining <= AutoScrollTolerance;
-    }
-
-    /// <summary>
-    /// Rebuilds the full selectable runtime log surface for the selected tab.
-    /// </summary>
-    private void RenderEntireRuntimeLog()
-    {
-        SelectableTextBlock? logTextBlock = RuntimeLogSelectionSurface;
-        if (logTextBlock == null)
-        {
-            return;
-        }
-
-        logTextBlock.Inlines?.Clear();
-        foreach (LogEntryViewModel entry in ViewModel.SelectedRuntimeLogEntries)
-        {
-            AppendRuntimeLogEntry(entry);
-        }
-    }
-
-    /// <summary>
-    /// Appends one colored line to the shared selectable runtime log surface.
-    /// </summary>
-    private void AppendRuntimeLogEntry(LogEntryViewModel entry)
-    {
-        SelectableTextBlock? logTextBlock = RuntimeLogSelectionSurface;
-        if (logTextBlock == null)
-        {
-            return;
-        }
-
-        InlineCollection inlines = logTextBlock.Inlines ??= new InlineCollection();
-        if (inlines.Count > 0)
-        {
-            inlines.Add(new LineBreak());
-        }
-
-        // A muted fixed-width timestamp makes long-running logs easier to scan without overpowering severity colors.
-        inlines.Add(new Run
-        {
-            Text = $"[{entry.TimestampText}] ",
-            Foreground = new SolidColorBrush(Color.Parse("#8B949E"))
-        });
-
-        inlines.Add(new Run
-        {
-            Text = entry.Message,
-            Foreground = new SolidColorBrush(Color.Parse(entry.Foreground))
-        });
     }
 }

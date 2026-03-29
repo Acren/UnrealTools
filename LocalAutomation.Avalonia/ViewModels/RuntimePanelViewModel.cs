@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -15,9 +16,16 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class RuntimePanelViewModel : ViewModelBase
 {
+    private const int MaxLogEntriesPerFlush = 100;
+    private static readonly TimeSpan PendingLogFlushInterval = TimeSpan.FromMilliseconds(50);
+
     private readonly LocalAutomationApplicationHost _services;
+    private readonly object _pendingLogSyncRoot = new();
     private readonly Action<string> _setStatus;
+    private readonly DispatcherTimer _pendingLogFlushTimer;
     private readonly DispatcherTimer _runtimeDurationTimer;
+    private readonly Dictionary<RuntimeTaskTabViewModel, Queue<LogEntryViewModel>> _pendingLogEntries = new();
+    private bool _isPendingLogFlushStartQueued;
     private RuntimeTaskTabViewModel? _observedRuntimeTab;
     private RuntimeTaskTabViewModel? _selectedRuntimeTab;
     private event PropertyChangedEventHandler? _selectedRuntimeTabPropertyChanged;
@@ -29,6 +37,8 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _setStatus = setStatus ?? throw new ArgumentNullException(nameof(setStatus));
+        _pendingLogFlushTimer = new DispatcherTimer { Interval = PendingLogFlushInterval };
+        _pendingLogFlushTimer.Tick += HandlePendingLogFlushTimerTick;
         _runtimeDurationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _runtimeDurationTimer.Tick += HandleRuntimeDurationTimerTick;
 
@@ -182,19 +192,9 @@ public sealed class RuntimePanelViewModel : ViewModelBase
         // Execution can start logging immediately on a background thread before the UI has attached the tab. Seed the
         // tab from the current buffered entries first so fast tasks still show their full history instead of only the
         // tail that arrived after subscription.
-        foreach (LogEntry entry in session.LogStream.Entries)
-        {
-            runtimeTab.AddLogEntry(new LogEntryViewModel(entry.Message, entry.Verbosity));
-        }
+        runtimeTab.AddLogEntries(session.LogStream.Entries.Select(entry => new LogEntryViewModel(entry.Message, entry.Verbosity)).ToList());
 
-        session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
-        {
-            runtimeTab.AddLogEntry(new LogEntryViewModel(entry.Message, entry.Verbosity));
-            if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
-            {
-                RaiseSelectionStateChanged();
-            }
-        });
+        session.LogStream.EntryAdded += entry => EnqueuePendingLogEntry(runtimeTab, new LogEntryViewModel(entry.Message, entry.Verbosity));
 
         _ = WatchExecutionCompletionAsync(runtimeTab);
         RaiseSelectionStateChanged();
@@ -225,6 +225,7 @@ public sealed class RuntimePanelViewModel : ViewModelBase
             return;
         }
 
+        RemovePendingLogEntries(SelectedRuntimeTab);
         SelectedRuntimeTab.ClearLogEntries();
         _setStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}.");
         RaiseSelectionStateChanged();
@@ -288,6 +289,7 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     /// </summary>
     private void RemoveRuntimeTab(RuntimeTaskTabViewModel runtimeTab)
     {
+        RemovePendingLogEntries(runtimeTab);
         int removedIndex = RuntimeTabs.IndexOf(runtimeTab);
         RuntimeTabs.Remove(runtimeTab);
 
@@ -314,19 +316,148 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     private void AttachApplicationLogStream()
     {
         RuntimeTaskTabViewModel applicationTab = RuntimeTabs[0];
-        foreach (LogEntry entry in ApplicationLogService.LogStream.Entries)
+        applicationTab.AddLogEntries(ApplicationLogService.LogStream.Entries.Select(entry => new LogEntryViewModel(entry.Message, entry.Verbosity)).ToList());
+
+        ApplicationLogService.LogStream.EntryAdded += entry => EnqueuePendingLogEntry(applicationTab, new LogEntryViewModel(entry.Message, entry.Verbosity));
+    }
+
+    /// <summary>
+    /// Buffers one log entry off the hot path so background process output does not queue one dispatcher callback per
+    /// line while the UI is already busy rendering a wrapped log view.
+    /// </summary>
+    private void EnqueuePendingLogEntry(RuntimeTaskTabViewModel runtimeTab, LogEntryViewModel entry)
+    {
+        bool queueFlushStart;
+        lock (_pendingLogSyncRoot)
         {
-            applicationTab.AddLogEntry(new LogEntryViewModel(entry.Message, entry.Verbosity));
+            if (!_pendingLogEntries.TryGetValue(runtimeTab, out Queue<LogEntryViewModel>? pendingEntries))
+            {
+                pendingEntries = new Queue<LogEntryViewModel>();
+                _pendingLogEntries[runtimeTab] = pendingEntries;
+            }
+
+            pendingEntries.Enqueue(entry);
+            queueFlushStart = !_pendingLogFlushTimer.IsEnabled && !_isPendingLogFlushStartQueued;
+            if (queueFlushStart)
+            {
+                _isPendingLogFlushStartQueued = true;
+            }
         }
 
-        ApplicationLogService.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
+        if (!queueFlushStart)
         {
-            applicationTab.AddLogEntry(new LogEntryViewModel(entry.Message, entry.Verbosity));
-            if (ReferenceEquals(SelectedRuntimeTab, applicationTab))
+            return;
+        }
+
+        // Starting the timer itself is marshaled only once so incoming log bursts keep coalescing until the UI thread
+        // is ready for the next bounded flush.
+        Dispatcher.UIThread.Post(() =>
+        {
+            lock (_pendingLogSyncRoot)
             {
-                RaiseSelectionStateChanged();
+                _isPendingLogFlushStartQueued = false;
+                if (_pendingLogEntries.Count == 0)
+                {
+                    return;
+                }
+            }
+
+            if (!_pendingLogFlushTimer.IsEnabled)
+            {
+                _pendingLogFlushTimer.Start();
             }
         });
+    }
+
+    /// <summary>
+    /// Drops any queued entries for a tab that is being cleared or removed so stale output does not replay on the next
+    /// timer tick.
+    /// </summary>
+    private void RemovePendingLogEntries(RuntimeTaskTabViewModel runtimeTab)
+    {
+        bool shouldStopTimer;
+        lock (_pendingLogSyncRoot)
+        {
+            _pendingLogEntries.Remove(runtimeTab);
+            shouldStopTimer = _pendingLogEntries.Count == 0;
+        }
+
+        if (shouldStopTimer && _pendingLogFlushTimer.IsEnabled)
+        {
+            _pendingLogFlushTimer.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Flushes a bounded batch of pending log entries onto the UI so timer ticks, commands, and text rendering stay
+    /// responsive even when tooling emits large bursts of output.
+    /// </summary>
+    private void HandlePendingLogFlushTimerTick(object? sender, EventArgs e)
+    {
+        Dictionary<RuntimeTaskTabViewModel, List<LogEntryViewModel>> batchedEntries = DrainPendingLogEntries(out bool hasMorePendingEntries);
+        bool selectedTabChanged = false;
+        foreach ((RuntimeTaskTabViewModel runtimeTab, List<LogEntryViewModel> entries) in batchedEntries)
+        {
+            runtimeTab.AddLogEntries(entries);
+            if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+            {
+                selectedTabChanged = true;
+            }
+        }
+
+        if (selectedTabChanged)
+        {
+            RaiseSelectionStateChanged();
+        }
+
+        if (!hasMorePendingEntries)
+        {
+            _pendingLogFlushTimer.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Removes up to the configured flush budget from the per-tab pending queues while preserving tab-local order so one
+    /// flush cannot monopolize the UI thread indefinitely.
+    /// </summary>
+    private Dictionary<RuntimeTaskTabViewModel, List<LogEntryViewModel>> DrainPendingLogEntries(out bool hasMorePendingEntries)
+    {
+        Dictionary<RuntimeTaskTabViewModel, List<LogEntryViewModel>> drainedEntries = new();
+        lock (_pendingLogSyncRoot)
+        {
+            int remainingBudget = MaxLogEntriesPerFlush;
+            foreach ((RuntimeTaskTabViewModel runtimeTab, Queue<LogEntryViewModel> pendingEntries) in _pendingLogEntries.ToList())
+            {
+                if (remainingBudget == 0)
+                {
+                    break;
+                }
+
+                int entriesToDrain = Math.Min(remainingBudget, pendingEntries.Count);
+                if (entriesToDrain == 0)
+                {
+                    continue;
+                }
+
+                List<LogEntryViewModel> drainedBatch = new(entriesToDrain);
+                for (int index = 0; index < entriesToDrain; index++)
+                {
+                    drainedBatch.Add(pendingEntries.Dequeue());
+                }
+
+                drainedEntries[runtimeTab] = drainedBatch;
+                if (pendingEntries.Count == 0)
+                {
+                    _pendingLogEntries.Remove(runtimeTab);
+                }
+
+                remainingBudget -= entriesToDrain;
+            }
+
+            hasMorePendingEntries = _pendingLogEntries.Count > 0;
+        }
+
+        return drainedEntries;
     }
 
     /// <summary>

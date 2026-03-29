@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
              xmlns:conv="clr-namespace:LocalAutomation.Avalonia.Converters"
              xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
              x:Class="LocalAutomation.Avalonia.Views.Panels.RuntimePanel"
@@ -132,16 +133,15 @@
                                   Click="ClearLog_Click" />
                     </ContextMenu>
                 </Border.ContextMenu>
+                <!-- The custom viewport owns wrapped measurement and drawing directly so pathological long lines no
+                     longer funnel through a generic control's full-line text layout path. -->
                 <ScrollViewer x:Name="RuntimeLogScrollViewer"
                               Margin="12,10,12,12"
                               ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
-                    <!-- One SelectableTextBlock with inline runs preserves per-line coloring while allowing drag
-                         selection across the entire log surface. -->
-                    <SelectableTextBlock x:Name="RuntimeLogTextBlock"
-                                         Classes="mono"
-                                         TextWrapping="Wrap" />
+                    <controls:LogViewport x:Name="RuntimeLogViewport"
+                                          Entries="{Binding SelectedRuntimeLogEntries}" />
                 </ScrollViewer>
             </Border>
         </Grid>
