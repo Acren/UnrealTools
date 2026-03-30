@@ -20,13 +20,13 @@
             <Setter Property="Opacity" Value="0.82" />
         </Style>
         <Style Selector="Border.task-card-border">
-            <Setter Property="Opacity" Value="0.8" />
+            <Setter Property="Opacity" Value="0.78" />
         </Style>
         <Style Selector="Border.task-card-border.selected">
             <Setter Property="Opacity" Value="1" />
         </Style>
         <Style Selector="Border.task-card-border.hover">
-            <Setter Property="Opacity" Value="0.92" />
+            <Setter Property="Opacity" Value="0.96" />
         </Style>
         <Style Selector="Border.task-card-border.selected.hover">
             <Setter Property="Opacity" Value="1" />
@@ -57,6 +57,7 @@
     <Grid Width="{Binding CardWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
           Height="{Binding CardHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}">
         <Border x:Name="ClickSurface"
+                Classes="graph-interactive"
                 Background="Transparent"
                 CornerRadius="8"
                 HorizontalAlignment="Stretch"
@@ -64,7 +65,6 @@
             <Grid>
                 <Border x:Name="CardBackgroundShell"
                         Classes="task-card-background"
-                        BoxShadow="{Binding CardShadow}"
                         CornerRadius="8" />
                 <Border x:Name="CardBorderChrome"
                         Classes="task-card-border"

@@ -32,19 +32,19 @@
             <Setter Property="Opacity" Value="0.84" />
         </Style>
         <Style Selector="Border.group-container-border">
-            <Setter Property="Opacity" Value="0.36" />
+            <Setter Property="Opacity" Value="0.58" />
         </Style>
         <Style Selector="Border.group-container-border.selected">
-            <Setter Property="Opacity" Value="0.67" />
+            <Setter Property="Opacity" Value="0.84" />
         </Style>
         <Style Selector="Border.group-container-border.hover">
-            <Setter Property="Opacity" Value="0.48" />
+            <Setter Property="Opacity" Value="0.72" />
         </Style>
         <Style Selector="Border.group-container-border.selected.hover">
-            <Setter Property="Opacity" Value="0.79" />
+            <Setter Property="Opacity" Value="0.92" />
         </Style>
         <Style Selector="Border.group-container-border.pressed">
-            <Setter Property="Opacity" Value="0.87" />
+            <Setter Property="Opacity" Value="0.96" />
         </Style>
         <Style Selector="Border.group-container-border.pending, Border.group-container-border.planned, Border.group-container-border.skipped, Border.group-container-border.disabled">
             <Setter Property="BorderBrush" Value="#89919A" />
@@ -71,7 +71,6 @@
         <!-- The outer frame carries the status-tinted border around the full group, including the header region. -->
         <Border x:Name="ContainerBackgroundShell"
                 Classes="group-container-background"
-                BoxShadow="{Binding CardShadow}"
                 CornerRadius="12" />
         <Border x:Name="ContainerBorderChrome"
                 Classes="group-container-border"
@@ -81,6 +80,7 @@
 
         <!-- The header sits inset inside the outer frame so the full group border remains visible around it. -->
         <Border x:Name="ClickSurface"
+                Classes="graph-interactive"
                 Background="Transparent"
                 CornerRadius="10,10,0,0"
                 Margin="{Binding ContainerBorderThickness}"

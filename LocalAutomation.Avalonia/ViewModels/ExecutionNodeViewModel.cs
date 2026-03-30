@@ -240,13 +240,6 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     };
 
     /// <summary>
-    /// Gets the shadow applied to the rendered node when selection should remain visible on the canvas.
-    /// </summary>
-    public BoxShadows CardShadow => IsSelected
-        ? BoxShadows.Parse("0 0 0 1 #6AA7C2D8, 0 14 28 0 #26000000")
-        : BoxShadows.Parse(IsContainer ? "0 10 24 0 #14000000" : "0 14 26 0 #24000000");
-
-    /// <summary>
     /// Gets the border thickness for group containers.
     /// </summary>
     public Thickness ContainerBorderThickness => new(IsSelected ? 2.0 : 1.5);
@@ -388,7 +381,6 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     private void RaiseSelectionVisualChanged()
     {
-        RaisePropertyChanged(nameof(CardShadow));
         RaisePropertyChanged(nameof(ContainerBorderThickness));
         RaisePropertyChanged(nameof(CardBorderThickness));
     }

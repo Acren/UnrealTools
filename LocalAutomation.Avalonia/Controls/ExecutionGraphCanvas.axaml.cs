@@ -434,12 +434,10 @@ public partial class ExecutionGraphCanvas : UserControl
                 continue;
             }
 
-            if (control.DataContext is not ExecutionNodeViewModel node)
+            if (control.Classes.Contains("graph-interactive"))
             {
-                continue;
+                return true;
             }
-
-            return node.IsContainer || !node.IsGroup;
         }
 
         return false;
