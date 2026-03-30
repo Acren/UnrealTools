@@ -288,29 +288,29 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the lighter outline used for group container borders.
     /// </summary>
-    public IBrush ContainerBorderBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#D4DEE8" : "#8FA3B5"));
+    public IBrush ContainerBorderBrush => new SolidColorBrush(Color.Parse(ApplyAlpha(StatusBrush, IsSelected ? "AA" : "5C")));
 
     /// <summary>
     /// Gets the background brush for a group container body.
     /// </summary>
-    public IBrush ContainerBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#18212D" : "#141B25"));
+    public IBrush ContainerBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#1A2430" : "#131A24"));
 
     /// <summary>
     /// Gets the background brush for a group header strip.
     /// </summary>
-    public IBrush GroupHeaderBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#1F2B39" : "#1A2431"));
+    public IBrush GroupHeaderBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#202D3B" : "#182230"));
 
     /// <summary>
     /// Gets the background brush for a leaf task card.
     /// </summary>
-    public IBrush CardBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#232E3B" : "#1A2430"));
+    public IBrush CardBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#263342" : "#1D2835"));
 
     /// <summary>
     /// Gets the shadow applied to the rendered node when selection should remain visible on the canvas.
     /// </summary>
     public BoxShadows CardShadow => IsSelected
         ? BoxShadows.Parse("0 0 0 1 #6AA7C2D8, 0 14 28 0 #26000000")
-        : BoxShadows.Parse(IsContainer ? "0 12 26 0 #16000000" : "0 10 20 0 #20000000");
+        : BoxShadows.Parse(IsContainer ? "0 10 24 0 #14000000" : "0 14 26 0 #24000000");
 
     /// <summary>
     /// Gets the border thickness for group containers.
@@ -467,5 +467,12 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         RaisePropertyChanged(nameof(CardShadow));
         RaisePropertyChanged(nameof(ContainerBorderThickness));
         RaisePropertyChanged(nameof(CardBorderThickness));
+    }
+
+    private static string ApplyAlpha(string hexColor, string alpha)
+    {
+        return hexColor.StartsWith("#", StringComparison.Ordinal) && hexColor.Length == 7
+            ? $"#{alpha}{hexColor[1..]}"
+            : hexColor;
     }
 }

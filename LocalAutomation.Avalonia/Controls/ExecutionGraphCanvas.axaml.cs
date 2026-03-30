@@ -312,21 +312,21 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private Control CreateGroupHeader(ExecutionNodeViewModel group)
     {
+        double headerInset = Math.Ceiling(group.ContainerBorderThickness.Left);
         Border header = new()
         {
-            Width = group.Width,
-            Height = ExecutionGraphViewModel.GroupHeaderHeight,
-            CornerRadius = new CornerRadius(12, 12, 0, 0),
-            BorderThickness = new Thickness(0, 0, 0, 1),
+            Width = Math.Max(0, group.Width - (headerInset * 2)),
+            Height = Math.Max(0, ExecutionGraphViewModel.GroupHeaderHeight - headerInset),
+            CornerRadius = new CornerRadius(Math.Max(0, 12 - headerInset), Math.Max(0, 12 - headerInset), 0, 0),
+            BorderThickness = new Thickness(0),
             DataContext = group
         };
 
-        // Bind the group header treatment so the header stays visually synchronized with group selection and rollups.
+        // Let the outer group frame carry the status tint so the header sits inside one continuous bordered container.
         BindToDataContext(header, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.GroupHeaderBackgroundBrush));
-        BindToDataContext(header, Border.BorderBrushProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
 
-        Canvas.SetLeft(header, group.X);
-        Canvas.SetTop(header, group.Y);
+        Canvas.SetLeft(header, group.X + headerInset);
+        Canvas.SetTop(header, group.Y + headerInset);
 
         Button button = new()
         {
