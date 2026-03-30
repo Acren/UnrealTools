@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
+             x:Class="LocalAutomation.Avalonia.Controls.LogViewer"
+             x:DataType="controls:LogViewer"
+             x:Name="Root">
+    <!-- The log viewer owns follow-tail behavior so parent panels only provide the active log entries and a stable
+         source identity. -->
+    <ScrollViewer x:Name="ScrollHost"
+                  ScrollChanged="ScrollHost_ScrollChanged"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <controls:LogViewport Entries="{Binding Entries, ElementName=Root}" />
+    </ScrollViewer>
+</UserControl>

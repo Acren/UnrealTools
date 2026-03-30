@@ -163,14 +163,9 @@
                                           Click="ClearLog_Click" />
                             </ContextMenu>
                         </Border.ContextMenu>
-                        <ScrollViewer x:Name="RuntimeLogScrollViewer"
-                                      Margin="12,10,12,12"
-                                      ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
-                                      VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled">
-                            <controls:LogViewport x:Name="RuntimeLogViewport"
-                                                  Entries="{Binding SelectedRuntimeLogEntries}" />
-                        </ScrollViewer>
+                        <controls:LogViewer Margin="12,10,12,12"
+                                            Entries="{Binding SelectedRuntimeLogEntries}"
+                                            SourceKey="{Binding SelectedRuntimeLogSourceId}" />
                     </Border>
                 </Grid>
 
@@ -188,14 +183,9 @@
                                       Click="ClearLog_Click" />
                         </ContextMenu>
                     </Border.ContextMenu>
-                    <ScrollViewer x:Name="RuntimeLogScrollViewerApp"
-                                  Margin="12,10,12,12"
-                                  ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <controls:LogViewport x:Name="RuntimeLogViewportApp"
-                                              Entries="{Binding SelectedRuntimeLogEntries}" />
-                    </ScrollViewer>
+                    <controls:LogViewer Margin="12,10,12,12"
+                                        Entries="{Binding SelectedRuntimeLogEntries}"
+                                        SourceKey="{Binding SelectedRuntimeLogSourceId}" />
                 </Border>
             </Grid>
         </Grid>

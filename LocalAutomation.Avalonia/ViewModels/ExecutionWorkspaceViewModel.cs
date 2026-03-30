@@ -16,6 +16,8 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 {
+    private static readonly ObservableCollection<LogEntryViewModel> EmptyLogEntries = new();
+
     private const int MaxLogEntriesPerFlush = 100;
     private static readonly TimeSpan PendingLogFlushInterval = TimeSpan.FromMilliseconds(50);
 
@@ -149,7 +151,39 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// <summary>
     /// Gets the log entries shown for the selected graph node or all-output pseudo-node.
     /// </summary>
-    public ObservableCollection<LogEntryViewModel> SelectedRuntimeLogEntries => SelectedRuntimeTab?.SelectedLogEntries ?? new ObservableCollection<LogEntryViewModel>();
+    public ObservableCollection<LogEntryViewModel> SelectedRuntimeLogEntries => SelectedRuntimeTab?.SelectedLogEntries ?? EmptyLogEntries;
+
+    /// <summary>
+    /// Gets the stable logical source id for the currently displayed log stream so the reusable log viewer can reset
+    /// follow-tail only when the user actually switches to a different source.
+    /// </summary>
+    public string SelectedRuntimeLogSourceId
+    {
+        get
+        {
+            if (SelectedRuntimeTab == null)
+            {
+                return string.Empty;
+            }
+
+            if (SelectedRuntimeTab.IsApplicationLog)
+            {
+                return $"{SelectedRuntimeTab.Id}:application-log";
+            }
+
+            if (SelectedRuntimeTab.IsPlanPreview)
+            {
+                return $"{SelectedRuntimeTab.Id}:plan-preview";
+            }
+
+            if (SelectedRuntimeTab.Graph.IsAllOutputSelected || SelectedRuntimeTab.Graph.SelectedTaskId == null)
+            {
+                return $"{SelectedRuntimeTab.Id}:all-output";
+            }
+
+            return $"{SelectedRuntimeTab.Id}:{SelectedRuntimeTab.Graph.SelectedTaskId.Value}";
+        }
+    }
 
     /// <summary>
     /// Gets the selected runtime-tab title shown in the workspace header.
@@ -698,6 +732,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SelectedRuntimeDuration));
         RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
         RaisePropertyChanged(nameof(SelectedRuntimeLogEntries));
+        RaisePropertyChanged(nameof(SelectedRuntimeLogSourceId));
         RaisePropertyChanged(nameof(SelectedRuntimeTabTitle));
         RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
         RaisePropertyChanged(nameof(ShowSelectedRuntimeMetrics));
