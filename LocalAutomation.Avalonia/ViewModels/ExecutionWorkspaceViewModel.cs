@@ -11,10 +11,10 @@ using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomati
 namespace LocalAutomation.Avalonia.ViewModels;
 
 /// <summary>
-/// Owns the execution workspace tabs, live plan preview, task-scoped log selection, and execution-session lifecycle
+/// Owns the execution workspace tabs, plan preview, task-scoped log selection, and live execution-session lifecycle
 /// actions for the Avalonia shell.
 /// </summary>
-public sealed class RuntimePanelViewModel : ViewModelBase
+public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 {
     private const int MaxLogEntriesPerFlush = 100;
     private static readonly TimeSpan PendingLogFlushInterval = TimeSpan.FromMilliseconds(50);
@@ -33,9 +33,9 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     private event PropertyChangedEventHandler? _selectedRuntimeTabPropertyChanged;
 
     /// <summary>
-    /// Creates the runtime workspace view model around the shared services and shell status sink.
+    /// Creates the execution workspace view model around the shared services and shell status sink.
     /// </summary>
-    public RuntimePanelViewModel(LocalAutomationApplicationHost services, Action<string> setStatus)
+    public ExecutionWorkspaceViewModel(LocalAutomationApplicationHost services, Action<string> setStatus)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
         _setStatus = setStatus ?? throw new ArgumentNullException(nameof(setStatus));

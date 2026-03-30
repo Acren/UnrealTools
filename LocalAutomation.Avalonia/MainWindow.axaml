@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
-        xmlns:panels="clr-namespace:LocalAutomation.Avalonia.Views.Panels"
+         xmlns:panels="clr-namespace:LocalAutomation.Avalonia.Views.Panels"
         x:Class="LocalAutomation.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Width="1240"
@@ -41,6 +41,6 @@
                        ResizeDirection="Rows"
                        Classes="resize-handle-horizontal" />
 
-        <panels:RuntimePanel Grid.Row="2" Grid.ColumnSpan="3" DataContext="{Binding Runtime}" />
+        <panels:ExecutionWorkspacePanel Grid.Row="2" Grid.ColumnSpan="3" DataContext="{Binding ExecutionWorkspace}" />
     </Grid>
 </Window>

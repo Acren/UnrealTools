@@ -14,18 +14,18 @@ namespace LocalAutomation.Avalonia.Views.Panels;
 /// Hosts runtime tabs and keeps the selected runtime log pinned to the bottom when the user is already following the
 /// live output stream.
 /// </summary>
-public partial class RuntimePanel : UserControl
+public partial class ExecutionWorkspacePanel : UserControl
 {
     private const double AutoScrollTolerance = 4;
 
     private bool _shouldAutoScrollRuntimeLog = true;
     private INotifyCollectionChanged? _currentRuntimeLogCollection;
-    private RuntimePanelViewModel? _observedViewModel;
+    private ExecutionWorkspaceViewModel? _observedViewModel;
 
     /// <summary>
     /// Initializes the runtime panel.
     /// </summary>
-    public RuntimePanel()
+    public ExecutionWorkspacePanel()
     {
         InitializeComponent();
         AttachedToVisualTree += HandleAttachedToVisualTree;
@@ -36,7 +36,7 @@ public partial class RuntimePanel : UserControl
     /// <summary>
     /// Gets the runtime panel view model backing this panel.
     /// </summary>
-    private RuntimePanelViewModel ViewModel => (RuntimePanelViewModel)DataContext!;
+    private ExecutionWorkspaceViewModel ViewModel => (ExecutionWorkspaceViewModel)DataContext!;
 
     /// <summary>
     /// Selects a runtime tab.
@@ -119,7 +119,7 @@ public partial class RuntimePanel : UserControl
             _observedViewModel.PropertyChanged -= HandleViewModelPropertyChanged;
         }
 
-        _observedViewModel = DataContext as RuntimePanelViewModel;
+        _observedViewModel = DataContext as ExecutionWorkspaceViewModel;
         if (_observedViewModel != null)
         {
             _observedViewModel.PropertyChanged += HandleViewModelPropertyChanged;
@@ -135,7 +135,7 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void HandleAttachedToVisualTree(object? sender, global::Avalonia.VisualTreeAttachmentEventArgs e)
     {
-        if (DataContext is RuntimePanelViewModel)
+        if (DataContext is ExecutionWorkspaceViewModel)
         {
             AttachRuntimeLogCollection();
         }
@@ -160,7 +160,7 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void HandleViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!string.Equals(e.PropertyName, nameof(RuntimePanelViewModel.SelectedRuntimeLogEntries), StringComparison.Ordinal))
+        if (!string.Equals(e.PropertyName, nameof(ExecutionWorkspaceViewModel.SelectedRuntimeLogEntries), StringComparison.Ordinal))
         {
             return;
         }
@@ -225,7 +225,7 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void GraphNode_Click(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not RuntimePanelViewModel viewModel ||
+        if (DataContext is not ExecutionWorkspaceViewModel viewModel ||
             viewModel.SelectedRuntimeTab == null ||
             sender is not Control { DataContext: ExecutionNodeViewModel node })
         {

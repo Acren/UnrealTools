@@ -63,7 +63,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             handleSaveException: HandleTargetSettingsSaveException);
         _parameterSession.PropertyChanged += HandleOperationParametersChanged;
         Target = new TargetPanelViewModel(services, SetStatus, HandleSelectedTargetChanged, SaveSessionState);
-        Runtime = new RuntimePanelViewModel(services, SetStatus);
+        ExecutionWorkspace = new ExecutionWorkspaceViewModel(services, SetStatus);
         RestoreSessionState();
     }
 
@@ -89,7 +89,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Gets the runtime panel view model that owns task tabs, selected-task metrics, and runtime actions.
     /// </summary>
-    public RuntimePanelViewModel Runtime { get; }
+    public ExecutionWorkspaceViewModel ExecutionWorkspace { get; }
 
     /// <summary>
     /// Gets the currently selected target row from the target panel.
@@ -177,6 +177,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         RaiseDerivedStateChanged();
+        RefreshVisibleExecutionPlan();
 
         SaveSessionState();
     }
@@ -313,7 +314,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         ExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _parameterSession.RawValue);
-        Runtime.AttachExecutionSession(session);
+        ExecutionWorkspace.AttachExecutionSession(session);
         _services.Execution.AddSession(session);
         SetStatus($"Started {session.OperationName} for {session.TargetName}.");
     }
@@ -361,7 +362,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             RaiseDerivedStateChanged();
-            Runtime.UpdatePlanPreview(VisibleExecutionPlan);
+            RefreshVisibleExecutionPlan();
             SaveSessionState();
         }, DispatcherPriority.Background);
     }
@@ -473,7 +474,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
             RestoreSelectedTargetState();
             RaiseDerivedStateChanged();
-            Runtime.UpdatePlanPreview(VisibleExecutionPlan);
+            RefreshVisibleExecutionPlan();
 
             if (Target.SelectedTarget != null)
             {
@@ -482,7 +483,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         RaiseDerivedStateChanged();
-        Runtime.UpdatePlanPreview(VisibleExecutionPlan);
+        RefreshVisibleExecutionPlan();
     }
 
     /// <summary>
@@ -635,7 +636,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
             RestoreSelectedTargetState();
             RaiseDerivedStateChanged();
-            Runtime.UpdatePlanPreview(VisibleExecutionPlan);
+            RefreshVisibleExecutionPlan();
         }
         else
         {
@@ -662,6 +663,15 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         return rememberedOperationId;
+    }
+
+    /// <summary>
+    /// Recomputes the currently visible execution plan and publishes it to the runtime workspace so target, operation,
+    /// option, and restore flows all refresh the preview through the same path.
+    /// </summary>
+    private void RefreshVisibleExecutionPlan()
+    {
+        ExecutionWorkspace.UpdatePlanPreview(VisibleExecutionPlan);
     }
 
     /// <summary>

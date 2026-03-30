@@ -3,8 +3,8 @@
              xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
              xmlns:conv="clr-namespace:LocalAutomation.Avalonia.Converters"
              xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
-             x:Class="LocalAutomation.Avalonia.Views.Panels.RuntimePanel"
-             x:DataType="vm:RuntimePanelViewModel">
+             x:Class="LocalAutomation.Avalonia.Views.Panels.ExecutionWorkspacePanel"
+             x:DataType="vm:ExecutionWorkspaceViewModel">
     <UserControl.Resources>
         <conv:UppercaseTextConverter x:Key="UppercaseTextConverter" />
     </UserControl.Resources>
