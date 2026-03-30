@@ -1,0 +1,66 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
+             x:Class="LocalAutomation.Avalonia.Controls.ExecutionGroupContainer"
+             x:CompileBindings="False"
+             x:Name="Root">
+    <!-- This control owns the full visual structure of one group node so canvas code only decides placement and z-order. -->
+    <Grid Width="{Binding GroupWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
+          Height="{Binding GroupHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}">
+        <!-- The outer frame carries the status-tinted border around the full group, including the header region. -->
+        <Border Background="{Binding ContainerBackgroundBrush}"
+                BorderBrush="{Binding ContainerBorderBrush}"
+                BorderThickness="{Binding ContainerBorderThickness}"
+                BoxShadow="{Binding CardShadow}"
+                CornerRadius="12"
+                Opacity="0.94" />
+
+        <!-- The header sits inset inside the outer frame so the full group border remains visible around it. -->
+        <Border Margin="{Binding ContainerBorderThickness}"
+                Height="{Binding HeaderHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
+                Background="{Binding GroupHeaderBackgroundBrush}"
+                CornerRadius="10,10,0,0"
+                VerticalAlignment="Top">
+            <Button x:Name="ClickSurface"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch"
+                    DataContext="{Binding #Root.DataContext}">
+                <Grid ColumnDefinitions="*,Auto"
+                      Margin="14,10,14,10">
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="#F3F6F9"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                    <controls:StatusIndicator Grid.Column="1"
+                                              Margin="12,0,0,0"
+                                              Status="{Binding Status}"
+                                              ShowLabel="True"
+                                              DotSize="6"
+                                              LabelFontSize="11"
+                                              VerticalAlignment="Center" />
+                </Grid>
+            </Button>
+        </Border>
+
+        <!-- Keep the existing compact tooltip treatment, but declare the visual tree in XAML with the rest of the node. -->
+        <ToolTip.Tip>
+            <ToolTip Background="#12171D"
+                     BorderBrush="#33414F"
+                     BorderThickness="1"
+                     Padding="10,8"
+                     MaxWidth="320"
+                     IsOpen="False">
+                <TextBlock Text="{Binding Description}"
+                           TextWrapping="Wrap"
+                           Foreground="#D5DEE7"
+                           FontSize="12"
+                           LineHeight="16" />
+            </ToolTip>
+        </ToolTip.Tip>
+    </Grid>
+</UserControl>

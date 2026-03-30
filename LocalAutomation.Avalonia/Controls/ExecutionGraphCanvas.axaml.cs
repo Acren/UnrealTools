@@ -248,7 +248,7 @@ public partial class ExecutionGraphCanvas : UserControl
 
         foreach (ExecutionNodeViewModel group in _observedGraph.Nodes.Where(node => node.IsContainer).OrderByDescending(node => node.Width * node.Height))
         {
-            _graphCanvas.Children.Add(CreateGroupContainer(group));
+            _graphCanvas.Children.Add(CreateGroupControl(group));
         }
 
         foreach (ExecutionEdgeViewModel edge in _observedGraph.Edges)
@@ -269,12 +269,7 @@ public partial class ExecutionGraphCanvas : UserControl
 
         foreach (ExecutionNodeViewModel node in _observedGraph.Nodes.Where(node => !node.IsContainer))
         {
-            _graphCanvas.Children.Add(CreateTaskCard(node));
-        }
-
-        foreach (ExecutionNodeViewModel group in _observedGraph.Nodes.Where(node => node.IsContainer))
-        {
-            _graphCanvas.Children.Add(CreateGroupHeader(group));
+            _graphCanvas.Children.Add(CreateTaskControl(node));
         }
 
         TryApplyInitialFit();
@@ -282,25 +277,19 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-    /// Creates one comment-style group container behind its child graph nodes.
+    /// Creates one XAML-backed group control and positions it on the graph canvas.
     /// </summary>
-    private static Control CreateGroupContainer(ExecutionNodeViewModel group)
+    private Control CreateGroupControl(ExecutionNodeViewModel group)
     {
-        Border container = new()
+        ExecutionGroupContainer container = new()
         {
-            Width = group.Width,
-            Height = group.Height,
-            CornerRadius = new CornerRadius(12),
-            Opacity = 0.94,
+            GroupWidth = group.Width,
+            GroupHeight = group.Height,
+            HeaderHeight = ExecutionGraphViewModel.GroupHeaderHeight,
             DataContext = group,
-            Classes = { "execution-node-card", "group" }
         };
 
-        // Bind the group shell visuals so hierarchy frames feel lighter than leaf cards while still reflecting status.
-        BindToDataContext(container, Border.BorderBrushProperty, nameof(ExecutionNodeViewModel.ContainerBorderBrush));
-        BindToDataContext(container, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.ContainerBackgroundBrush));
-        BindToDataContext(container, Border.BorderThicknessProperty, nameof(ExecutionNodeViewModel.ContainerBorderThickness));
-        BindToDataContext(container, Border.BoxShadowProperty, nameof(ExecutionNodeViewModel.CardShadow));
+        container.GetClickSurface().Click += ExecutionNode_Click;
 
         Canvas.SetLeft(container, group.X);
         Canvas.SetTop(container, group.Y);
@@ -308,186 +297,22 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-    /// Creates one clickable header strip for a group container.
+    /// Creates one XAML-backed task-card control and positions it on the graph canvas.
     /// </summary>
-    private Control CreateGroupHeader(ExecutionNodeViewModel group)
+    private Control CreateTaskControl(ExecutionNodeViewModel node)
     {
-        double headerInset = Math.Ceiling(group.ContainerBorderThickness.Left);
-        Border header = new()
+        ExecutionTaskCard card = new()
         {
-            Width = Math.Max(0, group.Width - (headerInset * 2)),
-            Height = Math.Max(0, ExecutionGraphViewModel.GroupHeaderHeight - headerInset),
-            CornerRadius = new CornerRadius(Math.Max(0, 12 - headerInset), Math.Max(0, 12 - headerInset), 0, 0),
-            BorderThickness = new Thickness(0),
-            DataContext = group
+            CardWidth = node.Width,
+            CardHeight = node.Height,
+            DataContext = node
         };
 
-        // Let the outer group frame carry the status tint so the header sits inside one continuous bordered container.
-        BindToDataContext(header, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.GroupHeaderBackgroundBrush));
-
-        Canvas.SetLeft(header, group.X + headerInset);
-        Canvas.SetTop(header, group.Y + headerInset);
-
-        Button button = new()
-        {
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(0),
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
-            DataContext = group,
-            Content = CreateGroupHeaderContent(group)
-        };
-        ToolTip.SetTip(button, CreateNodeToolTip(group));
-        button.Click += ExecutionNode_Click;
-        header.Child = button;
-        return header;
-    }
-
-    /// <summary>
-    /// Creates one positioned card for a runnable task.
-    /// </summary>
-    private Control CreateTaskCard(ExecutionNodeViewModel node)
-    {
-        Border card = new()
-        {
-            Width = node.Width,
-            Height = node.Height,
-            CornerRadius = new CornerRadius(8),
-            DataContext = node,
-            Classes = { "execution-node-card" }
-        };
-
-        // Bind task-card visuals so status and selection changes repaint without recreating the node controls.
-        BindToDataContext(card, Border.BorderThicknessProperty, nameof(ExecutionNodeViewModel.CardBorderThickness));
-        BindToDataContext(card, Border.BorderBrushProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
-        BindToDataContext(card, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.CardBackgroundBrush));
-        BindToDataContext(card, Border.BoxShadowProperty, nameof(ExecutionNodeViewModel.CardShadow));
+        card.GetClickSurface().Click += ExecutionNode_Click;
 
         Canvas.SetLeft(card, node.X);
         Canvas.SetTop(card, node.Y);
-
-        Button button = new()
-        {
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(0),
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
-            DataContext = node,
-            Content = CreateTaskCardContent(node)
-        };
-        ToolTip.SetTip(button, CreateNodeToolTip(node));
-        button.Click += ExecutionNode_Click;
-        card.Child = button;
         return card;
-    }
-
-    /// <summary>
-    /// Creates the inner content for one group header.
-    /// </summary>
-    private static Control CreateGroupHeaderContent(ExecutionNodeViewModel group)
-    {
-        Grid root = new()
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-            Margin = new Thickness(14, 10, 14, 10)
-        };
-
-        TextBlock title = new()
-        {
-            FontSize = 14,
-            FontWeight = FontWeight.SemiBold,
-            TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(Color.Parse("#F3F6F9"))
-        };
-        BindToDataContext(title, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Title));
-        root.Children.Add(title);
-
-        StatusIndicator statusRow = CreateStatusIndicator(group, showLabel: true, dotSize: 6, labelFontSize: 11);
-        statusRow.Margin = new Thickness(12, 0, 0, 0);
-        Grid.SetColumn(statusRow, 1);
-        root.Children.Add(statusRow);
-        return root;
-    }
-
-    /// <summary>
-    /// Creates the inner content for one runnable-task card.
-    /// </summary>
-    private static Control CreateTaskCardContent(ExecutionNodeViewModel node)
-    {
-        Grid root = new()
-        {
-            RowDefinitions = new RowDefinitions("Auto,Auto"),
-            Margin = new Thickness(14, 12, 14, 12)
-        };
-
-        TextBlock title = new()
-        {
-            FontSize = 14,
-            FontWeight = FontWeight.SemiBold,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Color.Parse("#F2F5F8")),
-            MaxHeight = 40,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        BindToDataContext(title, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Title));
-        root.Children.Add(title);
-
-        StatusIndicator statusRow = CreateStatusIndicator(node, showLabel: true, dotSize: 6, labelFontSize: 11);
-        statusRow.Margin = new Thickness(0, 8, 0, 0);
-        Grid.SetRow(statusRow, 1);
-        root.Children.Add(statusRow);
-        return root;
-    }
-
-    /// <summary>
-    /// Creates one shared status-indicator control for execution-graph nodes so the graph reuses the same status
-    /// presentation language as the runtime tab strip instead of rebuilding the dot-and-label markup by hand.
-    /// </summary>
-    private static StatusIndicator CreateStatusIndicator(ExecutionNodeViewModel node, bool showLabel, double dotSize, double labelFontSize)
-    {
-        StatusIndicator indicator = new()
-        {
-            ShowLabel = showLabel,
-            DotSize = dotSize,
-            LabelFontSize = labelFontSize,
-            VerticalAlignment = VerticalAlignment.Center,
-            DataContext = node
-        };
-        BindToDataContext(indicator, StatusIndicator.StatusProperty, nameof(ExecutionNodeViewModel.Status));
-        return indicator;
-    }
-
-    /// <summary>
-    /// Creates a compact tooltip for graph nodes so descriptions remain available without cluttering the graph surface.
-    /// </summary>
-    private static object? CreateNodeToolTip(ExecutionNodeViewModel node)
-    {
-        if (string.IsNullOrWhiteSpace(node.Description))
-        {
-            return null;
-        }
-
-        ToolTip toolTip = new()
-        {
-            Background = new SolidColorBrush(Color.Parse("#12171D")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#33414F")),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(10, 8),
-            MaxWidth = 320,
-            Content = new TextBlock
-            {
-                Text = node.Description,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = new SolidColorBrush(Color.Parse("#D5DEE7")),
-                FontSize = 12,
-                LineHeight = 16
-            }
-        };
-
-        return toolTip;
     }
 
     /// <summary>

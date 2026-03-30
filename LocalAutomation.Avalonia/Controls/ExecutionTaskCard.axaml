@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
+             x:Class="LocalAutomation.Avalonia.Controls.ExecutionTaskCard"
+             x:CompileBindings="False"
+             x:Name="Root">
+    <!-- This control owns the full task-card markup so graph canvas code no longer constructs the inner visual tree. -->
+    <Grid Width="{Binding CardWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
+          Height="{Binding CardHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}">
+        <Border Background="{Binding CardBackgroundBrush}"
+                BorderBrush="{Binding StatusBrushColor}"
+                BorderThickness="{Binding CardBorderThickness}"
+                BoxShadow="{Binding CardShadow}"
+                CornerRadius="8">
+            <Button x:Name="ClickSurface"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch"
+                    DataContext="{Binding #Root.DataContext}">
+                <Grid RowDefinitions="Auto,Auto"
+                      Margin="14,12,14,12">
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="#F2F5F8"
+                               MaxHeight="40"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                    <controls:StatusIndicator Grid.Row="1"
+                                              Margin="0,8,0,0"
+                                              Status="{Binding Status}"
+                                              ShowLabel="True"
+                                              DotSize="6"
+                                              LabelFontSize="11"
+                                              VerticalAlignment="Center" />
+                </Grid>
+            </Button>
+        </Border>
+
+        <!-- Keep the tooltip markup declarative with the task-card visuals instead of constructing it in canvas code. -->
+        <ToolTip.Tip>
+            <ToolTip Background="#12171D"
+                     BorderBrush="#33414F"
+                     BorderThickness="1"
+                     Padding="10,8"
+                     MaxWidth="320"
+                     IsOpen="False">
+                <TextBlock Text="{Binding Description}"
+                           TextWrapping="Wrap"
+                           Foreground="#D5DEE7"
+                           FontSize="12"
+                           LineHeight="16" />
+            </ToolTip>
+        </ToolTip.Tip>
+    </Grid>
+</UserControl>
