@@ -144,10 +144,23 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     public string SelectedNodeDescription => SelectedNode?.DetailsText ?? "Select a graph node to inspect the underlying task details and output.";
 
     /// <summary>
-    /// Gets the selected task id used to bind task-scoped logs. Group containers intentionally fall back to the merged
-    /// output stream because they represent structure rather than runnable work.
+    /// Gets the selected task id for details and status binding. Only the synthetic all-output node maps to no task.
     /// </summary>
-    public ExecutionTaskId? SelectedTaskId => SelectedNode == null || SelectedNode.IsGroup ? null : SelectedNode.Id;
+    public ExecutionTaskId? SelectedTaskId => SelectedNode == null || IsAllOutputSelected ? null : SelectedNode.Id;
+
+    /// <summary>
+    /// Returns the selected task id plus all descendant task ids so the UI can show one hierarchical task subtree
+    /// without treating parent tasks specially at runtime.
+    /// </summary>
+    public IReadOnlyList<ExecutionTaskId> GetSelectedLogTaskIds()
+    {
+        if (SelectedNode == null || IsAllOutputSelected)
+        {
+            return Array.Empty<ExecutionTaskId>();
+        }
+
+        return GetTaskSubtreeIds(SelectedNode.Id).ToList();
+    }
 
     /// <summary>
     /// Gets the status label for the selected graph node.
@@ -400,67 +413,21 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Recomputes group-container rollup statuses from their descendant runnable tasks so containers read like live
-    /// status summaries instead of inert labels.
+    /// Preserves group hierarchy metrics without overriding real task statuses, because parent tasks remain first-class
+    /// runtime tasks rather than derived summary containers.
     /// </summary>
     private void ApplyGroupRollupStatuses()
     {
-        foreach (ExecutionNodeViewModel node in _nodes.Where(node => node.IsGroup))
-        {
-            ApplyGroupRollupStatus(node);
-        }
+        return;
     }
 
     /// <summary>
-    /// Recomputes the rollup status for one group container.
+    /// Intentionally preserves each group's own status. The graph shows child statuses directly in the hierarchy, so no
+    /// derived rollup badge is needed.
     /// </summary>
     private void ApplyGroupRollupStatus(ExecutionNodeViewModel group)
     {
-        IReadOnlyList<ExecutionNodeViewModel> descendants = GetLeafDescendantIds(group.Id)
-            .Select(taskId => _nodesById[taskId])
-            .ToList();
-
-        if (descendants.Count == 0)
-        {
-            group.SetStatus(group.Status, string.Empty);
-            return;
-        }
-
-        Dictionary<ExecutionTaskStatus, int> counts = descendants
-            .GroupBy(node => node.Status)
-            .ToDictionary(grouping => grouping.Key, grouping => grouping.Count());
-
-        ExecutionTaskStatus rollupStatus = counts.ContainsKey(ExecutionTaskStatus.Failed) ? ExecutionTaskStatus.Failed
-            : counts.ContainsKey(ExecutionTaskStatus.Running) ? ExecutionTaskStatus.Running
-            : counts.ContainsKey(ExecutionTaskStatus.Blocked) ? ExecutionTaskStatus.Blocked
-            : counts.ContainsKey(ExecutionTaskStatus.Ready) ? ExecutionTaskStatus.Ready
-            : counts.ContainsKey(ExecutionTaskStatus.Planned) ? ExecutionTaskStatus.Planned
-            : counts.ContainsKey(ExecutionTaskStatus.Cancelled) ? ExecutionTaskStatus.Cancelled
-            : counts.Keys.All(status => status == ExecutionTaskStatus.Disabled) ? ExecutionTaskStatus.Disabled
-            : counts.Keys.All(status => status == ExecutionTaskStatus.Skipped) ? ExecutionTaskStatus.Skipped
-            : ExecutionTaskStatus.Completed;
-
-        List<string> summaryParts = new();
-        AppendCount(summaryParts, counts, ExecutionTaskStatus.Completed, "done");
-        AppendCount(summaryParts, counts, ExecutionTaskStatus.Running, "running");
-        AppendCount(summaryParts, counts, ExecutionTaskStatus.Failed, "failed");
-        AppendCount(summaryParts, counts, ExecutionTaskStatus.Blocked, "blocked");
-        AppendCount(summaryParts, counts, ExecutionTaskStatus.Ready, "ready");
-        AppendCount(summaryParts, counts, ExecutionTaskStatus.Disabled, "disabled");
-        AppendCount(summaryParts, counts, ExecutionTaskStatus.Skipped, "skipped");
-
-        group.SetStatus(rollupStatus, string.Join(", ", summaryParts));
-    }
-
-    /// <summary>
-    /// Appends one status-count fragment when the requested status exists in the current rollup.
-    /// </summary>
-    private static void AppendCount(List<string> parts, IReadOnlyDictionary<ExecutionTaskStatus, int> counts, ExecutionTaskStatus status, string label)
-    {
-        if (counts.TryGetValue(status, out int count) && count > 0)
-        {
-            parts.Add($"{count} {label}");
-        }
+        _ = group;
     }
 
     /// <summary>
@@ -552,6 +519,28 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             }
 
             foreach (ExecutionTaskId descendantId in GetLeafDescendantIds(childId))
+            {
+                yield return descendantId;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Enumerates one task subtree including the selected task itself and every descendant task so log selection can be
+    /// hierarchical without mutating runtime task ownership.
+    /// </summary>
+    private IEnumerable<ExecutionTaskId> GetTaskSubtreeIds(ExecutionTaskId rootId)
+    {
+        yield return rootId;
+
+        if (!_childrenByParentId.TryGetValue(rootId, out List<ExecutionTaskId>? childIds))
+        {
+            yield break;
+        }
+
+        foreach (ExecutionTaskId childId in childIds)
+        {
+            foreach (ExecutionTaskId descendantId in GetTaskSubtreeIds(childId))
             {
                 yield return descendantId;
             }

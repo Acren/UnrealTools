@@ -435,15 +435,12 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Attaches the aggregate and per-task log streams for one execution session.
+    /// Attaches the aggregate log stream for one execution session. Task and subtree views are rebuilt by filtering the
+    /// session-wide stream so hierarchical selections stay correct even when descendant tasks are created dynamically.
     /// </summary>
     private void AttachSessionLogs(RuntimeWorkspaceTabViewModel runtimeTab, ExecutionSession session)
     {
         AttachLogStream(runtimeTab, session.LogStream);
-        foreach (KeyValuePair<ExecutionTaskId, BufferedLogStream> entry in session.TaskLogStreams)
-        {
-            entry.Value.EntryAdded += _ => EnqueueRefreshForSelection(runtimeTab);
-        }
     }
 
     /// <summary>
@@ -496,14 +493,17 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             return;
         }
 
-        if (runtimeTab.Graph.IsAllOutputSelected || runtimeTab.Graph.SelectedTaskId == null)
+        IReadOnlyList<ExecutionTaskId> selectedTaskIds = runtimeTab.Graph.GetSelectedLogTaskIds();
+        if (runtimeTab.Graph.IsAllOutputSelected || selectedTaskIds.Count == 0)
         {
             runtimeTab.SetSelectedLogEntries(runtimeTab.Session.LogStream.Entries.Select(CreateLogEntryViewModel));
             return;
         }
 
-        BufferedLogStream? taskLogStream = runtimeTab.Session.GetTaskLogStream(runtimeTab.Graph.SelectedTaskId);
-        runtimeTab.SetSelectedLogEntries((taskLogStream?.Entries ?? Array.Empty<LogEntry>()).Select(CreateLogEntryViewModel));
+        HashSet<ExecutionTaskId> selectedTaskIdSet = new(selectedTaskIds);
+        runtimeTab.SetSelectedLogEntries(runtimeTab.Session.LogStream.Entries
+            .Where(entry => entry.TaskId is ExecutionTaskId taskId && selectedTaskIdSet.Contains(taskId))
+            .Select(CreateLogEntryViewModel));
     }
 
     /// <summary>

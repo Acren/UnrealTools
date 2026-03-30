@@ -118,7 +118,7 @@ public sealed class ExecutionRuntimeService
     /// <summary>
     /// Forwards shared logger output into the execution session's buffered log stream.
     /// </summary>
-    private sealed class ForwardingLogger : ILogger, IExecutionTaskLoggerFactory, IExecutionTaskStateSink
+    private sealed class ForwardingLogger : ILogger, IExecutionTaskLoggerFactory, IExecutionTaskStateSink, IExecutionTaskScope
     {
         private readonly Func<ExecutionSession> _getSession;
         private readonly ILogger _fallbackLogger;
@@ -156,6 +156,11 @@ public sealed class ExecutionRuntimeService
 
             _fallbackLogger.Log(logLevel, eventId, state, exception, formatter);
         }
+
+        /// <summary>
+        /// Gets the current task scope carried by this logger so nested operations can inherit the same task identity.
+        /// </summary>
+        public ExecutionTaskId? CurrentTaskId => _taskId;
 
         /// <summary>
         /// Indicates that all log levels are enabled for the buffered execution stream.

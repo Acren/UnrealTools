@@ -1260,7 +1260,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 throw new Exception($"Engine {scheduledVersion.MajorMinorString} not found");
                             }
 
-                            global::LocalAutomation.Runtime.OperationResult result = await DeployForEngine(engine, context.CancellationToken);
+                            global::LocalAutomation.Runtime.OperationResult result = await DeployForEngine(engine, context.Logger, context.CancellationToken);
                             LocalAutomation.Core.ExecutionTaskStatus branchStatus = result.Outcome == global::LocalAutomation.Core.RunOutcome.Succeeded
                                 ? LocalAutomation.Core.ExecutionTaskStatus.Completed
                                 : result.Outcome == global::LocalAutomation.Core.RunOutcome.Cancelled
@@ -1332,10 +1332,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return plan.BuildPlan();
         }
 
-        private async Task<global::LocalAutomation.Runtime.OperationResult> DeployForEngine(Engine engine, CancellationToken token)
+        private async Task<global::LocalAutomation.Runtime.OperationResult> DeployForEngine(Engine engine, Microsoft.Extensions.Logging.ILogger logger, CancellationToken token)
         {
             DeployPluginForEngine deployForEngineOp = new() { Engine = engine };
-            return await deployForEngineOp.Execute(UnrealOperationParameters, Logger, token);
+            return await deployForEngineOp.Execute(UnrealOperationParameters, logger, token);
         }
 
         /// <summary>

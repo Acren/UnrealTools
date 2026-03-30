@@ -145,13 +145,15 @@ public abstract class Operation
 
             IExecutionTaskLoggerFactory? taskLoggerFactory = logger as IExecutionTaskLoggerFactory;
             IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
+            ExecutionTaskId? inheritedTaskId = TryGetInheritedTaskId(logger);
             ExecutionTaskId? defaultExecutionTaskId = UsesDefaultExecutionPlanRouting()
                 ? GetDefaultExecutionTaskId()
                 : null;
-            // Default single-task operations should route their ordinary Logger output through the one shared task node
-            // so task selection shows useful logs without requiring each operation to know about execution plans.
-            ILogger executionLogger = defaultExecutionTaskId != null && taskLoggerFactory != null
-                ? taskLoggerFactory.CreateTaskLogger(defaultExecutionTaskId.Value)
+            ExecutionTaskId? effectiveTaskId = inheritedTaskId ?? defaultExecutionTaskId;
+            // Preserve an inherited task scope for nested operations, and only fall back to the shared default
+            // single-task routing when the caller did not already execute inside a task-scoped logger.
+            ILogger executionLogger = effectiveTaskId != null && taskLoggerFactory != null
+                ? taskLoggerFactory.CreateTaskLogger(effectiveTaskId.Value)
                 : logger;
             EventStreamLogger eventLogger = new(taskLoggerFactory, taskStateSink);
             Logger = eventLogger;
@@ -172,9 +174,9 @@ public abstract class Operation
             string? requirementsError = CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
-                if (defaultExecutionTaskId != null)
+                if (effectiveTaskId != null)
                 {
-                    eventLogger.SetTaskStatus(defaultExecutionTaskId.Value, ExecutionTaskStatus.Disabled, requirementsError);
+                    eventLogger.SetTaskStatus(effectiveTaskId.Value, ExecutionTaskStatus.Disabled, requirementsError);
                 }
 
                 Logger.LogError(requirementsError);
@@ -182,9 +184,9 @@ public abstract class Operation
             }
 
             OperationParameters = operationParameters;
-            if (defaultExecutionTaskId != null)
+            if (effectiveTaskId != null)
             {
-                eventLogger.SetTaskStatus(defaultExecutionTaskId.Value, ExecutionTaskStatus.Running);
+                eventLogger.SetTaskStatus(effectiveTaskId.Value, ExecutionTaskStatus.Running);
             }
 
             Executing = true;
@@ -225,9 +227,9 @@ public abstract class Operation
                 }
             }
 
-            if (defaultExecutionTaskId != null)
+            if (effectiveTaskId != null)
             {
-                ApplyDefaultExecutionTaskOutcome(eventLogger, defaultExecutionTaskId.Value, result);
+                ApplyExecutionTaskOutcome(eventLogger, effectiveTaskId.Value, result);
             }
 
             return result;
@@ -235,11 +237,11 @@ public abstract class Operation
         catch (OperationCanceledException)
         {
             Executing = false;
-            if (UsesDefaultExecutionPlanRouting())
+            ExecutionTaskId? effectiveTaskId = TryGetInheritedTaskId(logger) ?? (UsesDefaultExecutionPlanRouting() ? GetDefaultExecutionTaskId() : null);
+            if (effectiveTaskId != null)
             {
                 IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
-                ExecutionTaskId defaultExecutionTaskId = GetDefaultExecutionTaskId();
-                taskStateSink?.SetTaskStatus(defaultExecutionTaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
+                taskStateSink?.SetTaskStatus(effectiveTaskId.Value, ExecutionTaskStatus.Cancelled, "Cancelled.");
             }
 
             throw;
@@ -247,11 +249,11 @@ public abstract class Operation
         catch (Exception e)
         {
             Executing = false;
-            if (UsesDefaultExecutionPlanRouting())
+            ExecutionTaskId? effectiveTaskId = TryGetInheritedTaskId(logger) ?? (UsesDefaultExecutionPlanRouting() ? GetDefaultExecutionTaskId() : null);
+            if (effectiveTaskId != null)
             {
                 IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
-                ExecutionTaskId defaultExecutionTaskId = GetDefaultExecutionTaskId();
-                taskStateSink?.SetTaskStatus(defaultExecutionTaskId, ExecutionTaskStatus.Failed, e.Message);
+                taskStateSink?.SetTaskStatus(effectiveTaskId.Value, ExecutionTaskStatus.Failed, e.Message);
             }
 
             throw new Exception($"Exception encountered running operation '{OperationName}'", e);
@@ -350,7 +352,7 @@ public abstract class Operation
     /// Publishes the terminal state for a shared single-task execution after the final operation result has been fully
     /// normalized by warning and error policy.
     /// </summary>
-    private static void ApplyDefaultExecutionTaskOutcome(EventStreamLogger logger, ExecutionTaskId taskId, OperationResult result)
+    private static void ApplyExecutionTaskOutcome(EventStreamLogger logger, ExecutionTaskId taskId, OperationResult result)
     {
         switch (result.Outcome)
         {
@@ -364,6 +366,15 @@ public abstract class Operation
                 logger.SetTaskStatus(taskId, ExecutionTaskStatus.Failed, "Operation failed.");
                 break;
         }
+    }
+
+    /// <summary>
+    /// Extracts the currently scoped task identifier from a logger created by the execution runtime so nested
+    /// operations inherit the caller's task stream instead of escaping back into the session-wide log.
+    /// </summary>
+    private static ExecutionTaskId? TryGetInheritedTaskId(ILogger logger)
+    {
+        return (logger as IExecutionTaskScope)?.CurrentTaskId;
     }
 
     /// <summary>
