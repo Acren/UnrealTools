@@ -11,5 +11,5 @@ public interface IExecutionTaskLoggerFactory
     /// <summary>
     /// Creates a logger that attributes all emitted output to the provided execution task identifier.
     /// </summary>
-    ILogger CreateTaskLogger(string taskId);
+    ILogger CreateTaskLogger(ExecutionTaskId taskId);
 }

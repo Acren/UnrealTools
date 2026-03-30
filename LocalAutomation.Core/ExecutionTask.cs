@@ -11,23 +11,21 @@ public sealed class ExecutionTask
     /// Creates an execution-plan task with the provided metadata.
     /// </summary>
     public ExecutionTask(
-        string id,
+        ExecutionTaskId id,
         string title,
         string? description = null,
         ExecutionTaskKind kind = ExecutionTaskKind.Task,
-        string? parentId = null,
+        ExecutionTaskId? parentId = null,
         ExecutionTaskStatus status = ExecutionTaskStatus.Planned,
         string? statusReason = null)
     {
-        Id = string.IsNullOrWhiteSpace(id)
-            ? throw new ArgumentException("Execution task id is required.", nameof(id))
-            : id;
+        Id = id;
         Title = string.IsNullOrWhiteSpace(title)
             ? throw new ArgumentException("Execution task title is required.", nameof(title))
             : title;
         Description = description ?? string.Empty;
         Kind = kind;
-        ParentId = string.IsNullOrWhiteSpace(parentId) ? null : parentId;
+        ParentId = parentId;
         Status = status;
         StatusReason = statusReason ?? string.Empty;
     }
@@ -35,7 +33,7 @@ public sealed class ExecutionTask
     /// <summary>
     /// Gets the stable task identifier used by preview and session views.
     /// </summary>
-    public string Id { get; }
+    public ExecutionTaskId Id { get; }
 
     /// <summary>
     /// Gets the short title rendered on the graph canvas.
@@ -50,7 +48,7 @@ public sealed class ExecutionTask
     /// <summary>
     /// Gets the parent grouping task identifier when this task participates in a visual hierarchy.
     /// </summary>
-    public string? ParentId { get; }
+    public ExecutionTaskId? ParentId { get; }
 
     /// <summary>
     /// Gets the task kind used for grouping and rendering semantics.

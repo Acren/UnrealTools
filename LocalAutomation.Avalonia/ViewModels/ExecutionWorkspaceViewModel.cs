@@ -233,13 +233,14 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         ExecutionGraphViewModel graph = new();
         graph.SetPlan(session.Plan);
-        foreach ((string taskId, ExecutionTaskStatus status) in session.TaskStatuses)
+        // Seed the graph from the session's typed runtime task-status map before subscribing to live updates.
+        foreach ((ExecutionTaskId taskId, ExecutionTaskStatus status) in session.TaskStatuses)
         {
             graph.UpdateTaskStatus(taskId, status, session.GetTaskStatusReason(taskId));
         }
 
         RuntimeWorkspaceTabViewModel runtimeTab = new(
-            id: session.Id,
+            id: session.Id.Value,
             title: session.OperationName,
             subtitle: session.TargetName,
             kind: RuntimeWorkspaceTabKind.ExecutionSession,
@@ -256,6 +257,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         AttachSessionLogs(runtimeTab, session);
+        // Mirror future typed task-state transitions into the tab graph on the UI thread.
         session.TaskStatusChanged += (taskId, status, statusReason) => Dispatcher.UIThread.Post(() =>
         {
             runtimeTab.Graph.UpdateTaskStatus(taskId, status, statusReason);
@@ -306,8 +308,8 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         if (SelectedRuntimeTab.Session != null)
         {
-            string? selectedTaskId = SelectedRuntimeTab.Graph.SelectedTaskId;
-            if (SelectedRuntimeTab.Graph.IsAllOutputSelected || string.IsNullOrWhiteSpace(selectedTaskId))
+            ExecutionTaskId? selectedTaskId = SelectedRuntimeTab.Graph.SelectedTaskId;
+            if (SelectedRuntimeTab.Graph.IsAllOutputSelected || selectedTaskId == null)
             {
                 SelectedRuntimeTab.Session.LogStream.Clear();
             }
@@ -438,7 +440,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private void AttachSessionLogs(RuntimeWorkspaceTabViewModel runtimeTab, ExecutionSession session)
     {
         AttachLogStream(runtimeTab, session.LogStream);
-        foreach (KeyValuePair<string, BufferedLogStream> entry in session.TaskLogStreams)
+        foreach (KeyValuePair<ExecutionTaskId, BufferedLogStream> entry in session.TaskLogStreams)
         {
             entry.Value.EntryAdded += _ => EnqueueRefreshForSelection(runtimeTab);
         }
@@ -494,7 +496,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             return;
         }
 
-        if (runtimeTab.Graph.IsAllOutputSelected || string.IsNullOrWhiteSpace(runtimeTab.Graph.SelectedTaskId))
+        if (runtimeTab.Graph.IsAllOutputSelected || runtimeTab.Graph.SelectedTaskId == null)
         {
             runtimeTab.SetSelectedLogEntries(runtimeTab.Session.LogStream.Entries.Select(CreateLogEntryViewModel));
             return;

@@ -51,7 +51,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 ? enabledVersions.ToList()
                 : new List<EngineVersion> { plugin.EngineInstance.Version };
             AutomationOptions automationOptions = typedParameters.GetOptions<AutomationOptions>();
-            global::LocalAutomation.Runtime.ExecutionPlanBuilder plan = new(OperationName, $"verify-deployment-{plugin.Name}".ToLowerInvariant());
+            global::LocalAutomation.Runtime.ExecutionPlanBuilder plan = new(OperationName, global::LocalAutomation.Core.ExecutionIdentifierFactory.CreatePlanId(nameof(VerifyDeployment), plugin.Name));
             global::LocalAutomation.Runtime.ExecutionGroupHandle root = plan.Group(OperationName, plugin.DisplayName);
 
             foreach (EngineVersion engineVersion in targetVersions)

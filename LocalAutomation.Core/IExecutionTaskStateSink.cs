@@ -9,5 +9,5 @@ public interface IExecutionTaskStateSink
     /// <summary>
     /// Updates the runtime status for the provided execution task.
     /// </summary>
-    void SetTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason = null);
+    void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null);
 }

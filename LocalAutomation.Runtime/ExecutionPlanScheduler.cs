@@ -38,11 +38,11 @@ public sealed class ExecutionPlanScheduler
     /// </summary>
     public async Task<OperationResult> ExecuteAsync(IEnumerable<ExecutionWorkItem> workItems, CancellationToken cancellationToken)
     {
-        Dictionary<string, ExecutionWorkItem> itemsById = Materialize(workItems);
-        Dictionary<string, ExecutionTaskStatus> statuses = new(StringComparer.Ordinal);
-        Dictionary<string, string?> statusReasons = new(StringComparer.Ordinal);
-        Dictionary<string, Task<OperationResult>> runningTasks = new(StringComparer.Ordinal);
-        Dictionary<Task<OperationResult>, string> taskOwners = new(TaskComparer.Instance);
+        Dictionary<ExecutionTaskId, ExecutionWorkItem> itemsById = Materialize(workItems);
+        Dictionary<ExecutionTaskId, ExecutionTaskStatus> statuses = new();
+        Dictionary<ExecutionTaskId, string?> statusReasons = new();
+        Dictionary<ExecutionTaskId, Task<OperationResult>> runningTasks = new();
+        Dictionary<Task<OperationResult>, ExecutionTaskId> taskOwners = new(TaskComparer.Instance);
         bool encounteredFailure = false;
         bool encounteredCancellation = false;
 
@@ -70,7 +70,7 @@ public sealed class ExecutionPlanScheduler
             bool startedAny = StartReadyItems(itemsById, statuses, statusReasons, runningTasks, taskOwners, cancellationToken);
             if (runningTasks.Count == 0)
             {
-                IReadOnlyList<string> incompleteTasks = statuses
+                IReadOnlyList<ExecutionTaskId> incompleteTasks = statuses
                     .Where(pair => pair.Value is not ExecutionTaskStatus.Completed and not ExecutionTaskStatus.Cancelled and not ExecutionTaskStatus.Skipped)
                     .Select(pair => pair.Key)
                     .ToList();
@@ -81,7 +81,7 @@ public sealed class ExecutionPlanScheduler
 
                 if (!startedAny)
                 {
-                    foreach (string taskId in incompleteTasks)
+                    foreach (ExecutionTaskId taskId in incompleteTasks)
                     {
                         if (statuses[taskId] is ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled)
                         {
@@ -102,7 +102,7 @@ public sealed class ExecutionPlanScheduler
             }
 
             Task<OperationResult> completedTask = await Task.WhenAny(runningTasks.Values).ConfigureAwait(false);
-            string completedTaskId = taskOwners[completedTask];
+            ExecutionTaskId completedTaskId = taskOwners[completedTask];
             runningTasks.Remove(completedTaskId);
             taskOwners.Remove(completedTask);
 
@@ -158,14 +158,14 @@ public sealed class ExecutionPlanScheduler
     /// <summary>
     /// Materializes and validates the declared work-item set before execution begins.
     /// </summary>
-    private static Dictionary<string, ExecutionWorkItem> Materialize(IEnumerable<ExecutionWorkItem> workItems)
+    private static Dictionary<ExecutionTaskId, ExecutionWorkItem> Materialize(IEnumerable<ExecutionWorkItem> workItems)
     {
         if (workItems == null)
         {
             throw new ArgumentNullException(nameof(workItems));
         }
 
-        Dictionary<string, ExecutionWorkItem> itemsById = new(StringComparer.Ordinal);
+        Dictionary<ExecutionTaskId, ExecutionWorkItem> itemsById = new();
         foreach (ExecutionWorkItem item in workItems)
         {
             if (!itemsById.TryAdd(item.TaskId, item))
@@ -176,7 +176,7 @@ public sealed class ExecutionPlanScheduler
 
         foreach (ExecutionWorkItem item in itemsById.Values)
         {
-            foreach (string dependencyId in item.DependsOn)
+            foreach (ExecutionTaskId dependencyId in item.DependsOn)
             {
                 if (!itemsById.ContainsKey(dependencyId))
                 {
@@ -192,15 +192,15 @@ public sealed class ExecutionPlanScheduler
     /// Starts any ready work items while scheduler capacity remains available.
     /// </summary>
     private bool StartReadyItems(
-        IReadOnlyDictionary<string, ExecutionWorkItem> itemsById,
-        IDictionary<string, ExecutionTaskStatus> statuses,
-        IDictionary<string, string?> statusReasons,
-        IDictionary<string, Task<OperationResult>> runningTasks,
-        IDictionary<Task<OperationResult>, string> taskOwners,
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
+        IDictionary<ExecutionTaskId, string?> statusReasons,
+        IDictionary<ExecutionTaskId, Task<OperationResult>> runningTasks,
+        IDictionary<Task<OperationResult>, ExecutionTaskId> taskOwners,
         CancellationToken cancellationToken)
     {
         bool startedAny = false;
-        foreach (ExecutionWorkItem item in itemsById.Values.Where(item => statuses[item.TaskId] == ExecutionTaskStatus.Ready).OrderBy(item => item.TaskId, StringComparer.Ordinal))
+        foreach (ExecutionWorkItem item in itemsById.Values.Where(item => statuses[item.TaskId] == ExecutionTaskStatus.Ready).OrderBy(item => item.TaskId.Value, StringComparer.Ordinal))
         {
             if (runningTasks.Count >= _maxParallelism)
             {
@@ -222,9 +222,9 @@ public sealed class ExecutionPlanScheduler
     /// Recomputes which pending items are now ready or still blocked after a task completes.
     /// </summary>
     private void UpdateReadiness(
-        IReadOnlyDictionary<string, ExecutionWorkItem> itemsById,
-        IDictionary<string, ExecutionTaskStatus> statuses,
-        IDictionary<string, string?> statusReasons)
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
+        IDictionary<ExecutionTaskId, string?> statusReasons)
     {
         foreach (ExecutionWorkItem item in itemsById.Values)
         {
@@ -251,12 +251,12 @@ public sealed class ExecutionPlanScheduler
     /// Marks the transitive dependents of a failed task as blocked so the graph surfaces why they cannot run.
     /// </summary>
     private void BlockDependentsOfFailure(
-        string failedTaskId,
-        IReadOnlyDictionary<string, ExecutionWorkItem> itemsById,
-        IDictionary<string, ExecutionTaskStatus> statuses,
-        IDictionary<string, string?> statusReasons)
+        ExecutionTaskId failedTaskId,
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
+        IDictionary<ExecutionTaskId, string?> statusReasons)
     {
-        foreach (ExecutionWorkItem dependent in itemsById.Values.Where(item => item.DependsOn.Contains(failedTaskId, StringComparer.Ordinal)))
+        foreach (ExecutionWorkItem dependent in itemsById.Values.Where(item => item.DependsOn.Contains(failedTaskId)))
         {
             if (statuses[dependent.TaskId] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed)
             {
@@ -272,9 +272,9 @@ public sealed class ExecutionPlanScheduler
     /// Marks every non-terminal task as cancelled once the scheduler receives a global cancellation request.
     /// </summary>
     private void CancelOutstandingTasks(
-        IReadOnlyDictionary<string, ExecutionWorkItem> itemsById,
-        IDictionary<string, ExecutionTaskStatus> statuses,
-        IDictionary<string, string?> statusReasons)
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
+        IDictionary<ExecutionTaskId, string?> statusReasons)
     {
         foreach (ExecutionWorkItem item in itemsById.Values)
         {
@@ -290,7 +290,7 @@ public sealed class ExecutionPlanScheduler
     /// <summary>
     /// Creates the logger that should receive output for one executing task.
     /// </summary>
-    private ILogger CreateTaskLogger(string taskId)
+    private ILogger CreateTaskLogger(ExecutionTaskId taskId)
     {
         if (_logger is IExecutionTaskLoggerFactory loggerFactory)
         {
@@ -304,9 +304,9 @@ public sealed class ExecutionPlanScheduler
     /// Records a task-status transition in the in-memory status map and forwards it to the active session sink.
     /// </summary>
     private void SetStatus(
-        IDictionary<string, ExecutionTaskStatus> statuses,
-        IDictionary<string, string?> statusReasons,
-        string taskId,
+        IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
+        IDictionary<ExecutionTaskId, string?> statusReasons,
+        ExecutionTaskId taskId,
         ExecutionTaskStatus status,
         string? reason = null)
     {

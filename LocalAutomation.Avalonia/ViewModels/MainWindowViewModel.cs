@@ -313,9 +313,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        ExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _parameterSession.RawValue);
-        ExecutionWorkspace.AttachExecutionSession(session);
-        _services.Execution.AddSession(session);
+        // Attach the execution workspace and shared session registry before the runner starts so early task-state
+        // transitions, especially the initial Running state, are not missed by the UI.
+        ExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _parameterSession.RawValue, session =>
+        {
+            ExecutionWorkspace.AttachExecutionSession(session);
+            _services.Execution.AddSession(session);
+        });
         SetStatus($"Started {session.OperationName} for {session.TargetName}.");
     }
 

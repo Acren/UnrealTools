@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -10,6 +11,8 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using LocalAutomation.Avalonia.ViewModels;
+using Shape = Avalonia.Controls.Shapes.Shape;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 
 namespace LocalAutomation.Avalonia.Controls;
 
@@ -250,14 +253,17 @@ public partial class ExecutionGraphCanvas : UserControl
 
         foreach (ExecutionEdgeViewModel edge in _observedGraph.Edges)
         {
-            global::Avalonia.Controls.Shapes.Path path = new()
+            ShapePath path = new()
             {
-                Data = edge.PathData,
-                Stroke = new SolidColorBrush(Color.Parse(edge.Stroke)),
                 StrokeThickness = 2,
                 Opacity = 0.72,
-                IsHitTestVisible = false
+                IsHitTestVisible = false,
+                DataContext = edge
             };
+
+            // Bind edge geometry and tint so session-driven status changes repaint without rebuilding the whole canvas.
+            BindToDataContext(path, ShapePath.DataProperty, nameof(ExecutionEdgeViewModel.PathData));
+            BindToDataContext(path, Shape.StrokeProperty, nameof(ExecutionEdgeViewModel.StrokeBrush));
             _graphCanvas.Children.Add(path);
         }
 
@@ -285,18 +291,16 @@ public partial class ExecutionGraphCanvas : UserControl
             Width = group.Width,
             Height = group.Height,
             CornerRadius = new CornerRadius(12),
-            BorderThickness = new Thickness(group.IsSelected ? 2.0 : 1.5),
-            BorderBrush = new SolidColorBrush(Color.Parse(group.StatusBrush)),
-            Background = new SolidColorBrush(Color.Parse(group.IsSelected ? "#17212C" : "#121922")),
             Opacity = 0.94,
-            DataContext = group
+            DataContext = group,
+            Classes = { "execution-node-card", "group" }
         };
-        container.Classes.Add("execution-node-card");
-        container.Classes.Add("group");
-        if (group.IsSelected)
-        {
-            container.Classes.Add("selected");
-        }
+
+        // Bind the group shell visuals so live rollup-status and selection changes repaint in place.
+        BindToDataContext(container, Border.BorderBrushProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
+        BindToDataContext(container, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.ContainerBackgroundBrush));
+        BindToDataContext(container, Border.BorderThicknessProperty, nameof(ExecutionNodeViewModel.ContainerBorderThickness));
+        BindToDataContext(container, Border.BoxShadowProperty, nameof(ExecutionNodeViewModel.CardShadow));
 
         Canvas.SetLeft(container, group.X);
         Canvas.SetTop(container, group.Y);
@@ -313,11 +317,13 @@ public partial class ExecutionGraphCanvas : UserControl
             Width = group.Width,
             Height = ExecutionGraphViewModel.GroupHeaderHeight,
             CornerRadius = new CornerRadius(12, 12, 0, 0),
-            Background = new SolidColorBrush(Color.Parse(group.IsSelected ? "#1A2633" : "#16202B")),
-            BorderBrush = new SolidColorBrush(Color.Parse(group.StatusBrush)),
             BorderThickness = new Thickness(0, 0, 0, 1),
             DataContext = group
         };
+
+        // Bind the group header treatment so the header stays visually synchronized with group selection and rollups.
+        BindToDataContext(header, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.GroupHeaderBackgroundBrush));
+        BindToDataContext(header, Border.BorderBrushProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
 
         Canvas.SetLeft(header, group.X);
         Canvas.SetTop(header, group.Y);
@@ -347,16 +353,15 @@ public partial class ExecutionGraphCanvas : UserControl
             Width = node.Width,
             Height = node.Height,
             CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1.5),
-            BorderBrush = new SolidColorBrush(Color.Parse(node.StatusBrush)),
-            Background = new SolidColorBrush(Color.Parse("#181E27")),
-            DataContext = node
+            DataContext = node,
+            Classes = { "execution-node-card" }
         };
-        card.Classes.Add("execution-node-card");
-        if (node.IsSelected)
-        {
-            card.Classes.Add("selected");
-        }
+
+        // Bind task-card visuals so status and selection changes repaint without recreating the node controls.
+        BindToDataContext(card, Border.BorderThicknessProperty, nameof(ExecutionNodeViewModel.CardBorderThickness));
+        BindToDataContext(card, Border.BorderBrushProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
+        BindToDataContext(card, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.CardBackgroundBrush));
+        BindToDataContext(card, Border.BoxShadowProperty, nameof(ExecutionNodeViewModel.CardShadow));
 
         Canvas.SetLeft(card, node.X);
         Canvas.SetTop(card, node.Y);
@@ -391,34 +396,43 @@ public partial class ExecutionGraphCanvas : UserControl
         {
             Spacing = 2
         };
-        textColumn.Children.Add(new TextBlock
+        TextBlock title = new()
         {
-            Text = group.Title,
             FontWeight = FontWeight.SemiBold,
             TextWrapping = TextWrapping.Wrap
-        });
-        textColumn.Children.Add(new TextBlock
+        };
+        BindToDataContext(title, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Title));
+        textColumn.Children.Add(title);
+
+        TextBlock summary = new()
         {
-            Text = group.SummaryText,
             TextWrapping = TextWrapping.Wrap
-        });
+        };
+        BindToDataContext(summary, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.SummaryText));
+        textColumn.Children.Add(summary);
         textColumn.Classes.Add("muted");
         root.Children.Add(textColumn);
 
         Border statusPill = new()
         {
-            Background = new SolidColorBrush(Color.Parse(group.StatusBrush)),
             CornerRadius = new CornerRadius(999),
             Padding = new Thickness(6, 2),
             VerticalAlignment = VerticalAlignment.Top,
             Child = new TextBlock
             {
-                Text = group.StatusText,
                 FontSize = 10,
                 FontWeight = FontWeight.Bold,
                 Foreground = new SolidColorBrush(Color.Parse("#0F1115"))
             }
         };
+
+        // Bind both the pill background and its label so group rollups update live while execution progresses.
+        BindToDataContext(statusPill, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
+        if (statusPill.Child is TextBlock statusText)
+        {
+            BindToDataContext(statusText, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.StatusText));
+        }
+
         Grid.SetColumn(statusPill, 1);
         root.Children.Add(statusPill);
         return root;
@@ -439,46 +453,53 @@ public partial class ExecutionGraphCanvas : UserControl
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto")
         };
-        titleRow.Children.Add(new TextBlock
+        TextBlock title = new()
         {
-            Text = node.Title,
             FontWeight = FontWeight.SemiBold,
             TextWrapping = TextWrapping.Wrap
-        });
+        };
+        BindToDataContext(title, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Title));
+        titleRow.Children.Add(title);
 
         Border statusPill = new()
         {
-            Background = new SolidColorBrush(Color.Parse(node.StatusBrush)),
             CornerRadius = new CornerRadius(999),
             Padding = new Thickness(6, 2),
             Child = new TextBlock
             {
-                Text = node.StatusText,
                 FontSize = 10,
                 FontWeight = FontWeight.Bold,
                 Foreground = new SolidColorBrush(Color.Parse("#0F1115"))
             }
         };
+
+        // Bind the task status pill so task-level state changes repaint immediately.
+        BindToDataContext(statusPill, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
+        if (statusPill.Child is TextBlock statusText)
+        {
+            BindToDataContext(statusText, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.StatusText));
+        }
+
         Grid.SetColumn(statusPill, 1);
         titleRow.Children.Add(statusPill);
         root.Children.Add(titleRow);
 
         TextBlock description = new()
         {
-            Text = node.Description,
             TextWrapping = TextWrapping.Wrap,
             MaxHeight = 34,
             Margin = new Thickness(0, 8, 0, 0)
         };
+        BindToDataContext(description, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Description));
         description.Classes.Add("muted");
         Grid.SetRow(description, 1);
         root.Children.Add(description);
 
         TextBlock id = new()
         {
-            Text = node.Id,
             Margin = new Thickness(0, 8, 0, 0)
         };
+        BindToDataContext(id, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Id));
         id.Classes.Add("detail-label");
         id.Classes.Add("mono");
         Grid.SetRow(id, 2);
@@ -614,5 +635,14 @@ public partial class ExecutionGraphCanvas : UserControl
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Binds one generated control property to its current data context so the direct-code canvas stays live without a
+    /// full control rebuild for simple visual updates.
+    /// </summary>
+    private static void BindToDataContext(AvaloniaObject target, AvaloniaProperty property, string propertyName)
+    {
+        target.Bind(property, new Binding(propertyName));
     }
 }

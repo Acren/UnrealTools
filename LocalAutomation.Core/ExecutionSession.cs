@@ -12,16 +12,16 @@ namespace LocalAutomation.Core;
 public sealed class ExecutionSession
 {
     private readonly Func<Task>? _cancelAsync;
-    private readonly Dictionary<string, BufferedLogStream> _taskLogStreams = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, ExecutionTaskStatus> _taskStatuses = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _taskStatusReasons = new(StringComparer.Ordinal);
+    private readonly Dictionary<ExecutionTaskId, BufferedLogStream> _taskLogStreams = new();
+    private readonly Dictionary<ExecutionTaskId, ExecutionTaskStatus> _taskStatuses = new();
+    private readonly Dictionary<ExecutionTaskId, string> _taskStatusReasons = new();
 
     /// <summary>
     /// Creates an execution session around a shared log stream and optional cancellation action.
     /// </summary>
     public ExecutionSession(ILogStream logStream, Func<Task>? cancelAsync = null, ExecutionPlan? plan = null)
     {
-        Id = Guid.NewGuid().ToString("N");
+        Id = ExecutionSessionId.New();
         LogStream = logStream ?? throw new ArgumentNullException(nameof(logStream));
         StartedAt = DateTimeOffset.Now;
         _cancelAsync = cancelAsync;
@@ -43,12 +43,12 @@ public sealed class ExecutionSession
     /// <summary>
     /// Raised whenever a task status changes during execution.
     /// </summary>
-    public event Action<string, ExecutionTaskStatus, string?>? TaskStatusChanged;
+    public event Action<ExecutionTaskId, ExecutionTaskStatus, string?>? TaskStatusChanged;
 
     /// <summary>
     /// Gets the stable identifier for the execution session.
     /// </summary>
-    public string Id { get; }
+    public ExecutionSessionId Id { get; }
 
     /// <summary>
     /// Gets the immutable plan snapshot associated with this execution when one exists.
@@ -63,12 +63,12 @@ public sealed class ExecutionSession
     /// <summary>
     /// Gets the known task-specific log streams for the execution.
     /// </summary>
-    public IReadOnlyDictionary<string, BufferedLogStream> TaskLogStreams => new ReadOnlyDictionary<string, BufferedLogStream>(_taskLogStreams);
+    public IReadOnlyDictionary<ExecutionTaskId, BufferedLogStream> TaskLogStreams => new ReadOnlyDictionary<ExecutionTaskId, BufferedLogStream>(_taskLogStreams);
 
     /// <summary>
     /// Gets the current runtime task-status map for the session.
     /// </summary>
-    public IReadOnlyDictionary<string, ExecutionTaskStatus> TaskStatuses => new ReadOnlyDictionary<string, ExecutionTaskStatus>(_taskStatuses);
+    public IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskStatus> TaskStatuses => new ReadOnlyDictionary<ExecutionTaskId, ExecutionTaskStatus>(_taskStatuses);
 
     /// <summary>
     /// Gets the local time when the execution session was created.
@@ -122,25 +122,20 @@ public sealed class ExecutionSession
         }
 
         LogStream.Add(entry);
-        if (string.IsNullOrWhiteSpace(entry.TaskId))
+        if (entry.TaskId == null)
         {
             return;
         }
 
-        EnsureTaskLogStream(entry.TaskId).Add(entry);
+        EnsureTaskLogStream(entry.TaskId.Value).Add(entry);
     }
 
     /// <summary>
     /// Returns the buffered log stream for the provided task identifier, creating one when the session sees a task for
     /// the first time during runtime.
     /// </summary>
-    public BufferedLogStream EnsureTaskLogStream(string taskId)
+    public BufferedLogStream EnsureTaskLogStream(ExecutionTaskId taskId)
     {
-        if (string.IsNullOrWhiteSpace(taskId))
-        {
-            throw new ArgumentException("Execution task id is required.", nameof(taskId));
-        }
-
         if (_taskLogStreams.TryGetValue(taskId, out BufferedLogStream? existingStream))
         {
             return existingStream;
@@ -154,26 +149,21 @@ public sealed class ExecutionSession
     /// <summary>
     /// Returns the task-specific log stream for the provided identifier when one exists.
     /// </summary>
-    public BufferedLogStream? GetTaskLogStream(string? taskId)
+    public BufferedLogStream? GetTaskLogStream(ExecutionTaskId? taskId)
     {
-        if (string.IsNullOrWhiteSpace(taskId))
+        if (taskId == null)
         {
             return null;
         }
 
-        return _taskLogStreams.TryGetValue(taskId, out BufferedLogStream? logStream) ? logStream : null;
+        return _taskLogStreams.TryGetValue(taskId.Value, out BufferedLogStream? logStream) ? logStream : null;
     }
 
     /// <summary>
     /// Updates one task's runtime status and raises a change event for graph-bound UI consumers.
     /// </summary>
-    public void SetTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason = null)
+    public void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null)
     {
-        if (string.IsNullOrWhiteSpace(taskId))
-        {
-            throw new ArgumentException("Execution task id is required.", nameof(taskId));
-        }
-
         _taskStatuses[taskId] = status;
         _taskStatusReasons[taskId] = statusReason ?? string.Empty;
         TaskStatusChanged?.Invoke(taskId, status, statusReason);
@@ -182,27 +172,27 @@ public sealed class ExecutionSession
     /// <summary>
     /// Returns the current runtime status for the provided task when one exists.
     /// </summary>
-    public ExecutionTaskStatus? GetTaskStatus(string? taskId)
+    public ExecutionTaskStatus? GetTaskStatus(ExecutionTaskId? taskId)
     {
-        if (string.IsNullOrWhiteSpace(taskId))
+        if (taskId == null)
         {
             return null;
         }
 
-        return _taskStatuses.TryGetValue(taskId, out ExecutionTaskStatus status) ? status : null;
+        return _taskStatuses.TryGetValue(taskId.Value, out ExecutionTaskStatus status) ? status : null;
     }
 
     /// <summary>
     /// Returns the current runtime status reason for the provided task when one exists.
     /// </summary>
-    public string? GetTaskStatusReason(string? taskId)
+    public string? GetTaskStatusReason(ExecutionTaskId? taskId)
     {
-        if (string.IsNullOrWhiteSpace(taskId))
+        if (taskId == null)
         {
             return null;
         }
 
-        return _taskStatusReasons.TryGetValue(taskId, out string? statusReason) ? statusReason : null;
+        return _taskStatusReasons.TryGetValue(taskId.Value, out string? statusReason) ? statusReason : null;
     }
 
     /// <summary>

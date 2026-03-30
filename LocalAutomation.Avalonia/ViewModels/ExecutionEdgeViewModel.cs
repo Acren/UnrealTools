@@ -61,6 +61,11 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
     public string Stroke => Target.StatusBrush;
 
     /// <summary>
+    /// Gets the live stroke brush used by the generated canvas path binding.
+    /// </summary>
+    public IBrush StrokeBrush => new SolidColorBrush(Color.Parse(Stroke));
+
+    /// <summary>
     /// Raises the derived edge properties when either endpoint moves, resizes, or changes status.
     /// </summary>
     private void HandleEndpointPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -74,6 +79,7 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
         {
             RaisePropertyChanged(nameof(PathData));
             RaisePropertyChanged(nameof(Stroke));
+            RaisePropertyChanged(nameof(StrokeBrush));
         }
     }
 }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 
@@ -13,20 +12,21 @@ namespace LocalAutomation.Runtime;
 /// </summary>
 public sealed class ExecutionPlanBuilder
 {
-    private readonly string _planId;
+    private readonly ExecutionPlanId _planId;
     private readonly string _title;
     private readonly List<PlanItemDefinition> _items = new();
-    private int _nextSequence;
+    // The builder increments this monotonically so auto-generated ids stay deterministic within one plan build.
+    private int _nextSequence = 0;
 
     /// <summary>
     /// Creates a builder for one composite execution plan.
     /// </summary>
-    public ExecutionPlanBuilder(string title, string? planId = null)
+    public ExecutionPlanBuilder(string title, ExecutionPlanId? planId = null)
     {
         _title = string.IsNullOrWhiteSpace(title)
             ? throw new ArgumentException("Execution plan title is required.", nameof(title))
             : title;
-        _planId = string.IsNullOrWhiteSpace(planId) ? Slugify(title) : planId;
+        _planId = planId ?? ExecutionIdentifierFactory.CreatePlanId(title);
     }
 
     /// <summary>
@@ -34,7 +34,18 @@ public sealed class ExecutionPlanBuilder
     /// </summary>
     public ExecutionGroupHandle Group(string title, string? description = null, ExecutionGroupHandle parent = default)
     {
-        PlanItemDefinition definition = CreateItem(title, description, ExecutionTaskKind.Group, parent.IsValid ? parent.Id : null);
+        PlanItemDefinition definition = CreateItem(GenerateTaskId(ExecutionTaskKind.Group, title), title, description, ExecutionTaskKind.Group, parent.IsValid ? parent.Id : null);
+        _items.Add(definition);
+        return new ExecutionGroupHandle(definition.Id);
+    }
+
+    /// <summary>
+    /// Declares a visual grouping with an explicit stable identifier so independently authored plans can share the same
+    /// runtime task identities.
+    /// </summary>
+    public ExecutionGroupHandle Group(ExecutionTaskId id, string title, string? description = null, ExecutionGroupHandle parent = default)
+    {
+        PlanItemDefinition definition = CreateItem(id, title, description, ExecutionTaskKind.Group, parent.IsValid ? parent.Id : null);
         _items.Add(definition);
         return new ExecutionGroupHandle(definition.Id);
     }
@@ -44,7 +55,18 @@ public sealed class ExecutionPlanBuilder
     /// </summary>
     public ExecutionStepBuilder Step(string title, string? description = null, ExecutionGroupHandle parent = default)
     {
-        PlanItemDefinition definition = CreateItem(title, description, ExecutionTaskKind.Step, parent.IsValid ? parent.Id : null);
+        PlanItemDefinition definition = CreateItem(GenerateTaskId(ExecutionTaskKind.Step, title), title, description, ExecutionTaskKind.Step, parent.IsValid ? parent.Id : null);
+        _items.Add(definition);
+        return new ExecutionStepBuilder(this, definition);
+    }
+
+    /// <summary>
+    /// Starts a new step declaration with an explicit stable identifier so preview and runtime authoring can target the
+    /// same task identity without hand-built string ids.
+    /// </summary>
+    public ExecutionStepBuilder Step(ExecutionTaskId id, string title, string? description = null, ExecutionGroupHandle parent = default)
+    {
+        PlanItemDefinition definition = CreateItem(id, title, description, ExecutionTaskKind.Step, parent.IsValid ? parent.Id : null);
         _items.Add(definition);
         return new ExecutionStepBuilder(this, definition);
     }
@@ -105,7 +127,7 @@ public sealed class ExecutionPlanBuilder
             throw new ArgumentException("Execution step dependency handle is not valid.", nameof(dependency));
         }
 
-        if (!definition.DependencyIds.Contains(dependency.Id, StringComparer.Ordinal))
+        if (!definition.DependencyIds.Contains(dependency.Id))
         {
             definition.DependencyIds.Add(dependency.Id);
         }
@@ -122,7 +144,7 @@ public sealed class ExecutionPlanBuilder
         definition.Description = description ?? string.Empty;
     }
 
-    internal string GetStepId(ExecutionStepHandle handle)
+    internal ExecutionTaskId GetStepId(ExecutionStepHandle handle)
     {
         if (!handle.IsValid)
         {
@@ -143,9 +165,8 @@ public sealed class ExecutionPlanBuilder
         return new ExecutionStepHandle(definition.Id);
     }
 
-    private PlanItemDefinition CreateItem(string title, string? description, ExecutionTaskKind kind, string? parentId)
+    private PlanItemDefinition CreateItem(ExecutionTaskId id, string title, string? description, ExecutionTaskKind kind, ExecutionTaskId? parentId)
     {
-        string id = $"{(kind == ExecutionTaskKind.Group ? "group" : "step")}-{++_nextSequence:D3}-{Slugify(title)}";
         return new PlanItemDefinition
         {
             Id = id,
@@ -158,27 +179,16 @@ public sealed class ExecutionPlanBuilder
         };
     }
 
-    private static string Slugify(string value)
+    /// <summary>
+    /// Generates a deterministic task identifier for builder-authored nodes when callers do not provide an explicit one.
+    /// </summary>
+    private ExecutionTaskId GenerateTaskId(ExecutionTaskKind kind, string title)
     {
-        StringBuilder builder = new();
-        foreach (char character in value)
-        {
-            if (char.IsLetterOrDigit(character))
-            {
-                builder.Append(char.ToLowerInvariant(character));
-            }
-            else if (builder.Length == 0 || builder[builder.Length - 1] != '-')
-            {
-                builder.Append('-');
-            }
-        }
-
-        return builder.ToString().Trim('-');
+        return ExecutionIdentifierFactory.CreateTaskId(_planId, kind.ToString(), _nextSequence.ToString("D3"), title);
     }
-
     internal sealed class PlanItemDefinition
     {
-        public string Id { get; set; } = string.Empty;
+        public ExecutionTaskId Id { get; set; }
 
         public string Title { get; set; } = string.Empty;
 
@@ -186,9 +196,9 @@ public sealed class ExecutionPlanBuilder
 
         public ExecutionTaskKind Kind { get; set; }
 
-        public string? ParentId { get; set; }
+        public ExecutionTaskId? ParentId { get; set; }
 
-        public List<string> DependencyIds { get; } = new();
+        public List<ExecutionTaskId> DependencyIds { get; } = new();
 
         public bool Enabled { get; set; }
 

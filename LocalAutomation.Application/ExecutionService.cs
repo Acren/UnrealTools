@@ -41,9 +41,9 @@ public sealed class ExecutionService
     /// <summary>
     /// Removes the execution session with the provided identifier.
     /// </summary>
-    public void RemoveSession(string sessionId)
+    public void RemoveSession(ExecutionSessionId sessionId)
     {
-        ExecutionSession? existingSession = _sessions.FirstOrDefault(session => string.Equals(session.Id, sessionId, StringComparison.Ordinal));
+        ExecutionSession? existingSession = _sessions.FirstOrDefault(session => session.Id == sessionId);
         if (existingSession == null)
         {
             return;
@@ -56,9 +56,9 @@ public sealed class ExecutionService
     /// <summary>
     /// Cancels the execution with the provided identifier when it is active.
     /// </summary>
-    public Task CancelAsync(string sessionId)
+    public Task CancelAsync(ExecutionSessionId sessionId)
     {
-        ExecutionSession? session = _sessions.FirstOrDefault(item => string.Equals(item.Id, sessionId, StringComparison.Ordinal));
+        ExecutionSession? session = _sessions.FirstOrDefault(item => item.Id == sessionId);
         return session != null ? session.CancelAsync() : Task.CompletedTask;
     }
 }

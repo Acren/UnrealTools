@@ -20,9 +20,10 @@ public sealed class ExecutionRuntimeService
     }
 
     /// <summary>
-     /// Starts a shared execution session for the provided runtime operation.
+     /// Starts a shared execution session for the provided runtime operation. Callers can supply a session-created hook
+     /// so UI or host services attach listeners before execution begins and early task-state transitions are not lost.
      /// </summary>
-    public LocalAutomation.Core.ExecutionSession StartExecution(Operation operation, OperationParameters parameters)
+    public LocalAutomation.Core.ExecutionSession StartExecution(Operation operation, OperationParameters parameters, Action<ExecutionSession>? onSessionCreated = null)
     {
         if (operation == null)
         {
@@ -50,6 +51,18 @@ public sealed class ExecutionRuntimeService
             OperationName = operation.OperationName,
             TargetName = parameters.Target?.DisplayName ?? string.Empty
         };
+
+        // Let UI consumers subscribe to task-status and task-log streams before the runner starts so the first Running
+        // transition for long-lived tasks is visible on the graph instead of being lost during startup.
+        try
+        {
+            onSessionCreated?.Invoke(session);
+        }
+        catch
+        {
+            ApplicationLogger.Logger = previousLogger;
+            throw;
+        }
 
         _ = RunAsync(runner, session, previousLogger);
         return session;
@@ -109,12 +122,12 @@ public sealed class ExecutionRuntimeService
     {
         private readonly Func<ExecutionSession> _getSession;
         private readonly ILogger _fallbackLogger;
-        private readonly string? _taskId;
+        private readonly ExecutionTaskId? _taskId;
 
         /// <summary>
         /// Creates a forwarding logger around the provided buffered log stream.
         /// </summary>
-        public ForwardingLogger(Func<ExecutionSession> getSession, ILogger fallbackLogger, string? taskId = null)
+        public ForwardingLogger(Func<ExecutionSession> getSession, ILogger fallbackLogger, ExecutionTaskId? taskId = null)
         {
             _getSession = getSession;
             _fallbackLogger = fallbackLogger;
@@ -163,7 +176,7 @@ public sealed class ExecutionRuntimeService
         /// <summary>
         /// Creates a child logger that attributes all output to the provided execution task.
         /// </summary>
-        public ILogger CreateTaskLogger(string taskId)
+        public ILogger CreateTaskLogger(ExecutionTaskId taskId)
         {
             return new ForwardingLogger(_getSession, _fallbackLogger, taskId);
         }
@@ -172,7 +185,7 @@ public sealed class ExecutionRuntimeService
         /// Forwards explicit task-state transitions into the current execution session so graph views can react without
         /// parsing human-readable log lines.
         /// </summary>
-        public void SetTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason = null)
+        public void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null)
         {
             _getSession().SetTaskStatus(taskId, status, statusReason);
         }

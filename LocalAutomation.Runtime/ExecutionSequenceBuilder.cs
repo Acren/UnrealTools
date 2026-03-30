@@ -1,3 +1,5 @@
+using LocalAutomation.Core;
+
 namespace LocalAutomation.Runtime;
 
 /// <summary>
@@ -27,6 +29,22 @@ public sealed class ExecutionSequenceBuilder
     public ExecutionSequentialStepBuilder Step(string title, string? description = null)
     {
         ExecutionStepBuilder step = _owner.Step(title, description, _parent);
+        if (_lastStep.IsValid)
+        {
+            step.After(_lastStep);
+        }
+
+        _lastStep = step.Handle;
+
+        return new ExecutionSequentialStepBuilder(this, step);
+    }
+
+    /// <summary>
+    /// Starts a new step in the sequence with an explicit stable identifier.
+    /// </summary>
+    public ExecutionSequentialStepBuilder Step(ExecutionTaskId id, string title, string? description = null)
+    {
+        ExecutionStepBuilder step = _owner.Step(id, title, description, _parent);
         if (_lastStep.IsValid)
         {
             step.After(_lastStep);

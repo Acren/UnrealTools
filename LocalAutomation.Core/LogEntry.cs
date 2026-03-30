@@ -16,12 +16,12 @@ public sealed class LogEntry
     /// <summary>
     /// Gets or sets the execution-session identifier associated with the log line when one exists.
     /// </summary>
-    public string? SessionId { get; set; }
+    public ExecutionSessionId? SessionId { get; set; }
 
     /// <summary>
     /// Gets or sets the execution-task identifier associated with the log line when one exists.
     /// </summary>
-    public string? TaskId { get; set; }
+    public ExecutionTaskId? TaskId { get; set; }
 
     /// <summary>
     /// Gets or sets the formatted log message.

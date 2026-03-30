@@ -70,7 +70,7 @@ public class EventStreamLogger : ILogger, IExecutionTaskLoggerFactory, IExecutio
     /// <summary>
     /// Creates a logger for one execution-plan task when an outer execution-aware logger is available.
     /// </summary>
-    public ILogger CreateTaskLogger(string taskId)
+    public ILogger CreateTaskLogger(ExecutionTaskId taskId)
     {
         return _taskLoggerFactory?.CreateTaskLogger(taskId) ?? this;
     }
@@ -78,7 +78,7 @@ public class EventStreamLogger : ILogger, IExecutionTaskLoggerFactory, IExecutio
     /// <summary>
     /// Forwards task-state transitions to the outer execution-aware logger when available.
     /// </summary>
-    public void SetTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason = null)
+    public void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null)
     {
         _taskStateSink?.SetTaskStatus(taskId, status, statusReason);
     }

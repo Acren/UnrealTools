@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
 
 namespace LocalAutomation.Runtime;
@@ -12,11 +13,9 @@ public sealed class ExecutionTaskContext
     /// <summary>
     /// Creates one execution context for a scheduled task invocation.
     /// </summary>
-    public ExecutionTaskContext(string taskId, string title, ILogger logger, CancellationToken cancellationToken)
+    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken)
     {
-        TaskId = string.IsNullOrWhiteSpace(taskId)
-            ? throw new ArgumentException("Execution task id is required.", nameof(taskId))
-            : taskId;
+        TaskId = taskId;
         Title = string.IsNullOrWhiteSpace(title)
             ? throw new ArgumentException("Execution step title is required.", nameof(title))
             : title;
@@ -27,7 +26,7 @@ public sealed class ExecutionTaskContext
     /// <summary>
     /// Gets the internal runtime identifier for the executing task.
     /// </summary>
-    public string TaskId { get; }
+    public ExecutionTaskId TaskId { get; }
 
     /// <summary>
     /// Gets the display title for the executing task.

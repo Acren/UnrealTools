@@ -1,3 +1,5 @@
+using LocalAutomation.Core;
+
 namespace LocalAutomation.Runtime;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace LocalAutomation.Runtime;
 /// </summary>
 public readonly struct ExecutionStepHandle
 {
-    internal ExecutionStepHandle(string id)
+    internal ExecutionStepHandle(ExecutionTaskId id)
     {
         Id = id;
     }
@@ -13,7 +15,7 @@ public readonly struct ExecutionStepHandle
     /// <summary>
     /// Gets whether the handle points at a declared step.
     /// </summary>
-    public bool IsValid => !string.IsNullOrWhiteSpace(Id);
+    public bool IsValid => !string.IsNullOrWhiteSpace(Id.Value);
 
-    internal string Id { get; }
+    internal ExecutionTaskId Id { get; }
 }

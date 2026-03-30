@@ -14,13 +14,8 @@ public sealed class ExecutionPlan
     /// <summary>
     /// Creates an execution plan from the provided metadata, tasks, and dependencies.
     /// </summary>
-    public ExecutionPlan(string id, string title, IEnumerable<ExecutionTask> tasks, IEnumerable<ExecutionDependency>? dependencies = null)
+    public ExecutionPlan(ExecutionPlanId id, string title, IEnumerable<ExecutionTask> tasks, IEnumerable<ExecutionDependency>? dependencies = null)
     {
-        if (string.IsNullOrWhiteSpace(id))
-        {
-            throw new ArgumentException("Execution plan id is required.", nameof(id));
-        }
-
         if (string.IsNullOrWhiteSpace(title))
         {
             throw new ArgumentException("Execution plan title is required.", nameof(title));
@@ -38,7 +33,7 @@ public sealed class ExecutionPlan
     /// <summary>
     /// Gets the stable identifier for the plan.
     /// </summary>
-    public string Id { get; }
+    public ExecutionPlanId Id { get; }
 
     /// <summary>
     /// Gets the display title for the plan.
@@ -58,23 +53,23 @@ public sealed class ExecutionPlan
     /// <summary>
     /// Returns the task with the provided identifier when it exists.
     /// </summary>
-    public ExecutionTask? GetTask(string? taskId)
+    public ExecutionTask? GetTask(ExecutionTaskId? taskId)
     {
-        if (string.IsNullOrWhiteSpace(taskId))
+        if (taskId == null)
         {
             return null;
         }
 
-        return Tasks.FirstOrDefault(task => string.Equals(task.Id, taskId, StringComparison.Ordinal));
+        return Tasks.FirstOrDefault(task => task.Id == taskId.Value);
     }
 
     /// <summary>
     /// Returns the task identifiers that must complete before the provided task can run.
     /// </summary>
-    public IReadOnlyList<string> GetTaskDependencies(string taskId)
+    public IReadOnlyList<ExecutionTaskId> GetTaskDependencies(ExecutionTaskId taskId)
     {
         return Dependencies
-            .Where(dependency => string.Equals(dependency.TargetTaskId, taskId, StringComparison.Ordinal))
+            .Where(dependency => dependency.TargetTaskId == taskId)
             .Select(dependency => dependency.SourceTaskId)
             .ToList();
     }
@@ -82,10 +77,10 @@ public sealed class ExecutionPlan
     /// <summary>
     /// Returns the task identifiers that directly depend on the provided task.
     /// </summary>
-    public IReadOnlyList<string> GetDependentTasks(string taskId)
+    public IReadOnlyList<ExecutionTaskId> GetDependentTasks(ExecutionTaskId taskId)
     {
         return Dependencies
-            .Where(dependency => string.Equals(dependency.SourceTaskId, taskId, StringComparison.Ordinal))
+            .Where(dependency => dependency.SourceTaskId == taskId)
             .Select(dependency => dependency.TargetTaskId)
             .ToList();
     }
@@ -100,7 +95,7 @@ public sealed class ExecutionPlan
             throw new InvalidOperationException("Execution plans must contain at least one task.");
         }
 
-        Dictionary<string, ExecutionTask> tasksById = new(StringComparer.Ordinal);
+        Dictionary<ExecutionTaskId, ExecutionTask> tasksById = new();
         foreach (ExecutionTask task in tasks)
         {
             if (!tasksById.TryAdd(task.Id, task))
@@ -111,7 +106,7 @@ public sealed class ExecutionPlan
 
         foreach (ExecutionTask task in tasks)
         {
-            if (task.ParentId != null && !tasksById.ContainsKey(task.ParentId))
+            if (task.ParentId is ExecutionTaskId parentId && !tasksById.ContainsKey(parentId))
             {
                 throw new InvalidOperationException($"Execution task '{task.Id}' references missing parent '{task.ParentId}'.");
             }

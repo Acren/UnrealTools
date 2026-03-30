@@ -1,4 +1,6 @@
 using System;
+using Avalonia;
+using Avalonia.Media;
 using LocalAutomation.Core;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -37,7 +39,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the stable task identifier used by the graph-selection layer.
     /// </summary>
-    public string Id => Task.Id;
+    public ExecutionTaskId Id => Task.Id;
 
     /// <summary>
     /// Gets the display title rendered on the canvas and in the details pane.
@@ -52,7 +54,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the parent grouping identifier when one exists.
     /// </summary>
-    public string? ParentId => Task.ParentId;
+    public ExecutionTaskId? ParentId => Task.ParentId;
 
     /// <summary>
     /// Gets the shared task kind used for subtle visual treatment changes.
@@ -194,7 +196,13 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     public bool IsSelected
     {
         get => _isSelected;
-        set => SetProperty(ref _isSelected, value);
+        set
+        {
+            if (SetProperty(ref _isSelected, value))
+            {
+                RaiseSelectionVisualChanged();
+            }
+        }
     }
 
     /// <summary>
@@ -228,6 +236,43 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         ExecutionTaskStatus.Skipped => "#8B949E",
         _ => "#AEB9C5"
     };
+
+    /// <summary>
+    /// Gets the status brush as a live Avalonia brush for generated canvas bindings.
+    /// </summary>
+    public IBrush StatusBrushColor => new SolidColorBrush(Color.Parse(StatusBrush));
+
+    /// <summary>
+    /// Gets the background brush for a group container body.
+    /// </summary>
+    public IBrush ContainerBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#17212C" : "#121922"));
+
+    /// <summary>
+    /// Gets the background brush for a group header strip.
+    /// </summary>
+    public IBrush GroupHeaderBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#1A2633" : "#16202B"));
+
+    /// <summary>
+    /// Gets the background brush for a leaf task card.
+    /// </summary>
+    public IBrush CardBackgroundBrush => new SolidColorBrush(Color.Parse("#181E27"));
+
+    /// <summary>
+    /// Gets the shadow applied to the rendered node when selection should remain visible on the canvas.
+    /// </summary>
+    public BoxShadows CardShadow => IsSelected
+        ? BoxShadows.Parse("0 0 0 1 #66D8E6F3, 0 12 24 0 #28000000")
+        : BoxShadows.Parse("0 8 18 0 #22000000");
+
+    /// <summary>
+    /// Gets the border thickness for group containers.
+    /// </summary>
+    public Thickness ContainerBorderThickness => new(IsSelected ? 2.0 : 1.5);
+
+    /// <summary>
+    /// Gets the border thickness for leaf task cards.
+    /// </summary>
+    public Thickness CardBorderThickness => new(IsSelected ? 2.0 : 1.5);
 
     /// <summary>
     /// Gets the description text best suited for the details pane.
@@ -293,6 +338,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     {
         RaisePropertyChanged(nameof(StatusText));
         RaisePropertyChanged(nameof(StatusBrush));
+        RaisePropertyChanged(nameof(StatusBrushColor));
     }
 
     /// <summary>
@@ -304,5 +350,18 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         RaisePropertyChanged(nameof(Y));
         RaisePropertyChanged(nameof(Width));
         RaisePropertyChanged(nameof(Height));
+    }
+
+    /// <summary>
+    /// Raises derived selection-sensitive visual properties for generated canvas bindings.
+    /// </summary>
+    private void RaiseSelectionVisualChanged()
+    {
+        RaisePropertyChanged(nameof(ContainerBackgroundBrush));
+        RaisePropertyChanged(nameof(GroupHeaderBackgroundBrush));
+        RaisePropertyChanged(nameof(CardBackgroundBrush));
+        RaisePropertyChanged(nameof(CardShadow));
+        RaisePropertyChanged(nameof(ContainerBorderThickness));
+        RaisePropertyChanged(nameof(CardBorderThickness));
     }
 }

@@ -34,18 +34,22 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
     private const double ColumnGap = 110;
     private const double RowGap = 36;
-    private const string AllOutputNodeId = "__all-output";
+    // The graph keeps one fixed pseudo-node for merged output selection that never participates in runtime plan matching.
+    private static readonly ExecutionTaskId AllOutputNodeId = new("all-output");
 
     private readonly ObservableCollection<ExecutionNodeViewModel> _nodes = new();
     private readonly ObservableCollection<ExecutionEdgeViewModel> _edges = new();
-    private readonly Dictionary<string, ExecutionNodeViewModel> _nodesById = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<string>> _childrenByParentId = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string?> _parentByTaskId = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<string>> _leafDescendantsByGroupId = new(StringComparer.Ordinal);
+    private readonly Dictionary<ExecutionTaskId, ExecutionNodeViewModel> _nodesById = new();
+    private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _childrenByParentId = new();
+    private readonly Dictionary<ExecutionTaskId, ExecutionTaskId?> _parentByTaskId = new();
+    private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _leafDescendantsByGroupId = new();
     private ExecutionPlan? _plan;
     private ExecutionNodeViewModel? _selectedNode;
     private double _canvasWidth;
     private double _canvasHeight;
+
+    // The root lookup uses a non-runnable sentinel so root-level tasks can share the same typed dictionary shape as nested groups.
+    private static readonly ExecutionTaskId RootParentId = new("root-parent");
 
     /// <summary>
     /// Creates a graph view model with the fixed all-output pseudo-node available for task-log selection.
@@ -127,7 +131,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Gets whether the all-output pseudo-node is selected.
     /// </summary>
-    public bool IsAllOutputSelected => string.Equals(SelectedNode?.Id, AllOutputNodeId, StringComparison.Ordinal);
+    public bool IsAllOutputSelected => SelectedNode?.Id == AllOutputNodeId;
 
     /// <summary>
     /// Gets the title for the selected graph node details pane.
@@ -143,7 +147,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// Gets the selected task id used to bind task-scoped logs. Group containers intentionally fall back to the merged
     /// output stream because they represent structure rather than runnable work.
     /// </summary>
-    public string? SelectedTaskId => SelectedNode == null || SelectedNode.IsGroup ? null : SelectedNode.Id;
+    public ExecutionTaskId? SelectedTaskId => SelectedNode == null || SelectedNode.IsGroup ? null : SelectedNode.Id;
 
     /// <summary>
     /// Gets the status label for the selected graph node.
@@ -215,7 +219,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Updates one rendered task's runtime status from session events and refreshes any parent group summaries.
     /// </summary>
-    public void UpdateTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason)
+    public void UpdateTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)
     {
         if (!_nodesById.TryGetValue(taskId, out ExecutionNodeViewModel? node))
         {
@@ -254,11 +258,11 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         foreach (ExecutionTask task in tasks)
         {
             _parentByTaskId[task.Id] = task.ParentId;
-            string parentKey = task.ParentId ?? string.Empty;
-            if (!_childrenByParentId.TryGetValue(parentKey, out List<string>? childIds))
+            ExecutionTaskId parentId = task.ParentId ?? RootParentId;
+            if (!_childrenByParentId.TryGetValue(parentId, out List<ExecutionTaskId>? childIds))
             {
-                childIds = new List<string>();
-                _childrenByParentId[parentKey] = childIds;
+                childIds = new List<ExecutionTaskId>();
+                _childrenByParentId[parentId] = childIds;
             }
 
             childIds.Add(task.Id);
@@ -269,7 +273,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// Lays out one sibling set using a local dependency-depth arrangement so grouped tasks remain readable inside their
     /// containers.
     /// </summary>
-    private LayoutBounds LayoutDirectChildren(string? parentId, double originX, double originY)
+    private LayoutBounds LayoutDirectChildren(ExecutionTaskId? parentId, double originX, double originY)
     {
         IReadOnlyList<ExecutionNodeViewModel> children = GetDirectChildren(parentId);
         if (children.Count == 0)
@@ -277,7 +281,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return LayoutBounds.Empty;
         }
 
-        Dictionary<string, int> localDepths = ComputeSiblingDepths(children);
+        Dictionary<ExecutionTaskId, int> localDepths = ComputeSiblingDepths(children);
         Dictionary<int, List<ExecutionNodeViewModel>> columns = children
             .GroupBy(child => localDepths.TryGetValue(child.Id, out int depth) ? depth : 0)
             .OrderBy(group => group.Key)
@@ -341,24 +345,24 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Computes dependency depths only within one sibling set so local group contents can lay out like a compact DAG.
     /// </summary>
-    private Dictionary<string, int> ComputeSiblingDepths(IReadOnlyList<ExecutionNodeViewModel> siblings)
+    private Dictionary<ExecutionTaskId, int> ComputeSiblingDepths(IReadOnlyList<ExecutionNodeViewModel> siblings)
     {
         if (Plan == null)
         {
-            return new Dictionary<string, int>(StringComparer.Ordinal);
+            return new Dictionary<ExecutionTaskId, int>();
         }
 
-        HashSet<string> siblingIds = new(siblings.Select(sibling => sibling.Id), StringComparer.Ordinal);
-        Dictionary<string, int> depths = new(StringComparer.Ordinal);
+        HashSet<ExecutionTaskId> siblingIds = new(siblings.Select(sibling => sibling.Id));
+        Dictionary<ExecutionTaskId, int> depths = new();
 
-        int ComputeDepth(string taskId)
+        int ComputeDepth(ExecutionTaskId taskId)
         {
             if (depths.TryGetValue(taskId, out int existingDepth))
             {
                 return existingDepth;
             }
 
-            IReadOnlyList<string> dependencies = Plan
+            IReadOnlyList<ExecutionTaskId> dependencies = Plan
                 .GetTaskDependencies(taskId)
                 .Where(siblingIds.Contains)
                 .ToList();
@@ -384,7 +388,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         foreach (ExecutionNodeViewModel node in _nodes.Where(node => node.IsGroup))
         {
             IReadOnlyList<ExecutionNodeViewModel> directChildren = GetDirectChildren(node.Id);
-            List<string> leafDescendants = GetLeafDescendantIds(node.Id).ToList();
+            List<ExecutionTaskId> leafDescendants = GetLeafDescendantIds(node.Id).ToList();
             _leafDescendantsByGroupId[node.Id] = leafDescendants;
 
             string summaryText = directChildren.Count == 0
@@ -462,13 +466,13 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Recomputes every ancestor group of the updated task so nested containers stay in sync with live execution.
     /// </summary>
-    private void RefreshAncestorGroupStatuses(string taskId)
+    private void RefreshAncestorGroupStatuses(ExecutionTaskId taskId)
     {
-        string? currentParentId = _parentByTaskId.TryGetValue(taskId, out string? parentId) ? parentId : null;
-        while (!string.IsNullOrWhiteSpace(currentParentId) && _nodesById.TryGetValue(currentParentId, out ExecutionNodeViewModel? group))
+        ExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(taskId, out ExecutionTaskId? parentId) ? parentId : null;
+        while (currentParentId is ExecutionTaskId parent && _nodesById.TryGetValue(parent, out ExecutionNodeViewModel? group))
         {
             ApplyGroupRollupStatus(group);
-            currentParentId = _parentByTaskId.TryGetValue(currentParentId, out string? nextParentId) ? nextParentId : null;
+            currentParentId = _parentByTaskId.TryGetValue(parent, out ExecutionTaskId? nextParentId) ? nextParentId : null;
         }
     }
 
@@ -517,10 +521,10 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Returns the direct child graph nodes for the provided parent task id.
     /// </summary>
-    private IReadOnlyList<ExecutionNodeViewModel> GetDirectChildren(string? parentId)
+    private IReadOnlyList<ExecutionNodeViewModel> GetDirectChildren(ExecutionTaskId? parentId)
     {
-        string parentKey = parentId ?? string.Empty;
-        if (!_childrenByParentId.TryGetValue(parentKey, out List<string>? childIds))
+        ExecutionTaskId lookupParentId = parentId ?? RootParentId;
+        if (!_childrenByParentId.TryGetValue(lookupParentId, out List<ExecutionTaskId>? childIds))
         {
             return Array.Empty<ExecutionNodeViewModel>();
         }
@@ -531,14 +535,14 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Enumerates all descendant runnable task ids beneath the provided group id.
     /// </summary>
-    private IEnumerable<string> GetLeafDescendantIds(string groupId)
+    private IEnumerable<ExecutionTaskId> GetLeafDescendantIds(ExecutionTaskId groupId)
     {
-        if (!_childrenByParentId.TryGetValue(groupId, out List<string>? childIds))
+        if (!_childrenByParentId.TryGetValue(groupId, out List<ExecutionTaskId>? childIds))
         {
             yield break;
         }
 
-        foreach (string childId in childIds)
+        foreach (ExecutionTaskId childId in childIds)
         {
             ExecutionNodeViewModel child = _nodesById[childId];
             if (!child.IsGroup)
@@ -547,7 +551,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
                 continue;
             }
 
-            foreach (string descendantId in GetLeafDescendantIds(childId))
+            foreach (ExecutionTaskId descendantId in GetLeafDescendantIds(childId))
             {
                 yield return descendantId;
             }

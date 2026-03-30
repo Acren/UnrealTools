@@ -145,6 +145,14 @@ public abstract class Operation
 
             IExecutionTaskLoggerFactory? taskLoggerFactory = logger as IExecutionTaskLoggerFactory;
             IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
+            ExecutionTaskId? defaultExecutionTaskId = UsesDefaultExecutionPlanRouting()
+                ? GetDefaultExecutionTaskId()
+                : null;
+            // Default single-task operations should route their ordinary Logger output through the one shared task node
+            // so task selection shows useful logs without requiring each operation to know about execution plans.
+            ILogger executionLogger = defaultExecutionTaskId != null && taskLoggerFactory != null
+                ? taskLoggerFactory.CreateTaskLogger(defaultExecutionTaskId.Value)
+                : logger;
             EventStreamLogger eventLogger = new(taskLoggerFactory, taskStateSink);
             Logger = eventLogger;
             eventLogger.Output += (level, output) =>
@@ -158,17 +166,27 @@ public abstract class Operation
                     warnings++;
                 }
 
-                logger.Log(level, output);
+                executionLogger.Log(level, output);
             };
 
             string? requirementsError = CheckRequirementsSatisfied(operationParameters);
             if (requirementsError != null)
             {
+                if (defaultExecutionTaskId != null)
+                {
+                    eventLogger.SetTaskStatus(defaultExecutionTaskId.Value, ExecutionTaskStatus.Disabled, requirementsError);
+                }
+
                 Logger.LogError(requirementsError);
                 return OperationResult.Failed();
             }
 
             OperationParameters = operationParameters;
+            if (defaultExecutionTaskId != null)
+            {
+                eventLogger.SetTaskStatus(defaultExecutionTaskId.Value, ExecutionTaskStatus.Running);
+            }
+
             Executing = true;
             Task<OperationResult> mainTask = OnExecuted(token);
             Executing = false;
@@ -207,16 +225,35 @@ public abstract class Operation
                 }
             }
 
+            if (defaultExecutionTaskId != null)
+            {
+                ApplyDefaultExecutionTaskOutcome(eventLogger, defaultExecutionTaskId.Value, result);
+            }
+
             return result;
         }
         catch (OperationCanceledException)
         {
             Executing = false;
+            if (UsesDefaultExecutionPlanRouting())
+            {
+                IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
+                ExecutionTaskId defaultExecutionTaskId = GetDefaultExecutionTaskId();
+                taskStateSink?.SetTaskStatus(defaultExecutionTaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
+            }
+
             throw;
         }
         catch (Exception e)
         {
             Executing = false;
+            if (UsesDefaultExecutionPlanRouting())
+            {
+                IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
+                ExecutionTaskId defaultExecutionTaskId = GetDefaultExecutionTaskId();
+                taskStateSink?.SetTaskStatus(defaultExecutionTaskId, ExecutionTaskStatus.Failed, e.Message);
+            }
+
             throw new Exception($"Exception encountered running operation '{OperationName}'", e);
         }
     }
@@ -262,12 +299,13 @@ public abstract class Operation
         PrepareRegisteredOptions(operationParameters);
         string? requirementsError = CheckRequirementsSatisfied(operationParameters);
         ExecutionTaskStatus status = requirementsError == null ? ExecutionTaskStatus.Ready : ExecutionTaskStatus.Disabled;
-        string taskId = GetType().Name;
+        ExecutionPlanId planId = GetDefaultExecutionPlanId();
+        ExecutionTaskId taskId = GetDefaultExecutionTaskId(planId);
 
         // The default execution plan is a single runnable task so existing operations immediately participate in the
         // new preview surface even before they define richer composite graphs.
         return new ExecutionPlan(
-            id: taskId,
+            id: planId,
             title: OperationName,
             tasks: new[]
             {
@@ -279,6 +317,53 @@ public abstract class Operation
                     status: status,
                     statusReason: requirementsError)
             });
+    }
+
+    /// <summary>
+    /// Gets the default execution-plan identifier used by operations that rely on the shared single-task preview and
+    /// runtime behavior.
+    /// </summary>
+    protected virtual ExecutionPlanId GetDefaultExecutionPlanId()
+    {
+        return ExecutionIdentifierFactory.CreatePlanId(GetType().Name);
+    }
+
+    /// <summary>
+    /// Gets the default execution-task identifier used by operations that rely on the shared single-task preview and
+    /// runtime behavior.
+    /// </summary>
+    protected virtual ExecutionTaskId GetDefaultExecutionTaskId(ExecutionPlanId? planId = null)
+    {
+        return ExecutionIdentifierFactory.CreateTaskId(planId ?? GetDefaultExecutionPlanId(), GetType().Name);
+    }
+
+    /// <summary>
+    /// Determines whether the current operation still relies on the shared single-task execution-plan path instead of a
+    /// custom authored task graph.
+    /// </summary>
+    private bool UsesDefaultExecutionPlanRouting()
+    {
+        return GetType().GetMethod(nameof(BuildExecutionPlan))?.DeclaringType == typeof(Operation);
+    }
+
+    /// <summary>
+    /// Publishes the terminal state for a shared single-task execution after the final operation result has been fully
+    /// normalized by warning and error policy.
+    /// </summary>
+    private static void ApplyDefaultExecutionTaskOutcome(EventStreamLogger logger, ExecutionTaskId taskId, OperationResult result)
+    {
+        switch (result.Outcome)
+        {
+            case RunOutcome.Succeeded:
+                logger.SetTaskStatus(taskId, ExecutionTaskStatus.Completed);
+                break;
+            case RunOutcome.Cancelled:
+                logger.SetTaskStatus(taskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
+                break;
+            default:
+                logger.SetTaskStatus(taskId, ExecutionTaskStatus.Failed, "Operation failed.");
+                break;
+        }
     }
 
     /// <summary>
@@ -404,7 +489,7 @@ public abstract class Operation
     /// <summary>
     /// Returns a logger scoped to one execution-plan task when the active logging pipeline supports task attribution.
     /// </summary>
-    protected ILogger GetTaskLogger(string taskId)
+    protected ILogger GetTaskLogger(ExecutionTaskId taskId)
     {
         if (Logger is IExecutionTaskLoggerFactory loggerFactory)
         {
@@ -417,7 +502,7 @@ public abstract class Operation
     /// <summary>
     /// Publishes a task-status transition when the active logger supports task-state routing.
     /// </summary>
-    protected void SetTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason = null)
+    protected void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null)
     {
         if (Logger is IExecutionTaskStateSink taskStateSink)
         {

@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using LocalAutomation.Core;
 
 namespace LocalAutomation.Runtime;
 
@@ -68,5 +69,13 @@ public sealed class ExecutionSequentialStepBuilder
     public ExecutionSequentialStepBuilder Step(string title, string? description = null)
     {
         return _sequence.Step(title, description);
+    }
+
+    /// <summary>
+    /// Starts the next step in the sequence with an explicit stable identifier.
+    /// </summary>
+    public ExecutionSequentialStepBuilder Step(ExecutionTaskId id, string title, string? description = null)
+    {
+        return _sequence.Step(id, title, description);
     }
 }

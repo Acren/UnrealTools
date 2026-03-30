@@ -72,7 +72,12 @@ public class Runner
 
         Operation.PrepareForExecution(_operationParameters, _logger);
 
-        EventStreamLogger eventLogger = new();
+        // Preserve any task-aware routing capabilities from the host logger so runtime task-status updates and
+        // task-scoped loggers continue flowing into the active execution session instead of collapsing into aggregate
+        // output only.
+        EventStreamLogger eventLogger = new(
+            _logger as IExecutionTaskLoggerFactory,
+            _logger as IExecutionTaskStateSink);
         eventLogger.Output += (level, output) =>
         {
             if (output == null)

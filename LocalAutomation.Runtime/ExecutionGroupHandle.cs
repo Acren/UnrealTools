@@ -1,3 +1,5 @@
+using LocalAutomation.Core;
+
 namespace LocalAutomation.Runtime;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace LocalAutomation.Runtime;
 /// </summary>
 public readonly struct ExecutionGroupHandle
 {
-    internal ExecutionGroupHandle(string id)
+    internal ExecutionGroupHandle(ExecutionTaskId id)
     {
         Id = id;
     }
@@ -13,7 +15,7 @@ public readonly struct ExecutionGroupHandle
     /// <summary>
     /// Gets whether the handle points at a declared group.
     /// </summary>
-    public bool IsValid => !string.IsNullOrWhiteSpace(Id);
+    public bool IsValid => !string.IsNullOrWhiteSpace(Id.Value);
 
-    internal string Id { get; }
+    internal ExecutionTaskId Id { get; }
 }
