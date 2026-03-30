@@ -29,6 +29,7 @@ public partial class ExecutionGraphCanvas : UserControl
     private Border? _graphContentRoot;
     private ExecutionGraphViewModel? _observedGraph;
     private bool _isPanning;
+    private bool _needsInitialFit;
     private Point _lastPanPoint;
     private double _zoom = DefaultZoom;
     private double _panX;
@@ -41,6 +42,7 @@ public partial class ExecutionGraphCanvas : UserControl
     {
         InitializeComponent();
         DataContextChanged += HandleDataContextChanged;
+        AttachedToVisualTree += HandleAttachedToVisualTree;
     }
 
     /// <summary>
@@ -99,6 +101,7 @@ public partial class ExecutionGraphCanvas : UserControl
         _lastPanPoint = currentPoint;
         _panX += delta.X;
         _panY += delta.Y;
+        _needsInitialFit = false;
         ApplyViewportTransform();
         e.Handled = true;
     }
@@ -141,6 +144,7 @@ public partial class ExecutionGraphCanvas : UserControl
         _zoom = newZoom;
         _panX = pointerPosition.X - (worldPoint.X * _zoom);
         _panY = pointerPosition.Y - (worldPoint.Y * _zoom);
+        _needsInitialFit = false;
         ApplyViewportTransform();
         e.Handled = true;
     }
@@ -154,6 +158,10 @@ public partial class ExecutionGraphCanvas : UserControl
         _viewportHost = this.FindControl<Border>("ViewportHost");
         _graphContentRoot = this.FindControl<Border>("GraphContentRoot");
         _graphCanvas = this.FindControl<Canvas>("GraphCanvas");
+        if (_viewportHost != null)
+        {
+            _viewportHost.SizeChanged += HandleViewportHostSizeChanged;
+        }
     }
 
     /// <summary>
@@ -177,7 +185,24 @@ public partial class ExecutionGraphCanvas : UserControl
         }
 
         ResetViewport();
+        _needsInitialFit = true;
         RenderGraph();
+    }
+
+    /// <summary>
+    /// Applies the deferred first-fit pass once the control is attached and participating in layout.
+    /// </summary>
+    private void HandleAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        TryApplyInitialFit();
+    }
+
+    /// <summary>
+    /// Retries the initial fit when the viewport receives its first real size after graph content has already rendered.
+    /// </summary>
+    private void HandleViewportHostSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        TryApplyInitialFit();
     }
 
     /// <summary>
@@ -246,7 +271,7 @@ public partial class ExecutionGraphCanvas : UserControl
             _graphCanvas.Children.Add(CreateGroupHeader(group));
         }
 
-        FitGraphToViewportIfNeeded();
+        TryApplyInitialFit();
         ApplyViewportTransform();
     }
 
@@ -510,6 +535,31 @@ public partial class ExecutionGraphCanvas : UserControl
         _panX = 0;
         _panY = 0;
         ApplyViewportTransform();
+    }
+
+    /// <summary>
+    /// Applies the initial fit once after graph content and viewport bounds are both available.
+    /// </summary>
+    private void TryApplyInitialFit()
+    {
+        if (!_needsInitialFit)
+        {
+            return;
+        }
+
+        if (_viewportHost == null || _observedGraph == null)
+        {
+            return;
+        }
+
+        if (_viewportHost.Bounds.Width <= 0 || _viewportHost.Bounds.Height <= 0)
+        {
+            return;
+        }
+
+        FitGraphToViewportIfNeeded();
+        ApplyViewportTransform();
+        _needsInitialFit = false;
     }
 
     /// <summary>
