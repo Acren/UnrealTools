@@ -288,7 +288,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the lighter outline used for group container borders.
     /// </summary>
-    public IBrush ContainerBorderBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#90D4DEE8" : "#58D4DEE8"));
+    public IBrush ContainerBorderBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#D4DEE8" : "#8FA3B5"));
 
     /// <summary>
     /// Gets the background brush for a group container body.
@@ -429,7 +429,6 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         RaisePropertyChanged(nameof(GroupMetaText));
         RaisePropertyChanged(nameof(HasGroupMetaText));
     }
-
     /// <summary>
     /// Raises derived graph-node status properties after the runtime state changes.
     /// </summary>

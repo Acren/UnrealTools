@@ -246,7 +246,7 @@ public partial class ExecutionGraphCanvas : UserControl
             return;
         }
 
-        foreach (ExecutionNodeViewModel group in _observedGraph.Nodes.Where(node => node.IsContainer).OrderBy(node => node.Width * node.Height))
+        foreach (ExecutionNodeViewModel group in _observedGraph.Nodes.Where(node => node.IsContainer).OrderByDescending(node => node.Width * node.Height))
         {
             _graphCanvas.Children.Add(CreateGroupContainer(group));
         }

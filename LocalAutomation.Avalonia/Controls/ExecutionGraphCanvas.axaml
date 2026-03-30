@@ -2,11 +2,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:LocalAutomation.Avalonia.ViewModels"
              x:Class="LocalAutomation.Avalonia.Controls.ExecutionGraphCanvas"
-             x:DataType="vm:ExecutionGraphViewModel">
+             x:DataType="vm:ExecutionGraphViewModel"
+             UseLayoutRounding="True">
     <!-- The first-pass graph uses a named canvas that the code-behind populates directly. The transformed content root
          keeps pan and zoom behavior in the control layer without changing the graph view-model's world-space layout. -->
     <Border x:Name="ViewportHost"
             Background="Transparent"
+            UseLayoutRounding="True"
             ClipToBounds="True"
             PointerPressed="ViewportHost_PointerPressed"
             PointerMoved="ViewportHost_PointerMoved"
@@ -16,12 +18,14 @@
         <Border x:Name="GraphContentRoot"
                 Width="{Binding CanvasWidth}"
                 Height="{Binding CanvasHeight}"
+                UseLayoutRounding="True"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Top"
                 RenderTransformOrigin="0,0">
             <Canvas x:Name="GraphCanvas"
                     Width="{Binding CanvasWidth}"
-                    Height="{Binding CanvasHeight}" />
+                    Height="{Binding CanvasHeight}"
+                    UseLayoutRounding="True" />
         </Border>
     </Border>
 </UserControl>
