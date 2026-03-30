@@ -4,21 +4,73 @@
              x:Class="LocalAutomation.Avalonia.Controls.ExecutionTaskCard"
              x:CompileBindings="False"
              x:Name="Root">
+    <UserControl.Styles>
+        <!-- Task card styling is driven entirely by semantic classes so state owns hue while hover and selection only
+             adjust opacity and emphasis. -->
+        <Style Selector="Border.task-card-background">
+            <Setter Property="Background" Value="#1D2835" />
+        </Style>
+        <Style Selector="Border.task-card-background.selected">
+            <Setter Property="Background" Value="#263342" />
+        </Style>
+        <Style Selector="Border.task-card-background.hover">
+            <Setter Property="Opacity" Value="0.92" />
+        </Style>
+        <Style Selector="Border.task-card-background.pressed">
+            <Setter Property="Opacity" Value="0.82" />
+        </Style>
+        <Style Selector="Border.task-card-border">
+            <Setter Property="Opacity" Value="0.8" />
+        </Style>
+        <Style Selector="Border.task-card-border.selected">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.task-card-border.hover">
+            <Setter Property="Opacity" Value="0.92" />
+        </Style>
+        <Style Selector="Border.task-card-border.selected.hover">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.task-card-border.pressed">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.task-card-border.pending, Border.task-card-border.planned, Border.task-card-border.skipped, Border.task-card-border.disabled">
+            <Setter Property="BorderBrush" Value="#89919A" />
+        </Style>
+        <Style Selector="Border.task-card-border.running">
+            <Setter Property="BorderBrush" Value="#63A8FF" />
+        </Style>
+        <Style Selector="Border.task-card-border.completed">
+            <Setter Property="BorderBrush" Value="#7BE37B" />
+        </Style>
+        <Style Selector="Border.task-card-border.failed">
+            <Setter Property="BorderBrush" Value="#FF5C5C" />
+        </Style>
+        <Style Selector="Border.task-card-border.blocked">
+            <Setter Property="BorderBrush" Value="#F1D479" />
+        </Style>
+        <Style Selector="Border.task-card-border.cancelled">
+            <Setter Property="BorderBrush" Value="#C77DFF" />
+        </Style>
+    </UserControl.Styles>
     <!-- This control owns the full task-card markup so graph canvas code no longer constructs the inner visual tree. -->
     <Grid Width="{Binding CardWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
           Height="{Binding CardHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}">
-        <Border Background="{Binding CardBackgroundBrush}"
-                BorderBrush="{Binding StatusBrushColor}"
-                BorderThickness="{Binding CardBorderThickness}"
-                BoxShadow="{Binding CardShadow}"
-                CornerRadius="8">
-            <Button x:Name="ClickSurface"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Padding="0"
-                    HorizontalContentAlignment="Stretch"
-                    VerticalContentAlignment="Stretch"
-                    DataContext="{Binding #Root.DataContext}">
+        <Border x:Name="ClickSurface"
+                Background="Transparent"
+                CornerRadius="8"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch">
+            <Grid>
+                <Border x:Name="CardBackgroundShell"
+                        Classes="task-card-background"
+                        BoxShadow="{Binding CardShadow}"
+                        CornerRadius="8" />
+                <Border x:Name="CardBorderChrome"
+                        Classes="task-card-border"
+                        BorderThickness="{Binding CardBorderThickness}"
+                        CornerRadius="8"
+                        IsHitTestVisible="False" />
                 <Grid RowDefinitions="Auto,Auto"
                       Margin="14,12,14,12">
                     <TextBlock Text="{Binding Title}"
@@ -36,7 +88,7 @@
                                               LabelFontSize="11"
                                               VerticalAlignment="Center" />
                 </Grid>
-            </Button>
+            </Grid>
         </Border>
 
         <!-- Keep the tooltip markup declarative with the task-card visuals instead of constructing it in canvas code. -->

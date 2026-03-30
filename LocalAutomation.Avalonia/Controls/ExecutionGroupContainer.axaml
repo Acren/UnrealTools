@@ -4,31 +4,93 @@
              x:Class="LocalAutomation.Avalonia.Controls.ExecutionGroupContainer"
              x:CompileBindings="False"
              x:Name="Root">
+    <UserControl.Styles>
+        <!-- Group visuals also use semantic classes so status hue is centralized in styles while hover and selection
+             adjust only opacity and emphasis. -->
+        <Style Selector="Border.group-container-background">
+            <Setter Property="Background" Value="#131A24" />
+        </Style>
+        <Style Selector="Border.group-container-background.selected">
+            <Setter Property="Background" Value="#1A2430" />
+        </Style>
+        <Style Selector="Border.group-container-background.hover">
+            <Setter Property="Opacity" Value="0.96" />
+        </Style>
+        <Style Selector="Border.group-container-background.pressed">
+            <Setter Property="Opacity" Value="0.88" />
+        </Style>
+        <Style Selector="Border.group-header-shell">
+            <Setter Property="Background" Value="#182230" />
+        </Style>
+        <Style Selector="Border.group-header-shell.selected">
+            <Setter Property="Background" Value="#202D3B" />
+        </Style>
+        <Style Selector="Border.group-header-shell.hover">
+            <Setter Property="Opacity" Value="0.94" />
+        </Style>
+        <Style Selector="Border.group-header-shell.pressed">
+            <Setter Property="Opacity" Value="0.84" />
+        </Style>
+        <Style Selector="Border.group-container-border">
+            <Setter Property="Opacity" Value="0.36" />
+        </Style>
+        <Style Selector="Border.group-container-border.selected">
+            <Setter Property="Opacity" Value="0.67" />
+        </Style>
+        <Style Selector="Border.group-container-border.hover">
+            <Setter Property="Opacity" Value="0.48" />
+        </Style>
+        <Style Selector="Border.group-container-border.selected.hover">
+            <Setter Property="Opacity" Value="0.79" />
+        </Style>
+        <Style Selector="Border.group-container-border.pressed">
+            <Setter Property="Opacity" Value="0.87" />
+        </Style>
+        <Style Selector="Border.group-container-border.pending, Border.group-container-border.planned, Border.group-container-border.skipped, Border.group-container-border.disabled">
+            <Setter Property="BorderBrush" Value="#89919A" />
+        </Style>
+        <Style Selector="Border.group-container-border.running">
+            <Setter Property="BorderBrush" Value="#63A8FF" />
+        </Style>
+        <Style Selector="Border.group-container-border.completed">
+            <Setter Property="BorderBrush" Value="#7BE37B" />
+        </Style>
+        <Style Selector="Border.group-container-border.failed">
+            <Setter Property="BorderBrush" Value="#FF5C5C" />
+        </Style>
+        <Style Selector="Border.group-container-border.blocked">
+            <Setter Property="BorderBrush" Value="#F1D479" />
+        </Style>
+        <Style Selector="Border.group-container-border.cancelled">
+            <Setter Property="BorderBrush" Value="#C77DFF" />
+        </Style>
+    </UserControl.Styles>
     <!-- This control owns the full visual structure of one group node so canvas code only decides placement and z-order. -->
     <Grid Width="{Binding GroupWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
           Height="{Binding GroupHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}">
         <!-- The outer frame carries the status-tinted border around the full group, including the header region. -->
-        <Border Background="{Binding ContainerBackgroundBrush}"
-                BorderBrush="{Binding ContainerBorderBrush}"
-                BorderThickness="{Binding ContainerBorderThickness}"
+        <Border x:Name="ContainerBackgroundShell"
+                Classes="group-container-background"
                 BoxShadow="{Binding CardShadow}"
+                CornerRadius="12" />
+        <Border x:Name="ContainerBorderChrome"
+                Classes="group-container-border"
+                BorderThickness="{Binding ContainerBorderThickness}"
                 CornerRadius="12"
-                Opacity="0.94" />
+                IsHitTestVisible="False" />
 
         <!-- The header sits inset inside the outer frame so the full group border remains visible around it. -->
-        <Border Margin="{Binding ContainerBorderThickness}"
-                Height="{Binding HeaderHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
-                Background="{Binding GroupHeaderBackgroundBrush}"
+        <Border x:Name="ClickSurface"
+                Background="Transparent"
                 CornerRadius="10,10,0,0"
+                Margin="{Binding ContainerBorderThickness}"
+                Height="{Binding HeaderHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
+                HorizontalAlignment="Stretch"
                 VerticalAlignment="Top">
-            <Button x:Name="ClickSurface"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Padding="0"
-                    HorizontalContentAlignment="Stretch"
-                    VerticalContentAlignment="Stretch"
-                    DataContext="{Binding #Root.DataContext}">
-                <Grid ColumnDefinitions="*,Auto"
+            <Border x:Name="HeaderShell"
+                    Classes="group-header-shell"
+                    CornerRadius="10,10,0,0">
+                <Grid ColumnDefinitions="Auto,Auto,*"
                       Margin="14,10,14,10">
                     <TextBlock Text="{Binding Title}"
                                FontSize="14"
@@ -44,7 +106,7 @@
                                               LabelFontSize="11"
                                               VerticalAlignment="Center" />
                 </Grid>
-            </Button>
+            </Border>
         </Border>
 
         <!-- Keep the existing compact tooltip treatment, but declare the visual tree in XAML with the rest of the node. -->

@@ -223,29 +223,6 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     };
 
     /// <summary>
-    /// Gets the brush key used to tint the graph node status pill and dependency accents.
-    /// </summary>
-    public string StatusBrush => Status switch
-    {
-        // Match the execution graph accents to the runtime tab marker palette where the status concepts overlap so the
-        // workspace reads like one system instead of two adjacent visual languages.
-        ExecutionTaskStatus.Completed => "#7BE37B",
-        ExecutionTaskStatus.Running => "#63A8FF",
-        ExecutionTaskStatus.Failed => "#FF5C5C",
-        ExecutionTaskStatus.Disabled => "#89919A",
-        ExecutionTaskStatus.Pending => "#89919A",
-        ExecutionTaskStatus.Blocked => "#F1D479",
-        ExecutionTaskStatus.Cancelled => "#C77DFF",
-        ExecutionTaskStatus.Skipped => "#89919A",
-        _ => "#89919A"
-    };
-
-    /// <summary>
-    /// Gets the status brush as a live Avalonia brush for generated canvas bindings.
-    /// </summary>
-    public IBrush StatusBrushColor => new SolidColorBrush(Color.Parse(StatusBrush));
-
-    /// <summary>
     /// Gets the compact label used by the stacked dot-and-label status treatment.
     /// </summary>
     public string StatusLabelText => Status switch
@@ -261,49 +238,6 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         ExecutionTaskStatus.Planned => "Planned",
         _ => Status.ToString()
     };
-
-    /// <summary>
-    /// Gets the softer foreground brush used by the stacked status label.
-    /// </summary>
-    public IBrush StatusLabelBrush => new SolidColorBrush(Color.Parse("#89919A"));
-
-    /// <summary>
-    /// Gets the compact status dot brush used by the stacked dot-and-label treatment.
-    /// </summary>
-    public IBrush StatusDotBrush => StatusBrushColor;
-
-    /// <summary>
-    /// Gets the subtle glow used by the graph status dot so active and terminal states feel consistent with the tab
-    /// strip markers.
-    /// </summary>
-    public BoxShadows StatusDotShadow => Status switch
-    {
-        ExecutionTaskStatus.Running => BoxShadows.Parse("0 0 5 0 #5563A8FF"),
-        ExecutionTaskStatus.Completed => BoxShadows.Parse("0 0 5 0 #557BE37B"),
-        ExecutionTaskStatus.Failed => BoxShadows.Parse("0 0 5 0 #55FF7575"),
-        ExecutionTaskStatus.Blocked => BoxShadows.Parse("0 0 5 0 #55F1D479"),
-        _ => BoxShadows.Parse("0 0 0 0 Transparent")
-    };
-
-    /// <summary>
-    /// Gets the lighter outline used for group container borders.
-    /// </summary>
-    public IBrush ContainerBorderBrush => new SolidColorBrush(Color.Parse(ApplyAlpha(StatusBrush, IsSelected ? "AA" : "5C")));
-
-    /// <summary>
-    /// Gets the background brush for a group container body.
-    /// </summary>
-    public IBrush ContainerBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#1A2430" : "#131A24"));
-
-    /// <summary>
-    /// Gets the background brush for a group header strip.
-    /// </summary>
-    public IBrush GroupHeaderBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#202D3B" : "#182230"));
-
-    /// <summary>
-    /// Gets the background brush for a leaf task card.
-    /// </summary>
-    public IBrush CardBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#263342" : "#1D2835"));
 
     /// <summary>
     /// Gets the shadow applied to the rendered node when selection should remain visible on the canvas.
@@ -435,13 +369,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     private void RaiseStatusChanged()
     {
         RaisePropertyChanged(nameof(StatusText));
-        RaisePropertyChanged(nameof(StatusBrush));
-        RaisePropertyChanged(nameof(StatusBrushColor));
         RaisePropertyChanged(nameof(StatusLabelText));
-        RaisePropertyChanged(nameof(StatusLabelBrush));
-        RaisePropertyChanged(nameof(StatusDotBrush));
-        RaisePropertyChanged(nameof(StatusDotShadow));
-        RaisePropertyChanged(nameof(ContainerBorderBrush));
     }
 
     /// <summary>
@@ -460,19 +388,8 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     private void RaiseSelectionVisualChanged()
     {
-        RaisePropertyChanged(nameof(ContainerBorderBrush));
-        RaisePropertyChanged(nameof(ContainerBackgroundBrush));
-        RaisePropertyChanged(nameof(GroupHeaderBackgroundBrush));
-        RaisePropertyChanged(nameof(CardBackgroundBrush));
         RaisePropertyChanged(nameof(CardShadow));
         RaisePropertyChanged(nameof(ContainerBorderThickness));
         RaisePropertyChanged(nameof(CardBorderThickness));
-    }
-
-    private static string ApplyAlpha(string hexColor, string alpha)
-    {
-        return hexColor.StartsWith("#", StringComparison.Ordinal) && hexColor.Length == 7
-            ? $"#{alpha}{hexColor[1..]}"
-            : hexColor;
     }
 }

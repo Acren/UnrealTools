@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Media;
+using LocalAutomation.Avalonia.Controls;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -58,7 +59,7 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
     /// <summary>
     /// Gets the stroke color used for the edge.
     /// </summary>
-    public string Stroke => Target.StatusBrush;
+    public string Stroke => ExecutionStatusPalette.GetColor(Target.Status);
 
     /// <summary>
     /// Gets the live stroke brush used by the generated canvas path binding.
@@ -75,7 +76,7 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Y), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Width), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Height), StringComparison.Ordinal) ||
-            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.StatusBrush), StringComparison.Ordinal))
+            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal))
         {
             RaisePropertyChanged(nameof(PathData));
             RaisePropertyChanged(nameof(Stroke));

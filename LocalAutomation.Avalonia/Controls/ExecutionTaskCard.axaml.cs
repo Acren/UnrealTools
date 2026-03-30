@@ -1,6 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using Avalonia.Interactivity;
+using System.ComponentModel;
+using LocalAutomation.Core;
+using LocalAutomation.Avalonia.ViewModels;
 
 namespace LocalAutomation.Avalonia.Controls;
 
@@ -9,6 +14,10 @@ namespace LocalAutomation.Avalonia.Controls;
 /// </summary>
 public partial class ExecutionTaskCard : UserControl
 {
+    private bool _isHovered;
+    private bool _isPressed;
+    private ExecutionNodeViewModel? _observedNode;
+
     /// <summary>
     /// Identifies the rendered width for the task card.
     /// </summary>
@@ -27,7 +36,18 @@ public partial class ExecutionTaskCard : UserControl
     public ExecutionTaskCard()
     {
         InitializeComponent();
+        Border clickSurface = GetRequiredBorder("ClickSurface");
+        clickSurface.PointerEntered += ClickSurface_PointerEntered;
+        clickSurface.PointerExited += ClickSurface_PointerExited;
+        clickSurface.PointerPressed += ClickSurface_PointerPressed;
+        clickSurface.PointerReleased += ClickSurface_PointerReleased;
+        DataContextChanged += HandleDataContextChanged;
     }
+
+    /// <summary>
+     /// Raised when the task card is clicked with the pointer.
+     /// </summary>
+    public event EventHandler<RoutedEventArgs>? Invoked;
 
     /// <summary>
     /// Gets or sets the rendered width for the task card.
@@ -48,19 +68,120 @@ public partial class ExecutionTaskCard : UserControl
     }
 
     /// <summary>
-    /// Returns the named click surface so the graph canvas can attach centralized selection behavior.
-    /// </summary>
-    public Button GetClickSurface()
-    {
-        return this.FindControl<Button>("ClickSurface")
-            ?? throw new InvalidOperationException("ExecutionTaskCard click surface was not initialized.");
-    }
-
-    /// <summary>
-    /// Loads the compiled Avalonia markup for the task card.
-    /// </summary>
+     /// Loads the compiled Avalonia markup for the task card.
+     /// </summary>
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
+    }
+
+    /// <summary>
+    /// Applies the hover class while the pointer is over the card hit surface.
+    /// </summary>
+    private void ClickSurface_PointerEntered(object? sender, PointerEventArgs e)
+    {
+        _isHovered = true;
+        ApplySemanticClasses();
+    }
+
+    /// <summary>
+    /// Clears transient interaction classes once the pointer leaves the card.
+    /// </summary>
+    private void ClickSurface_PointerExited(object? sender, PointerEventArgs e)
+    {
+        _isHovered = false;
+        _isPressed = false;
+        ApplySemanticClasses();
+    }
+
+    /// <summary>
+    /// Marks the card as pressed on primary-button down so the graph can provide immediate pointer feedback.
+    /// </summary>
+    private void ClickSurface_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        Border clickSurface = GetRequiredBorder("ClickSurface");
+        if (!e.GetCurrentPoint(clickSurface).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _isPressed = true;
+        ApplySemanticClasses();
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Raises the custom invoked event when the primary-button release lands on the card hit surface.
+    /// </summary>
+    private void ClickSurface_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        Border clickSurface = GetRequiredBorder("ClickSurface");
+        bool isInsideCard = clickSurface.Bounds.Contains(e.GetPosition(clickSurface));
+        _isPressed = false;
+        ApplySemanticClasses();
+        if (!isInsideCard || e.InitialPressMouseButton != MouseButton.Left)
+        {
+            return;
+        }
+
+        Invoked?.Invoke(this, new RoutedEventArgs());
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Looks up one named border from the compiled XAML so pointer handlers can manipulate the visual shell directly.
+    /// </summary>
+    private Border GetRequiredBorder(string name)
+    {
+        return this.FindControl<Border>(name)
+            ?? throw new InvalidOperationException($"ExecutionTaskCard border '{name}' was not initialized.");
+    }
+
+    /// <summary>
+    /// Rebinds property-change observation when the control starts rendering a different node view model.
+    /// </summary>
+    private void HandleDataContextChanged(object? sender, EventArgs e)
+    {
+        if (_observedNode != null)
+        {
+            _observedNode.PropertyChanged -= HandleObservedNodePropertyChanged;
+        }
+
+        _observedNode = DataContext as ExecutionNodeViewModel;
+        if (_observedNode != null)
+        {
+            _observedNode.PropertyChanged += HandleObservedNodePropertyChanged;
+        }
+
+        ApplySemanticClasses();
+    }
+
+    /// <summary>
+    /// Reapplies semantic classes whenever the node's status or selection state changes.
+    /// </summary>
+    private void HandleObservedNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
+        {
+            ApplySemanticClasses();
+        }
+    }
+
+    /// <summary>
+    /// Applies the task-card semantic classes consumed by the local Avalonia styles.
+    /// </summary>
+    private void ApplySemanticClasses()
+    {
+        if (_observedNode == null)
+        {
+            return;
+        }
+
+        Border backgroundShell = GetRequiredBorder("CardBackgroundShell");
+        Border borderChrome = GetRequiredBorder("CardBorderChrome");
+        ExecutionStatusPalette.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusPalette.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusPalette.ApplyStatusClasses(borderChrome.Classes, _observedNode.Status);
     }
 }

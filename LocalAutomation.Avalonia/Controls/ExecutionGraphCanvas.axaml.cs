@@ -78,7 +78,7 @@ public partial class ExecutionGraphCanvas : UserControl
             return;
         }
 
-        if (e.Source is Control sourceControl && IsLeafTaskInteractionSource(sourceControl))
+        if (e.Source is Control sourceControl && IsNodeInteractionSource(sourceControl))
         {
             return;
         }
@@ -289,7 +289,7 @@ public partial class ExecutionGraphCanvas : UserControl
             DataContext = group,
         };
 
-        container.GetClickSurface().Click += ExecutionNode_Click;
+        container.Invoked += ExecutionNode_Click;
 
         Canvas.SetLeft(container, group.X);
         Canvas.SetTop(container, group.Y);
@@ -308,7 +308,7 @@ public partial class ExecutionGraphCanvas : UserControl
             DataContext = node
         };
 
-        card.GetClickSurface().Click += ExecutionNode_Click;
+        card.Invoked += ExecutionNode_Click;
 
         Canvas.SetLeft(card, node.X);
         Canvas.SetTop(card, node.Y);
@@ -422,10 +422,10 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-    /// Returns whether the pointer press started from a runnable-task control that should keep click-selection
+    /// Returns whether the pointer press started from a rendered node control that should keep click-selection
     /// behavior instead of initiating a pan gesture.
     /// </summary>
-    private static bool IsLeafTaskInteractionSource(Control sourceControl)
+    private static bool IsNodeInteractionSource(Control sourceControl)
     {
         foreach (Visual visual in sourceControl.GetSelfAndVisualAncestors())
         {
@@ -439,7 +439,7 @@ public partial class ExecutionGraphCanvas : UserControl
                 continue;
             }
 
-            return !node.IsGroup || control is Button;
+            return node.IsContainer || !node.IsGroup;
         }
 
         return false;
