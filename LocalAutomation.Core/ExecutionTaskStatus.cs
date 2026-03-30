@@ -11,14 +11,14 @@ public enum ExecutionTaskStatus
     Planned,
 
     /// <summary>
-    /// The task cannot run because one or more prerequisites have not completed.
+    /// The task is expected to run but has not started yet.
     /// </summary>
-    Blocked,
+    Pending,
 
     /// <summary>
-    /// The task is ready to run as soon as scheduler capacity is available.
+    /// The task cannot run because an upstream dependency failed and the scheduler will never start it.
     /// </summary>
-    Ready,
+    Blocked,
 
     /// <summary>
     /// The task is currently executing.

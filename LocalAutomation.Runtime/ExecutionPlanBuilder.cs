@@ -91,7 +91,7 @@ public sealed class ExecutionPlanBuilder
                 description: item.Description,
                 kind: item.Kind,
                 parentId: item.ParentId,
-                status: item.Enabled ? ExecutionTaskStatus.Ready : ExecutionTaskStatus.Disabled,
+                status: item.Enabled ? ExecutionTaskStatus.Pending : ExecutionTaskStatus.Disabled,
                 statusReason: item.Enabled ? string.Empty : item.DisabledReason))
             .ToList();
         List<ExecutionDependency> dependencies = _items

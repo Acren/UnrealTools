@@ -61,7 +61,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             title: "All Output",
             description: "Show the merged output stream for the current preview or execution session.",
             kind: ExecutionTaskKind.Group,
-            status: ExecutionTaskStatus.Ready));
+            status: ExecutionTaskStatus.Pending));
     }
 
     /// <summary>

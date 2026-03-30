@@ -211,8 +211,8 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     public string StatusText => Status switch
     {
         ExecutionTaskStatus.Planned => "PLANNED",
+        ExecutionTaskStatus.Pending => "PENDING",
         ExecutionTaskStatus.Blocked => "BLOCKED",
-        ExecutionTaskStatus.Ready => "READY",
         ExecutionTaskStatus.Running => "RUNNING",
         ExecutionTaskStatus.Completed => "DONE",
         ExecutionTaskStatus.Failed => "FAILED",
@@ -231,6 +231,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         ExecutionTaskStatus.Running => "#5AA9E6",
         ExecutionTaskStatus.Failed => "#E65050",
         ExecutionTaskStatus.Disabled => "#7C8693",
+        ExecutionTaskStatus.Pending => "#AEB9C5",
         ExecutionTaskStatus.Blocked => "#D9A441",
         ExecutionTaskStatus.Cancelled => "#C77DFF",
         ExecutionTaskStatus.Skipped => "#8B949E",

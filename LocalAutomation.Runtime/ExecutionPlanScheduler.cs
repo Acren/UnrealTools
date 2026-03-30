@@ -54,8 +54,9 @@ public sealed class ExecutionPlanScheduler
                 continue;
             }
 
-            bool hasDependencies = item.DependsOn.Count > 0;
-            SetStatus(statuses, statusReasons, item.TaskId, hasDependencies ? ExecutionTaskStatus.Blocked : ExecutionTaskStatus.Ready, hasDependencies ? WaitingForDependenciesReason : null);
+            // Before a task actually starts, the design only needs to know that the task is still pending. Whether it
+            // is waiting on dependencies or scheduler turn is internal scheduler detail rather than a user-facing state.
+            SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Pending, item.DependsOn.Count > 0 ? WaitingForDependenciesReason : null);
         }
 
         while (true)
@@ -200,7 +201,7 @@ public sealed class ExecutionPlanScheduler
         CancellationToken cancellationToken)
     {
         bool startedAny = false;
-        foreach (ExecutionWorkItem item in itemsById.Values.Where(item => statuses[item.TaskId] == ExecutionTaskStatus.Ready).OrderBy(item => item.TaskId.Value, StringComparer.Ordinal))
+        foreach (ExecutionWorkItem item in itemsById.Values.Where(item => statuses[item.TaskId] == ExecutionTaskStatus.Pending && item.DependsOn.All(dependencyId => statuses[dependencyId] == ExecutionTaskStatus.Completed)).OrderBy(item => item.TaskId.Value, StringComparer.Ordinal))
         {
             if (runningTasks.Count >= _maxParallelism)
             {
@@ -219,7 +220,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Recomputes which pending items are now ready or still blocked after a task completes.
+    /// Recomputes which pending items remain eligible to run. In the simplified model they all stay pending until they
+    /// either start running or become permanently blocked by upstream failure.
     /// </summary>
     private void UpdateReadiness(
         IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
@@ -234,16 +236,15 @@ public sealed class ExecutionPlanScheduler
                 continue;
             }
 
-            // Dependency-waiting tasks begin life as Blocked, so they must be reevaluated after every completed task.
-            // Only permanently blocked tasks, such as failure-propagated branches, should remain untouched.
-            if (currentStatus == ExecutionTaskStatus.Blocked &&
-                !string.Equals(statusReasons[item.TaskId], WaitingForDependenciesReason, StringComparison.Ordinal))
+            // Permanently blocked tasks, such as failure-propagated branches, keep their terminal reason and never
+            // return to the runnable pool.
+            if (currentStatus == ExecutionTaskStatus.Blocked)
             {
                 continue;
             }
 
-            bool allDependenciesCompleted = item.DependsOn.All(dependencyId => statuses[dependencyId] == ExecutionTaskStatus.Completed);
-            SetStatus(statuses, statusReasons, item.TaskId, allDependenciesCompleted ? ExecutionTaskStatus.Ready : ExecutionTaskStatus.Blocked, allDependenciesCompleted ? null : WaitingForDependenciesReason);
+            bool waitingForDependencies = item.DependsOn.Any(dependencyId => statuses[dependencyId] != ExecutionTaskStatus.Completed);
+            SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Pending, waitingForDependencies ? WaitingForDependenciesReason : null);
         }
     }
 
