@@ -252,6 +252,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public string? PrimaryCommandText => _services.OperationSession.GetPrimaryCommandText(_currentOperation, _parameterSession.RawValue);
 
     /// <summary>
+    /// Gets the current previewable execution plan for the selected target, operation, and options.
+    /// </summary>
+    public ExecutionPlan? VisibleExecutionPlan => _services.OperationSession.GetExecutionPlan(_currentOperation, _parameterSession.RawValue);
+
+    /// <summary>
     /// Flushes any queued session and target-setting saves immediately so the most recent UI edits are persisted before
     /// shutdown.
     /// </summary>
@@ -356,6 +361,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             }
 
             RaiseDerivedStateChanged();
+            Runtime.UpdatePlanPreview(VisibleExecutionPlan);
             SaveSessionState();
         }, DispatcherPriority.Background);
     }
@@ -467,6 +473,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
             RestoreSelectedTargetState();
             RaiseDerivedStateChanged();
+            Runtime.UpdatePlanPreview(VisibleExecutionPlan);
 
             if (Target.SelectedTarget != null)
             {
@@ -475,6 +482,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
 
         RaiseDerivedStateChanged();
+        Runtime.UpdatePlanPreview(VisibleExecutionPlan);
     }
 
     /// <summary>
@@ -627,6 +635,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
             RestoreSelectedTargetState();
             RaiseDerivedStateChanged();
+            Runtime.UpdatePlanPreview(VisibleExecutionPlan);
         }
         else
         {
@@ -846,6 +855,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(PrimaryCommandText));
         RaisePropertyChanged(nameof(ShowExecuteDisabledReason));
         RaisePropertyChanged(nameof(VisibleCommand));
+        RaisePropertyChanged(nameof(VisibleExecutionPlan));
     }
 
     /// <summary>

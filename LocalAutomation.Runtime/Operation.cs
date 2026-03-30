@@ -116,10 +116,14 @@ public abstract class Operation
                 OperationResult result = await Execute(operationParameters, logger, token).ConfigureAwait(false);
                 tcs.SetResult(result);
             }
+            catch (OperationCanceledException)
+            {
+                tcs.SetResult(OperationResult.Cancelled());
+            }
             catch (Exception e)
             {
                 logger.LogCritical($"Worker thread encountered exception:\n{e}");
-                tcs.SetResult(new OperationResult(false));
+                tcs.SetResult(OperationResult.Failed());
             }
         });
 
@@ -139,7 +143,9 @@ public abstract class Operation
             int warnings = 0;
             int errors = 0;
 
-            EventStreamLogger eventLogger = new();
+            IExecutionTaskLoggerFactory? taskLoggerFactory = logger as IExecutionTaskLoggerFactory;
+            IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
+            EventStreamLogger eventLogger = new(taskLoggerFactory, taskStateSink);
             Logger = eventLogger;
             eventLogger.Output += (level, output) =>
             {
@@ -159,7 +165,7 @@ public abstract class Operation
             if (requirementsError != null)
             {
                 Logger.LogError(requirementsError);
-                return new OperationResult(false);
+                return OperationResult.Failed();
             }
 
             OperationParameters = operationParameters;
@@ -169,21 +175,25 @@ public abstract class Operation
 
             OperationResult result = await mainTask.ConfigureAwait(false);
 
-            if (Cancelled)
+            if (result.Outcome == RunOutcome.Cancelled || Cancelled)
             {
                 Logger.LogWarning($"Operation '{OperationName}' terminated by user");
             }
+            else if (result.Outcome == RunOutcome.Succeeded)
+            {
+                Logger.LogInformation($"Operation '{OperationName}' completed successfully - {errors} error(s), {warnings} warning(s)");
+            }
             else
             {
-                Logger.LogInformation($"Operation '{OperationName}' completed - {errors} error(s), {warnings} warning(s)");
+                Logger.LogWarning($"Operation '{OperationName}' finished with failure - {errors} error(s), {warnings} warning(s)");
             }
 
-            if (result.Success)
+            if (result.Outcome == RunOutcome.Succeeded)
             {
                 if (errors > 0)
                 {
                     Logger.LogError($"{errors} error(s) encountered");
-                    result.Success = false;
+                    result.Outcome = RunOutcome.Failed;
                 }
 
                 if (warnings > 0)
@@ -192,12 +202,17 @@ public abstract class Operation
                     if (FailOnWarning())
                     {
                         Logger.LogError("Operation fails on warnings");
-                        result.Success = false;
+                        result.Outcome = RunOutcome.Failed;
                     }
                 }
             }
 
             return result;
+        }
+        catch (OperationCanceledException)
+        {
+            Executing = false;
+            throw;
         }
         catch (Exception e)
         {
@@ -226,6 +241,44 @@ public abstract class Operation
     public virtual IReadOnlyList<string> GetCommandTexts(OperationParameters operationParameters)
     {
         return GetCommands(operationParameters).Select(command => command.ToString()).ToList();
+    }
+
+    /// <summary>
+    /// Builds the previewable execution plan for the provided parameter state so hosts can render the task graph before
+    /// execution begins.
+    /// </summary>
+    public virtual ExecutionPlan? BuildExecutionPlan(OperationParameters operationParameters)
+    {
+        if (operationParameters == null)
+        {
+            throw new ArgumentNullException(nameof(operationParameters));
+        }
+
+        if (operationParameters.Target == null)
+        {
+            return null;
+        }
+
+        PrepareRegisteredOptions(operationParameters);
+        string? requirementsError = CheckRequirementsSatisfied(operationParameters);
+        ExecutionTaskStatus status = requirementsError == null ? ExecutionTaskStatus.Ready : ExecutionTaskStatus.Disabled;
+        string taskId = GetType().Name;
+
+        // The default execution plan is a single runnable task so existing operations immediately participate in the
+        // new preview surface even before they define richer composite graphs.
+        return new ExecutionPlan(
+            id: taskId,
+            title: OperationName,
+            tasks: new[]
+            {
+                new ExecutionTask(
+                    id: taskId,
+                    title: OperationName,
+                    description: operationParameters.Target.DisplayName,
+                    kind: ExecutionTaskKind.Task,
+                    status: status,
+                    statusReason: requirementsError)
+            });
     }
 
     /// <summary>
@@ -346,6 +399,30 @@ public abstract class Operation
     /// </summary>
     public virtual void PrepareForExecution(OperationParameters operationParameters, ILogger logger)
     {
+    }
+
+    /// <summary>
+    /// Returns a logger scoped to one execution-plan task when the active logging pipeline supports task attribution.
+    /// </summary>
+    protected ILogger GetTaskLogger(string taskId)
+    {
+        if (Logger is IExecutionTaskLoggerFactory loggerFactory)
+        {
+            return loggerFactory.CreateTaskLogger(taskId);
+        }
+
+        return Logger;
+    }
+
+    /// <summary>
+    /// Publishes a task-status transition when the active logger supports task-state routing.
+    /// </summary>
+    protected void SetTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason = null)
+    {
+        if (Logger is IExecutionTaskStateSink taskStateSink)
+        {
+            taskStateSink.SetTaskStatus(taskId, status, statusReason);
+        }
     }
 
     /// <summary>

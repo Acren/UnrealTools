@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System;
 
 namespace LocalAutomation.Core;
 
@@ -7,6 +8,21 @@ namespace LocalAutomation.Core;
 /// </summary>
 public sealed class LogEntry
 {
+    /// <summary>
+    /// Gets or sets the local timestamp captured when the log line was created.
+    /// </summary>
+    public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.Now;
+
+    /// <summary>
+    /// Gets or sets the execution-session identifier associated with the log line when one exists.
+    /// </summary>
+    public string? SessionId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the execution-task identifier associated with the log line when one exists.
+    /// </summary>
+    public string? TaskId { get; set; }
+
     /// <summary>
     /// Gets or sets the formatted log message.
     /// </summary>

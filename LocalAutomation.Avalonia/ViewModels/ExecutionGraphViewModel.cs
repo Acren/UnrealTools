@@ -1,0 +1,611 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using LocalAutomation.Core;
+
+namespace LocalAutomation.Avalonia.ViewModels;
+
+/// <summary>
+/// Adapts a shared execution plan into Avalonia graph nodes, comment-style group containers, dependency edges,
+/// selection state, and layout details for the runtime workspace.
+/// </summary>
+public sealed class ExecutionGraphViewModel : ViewModelBase
+{
+    /// <summary>
+    /// Defines the fixed width used for leaf task cards.
+    /// </summary>
+    public const double NodeWidth = 220;
+
+    /// <summary>
+    /// Defines the fixed height used for leaf task cards.
+    /// </summary>
+    public const double NodeHeight = 92;
+
+    /// <summary>
+    /// Defines the fixed height reserved for a group-container header.
+    /// </summary>
+    public const double GroupHeaderHeight = 42;
+
+    /// <summary>
+    /// Defines the padding between a group-container border and its child items.
+    /// </summary>
+    public const double GroupPadding = 18;
+
+    private const double ColumnGap = 110;
+    private const double RowGap = 36;
+    private const string AllOutputNodeId = "__all-output";
+
+    private readonly ObservableCollection<ExecutionNodeViewModel> _nodes = new();
+    private readonly ObservableCollection<ExecutionEdgeViewModel> _edges = new();
+    private readonly Dictionary<string, ExecutionNodeViewModel> _nodesById = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<string>> _childrenByParentId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string?> _parentByTaskId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<string>> _leafDescendantsByGroupId = new(StringComparer.Ordinal);
+    private ExecutionPlan? _plan;
+    private ExecutionNodeViewModel? _selectedNode;
+    private double _canvasWidth;
+    private double _canvasHeight;
+
+    /// <summary>
+    /// Creates a graph view model with the fixed all-output pseudo-node available for task-log selection.
+    /// </summary>
+    public ExecutionGraphViewModel()
+    {
+        AllOutputNode = new ExecutionNodeViewModel(new ExecutionTask(
+            id: AllOutputNodeId,
+            title: "All Output",
+            description: "Show the merged output stream for the current preview or execution session.",
+            kind: ExecutionTaskKind.Group,
+            status: ExecutionTaskStatus.Ready));
+    }
+
+    /// <summary>
+    /// Gets the current execution plan rendered by the graph.
+    /// </summary>
+    public ExecutionPlan? Plan
+    {
+        get => _plan;
+        private set => SetProperty(ref _plan, value);
+    }
+
+    /// <summary>
+    /// Gets the rendered graph-node collection.
+    /// </summary>
+    public ObservableCollection<ExecutionNodeViewModel> Nodes => _nodes;
+
+    /// <summary>
+    /// Gets the rendered graph-edge collection.
+    /// </summary>
+    public ObservableCollection<ExecutionEdgeViewModel> Edges => _edges;
+
+    /// <summary>
+    /// Gets the special pseudo-node that selects the merged output stream.
+    /// </summary>
+    public ExecutionNodeViewModel AllOutputNode { get; }
+
+    /// <summary>
+    /// Gets the currently selected graph node for details and task-log binding.
+    /// </summary>
+    public ExecutionNodeViewModel? SelectedNode
+    {
+        get => _selectedNode;
+        private set
+        {
+            if (_selectedNode == value)
+            {
+                return;
+            }
+
+            if (_selectedNode != null)
+            {
+                _selectedNode.IsSelected = false;
+            }
+
+            _selectedNode = value;
+            if (_selectedNode != null)
+            {
+                _selectedNode.IsSelected = true;
+            }
+
+            RaisePropertyChanged(nameof(SelectedNode));
+            RaisePropertyChanged(nameof(SelectedNodeTitle));
+            RaisePropertyChanged(nameof(SelectedNodeDescription));
+            RaisePropertyChanged(nameof(SelectedNodeStatusText));
+            RaisePropertyChanged(nameof(SelectedNodeStatusReason));
+            RaisePropertyChanged(nameof(SelectedTaskId));
+            RaisePropertyChanged(nameof(HasSelectedNode));
+            RaisePropertyChanged(nameof(IsAllOutputSelected));
+        }
+    }
+
+    /// <summary>
+    /// Gets whether the graph currently has a selected graph node.
+    /// </summary>
+    public bool HasSelectedNode => SelectedNode != null;
+
+    /// <summary>
+    /// Gets whether the all-output pseudo-node is selected.
+    /// </summary>
+    public bool IsAllOutputSelected => string.Equals(SelectedNode?.Id, AllOutputNodeId, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Gets the title for the selected graph node details pane.
+    /// </summary>
+    public string SelectedNodeTitle => SelectedNode?.Title ?? "No graph node selected";
+
+    /// <summary>
+    /// Gets the description for the selected graph node details pane.
+    /// </summary>
+    public string SelectedNodeDescription => SelectedNode?.DetailsText ?? "Select a graph node to inspect the underlying task details and output.";
+
+    /// <summary>
+    /// Gets the selected task id used to bind task-scoped logs. Group containers intentionally fall back to the merged
+    /// output stream because they represent structure rather than runnable work.
+    /// </summary>
+    public string? SelectedTaskId => SelectedNode == null || SelectedNode.IsGroup ? null : SelectedNode.Id;
+
+    /// <summary>
+    /// Gets the status label for the selected graph node.
+    /// </summary>
+    public string SelectedNodeStatusText => SelectedNode?.StatusText ?? string.Empty;
+
+    /// <summary>
+    /// Gets the status reason for the selected graph node.
+    /// </summary>
+    public string SelectedNodeStatusReason => SelectedNode?.StatusReason ?? string.Empty;
+
+    /// <summary>
+    /// Gets the total canvas width required to render the current graph.
+    /// </summary>
+    public double CanvasWidth
+    {
+        get => _canvasWidth;
+        private set => SetProperty(ref _canvasWidth, value);
+    }
+
+    /// <summary>
+    /// Gets the total canvas height required to render the current graph.
+    /// </summary>
+    public double CanvasHeight
+    {
+        get => _canvasHeight;
+        private set => SetProperty(ref _canvasHeight, value);
+    }
+
+    /// <summary>
+    /// Replaces the rendered graph with the provided plan and recomputes the nested comment-container layout.
+    /// </summary>
+    public void SetPlan(ExecutionPlan? plan)
+    {
+        Plan = plan;
+        _nodes.Clear();
+        _edges.Clear();
+        _nodesById.Clear();
+        _childrenByParentId.Clear();
+        _parentByTaskId.Clear();
+        _leafDescendantsByGroupId.Clear();
+
+        if (plan == null)
+        {
+            CanvasWidth = NodeWidth;
+            CanvasHeight = NodeHeight;
+            SelectNode(AllOutputNode);
+            return;
+        }
+
+        BuildNodeLookup(plan);
+        BuildHierarchyLookups(plan.Tasks);
+        LayoutDirectChildren(parentId: null, originX: 24, originY: 24);
+        ApplyGroupHierarchyMetrics();
+        ApplyGroupRollupStatuses();
+        BuildDependencyEdges(plan);
+        UpdateCanvasSize();
+        RestoreSelection();
+    }
+
+    /// <summary>
+    /// Selects one graph node in the rendered plan.
+    /// </summary>
+    public void SelectNode(ExecutionNodeViewModel? node)
+    {
+        SelectedNode = node ?? AllOutputNode;
+    }
+
+    /// <summary>
+    /// Updates one rendered task's runtime status from session events and refreshes any parent group summaries.
+    /// </summary>
+    public void UpdateTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason)
+    {
+        if (!_nodesById.TryGetValue(taskId, out ExecutionNodeViewModel? node))
+        {
+            return;
+        }
+
+        node.SetStatus(status, statusReason);
+        RefreshAncestorGroupStatuses(taskId);
+
+        if (ReferenceEquals(SelectedNode, node) || (SelectedNode != null && SelectedNode.IsGroup))
+        {
+            RaisePropertyChanged(nameof(SelectedNodeStatusText));
+            RaisePropertyChanged(nameof(SelectedNodeStatusReason));
+            RaisePropertyChanged(nameof(SelectedNodeDescription));
+        }
+    }
+
+    /// <summary>
+    /// Materializes one graph node view model for every task in the source plan.
+    /// </summary>
+    private void BuildNodeLookup(ExecutionPlan plan)
+    {
+        foreach (ExecutionTask task in plan.Tasks)
+        {
+            ExecutionNodeViewModel node = new(task);
+            _nodes.Add(node);
+            _nodesById[task.Id] = node;
+        }
+    }
+
+    /// <summary>
+    /// Builds the parent and child lookup tables that drive nested group-container layout.
+    /// </summary>
+    private void BuildHierarchyLookups(IEnumerable<ExecutionTask> tasks)
+    {
+        foreach (ExecutionTask task in tasks)
+        {
+            _parentByTaskId[task.Id] = task.ParentId;
+            string parentKey = task.ParentId ?? string.Empty;
+            if (!_childrenByParentId.TryGetValue(parentKey, out List<string>? childIds))
+            {
+                childIds = new List<string>();
+                _childrenByParentId[parentKey] = childIds;
+            }
+
+            childIds.Add(task.Id);
+        }
+    }
+
+    /// <summary>
+    /// Lays out one sibling set using a local dependency-depth arrangement so grouped tasks remain readable inside their
+    /// containers.
+    /// </summary>
+    private LayoutBounds LayoutDirectChildren(string? parentId, double originX, double originY)
+    {
+        IReadOnlyList<ExecutionNodeViewModel> children = GetDirectChildren(parentId);
+        if (children.Count == 0)
+        {
+            return LayoutBounds.Empty;
+        }
+
+        Dictionary<string, int> localDepths = ComputeSiblingDepths(children);
+        Dictionary<int, List<ExecutionNodeViewModel>> columns = children
+            .GroupBy(child => localDepths.TryGetValue(child.Id, out int depth) ? depth : 0)
+            .OrderBy(group => group.Key)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(child => child.IsGroup ? 0 : 1)
+                    .ThenBy(child => child.Title, StringComparer.Ordinal)
+                    .ToList());
+
+        LayoutBounds bounds = LayoutBounds.Empty;
+        foreach ((int depth, List<ExecutionNodeViewModel> columnNodes) in columns)
+        {
+            double columnX = originX + (depth * (NodeWidth + ColumnGap));
+            double currentY = originY;
+
+            foreach (ExecutionNodeViewModel node in columnNodes)
+            {
+                LayoutBounds nodeBounds = node.IsGroup
+                    ? LayoutGroupNode(node, columnX, currentY)
+                    : LayoutLeafNode(node, columnX, currentY);
+
+                bounds = bounds.Include(nodeBounds);
+                currentY = nodeBounds.Bottom + RowGap;
+            }
+        }
+
+        return bounds;
+    }
+
+    /// <summary>
+    /// Lays out one non-group task as a normal card.
+    /// </summary>
+    private static LayoutBounds LayoutLeafNode(ExecutionNodeViewModel node, double x, double y)
+    {
+        node.SetBounds(x, y, NodeWidth, NodeHeight);
+        node.SetHierarchyMetrics(directChildCount: 0, descendantTaskCount: 0, summaryText: string.Empty);
+        return new LayoutBounds(x, y, NodeWidth, NodeHeight);
+    }
+
+    /// <summary>
+    /// Lays out one group task as a Blueprint-comment-style container around its direct child nodes.
+    /// </summary>
+    private LayoutBounds LayoutGroupNode(ExecutionNodeViewModel node, double x, double y)
+    {
+        IReadOnlyList<ExecutionNodeViewModel> children = GetDirectChildren(node.Id);
+        if (children.Count == 0)
+        {
+            node.SetBounds(x, y, NodeWidth, NodeHeight);
+            node.SetHierarchyMetrics(directChildCount: 0, descendantTaskCount: 0, summaryText: "Empty group");
+            return new LayoutBounds(x, y, NodeWidth, NodeHeight);
+        }
+
+        LayoutBounds childBounds = LayoutDirectChildren(node.Id, x + GroupPadding, y + GroupHeaderHeight + GroupPadding);
+        double width = Math.Max(NodeWidth, childBounds.Width + (GroupPadding * 2));
+        double height = Math.Max(NodeHeight, GroupHeaderHeight + childBounds.Height + (GroupPadding * 2));
+        node.SetBounds(x, y, width, height);
+        return new LayoutBounds(x, y, width, height);
+    }
+
+    /// <summary>
+    /// Computes dependency depths only within one sibling set so local group contents can lay out like a compact DAG.
+    /// </summary>
+    private Dictionary<string, int> ComputeSiblingDepths(IReadOnlyList<ExecutionNodeViewModel> siblings)
+    {
+        if (Plan == null)
+        {
+            return new Dictionary<string, int>(StringComparer.Ordinal);
+        }
+
+        HashSet<string> siblingIds = new(siblings.Select(sibling => sibling.Id), StringComparer.Ordinal);
+        Dictionary<string, int> depths = new(StringComparer.Ordinal);
+
+        int ComputeDepth(string taskId)
+        {
+            if (depths.TryGetValue(taskId, out int existingDepth))
+            {
+                return existingDepth;
+            }
+
+            IReadOnlyList<string> dependencies = Plan
+                .GetTaskDependencies(taskId)
+                .Where(siblingIds.Contains)
+                .ToList();
+            int depth = dependencies.Count == 0 ? 0 : dependencies.Max(ComputeDepth) + 1;
+            depths[taskId] = depth;
+            return depth;
+        }
+
+        foreach (ExecutionNodeViewModel sibling in siblings)
+        {
+            ComputeDepth(sibling.Id);
+        }
+
+        return depths;
+    }
+
+    /// <summary>
+    /// Populates the group summaries after layout so the details pane and container headers can describe their child
+    /// composition clearly.
+    /// </summary>
+    private void ApplyGroupHierarchyMetrics()
+    {
+        foreach (ExecutionNodeViewModel node in _nodes.Where(node => node.IsGroup))
+        {
+            IReadOnlyList<ExecutionNodeViewModel> directChildren = GetDirectChildren(node.Id);
+            List<string> leafDescendants = GetLeafDescendantIds(node.Id).ToList();
+            _leafDescendantsByGroupId[node.Id] = leafDescendants;
+
+            string summaryText = directChildren.Count == 0
+                ? "No child tasks"
+                : $"{directChildren.Count} child item{(directChildren.Count == 1 ? string.Empty : "s")} · {leafDescendants.Count} runnable task{(leafDescendants.Count == 1 ? string.Empty : "s")}";
+
+            node.SetHierarchyMetrics(directChildren.Count, leafDescendants.Count, summaryText);
+        }
+    }
+
+    /// <summary>
+    /// Recomputes group-container rollup statuses from their descendant runnable tasks so containers read like live
+    /// status summaries instead of inert labels.
+    /// </summary>
+    private void ApplyGroupRollupStatuses()
+    {
+        foreach (ExecutionNodeViewModel node in _nodes.Where(node => node.IsGroup))
+        {
+            ApplyGroupRollupStatus(node);
+        }
+    }
+
+    /// <summary>
+    /// Recomputes the rollup status for one group container.
+    /// </summary>
+    private void ApplyGroupRollupStatus(ExecutionNodeViewModel group)
+    {
+        IReadOnlyList<ExecutionNodeViewModel> descendants = GetLeafDescendantIds(group.Id)
+            .Select(taskId => _nodesById[taskId])
+            .ToList();
+
+        if (descendants.Count == 0)
+        {
+            group.SetStatus(group.Status, string.Empty);
+            return;
+        }
+
+        Dictionary<ExecutionTaskStatus, int> counts = descendants
+            .GroupBy(node => node.Status)
+            .ToDictionary(grouping => grouping.Key, grouping => grouping.Count());
+
+        ExecutionTaskStatus rollupStatus = counts.ContainsKey(ExecutionTaskStatus.Failed) ? ExecutionTaskStatus.Failed
+            : counts.ContainsKey(ExecutionTaskStatus.Running) ? ExecutionTaskStatus.Running
+            : counts.ContainsKey(ExecutionTaskStatus.Blocked) ? ExecutionTaskStatus.Blocked
+            : counts.ContainsKey(ExecutionTaskStatus.Ready) ? ExecutionTaskStatus.Ready
+            : counts.ContainsKey(ExecutionTaskStatus.Planned) ? ExecutionTaskStatus.Planned
+            : counts.ContainsKey(ExecutionTaskStatus.Cancelled) ? ExecutionTaskStatus.Cancelled
+            : counts.Keys.All(status => status == ExecutionTaskStatus.Disabled) ? ExecutionTaskStatus.Disabled
+            : counts.Keys.All(status => status == ExecutionTaskStatus.Skipped) ? ExecutionTaskStatus.Skipped
+            : ExecutionTaskStatus.Completed;
+
+        List<string> summaryParts = new();
+        AppendCount(summaryParts, counts, ExecutionTaskStatus.Completed, "done");
+        AppendCount(summaryParts, counts, ExecutionTaskStatus.Running, "running");
+        AppendCount(summaryParts, counts, ExecutionTaskStatus.Failed, "failed");
+        AppendCount(summaryParts, counts, ExecutionTaskStatus.Blocked, "blocked");
+        AppendCount(summaryParts, counts, ExecutionTaskStatus.Ready, "ready");
+        AppendCount(summaryParts, counts, ExecutionTaskStatus.Disabled, "disabled");
+        AppendCount(summaryParts, counts, ExecutionTaskStatus.Skipped, "skipped");
+
+        group.SetStatus(rollupStatus, string.Join(", ", summaryParts));
+    }
+
+    /// <summary>
+    /// Appends one status-count fragment when the requested status exists in the current rollup.
+    /// </summary>
+    private static void AppendCount(List<string> parts, IReadOnlyDictionary<ExecutionTaskStatus, int> counts, ExecutionTaskStatus status, string label)
+    {
+        if (counts.TryGetValue(status, out int count) && count > 0)
+        {
+            parts.Add($"{count} {label}");
+        }
+    }
+
+    /// <summary>
+    /// Recomputes every ancestor group of the updated task so nested containers stay in sync with live execution.
+    /// </summary>
+    private void RefreshAncestorGroupStatuses(string taskId)
+    {
+        string? currentParentId = _parentByTaskId.TryGetValue(taskId, out string? parentId) ? parentId : null;
+        while (!string.IsNullOrWhiteSpace(currentParentId) && _nodesById.TryGetValue(currentParentId, out ExecutionNodeViewModel? group))
+        {
+            ApplyGroupRollupStatus(group);
+            currentParentId = _parentByTaskId.TryGetValue(currentParentId, out string? nextParentId) ? nextParentId : null;
+        }
+    }
+
+    /// <summary>
+    /// Builds the visible dependency edges between runnable leaf nodes after layout has produced their coordinates.
+    /// </summary>
+    private void BuildDependencyEdges(ExecutionPlan plan)
+    {
+        foreach (ExecutionDependency dependency in plan.Dependencies)
+        {
+            if (_nodesById.TryGetValue(dependency.SourceTaskId, out ExecutionNodeViewModel? source) &&
+                _nodesById.TryGetValue(dependency.TargetTaskId, out ExecutionNodeViewModel? target) &&
+                !source.IsGroup &&
+                !target.IsGroup)
+            {
+                _edges.Add(new ExecutionEdgeViewModel(source, target));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Updates the canvas size from the laid out node bounds.
+    /// </summary>
+    private void UpdateCanvasSize()
+    {
+        if (_nodes.Count == 0)
+        {
+            CanvasWidth = NodeWidth;
+            CanvasHeight = NodeHeight;
+            return;
+        }
+
+        CanvasWidth = _nodes.Max(node => node.X + node.Width) + 24;
+        CanvasHeight = _nodes.Max(node => node.Y + node.Height) + 24;
+    }
+
+    /// <summary>
+    /// Restores the default graph selection after the plan changes. The runtime workspace deliberately starts on merged
+    /// output so the log pane is useful immediately without forcing a task click.
+    /// </summary>
+    private void RestoreSelection()
+    {
+        SelectNode(AllOutputNode);
+    }
+
+    /// <summary>
+    /// Returns the direct child graph nodes for the provided parent task id.
+    /// </summary>
+    private IReadOnlyList<ExecutionNodeViewModel> GetDirectChildren(string? parentId)
+    {
+        string parentKey = parentId ?? string.Empty;
+        if (!_childrenByParentId.TryGetValue(parentKey, out List<string>? childIds))
+        {
+            return Array.Empty<ExecutionNodeViewModel>();
+        }
+
+        return childIds.Select(childId => _nodesById[childId]).ToList();
+    }
+
+    /// <summary>
+    /// Enumerates all descendant runnable task ids beneath the provided group id.
+    /// </summary>
+    private IEnumerable<string> GetLeafDescendantIds(string groupId)
+    {
+        if (!_childrenByParentId.TryGetValue(groupId, out List<string>? childIds))
+        {
+            yield break;
+        }
+
+        foreach (string childId in childIds)
+        {
+            ExecutionNodeViewModel child = _nodesById[childId];
+            if (!child.IsGroup)
+            {
+                yield return childId;
+                continue;
+            }
+
+            foreach (string descendantId in GetLeafDescendantIds(childId))
+            {
+                yield return descendantId;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stores one laid out rectangle without pulling additional geometry dependencies into the view-model layer.
+    /// </summary>
+    private readonly struct LayoutBounds
+    {
+        public static LayoutBounds Empty { get; } = new(0, 0, 0, 0, isEmpty: true);
+
+        private LayoutBounds(double x, double y, double width, double height, bool isEmpty = false)
+        {
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+            IsEmpty = isEmpty;
+        }
+
+        public LayoutBounds(double x, double y, double width, double height)
+            : this(x, y, width, height, isEmpty: false)
+        {
+        }
+
+        public double X { get; }
+
+        public double Y { get; }
+
+        public double Width { get; }
+
+        public double Height { get; }
+
+        public bool IsEmpty { get; }
+
+        public double Right => X + Width;
+
+        public double Bottom => Y + Height;
+
+        public LayoutBounds Include(LayoutBounds other)
+        {
+            if (IsEmpty)
+            {
+                return other;
+            }
+
+            if (other.IsEmpty)
+            {
+                return this;
+            }
+
+            double left = Math.Min(X, other.X);
+            double top = Math.Min(Y, other.Y);
+            double right = Math.Max(Right, other.Right);
+            double bottom = Math.Max(Bottom, other.Bottom);
+            return new LayoutBounds(left, top, right - left, bottom - top);
+        }
+    }
+}

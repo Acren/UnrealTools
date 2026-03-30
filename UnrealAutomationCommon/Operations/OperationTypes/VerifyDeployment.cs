@@ -28,14 +28,52 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     throw new Exception("Engine not found");
                 }
                 global::LocalAutomation.Runtime.OperationResult result = await VerifyForEngine(engine, token);
-                if (!result.Success)
+                if (result.Outcome != global::LocalAutomation.Core.RunOutcome.Succeeded)
                 {
                     // Failure
                     return result;
                 }
             }
 
-            return new global::LocalAutomation.Runtime.OperationResult(true);
+            return global::LocalAutomation.Runtime.OperationResult.Succeeded();
+        }
+
+        /// <summary>
+        /// Builds a preview graph for deployment verification with one per-engine verification branch and explicit test
+        /// nodes that reflect the current automation options.
+        /// </summary>
+        public override LocalAutomation.Core.ExecutionPlan? BuildExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        {
+            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
+            Plugin plugin = GetRequiredTarget(typedParameters);
+            IReadOnlyList<EngineVersion> enabledVersions = typedParameters.GetOptions<EngineVersionOptions>().EnabledVersions;
+            List<EngineVersion> targetVersions = enabledVersions.Count > 0
+                ? enabledVersions.ToList()
+                : new List<EngineVersion> { plugin.EngineInstance.Version };
+            AutomationOptions automationOptions = typedParameters.GetOptions<AutomationOptions>();
+            global::LocalAutomation.Runtime.ExecutionPlanBuilder plan = new(OperationName, $"verify-deployment-{plugin.Name}".ToLowerInvariant());
+            global::LocalAutomation.Runtime.ExecutionGroupHandle root = plan.Group(OperationName, plugin.DisplayName);
+
+            foreach (EngineVersion engineVersion in targetVersions)
+            {
+                global::LocalAutomation.Runtime.ExecutionGroupHandle branch = plan.Group($"UE {engineVersion.MajorMinorString}", "Per-engine verification branch", root);
+                plan.Sequence(branch)
+                    .Step("Prepare")
+                        .Describe("Resolve the installed plugin and matching example project archive")
+                    .Step("Test Editor")
+                        .Describe("Run the editor verification pass")
+                        .When(automationOptions.RunTests, "Disabled because Run Tests is off")
+                    .Step("Test Standalone")
+                        .Describe("Run the standalone verification pass")
+                        .When(automationOptions.RunTests, "Disabled because Run Tests is off")
+                    .Step("Package Project")
+                        .Describe("Package the example project with the installed plugin")
+                    .Step("Test Package")
+                        .Describe("Run the packaged project verification pass")
+                        .When(automationOptions.RunTests, "Disabled because Run Tests is off");
+            }
+
+            return plan.BuildPlan();
         }
 
         /// <summary>
@@ -184,6 +222,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             return new List<LocalAutomation.Runtime.Command>();
         }
+
 
         public readonly struct ExampleProjectZipInfo
         {

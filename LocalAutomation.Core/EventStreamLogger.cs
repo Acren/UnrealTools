@@ -7,9 +7,21 @@ namespace LocalAutomation.Core;
 /// Implements <see cref="ILogger"/> by forwarding formatted log output through an event stream that callers can
 /// subscribe to.
 /// </summary>
-public class EventStreamLogger : ILogger
+public class EventStreamLogger : ILogger, IExecutionTaskLoggerFactory, IExecutionTaskStateSink
 {
     private static readonly object LockObject = new();
+    private readonly IExecutionTaskLoggerFactory? _taskLoggerFactory;
+    private readonly IExecutionTaskStateSink? _taskStateSink;
+
+    /// <summary>
+    /// Creates an event-stream logger that can optionally delegate task-specific logging and state transitions to an
+    /// outer execution-aware logger.
+    /// </summary>
+    public EventStreamLogger(IExecutionTaskLoggerFactory? taskLoggerFactory = null, IExecutionTaskStateSink? taskStateSink = null)
+    {
+        _taskLoggerFactory = taskLoggerFactory;
+        _taskStateSink = taskStateSink;
+    }
 
     /// <summary>
     /// Raised whenever a formatted log message is emitted.
@@ -53,6 +65,22 @@ public class EventStreamLogger : ILogger
     public IDisposable BeginScope<TState>(TState state) where TState : notnull
     {
         return NullScope.Instance;
+    }
+
+    /// <summary>
+    /// Creates a logger for one execution-plan task when an outer execution-aware logger is available.
+    /// </summary>
+    public ILogger CreateTaskLogger(string taskId)
+    {
+        return _taskLoggerFactory?.CreateTaskLogger(taskId) ?? this;
+    }
+
+    /// <summary>
+    /// Forwards task-state transitions to the outer execution-aware logger when available.
+    /// </summary>
+    public void SetTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason = null)
+    {
+        _taskStateSink?.SetTaskStatus(taskId, status, statusReason);
     }
 
     /// <summary>

@@ -11,8 +11,8 @@ using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomati
 namespace LocalAutomation.Avalonia.ViewModels;
 
 /// <summary>
-/// Owns the runtime panel's tabs, selected-task header state, and task lifecycle actions so the shell view model does
-/// not need to carry panel-specific UI behavior.
+/// Owns the execution workspace tabs, live plan preview, task-scoped log selection, and execution-session lifecycle
+/// actions for the Avalonia shell.
 /// </summary>
 public sealed class RuntimePanelViewModel : ViewModelBase
 {
@@ -24,14 +24,16 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     private readonly Action<string> _setStatus;
     private readonly DispatcherTimer _pendingLogFlushTimer;
     private readonly DispatcherTimer _runtimeDurationTimer;
-    private readonly Dictionary<RuntimeTaskTabViewModel, Queue<LogEntryViewModel>> _pendingLogEntries = new();
+    private readonly Dictionary<RuntimeWorkspaceTabViewModel, Queue<LogEntryViewModel>> _pendingLogEntries = new();
+    private readonly Dictionary<RuntimeWorkspaceTabViewModel, ILogStream> _attachedLogStreams = new();
+    private readonly Dictionary<RuntimeWorkspaceTabViewModel, ExecutionSession> _attachedSessions = new();
     private bool _isPendingLogFlushStartQueued;
-    private RuntimeTaskTabViewModel? _observedRuntimeTab;
-    private RuntimeTaskTabViewModel? _selectedRuntimeTab;
+    private RuntimeWorkspaceTabViewModel? _observedWorkspaceTab;
+    private RuntimeWorkspaceTabViewModel? _selectedRuntimeTab;
     private event PropertyChangedEventHandler? _selectedRuntimeTabPropertyChanged;
 
     /// <summary>
-    /// Creates the runtime panel view model around the shared runtime services and shell status sink.
+    /// Creates the runtime workspace view model around the shared services and shell status sink.
     /// </summary>
     public RuntimePanelViewModel(LocalAutomationApplicationHost services, Action<string> setStatus)
     {
@@ -43,19 +45,20 @@ public sealed class RuntimePanelViewModel : ViewModelBase
         _runtimeDurationTimer.Tick += HandleRuntimeDurationTimerTick;
 
         RuntimeTabs.Add(CreateApplicationLogTab());
-        SelectedRuntimeTab = RuntimeTabs[0];
+        RuntimeTabs.Add(CreatePlanPreviewTab());
+        SelectedRuntimeTab = RuntimeTabs[1];
         AttachApplicationLogStream();
     }
 
     /// <summary>
-    /// Gets the runtime tabs shown in the panel. The first tab is the permanent application log.
+    /// Gets the runtime workspace tabs. The first two tabs are the permanent application-log and plan-preview tabs.
     /// </summary>
-    public ObservableCollection<RuntimeTaskTabViewModel> RuntimeTabs { get; } = new();
+    public ObservableCollection<RuntimeWorkspaceTabViewModel> RuntimeTabs { get; } = new();
 
     /// <summary>
-    /// Gets or sets the runtime tab currently selected by the panel.
+    /// Gets or sets the currently selected runtime workspace tab.
     /// </summary>
-    public RuntimeTaskTabViewModel? SelectedRuntimeTab
+    public RuntimeWorkspaceTabViewModel? SelectedRuntimeTab
     {
         get => _selectedRuntimeTab;
         set
@@ -65,27 +68,25 @@ public sealed class RuntimePanelViewModel : ViewModelBase
                 return;
             }
 
-            // Selected-task header pills bind through this panel view model, so selected-tab property changes need to
-            // be mirrored into the runtime panel's derived properties.
             if (_selectedRuntimeTabPropertyChanged != null)
             {
-                if (_observedRuntimeTab != null)
+                if (_observedWorkspaceTab != null)
                 {
-                    _observedRuntimeTab.PropertyChanged -= _selectedRuntimeTabPropertyChanged;
+                    _observedWorkspaceTab.PropertyChanged -= _selectedRuntimeTabPropertyChanged;
                 }
 
                 _selectedRuntimeTabPropertyChanged = null;
-                _observedRuntimeTab = null;
+                _observedWorkspaceTab = null;
             }
 
             if (value != null)
             {
                 _selectedRuntimeTabPropertyChanged = (_, args) => HandleSelectedRuntimeTabPropertyChanged(args.PropertyName);
                 value.PropertyChanged += _selectedRuntimeTabPropertyChanged;
-                _observedRuntimeTab = value;
+                _observedWorkspaceTab = value;
             }
 
-            foreach (RuntimeTaskTabViewModel tab in RuntimeTabs)
+            foreach (RuntimeWorkspaceTabViewModel tab in RuntimeTabs)
             {
                 tab.IsSelected = ReferenceEquals(tab, value);
             }
@@ -100,7 +101,7 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     public bool IsRunning => SelectedRuntimeTab?.CanTerminate == true;
 
     /// <summary>
-    /// Gets a short execution summary line for the selected runtime tab.
+    /// Gets a short summary line for the selected runtime workspace tab.
     /// </summary>
     public string ExecutionSummary
     {
@@ -116,14 +117,24 @@ public sealed class RuntimePanelViewModel : ViewModelBase
                 return "Application log messages appear here even when no tasks are running.";
             }
 
+            if (SelectedRuntimeTab.IsPlanPreview)
+            {
+                return "The Plan tab previews the task graph for the current target, operation, and option values.";
+            }
+
             if (SelectedRuntimeTab.Session?.IsRunning == true)
             {
                 return $"Running {SelectedRuntimeTab.Session.OperationName} on {SelectedRuntimeTab.Session.TargetName}";
             }
 
-            if (SelectedRuntimeTab.Session?.Success == true)
+            if (SelectedRuntimeTab.Session?.Outcome == RunOutcome.Succeeded)
             {
                 return $"{SelectedRuntimeTab.Session.OperationName} succeeded for {SelectedRuntimeTab.Session.TargetName}";
+            }
+
+            if (SelectedRuntimeTab.Session?.Outcome == RunOutcome.Cancelled)
+            {
+                return $"{SelectedRuntimeTab.Session.OperationName} was cancelled for {SelectedRuntimeTab.Session.TargetName}";
             }
 
             if (SelectedRuntimeTab.Session != null)
@@ -136,37 +147,82 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Gets the log entries displayed for the currently selected runtime tab.
+    /// Gets the log entries shown for the selected graph node or all-output pseudo-node.
     /// </summary>
-    public ObservableCollection<LogEntryViewModel> SelectedRuntimeLogEntries => SelectedRuntimeTab?.LogEntries ?? new ObservableCollection<LogEntryViewModel>();
+    public ObservableCollection<LogEntryViewModel> SelectedRuntimeLogEntries => SelectedRuntimeTab?.SelectedLogEntries ?? new ObservableCollection<LogEntryViewModel>();
 
     /// <summary>
-    /// Gets the selected runtime-tab title shown in the panel header.
+    /// Gets the selected runtime-tab title shown in the workspace header.
     /// </summary>
     public string SelectedRuntimeTabTitle => SelectedRuntimeTab?.Title ?? "Runtime";
 
     /// <summary>
     /// Gets whether the selected runtime tab should show task metrics in the header.
     /// </summary>
-    public bool ShowSelectedRuntimeMetrics => SelectedRuntimeTab is { IsApplicationLog: false };
+    public bool ShowSelectedRuntimeMetrics => SelectedRuntimeTab?.ShowsRuntimeMetrics == true;
 
     /// <summary>
-    /// Gets the warning count for the selected runtime task.
+    /// Gets the warning count for the selected runtime tab's active log stream.
     /// </summary>
     public int SelectedRuntimeWarningCount => SelectedRuntimeTab?.WarningCount ?? 0;
 
     /// <summary>
-    /// Gets the error count for the selected runtime task.
+    /// Gets the error count for the selected runtime tab's active log stream.
     /// </summary>
     public int SelectedRuntimeErrorCount => SelectedRuntimeTab?.ErrorCount ?? 0;
 
     /// <summary>
-    /// Gets the elapsed duration text for the selected runtime task.
+    /// Gets the elapsed duration text for the selected runtime tab.
     /// </summary>
     public string SelectedRuntimeDuration => SelectedRuntimeTab?.DurationText ?? "--:--";
 
     /// <summary>
-    /// Adds a newly started execution session to the runtime panel and begins mirroring its logs and completion state.
+    /// Gets the selected graph node title shown in the details pane.
+    /// </summary>
+    public string SelectedNodeTitle => SelectedRuntimeTab?.Graph.SelectedNodeTitle ?? "No node selected";
+
+    /// <summary>
+    /// Gets the selected graph node description shown in the details pane.
+    /// </summary>
+    public string SelectedNodeDescription => SelectedRuntimeTab?.Graph.SelectedNodeDescription ?? string.Empty;
+
+    /// <summary>
+    /// Gets the selected graph node status shown in the details pane.
+    /// </summary>
+    public string SelectedNodeStatusText => SelectedRuntimeTab?.Graph.SelectedNodeStatusText ?? string.Empty;
+
+    /// <summary>
+    /// Gets the selected graph node status reason shown in the details pane.
+    /// </summary>
+    public string SelectedNodeStatusReason => SelectedRuntimeTab?.Graph.SelectedNodeStatusReason ?? string.Empty;
+
+    /// <summary>
+    /// Gets whether the selected graph node has a non-empty status reason worth rendering.
+    /// </summary>
+    public bool HasSelectedNodeStatusReason => !string.IsNullOrWhiteSpace(SelectedNodeStatusReason);
+
+    /// <summary>
+    /// Gets the graph view model for the currently selected workspace tab when that tab renders a graph pane.
+    /// </summary>
+    public ExecutionGraphViewModel? SelectedGraph => SelectedRuntimeTab?.ShowsGraph == true ? SelectedRuntimeTab.Graph : null;
+
+    /// <summary>
+    /// Refreshes the permanent plan-preview tab from the latest selected target, operation, and option values.
+    /// </summary>
+    public void UpdatePlanPreview(ExecutionPlan? plan)
+    {
+        RuntimeWorkspaceTabViewModel planTab = RuntimeTabs.First(tab => tab.Kind == RuntimeWorkspaceTabKind.PlanPreview);
+        planTab.Graph.SetPlan(plan);
+        RebuildTabSelectedLogEntries(planTab);
+
+        if (ReferenceEquals(SelectedRuntimeTab, planTab))
+        {
+            RaiseSelectionStateChanged();
+        }
+    }
+
+    /// <summary>
+    /// Adds a newly started execution session to the workspace and begins mirroring its plan, task states, and logs.
     /// </summary>
     public void AttachExecutionSession(ExecutionSession session)
     {
@@ -175,13 +231,23 @@ public sealed class RuntimePanelViewModel : ViewModelBase
             throw new ArgumentNullException(nameof(session));
         }
 
-        RuntimeTaskTabViewModel runtimeTab = new(
+        ExecutionGraphViewModel graph = new();
+        graph.SetPlan(session.Plan);
+        foreach ((string taskId, ExecutionTaskStatus status) in session.TaskStatuses)
+        {
+            graph.UpdateTaskStatus(taskId, status, session.GetTaskStatusReason(taskId));
+        }
+
+        RuntimeWorkspaceTabViewModel runtimeTab = new(
             id: session.Id,
             title: session.OperationName,
             subtitle: session.TargetName,
-            isApplicationLog: false,
+            kind: RuntimeWorkspaceTabKind.ExecutionSession,
+            presentation: new RuntimeWorkspaceTabPresentation(showGraph: true, showLog: true, showSubtitle: true, showStatusMarker: true, showRuntimeMetrics: true),
+            graph: graph,
             session: session);
 
+        HookGraphSelection(runtimeTab);
         RuntimeTabs.Add(runtimeTab);
         SelectedRuntimeTab = runtimeTab;
         if (!_runtimeDurationTimer.IsEnabled)
@@ -189,13 +255,17 @@ public sealed class RuntimePanelViewModel : ViewModelBase
             _runtimeDurationTimer.Start();
         }
 
-        // Execution can start logging immediately on a background thread before the UI has attached the tab. Seed the
-        // tab from the current buffered entries first so fast tasks still show their full history instead of only the
-        // tail that arrived after subscription.
-        runtimeTab.AddLogEntries(session.LogStream.Entries.Select(entry => new LogEntryViewModel(entry.Message, entry.Verbosity)).ToList());
+        AttachSessionLogs(runtimeTab, session);
+        session.TaskStatusChanged += (taskId, status, statusReason) => Dispatcher.UIThread.Post(() =>
+        {
+            runtimeTab.Graph.UpdateTaskStatus(taskId, status, statusReason);
+            if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+            {
+                RaiseSelectionStateChanged();
+            }
+        });
 
-        session.LogStream.EntryAdded += entry => EnqueuePendingLogEntry(runtimeTab, new LogEntryViewModel(entry.Message, entry.Verbosity));
-
+        _attachedSessions[runtimeTab] = session;
         _ = WatchExecutionCompletionAsync(runtimeTab);
         RaiseSelectionStateChanged();
     }
@@ -210,13 +280,13 @@ public sealed class RuntimePanelViewModel : ViewModelBase
             return;
         }
 
-        await session.CancelAsync();
         _setStatus($"Cancelling {session.OperationName}.");
+        await session.CancelAsync();
         RaiseSelectionStateChanged();
     }
 
     /// <summary>
-    /// Clears the log entries for the selected runtime tab.
+    /// Clears the active log stream for the selected tab and graph selection.
     /// </summary>
     public void ClearSelectedRuntimeLog()
     {
@@ -225,25 +295,44 @@ public sealed class RuntimePanelViewModel : ViewModelBase
             return;
         }
 
+        if (SelectedRuntimeTab.IsApplicationLog)
+        {
+            ApplicationLogService.LogStream.Clear();
+            RebuildTabSelectedLogEntries(SelectedRuntimeTab);
+            _setStatus("Cleared application log output.");
+            RaiseSelectionStateChanged();
+            return;
+        }
+
+        if (SelectedRuntimeTab.Session != null)
+        {
+            string? selectedTaskId = SelectedRuntimeTab.Graph.SelectedTaskId;
+            if (SelectedRuntimeTab.Graph.IsAllOutputSelected || string.IsNullOrWhiteSpace(selectedTaskId))
+            {
+                SelectedRuntimeTab.Session.LogStream.Clear();
+            }
+            else
+            {
+                SelectedRuntimeTab.Session.GetTaskLogStream(selectedTaskId)?.Clear();
+            }
+        }
+
         RemovePendingLogEntries(SelectedRuntimeTab);
-        SelectedRuntimeTab.ClearLogEntries();
-        _setStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}.");
+        RebuildTabSelectedLogEntries(SelectedRuntimeTab);
+        _setStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}." );
         RaiseSelectionStateChanged();
     }
 
     /// <summary>
-    /// Closes the provided runtime tab when it is not the permanent app log tab. Running tabs are cancelled first so
-    /// the close affordance does not leave background work orphaned after the tab disappears.
+    /// Closes the provided runtime tab when it is not one of the permanent workspace tabs.
     /// </summary>
-    public async Task CloseRuntimeTabAsync(RuntimeTaskTabViewModel? runtimeTab)
+    public async Task CloseRuntimeTabAsync(RuntimeWorkspaceTabViewModel? runtimeTab)
     {
         if (runtimeTab == null || !runtimeTab.CanClose)
         {
             return;
         }
 
-        // Closing a running tab should behave like terminate-and-dismiss so the session is asked to stop before it is
-        // removed from the visible runtime collection.
         if (runtimeTab.Session is { IsRunning: true } session)
         {
             await session.CancelAsync();
@@ -254,9 +343,28 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Polls the running session until it completes so completion state can be reflected back into the runtime panel.
+    /// Selects one graph node inside the provided runtime tab.
     /// </summary>
-    private async Task WatchExecutionCompletionAsync(RuntimeTaskTabViewModel runtimeTab)
+    public void SelectGraphNode(RuntimeWorkspaceTabViewModel runtimeTab, ExecutionNodeViewModel? node)
+    {
+        if (runtimeTab == null)
+        {
+            throw new ArgumentNullException(nameof(runtimeTab));
+        }
+
+        runtimeTab.Graph.SelectNode(node);
+        RebuildTabSelectedLogEntries(runtimeTab);
+
+        if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+        {
+            RaiseSelectionStateChanged();
+        }
+    }
+
+    /// <summary>
+    /// Polls the running session until it completes so completion state can be reflected back into the workspace.
+    /// </summary>
+    private async Task WatchExecutionCompletionAsync(RuntimeWorkspaceTabViewModel runtimeTab)
     {
         ExecutionSession session = runtimeTab.Session!;
         while (session.IsRunning)
@@ -273,9 +381,13 @@ public sealed class RuntimePanelViewModel : ViewModelBase
                 RaiseSelectionStateChanged();
             }
 
-            if (session.Success == true)
+            if (session.Outcome == RunOutcome.Succeeded)
             {
                 _setStatus($"{session.OperationName} succeeded for {session.TargetName}.");
+            }
+            else if (session.Outcome == RunOutcome.Cancelled)
+            {
+                _setStatus($"{session.OperationName} was cancelled for {session.TargetName}.");
             }
             else
             {
@@ -285,16 +397,17 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Removes a runtime tab from the visible collection and picks the next selected tab.
+    /// Removes a runtime workspace tab and selects a neighboring tab when the removed tab was active.
     /// </summary>
-    private void RemoveRuntimeTab(RuntimeTaskTabViewModel runtimeTab)
+    private void RemoveRuntimeTab(RuntimeWorkspaceTabViewModel runtimeTab)
     {
         RemovePendingLogEntries(runtimeTab);
+        _attachedLogStreams.Remove(runtimeTab);
+        _attachedSessions.Remove(runtimeTab);
+
         int removedIndex = RuntimeTabs.IndexOf(runtimeTab);
         RuntimeTabs.Remove(runtimeTab);
 
-        // Once the UI tab is dismissed, drop the backing session from the shared session list so shell state and any
-        // persisted execution history only track tabs that remain visible.
         if (runtimeTab.Session != null)
         {
             _services.Execution.RemoveSession(runtimeTab.Session.Id);
@@ -310,22 +423,92 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Seeds the runtime panel with application-level log entries and keeps listening so startup or crash details stay
-    /// visible even when no task is running.
+    /// Seeds the application-log tab from the shared process-wide log stream and keeps listening for new lines.
     /// </summary>
     private void AttachApplicationLogStream()
     {
-        RuntimeTaskTabViewModel applicationTab = RuntimeTabs[0];
-        applicationTab.AddLogEntries(ApplicationLogService.LogStream.Entries.Select(entry => new LogEntryViewModel(entry.Message, entry.Verbosity)).ToList());
-
-        ApplicationLogService.LogStream.EntryAdded += entry => EnqueuePendingLogEntry(applicationTab, new LogEntryViewModel(entry.Message, entry.Verbosity));
+        RuntimeWorkspaceTabViewModel applicationTab = RuntimeTabs.First(tab => tab.Kind == RuntimeWorkspaceTabKind.ApplicationLog);
+        HookGraphSelection(applicationTab);
+        AttachLogStream(applicationTab, ApplicationLogService.LogStream);
     }
 
     /// <summary>
-    /// Buffers one log entry off the hot path so background process output does not queue one dispatcher callback per
-    /// line while the UI is already busy rendering a wrapped log view.
+    /// Attaches the aggregate and per-task log streams for one execution session.
     /// </summary>
-    private void EnqueuePendingLogEntry(RuntimeTaskTabViewModel runtimeTab, LogEntryViewModel entry)
+    private void AttachSessionLogs(RuntimeWorkspaceTabViewModel runtimeTab, ExecutionSession session)
+    {
+        AttachLogStream(runtimeTab, session.LogStream);
+        foreach (KeyValuePair<string, BufferedLogStream> entry in session.TaskLogStreams)
+        {
+            entry.Value.EntryAdded += _ => EnqueueRefreshForSelection(runtimeTab);
+        }
+    }
+
+    /// <summary>
+    /// Attaches one log stream to a workspace tab and seeds the currently visible log pane from its buffered entries.
+    /// </summary>
+    private void AttachLogStream(RuntimeWorkspaceTabViewModel runtimeTab, ILogStream logStream)
+    {
+        _attachedLogStreams[runtimeTab] = logStream;
+        RebuildTabSelectedLogEntries(runtimeTab);
+        logStream.EntryAdded += entry => EnqueuePendingLogEntry(runtimeTab, CreateLogEntryViewModel(entry));
+    }
+
+    /// <summary>
+    /// Hooks the graph selection so the details pane and scoped log stream switch immediately when the user clicks a
+    /// different node on the canvas.
+    /// </summary>
+    private void HookGraphSelection(RuntimeWorkspaceTabViewModel runtimeTab)
+    {
+        runtimeTab.Graph.PropertyChanged += (_, args) =>
+        {
+            if (!string.IsNullOrWhiteSpace(args.PropertyName) &&
+                !string.Equals(args.PropertyName, nameof(ExecutionGraphViewModel.SelectedNode), StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            RebuildTabSelectedLogEntries(runtimeTab);
+            if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+            {
+                RaiseSelectionStateChanged();
+            }
+        };
+    }
+
+    /// <summary>
+    /// Rebuilds the selected log pane contents for one workspace tab from the appropriate aggregate or task-scoped log
+    /// stream.
+    /// </summary>
+    private void RebuildTabSelectedLogEntries(RuntimeWorkspaceTabViewModel runtimeTab)
+    {
+        if (runtimeTab.IsApplicationLog)
+        {
+            runtimeTab.SetSelectedLogEntries(ApplicationLogService.LogStream.Entries.Select(CreateLogEntryViewModel));
+            return;
+        }
+
+        if (runtimeTab.Session == null)
+        {
+            runtimeTab.SetSelectedLogEntries(Array.Empty<LogEntryViewModel>());
+            return;
+        }
+
+        if (runtimeTab.Graph.IsAllOutputSelected || string.IsNullOrWhiteSpace(runtimeTab.Graph.SelectedTaskId))
+        {
+            runtimeTab.SetSelectedLogEntries(runtimeTab.Session.LogStream.Entries.Select(CreateLogEntryViewModel));
+            return;
+        }
+
+        BufferedLogStream? taskLogStream = runtimeTab.Session.GetTaskLogStream(runtimeTab.Graph.SelectedTaskId);
+        runtimeTab.SetSelectedLogEntries((taskLogStream?.Entries ?? Array.Empty<LogEntry>()).Select(CreateLogEntryViewModel));
+    }
+
+    /// <summary>
+    /// Buffers one pending log entry or task-log refresh so high-volume output does not schedule one dispatcher callback
+    /// per line.
+    /// </summary>
+    private void EnqueuePendingLogEntry(RuntimeWorkspaceTabViewModel runtimeTab, LogEntryViewModel entry)
     {
         bool queueFlushStart;
         lock (_pendingLogSyncRoot)
@@ -349,8 +532,6 @@ public sealed class RuntimePanelViewModel : ViewModelBase
             return;
         }
 
-        // Starting the timer itself is marshaled only once so incoming log bursts keep coalescing until the UI thread
-        // is ready for the next bounded flush.
         Dispatcher.UIThread.Post(() =>
         {
             lock (_pendingLogSyncRoot)
@@ -370,10 +551,17 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Drops any queued entries for a tab that is being cleared or removed so stale output does not replay on the next
-    /// timer tick.
+    /// Requests a bounded refresh pass for the selected task log without needing to synthesize a fake new log line.
     /// </summary>
-    private void RemovePendingLogEntries(RuntimeTaskTabViewModel runtimeTab)
+    private void EnqueueRefreshForSelection(RuntimeWorkspaceTabViewModel runtimeTab)
+    {
+        EnqueuePendingLogEntry(runtimeTab, new LogEntryViewModel(string.Empty, Microsoft.Extensions.Logging.LogLevel.Trace));
+    }
+
+    /// <summary>
+    /// Drops any queued log lines for a workspace tab that is being cleared or removed.
+    /// </summary>
+    private void RemovePendingLogEntries(RuntimeWorkspaceTabViewModel runtimeTab)
     {
         bool shouldStopTimer;
         lock (_pendingLogSyncRoot)
@@ -389,16 +577,15 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Flushes a bounded batch of pending log entries onto the UI so timer ticks, commands, and text rendering stay
-    /// responsive even when tooling emits large bursts of output.
+    /// Flushes pending log updates onto the selected log pane in bounded batches.
     /// </summary>
     private void HandlePendingLogFlushTimerTick(object? sender, EventArgs e)
     {
-        Dictionary<RuntimeTaskTabViewModel, List<LogEntryViewModel>> batchedEntries = DrainPendingLogEntries(out bool hasMorePendingEntries);
+        List<RuntimeWorkspaceTabViewModel> tabsToRefresh = DrainPendingLogEntries(out bool hasMorePendingEntries);
         bool selectedTabChanged = false;
-        foreach ((RuntimeTaskTabViewModel runtimeTab, List<LogEntryViewModel> entries) in batchedEntries)
+        foreach (RuntimeWorkspaceTabViewModel runtimeTab in tabsToRefresh)
         {
-            runtimeTab.AddLogEntries(entries);
+            RebuildTabSelectedLogEntries(runtimeTab);
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
                 selectedTabChanged = true;
@@ -417,16 +604,15 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Removes up to the configured flush budget from the per-tab pending queues while preserving tab-local order so one
-    /// flush cannot monopolize the UI thread indefinitely.
+    /// Drains a bounded number of queued updates while preserving tab-local ordering.
     /// </summary>
-    private Dictionary<RuntimeTaskTabViewModel, List<LogEntryViewModel>> DrainPendingLogEntries(out bool hasMorePendingEntries)
+    private List<RuntimeWorkspaceTabViewModel> DrainPendingLogEntries(out bool hasMorePendingEntries)
     {
-        Dictionary<RuntimeTaskTabViewModel, List<LogEntryViewModel>> drainedEntries = new();
+        List<RuntimeWorkspaceTabViewModel> tabsToRefresh = new();
         lock (_pendingLogSyncRoot)
         {
             int remainingBudget = MaxLogEntriesPerFlush;
-            foreach ((RuntimeTaskTabViewModel runtimeTab, Queue<LogEntryViewModel> pendingEntries) in _pendingLogEntries.ToList())
+            foreach ((RuntimeWorkspaceTabViewModel runtimeTab, Queue<LogEntryViewModel> pendingEntries) in _pendingLogEntries.ToList())
             {
                 if (remainingBudget == 0)
                 {
@@ -439,13 +625,12 @@ public sealed class RuntimePanelViewModel : ViewModelBase
                     continue;
                 }
 
-                List<LogEntryViewModel> drainedBatch = new(entriesToDrain);
                 for (int index = 0; index < entriesToDrain; index++)
                 {
-                    drainedBatch.Add(pendingEntries.Dequeue());
+                    pendingEntries.Dequeue();
                 }
 
-                drainedEntries[runtimeTab] = drainedBatch;
+                tabsToRefresh.Add(runtimeTab);
                 if (pendingEntries.Count == 0)
                 {
                     _pendingLogEntries.Remove(runtimeTab);
@@ -457,11 +642,11 @@ public sealed class RuntimePanelViewModel : ViewModelBase
             hasMorePendingEntries = _pendingLogEntries.Count > 0;
         }
 
-        return drainedEntries;
+        return tabsToRefresh;
     }
 
     /// <summary>
-    /// Refreshes the selected task duration once per second while any runtime session remains active.
+    /// Refreshes the selected runtime-tab duration once per second while any runtime session remains active.
     /// </summary>
     private void HandleRuntimeDurationTimerTick(object? sender, EventArgs e)
     {
@@ -474,7 +659,7 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Mirrors selected runtime-tab property changes into the derived shell properties used by the panel header.
+    /// Mirrors selected runtime-tab property changes into the derived workspace properties used by the header.
     /// </summary>
     private void HandleSelectedRuntimeTabPropertyChanged(string? propertyName)
     {
@@ -486,7 +671,7 @@ public sealed class RuntimePanelViewModel : ViewModelBase
 
         switch (propertyName)
         {
-            case nameof(RuntimeTaskTabViewModel.DurationText):
+            case nameof(RuntimeWorkspaceTabViewModel.DurationText):
                 RaisePropertyChanged(nameof(SelectedRuntimeDuration));
                 break;
             default:
@@ -496,12 +681,18 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Raises change notifications for all derived state shown by the runtime panel.
+    /// Raises change notifications for all derived state shown by the runtime workspace.
     /// </summary>
     private void RaiseSelectionStateChanged()
     {
         RaisePropertyChanged(nameof(ExecutionSummary));
         RaisePropertyChanged(nameof(IsRunning));
+        RaisePropertyChanged(nameof(SelectedGraph));
+        RaisePropertyChanged(nameof(SelectedNodeDescription));
+        RaisePropertyChanged(nameof(SelectedNodeStatusReason));
+        RaisePropertyChanged(nameof(HasSelectedNodeStatusReason));
+        RaisePropertyChanged(nameof(SelectedNodeStatusText));
+        RaisePropertyChanged(nameof(SelectedNodeTitle));
         RaisePropertyChanged(nameof(SelectedRuntimeDuration));
         RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
         RaisePropertyChanged(nameof(SelectedRuntimeLogEntries));
@@ -511,14 +702,40 @@ public sealed class RuntimePanelViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Creates the permanent first runtime tab used for application-level logs.
+    /// Creates the permanent first workspace tab used for application-level logs.
     /// </summary>
-    private static RuntimeTaskTabViewModel CreateApplicationLogTab()
+    private static RuntimeWorkspaceTabViewModel CreateApplicationLogTab()
     {
-        return new RuntimeTaskTabViewModel(
+        return new RuntimeWorkspaceTabViewModel(
             id: "application-log",
             title: "App Log",
             subtitle: string.Empty,
-            isApplicationLog: true);
+            kind: RuntimeWorkspaceTabKind.ApplicationLog,
+            presentation: new RuntimeWorkspaceTabPresentation(showGraph: false, showLog: true, showSubtitle: false, showStatusMarker: false, showRuntimeMetrics: false),
+            graph: new ExecutionGraphViewModel());
+    }
+
+    /// <summary>
+    /// Creates the permanent plan-preview workspace tab.
+    /// </summary>
+    private static RuntimeWorkspaceTabViewModel CreatePlanPreviewTab()
+    {
+        RuntimeWorkspaceTabViewModel planTab = new(
+            id: "plan-preview",
+            title: "Plan",
+            subtitle: "Current selection preview",
+            kind: RuntimeWorkspaceTabKind.PlanPreview,
+            presentation: new RuntimeWorkspaceTabPresentation(showGraph: true, showLog: false, showSubtitle: false, showStatusMarker: false, showRuntimeMetrics: false),
+            graph: new ExecutionGraphViewModel());
+        planTab.Graph.SelectNode(planTab.Graph.AllOutputNode);
+        return planTab;
+    }
+
+    /// <summary>
+    /// Adapts one shared log entry into the UI-friendly log row model.
+    /// </summary>
+    private static LogEntryViewModel CreateLogEntryViewModel(LogEntry entry)
+    {
+        return new LogEntryViewModel(entry.Message, entry.Verbosity, entry.Timestamp);
     }
 }

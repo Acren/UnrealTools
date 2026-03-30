@@ -31,11 +31,12 @@ public sealed class ExecutionRuntimeService
 
         Runner runner = new(operation, parameters);
         BufferedLogStream logStream = new();
+        ExecutionPlan? plan = operation.BuildExecutionPlan(parameters);
         ILogger previousLogger = TryGetCurrentLogger();
-        ForwardingLogger forwardingLogger = new(logStream, previousLogger);
+        ExecutionSession? session = null;
+        ForwardingLogger forwardingLogger = new(() => session!, previousLogger);
         ApplicationLogger.Logger = forwardingLogger;
 
-        ExecutionSession? session = null;
         session = new ExecutionSession(logStream, cancelAsync: async () =>
         {
             if (runner.IsRunning)
@@ -43,36 +44,41 @@ public sealed class ExecutionRuntimeService
                 await runner.Cancel();
                 session!.IsRunning = false;
             }
-        })
+        }, plan: plan)
         {
             IsRunning = true,
             OperationName = operation.OperationName,
             TargetName = parameters.Target?.DisplayName ?? string.Empty
         };
 
-        _ = RunAsync(runner, session, logStream, previousLogger);
+        _ = RunAsync(runner, session, previousLogger);
         return session;
     }
 
     /// <summary>
     /// Runs the current runtime runner asynchronously and updates the shared execution session as it completes.
     /// </summary>
-    private static async Task RunAsync(Runner runner, ExecutionSession session, BufferedLogStream logStream, ILogger previousLogger)
+    private static async Task RunAsync(Runner runner, ExecutionSession session, ILogger previousLogger)
     {
         try
         {
             OperationResult result = await runner.Run();
-            session.Success = result.Success;
+            session.Outcome = result.Outcome;
+        }
+        catch (OperationCanceledException)
+        {
+            session.Outcome = RunOutcome.Cancelled;
         }
         catch (Exception ex)
         {
-            logStream.Add(new LogEntry
+            session.AddLogEntry(new LogEntry
             {
+                SessionId = session.Id,
                 Message = ex.ToString(),
                 Verbosity = LogLevel.Error
             });
 
-            session.Success = false;
+            session.Outcome = RunOutcome.Failed;
         }
         finally
         {
@@ -99,18 +105,20 @@ public sealed class ExecutionRuntimeService
     /// <summary>
     /// Forwards shared logger output into the execution session's buffered log stream.
     /// </summary>
-    private sealed class ForwardingLogger : ILogger
+    private sealed class ForwardingLogger : ILogger, IExecutionTaskLoggerFactory, IExecutionTaskStateSink
     {
-        private readonly BufferedLogStream _logStream;
+        private readonly Func<ExecutionSession> _getSession;
         private readonly ILogger _fallbackLogger;
+        private readonly string? _taskId;
 
         /// <summary>
         /// Creates a forwarding logger around the provided buffered log stream.
         /// </summary>
-        public ForwardingLogger(BufferedLogStream logStream, ILogger fallbackLogger)
+        public ForwardingLogger(Func<ExecutionSession> getSession, ILogger fallbackLogger, string? taskId = null)
         {
-            _logStream = logStream;
+            _getSession = getSession;
             _fallbackLogger = fallbackLogger;
+            _taskId = taskId;
         }
 
         /// <summary>
@@ -124,8 +132,11 @@ public sealed class ExecutionRuntimeService
                 message += Environment.NewLine + exception;
             }
 
-            _logStream.Add(new LogEntry
+            ExecutionSession session = _getSession();
+            session.AddLogEntry(new LogEntry
             {
+                SessionId = session.Id,
+                TaskId = _taskId,
                 Message = message,
                 Verbosity = logLevel
             });
@@ -147,6 +158,23 @@ public sealed class ExecutionRuntimeService
         public IDisposable BeginScope<TState>(TState state) where TState : notnull
         {
             return _fallbackLogger.BeginScope(state) ?? NullScope.Instance;
+        }
+
+        /// <summary>
+        /// Creates a child logger that attributes all output to the provided execution task.
+        /// </summary>
+        public ILogger CreateTaskLogger(string taskId)
+        {
+            return new ForwardingLogger(_getSession, _fallbackLogger, taskId);
+        }
+
+        /// <summary>
+        /// Forwards explicit task-state transitions into the current execution session so graph views can react without
+        /// parsing human-readable log lines.
+        /// </summary>
+        public void SetTaskStatus(string taskId, ExecutionTaskStatus status, string? statusReason = null)
+        {
+            _getSession().SetTaskStatus(taskId, status, statusReason);
         }
 
         /// <summary>

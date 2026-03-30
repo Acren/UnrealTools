@@ -85,7 +85,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             base.OnProcessEnded(result);
 
-            if (!result.Success || Cancelled || _requestedTargetPlatforms.Count == 0)
+            if (result.Outcome != global::LocalAutomation.Core.RunOutcome.Succeeded || Cancelled || _requestedTargetPlatforms.Count == 0)
             {
                 return;
             }
@@ -104,7 +104,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string.Join(", ", skippedPlatforms),
                 string.Join(", ", _requestedTargetPlatforms),
                 _builtTargetPlatforms.Count > 0 ? string.Join(", ", _builtTargetPlatforms) : "none");
-            result.Success = false;
+            result.Outcome = global::LocalAutomation.Core.RunOutcome.Failed;
         }
 
         protected override string GetOperationName()

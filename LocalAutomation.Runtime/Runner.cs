@@ -97,7 +97,7 @@ public class Runner
         _logger.LogDebug($"'{Operation.OperationName}' task ended");
         _currentTask = null;
 
-        if (result.Success)
+        if (result.Outcome == RunOutcome.Succeeded)
         {
             if (_warnings.Count > 0)
             {
@@ -121,6 +121,10 @@ public class Runner
 
             _logger.LogInformation($"'{Operation.OperationName}' finished with result: success");
         }
+        else if (result.Outcome == RunOutcome.Cancelled)
+        {
+            _logger.LogWarning($"'{Operation.OperationName}' finished with result: cancelled");
+        }
         else
         {
             _logger.LogError($"'{Operation.OperationName}' finished with result: failure");
@@ -134,14 +138,14 @@ public class Runner
     /// </summary>
     public async Task Cancel()
     {
-        if (_currentTask == null)
+        Task<OperationResult>? currentTask = _currentTask;
+        if (currentTask == null)
         {
-            throw new Exception("Task is not running");
+            return;
         }
 
         _logger.LogWarning($"Cancelling operation '{Operation.OperationName}'");
         _cancellationTokenSource.Cancel();
-        await _currentTask.ConfigureAwait(false);
-        _logger.LogWarning($"'{Operation.OperationName}' task ended from cancellation");
+        await currentTask.ConfigureAwait(false);
     }
 }

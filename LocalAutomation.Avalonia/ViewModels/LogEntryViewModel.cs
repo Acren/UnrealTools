@@ -11,11 +11,11 @@ public sealed class LogEntryViewModel
     /// <summary>
     /// Creates a UI log entry from the formatted message and severity.
     /// </summary>
-    public LogEntryViewModel(string message, LogLevel verbosity)
+    public LogEntryViewModel(string message, LogLevel verbosity, DateTimeOffset? timestamp = null)
     {
         Message = message;
         Verbosity = verbosity;
-        Timestamp = DateTimeOffset.Now;
+        Timestamp = timestamp ?? DateTimeOffset.Now;
     }
 
     /// <summary>

@@ -128,6 +128,18 @@
         <Style Selector="Border.pill.error-accent">
             <Setter Property="BorderBrush" Value="#66EF8680" />
         </Style>
+        <Style Selector="Border.execution-node-card">
+            <Setter Property="Background" Value="#181E27" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="BoxShadow" Value="0 8 18 0 #22000000" />
+        </Style>
+        <Style Selector="Border.execution-node-card.group">
+            <Setter Property="Background" Value="#141922" />
+            <Setter Property="Opacity" Value="0.92" />
+        </Style>
+        <Style Selector="Border.execution-node-card.selected">
+            <Setter Property="BoxShadow" Value="0 0 0 1 #66D8E6F3, 0 12 24 0 #28000000" />
+        </Style>
         <Style Selector="GridSplitter">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Opacity" Value="0" />
@@ -300,7 +312,7 @@
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0,0,0,2" />
             <Setter Property="CornerRadius" Value="0" />
-            <Setter Property="Padding" Value="16,6,18,6" />
+            <Setter Property="Padding" Value="17,6,17,6" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
         </Style>
         <!-- Closable tabs reserve the close-chip lane through padding so the content tree can stay shared. -->
@@ -354,9 +366,6 @@
         <Style Selector="Button.tab.active TextBlock.tab-subtitle">
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
             <Setter Property="Opacity" Value="0.94" />
-        </Style>
-        <Style Selector="Button.tab.app-log /template/ ContentPresenter">
-            <Setter Property="Padding" Value="18,6,20,6" />
         </Style>
         <Style Selector="Border.runtime-status-dot">
             <Setter Property="Background" Value="{DynamicResource GraphiteTextMutedBrush}" />

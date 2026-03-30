@@ -19,6 +19,11 @@ public interface ILogStream
     IReadOnlyList<LogEntry> Entries { get; }
 
     /// <summary>
+    /// Appends a new buffered log entry.
+    /// </summary>
+    void Add(LogEntry entry);
+
+    /// <summary>
     /// Clears the buffered log entries.
     /// </summary>
     void Clear();

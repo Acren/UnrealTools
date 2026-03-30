@@ -248,12 +248,20 @@ public sealed class LogViewport : Control
     }
 
     /// <summary>
-    /// Supports copying the currently selected rows with Ctrl+C so row selection remains useful before drag text
-    /// selection exists.
+    /// Supports selecting all rows with Ctrl+A and copying the current selection with Ctrl+C so row selection remains
+    /// useful before drag text selection exists.
     /// </summary>
     protected override async void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
+        if (e.KeyModifiers == KeyModifiers.Control && e.Key == Key.A)
+        {
+            SelectAll();
+            e.Handled = true;
+            return;
+        }
+
         if (e.KeyModifiers != KeyModifiers.Control || e.Key != Key.C)
         {
             return;
@@ -556,6 +564,21 @@ public sealed class LogViewport : Control
         _selectionEndIndex = null;
         SelectionChanged?.Invoke(this, EventArgs.Empty);
         InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Selects the full visible entry range so keyboard copy can grab the entire log in one gesture.
+    /// </summary>
+    private void SelectAll()
+    {
+        if (_entries == null || _entries.Count == 0)
+        {
+            ClearSelection();
+            return;
+        }
+
+        _selectionAnchorIndex = 0;
+        SetSelection(0, _entries.Count - 1);
     }
 
     /// <summary>

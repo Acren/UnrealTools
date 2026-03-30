@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
 
@@ -105,5 +106,13 @@ public sealed class OperationSessionService
     public string? GetPrimaryCommandText(Operation? operation, OperationParameters parameters)
     {
         return _runtime.GetPrimaryCommandText(operation, parameters);
+    }
+
+    /// <summary>
+    /// Builds the previewable execution plan for the selected operation and parameter state when one exists.
+    /// </summary>
+    public ExecutionPlan? GetExecutionPlan(Operation? operation, OperationParameters parameters)
+    {
+        return _runtime.BuildExecutionPlan(operation, parameters);
     }
 }

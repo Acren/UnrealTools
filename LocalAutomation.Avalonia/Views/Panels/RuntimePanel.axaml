@@ -8,7 +8,7 @@
     <UserControl.Resources>
         <conv:UppercaseTextConverter x:Key="UppercaseTextConverter" />
     </UserControl.Resources>
-    <!-- This panel isolates runtime tabs, log streaming, and runtime cancellation. -->
+    <!-- This panel isolates the execution workspace tabs, graph preview canvas, scoped logs, and runtime cancellation. -->
     <Border Classes="panel">
         <Grid RowDefinitions="Auto,*" MinHeight="0">
             <!-- Keep the tab strip visually integrated with the panel edge instead of floating inside extra header padding. -->
@@ -23,11 +23,12 @@
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:RuntimeTaskTabViewModel">
+                                <DataTemplate x:DataType="vm:RuntimeWorkspaceTabViewModel">
                                     <Grid MinHeight="34">
                                         <Button Classes="tab"
                                                 Classes.active="{Binding IsSelected}"
                                                 Classes.app-log="{Binding IsApplicationLog}"
+                                                Classes.plan-preview="{Binding IsPlanPreview}"
                                                 Classes.closable="{Binding CanClose}"
                                                 PointerPressed="RuntimeTab_PointerPressed"
                                                 Click="RuntimeTab_Click">
@@ -35,36 +36,48 @@
                                                 <!-- One shared tab-content layout keeps the optional status dot and
                                                      subtitle behavior in a single place for both task tabs and the
                                                      pinned application log tab. -->
-                                                <Grid MinHeight="34"
-                                                      ColumnDefinitions="Auto,*"
-                                                      ColumnSpacing="0">
-                                                    <!-- The marker lane owns its own trailing gap so tabs without a status
-                                                         dot do not keep a phantom left offset. -->
-                                                    <Grid Grid.Column="0"
-                                                          Width="12"
-                                                          Margin="0,0,8,0"
-                                                          VerticalAlignment="Center"
-                                                          IsVisible="{Binding HasStatusMarker}">
-                                                        <Border Width="6"
-                                                                Height="6"
-                                                                CornerRadius="999"
-                                                                HorizontalAlignment="Center"
-                                                                VerticalAlignment="Center"
-                                                                Classes="runtime-status-dot"
-                                                                Classes.running="{Binding IsRunningStatus}"
-                                                                Classes.succeeded="{Binding IsSucceededStatus}"
-                                                                Classes.failed="{Binding IsFailedStatus}" />
+                                                <Grid MinHeight="34">
+                                                    <!-- Compact tabs such as APP LOG and PLAN use a title-only layout so
+                                                         their labels center naturally from the same shared template. -->
+                                                    <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                               Classes="panel-title"
+                                                               VerticalAlignment="Center"
+                                                               IsVisible="{Binding UsesCompactStripLayout}" />
+
+                                                    <!-- Rich execution tabs keep the status lane and optional subtitle in
+                                                         the full strip layout. -->
+                                                    <Grid ColumnDefinitions="Auto,*"
+                                                          ColumnSpacing="0"
+                                                          IsVisible="{Binding UsesDetailedStripLayout}">
+                                                        <!-- The marker lane owns its own trailing gap so tabs without a status
+                                                             dot do not keep a phantom left offset. -->
+                                                        <Grid Grid.Column="0"
+                                                              Width="12"
+                                                              Margin="0,0,8,0"
+                                                              VerticalAlignment="Center"
+                                                              IsVisible="{Binding ShowsStatusMarker}">
+                                                            <Border Width="6"
+                                                                    Height="6"
+                                                                    CornerRadius="999"
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    Classes="runtime-status-dot"
+                                                                    Classes.running="{Binding IsRunningStatus}"
+                                                                    Classes.succeeded="{Binding IsSucceededStatus}"
+                                                                    Classes.failed="{Binding IsFailedStatus}" />
+                                                        </Grid>
+                                                        <StackPanel Grid.Column="1"
+                                                                    VerticalAlignment="Center"
+                                                                    Spacing="0">
+                                                            <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
+                                                                       Classes="panel-title" />
+                                                            <!-- Subtitle rows collapse cleanly for tabs that stay on one
+                                                                 line even while sharing the richer execution-tab layout. -->
+                                                            <TextBlock Text="{Binding Subtitle}"
+                                                                       IsVisible="{Binding ShowsSubtitle}"
+                                                                       Classes="tab-subtitle" />
+                                                        </StackPanel>
                                                     </Grid>
-                                                    <StackPanel Grid.Column="1"
-                                                                VerticalAlignment="Center"
-                                                                Spacing="0">
-                                                        <TextBlock Text="{Binding Title, Converter={StaticResource UppercaseTextConverter}}"
-                                                                   Classes="panel-title" />
-                                                        <!-- Subtitle rows collapse cleanly for single-line tabs like the app log. -->
-                                                        <TextBlock Text="{Binding Subtitle}"
-                                                                   IsVisible="{Binding HasSubtitle}"
-                                                                   Classes="tab-subtitle" />
-                                                    </StackPanel>
                                                 </Grid>
                                             </Button.Content>
                                         </Button>
@@ -126,24 +139,65 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Row="1" Margin="0" Background="{DynamicResource GraphiteTerminalBrush}">
-                <Border.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem Header="Clear"
-                                  Click="ClearLog_Click" />
-                    </ContextMenu>
-                </Border.ContextMenu>
-                <!-- The custom viewport owns wrapped measurement and drawing directly so pathological long lines no
-                     longer funnel through a generic control's full-line text layout path. -->
-                <ScrollViewer x:Name="RuntimeLogScrollViewer"
-                              Margin="12,10,12,12"
-                              ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                    <controls:LogViewport x:Name="RuntimeLogViewport"
-                                          Entries="{Binding SelectedRuntimeLogEntries}" />
-                </ScrollViewer>
-            </Border>
+            <!-- The active tab chooses between graph-only, log-only, or split workspace layouts without duplicating
+                 the surrounding runtime shell chrome. -->
+            <Grid Grid.Row="1" Margin="0" MinHeight="0">
+                <Grid IsVisible="{Binding SelectedRuntimeTab.IsExecutionSession}"
+                      ColumnDefinitions="1.7*,0.9*"
+                      ColumnSpacing="0"
+                      MinHeight="0">
+                    <Border Margin="0"
+                            Background="{DynamicResource GraphiteTerminalBrush}"
+                            BorderBrush="{DynamicResource GraphiteLineBrush}"
+                            BorderThickness="0,0,1,0">
+                        <controls:ExecutionGraphCanvas Margin="12,10,12,12"
+                                                       DataContext="{Binding SelectedGraph}" />
+                    </Border>
+
+                    <Border Grid.Column="1"
+                            Margin="0"
+                            Background="{DynamicResource GraphiteTerminalBrush}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Clear"
+                                          Click="ClearLog_Click" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <ScrollViewer x:Name="RuntimeLogScrollViewer"
+                                      Margin="12,10,12,12"
+                                      ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <controls:LogViewport x:Name="RuntimeLogViewport"
+                                                  Entries="{Binding SelectedRuntimeLogEntries}" />
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+
+                <Border IsVisible="{Binding SelectedRuntimeTab.IsPlanPreview}"
+                        Background="{DynamicResource GraphiteTerminalBrush}">
+                    <controls:ExecutionGraphCanvas Margin="12,10,12,12"
+                                                   DataContext="{Binding SelectedGraph}" />
+                </Border>
+
+                <Border IsVisible="{Binding SelectedRuntimeTab.IsApplicationLog}"
+                        Background="{DynamicResource GraphiteTerminalBrush}">
+                    <Border.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Clear"
+                                      Click="ClearLog_Click" />
+                        </ContextMenu>
+                    </Border.ContextMenu>
+                    <ScrollViewer x:Name="RuntimeLogScrollViewerApp"
+                                  Margin="12,10,12,12"
+                                  ScrollChanged="RuntimeLogScrollViewer_ScrollChanged"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <controls:LogViewport x:Name="RuntimeLogViewportApp"
+                                              Entries="{Binding SelectedRuntimeLogEntries}" />
+                    </ScrollViewer>
+                </Border>
+            </Grid>
         </Grid>
     </Border>
 </UserControl>

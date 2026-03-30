@@ -132,6 +132,28 @@ public sealed class OperationRuntimeService
     }
 
     /// <summary>
+    /// Builds the previewable execution plan for the provided operation and parameter state when the operation can
+    /// describe one.
+    /// </summary>
+    public ExecutionPlan? BuildExecutionPlan(Operation? operation, OperationParameters parameters)
+    {
+        if (operation == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return operation.BuildExecutionPlan(parameters);
+        }
+        catch (Exception ex)
+        {
+            LogOperationRuntimeFailure(operation.GetType(), "build execution plan", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Returns the display name for the provided runtime option-set instance.
     /// </summary>
     public string GetOptionSetName(OperationOptions optionSet)

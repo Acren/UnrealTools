@@ -160,6 +160,7 @@ public static class ApplicationLogService
 
             _logStream.Add(new LogEntry
             {
+                Timestamp = DateTimeOffset.Now,
                 Message = message,
                 Verbosity = logLevel
             });

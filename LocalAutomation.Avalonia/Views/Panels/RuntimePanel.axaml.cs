@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using LocalAutomation.Avalonia.Controls;
 using LocalAutomation.Avalonia.ViewModels;
 
 namespace LocalAutomation.Avalonia.Views.Panels;
@@ -42,7 +43,7 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void RuntimeTab_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Control { DataContext: RuntimeTaskTabViewModel runtimeTab })
+        if (sender is not Control { DataContext: RuntimeWorkspaceTabViewModel runtimeTab })
         {
             return;
         }
@@ -60,7 +61,7 @@ public partial class RuntimePanel : UserControl
             return;
         }
 
-        if (sender is not Control { DataContext: RuntimeTaskTabViewModel runtimeTab } || !runtimeTab.CanClose)
+        if (sender is not Control { DataContext: RuntimeWorkspaceTabViewModel runtimeTab } || !runtimeTab.CanClose)
         {
             return;
         }
@@ -74,7 +75,7 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void CloseRuntimeTab_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Control { DataContext: RuntimeTaskTabViewModel runtimeTab })
+        if (sender is not Control { DataContext: RuntimeWorkspaceTabViewModel runtimeTab })
         {
             return;
         }
@@ -216,7 +217,23 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private void ScrollRuntimeLogToEnd()
     {
-        Dispatcher.UIThread.Post(() => this.FindControl<ScrollViewer>("RuntimeLogScrollViewer")?.ScrollToEnd());
+        Dispatcher.UIThread.Post(() => (this.FindControl<ScrollViewer>("RuntimeLogScrollViewer") ?? this.FindControl<ScrollViewer>("RuntimeLogScrollViewerApp"))?.ScrollToEnd());
+    }
+
+    /// <summary>
+    /// Routes graph-node clicks from the embedded graph control into the runtime workspace selection model.
+    /// </summary>
+    private void GraphNode_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not RuntimePanelViewModel viewModel ||
+            viewModel.SelectedRuntimeTab == null ||
+            sender is not Control { DataContext: ExecutionNodeViewModel node })
+        {
+            return;
+        }
+
+        viewModel.SelectGraphNode(viewModel.SelectedRuntimeTab, node);
+        e.Handled = true;
     }
 
     /// <summary>
@@ -224,7 +241,7 @@ public partial class RuntimePanel : UserControl
     /// </summary>
     private bool IsRuntimeLogAtBottom()
     {
-        ScrollViewer? runtimeLogViewer = this.FindControl<ScrollViewer>("RuntimeLogScrollViewer");
+        ScrollViewer? runtimeLogViewer = this.FindControl<ScrollViewer>("RuntimeLogScrollViewer") ?? this.FindControl<ScrollViewer>("RuntimeLogScrollViewerApp");
         if (runtimeLogViewer == null)
         {
             return true;
