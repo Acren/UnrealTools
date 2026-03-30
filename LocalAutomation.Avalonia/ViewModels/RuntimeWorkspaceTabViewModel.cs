@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using LocalAutomation.Core;
+using ExecutionTaskStatus = LocalAutomation.Core.ExecutionTaskStatus;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -184,9 +185,22 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     public bool IsFailedStatus => Session?.IsRunning != true && Session?.Outcome == RunOutcome.Failed;
 
     /// <summary>
-    /// Gets whether the status marker should show the cancelled accent.
-    /// </summary>
+     /// Gets whether the status marker should show the cancelled accent.
+     /// </summary>
     public bool IsCancelledStatus => Session?.IsRunning != true && Session?.Outcome == RunOutcome.Cancelled;
+
+    /// <summary>
+    /// Gets the semantic status rendered by the shared status-indicator control.
+    /// </summary>
+    public ExecutionTaskStatus SessionStatusForIndicator => Session?.IsRunning == true
+        ? ExecutionTaskStatus.Running
+        : Session?.Outcome == RunOutcome.Succeeded
+            ? ExecutionTaskStatus.Completed
+            : Session?.Outcome == RunOutcome.Failed
+                ? ExecutionTaskStatus.Failed
+                : Session?.Outcome == RunOutcome.Cancelled
+                    ? ExecutionTaskStatus.Cancelled
+                    : ExecutionTaskStatus.Pending;
 
     /// <summary>
     /// Gets the execution duration text shown in the selected-tab header.
@@ -257,5 +271,6 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
         RaisePropertyChanged(nameof(IsSucceededStatus));
         RaisePropertyChanged(nameof(IsFailedStatus));
         RaisePropertyChanged(nameof(IsCancelledStatus));
+        RaisePropertyChanged(nameof(SessionStatusForIndicator));
     }
 }

@@ -15,25 +15,26 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Defines the fixed width used for leaf task cards.
     /// </summary>
-    public const double NodeWidth = 220;
+    public const double NodeWidth = 236;
 
     /// <summary>
     /// Defines the fixed height used for leaf task cards.
     /// </summary>
-    public const double NodeHeight = 92;
+    public const double NodeHeight = 84;
 
     /// <summary>
     /// Defines the fixed height reserved for a group-container header.
     /// </summary>
-    public const double GroupHeaderHeight = 42;
+    public const double GroupHeaderHeight = 48;
 
     /// <summary>
     /// Defines the padding between a group-container border and its child items.
     /// </summary>
     public const double GroupPadding = 18;
 
-    private const double ColumnGap = 110;
-    private const double RowGap = 36;
+    // Tighter spacing keeps the graph readable once cards only carry title and status.
+    private const double ColumnGap = 84;
+    private const double RowGap = 30;
     // The graph keeps one fixed pseudo-node for merged output selection that never participates in runtime plan matching.
     private static readonly ExecutionTaskId AllOutputNodeId = new("all-output");
 

@@ -227,15 +227,17 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     public string StatusBrush => Status switch
     {
-        ExecutionTaskStatus.Completed => "#4AB07A",
-        ExecutionTaskStatus.Running => "#5AA9E6",
-        ExecutionTaskStatus.Failed => "#E65050",
-        ExecutionTaskStatus.Disabled => "#7C8693",
-        ExecutionTaskStatus.Pending => "#AEB9C5",
-        ExecutionTaskStatus.Blocked => "#D9A441",
+        // Match the execution graph accents to the runtime tab marker palette where the status concepts overlap so the
+        // workspace reads like one system instead of two adjacent visual languages.
+        ExecutionTaskStatus.Completed => "#7BE37B",
+        ExecutionTaskStatus.Running => "#63A8FF",
+        ExecutionTaskStatus.Failed => "#FF5C5C",
+        ExecutionTaskStatus.Disabled => "#89919A",
+        ExecutionTaskStatus.Pending => "#89919A",
+        ExecutionTaskStatus.Blocked => "#F1D479",
         ExecutionTaskStatus.Cancelled => "#C77DFF",
-        ExecutionTaskStatus.Skipped => "#8B949E",
-        _ => "#AEB9C5"
+        ExecutionTaskStatus.Skipped => "#89919A",
+        _ => "#89919A"
     };
 
     /// <summary>
@@ -244,26 +246,71 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     public IBrush StatusBrushColor => new SolidColorBrush(Color.Parse(StatusBrush));
 
     /// <summary>
+    /// Gets the compact label used by the stacked dot-and-label status treatment.
+    /// </summary>
+    public string StatusLabelText => Status switch
+    {
+        ExecutionTaskStatus.Completed => "Done",
+        ExecutionTaskStatus.Pending => "Pending",
+        ExecutionTaskStatus.Blocked => "Blocked",
+        ExecutionTaskStatus.Running => "Running",
+        ExecutionTaskStatus.Failed => "Failed",
+        ExecutionTaskStatus.Skipped => "Skipped",
+        ExecutionTaskStatus.Disabled => "Disabled",
+        ExecutionTaskStatus.Cancelled => "Cancelled",
+        ExecutionTaskStatus.Planned => "Planned",
+        _ => Status.ToString()
+    };
+
+    /// <summary>
+    /// Gets the softer foreground brush used by the stacked status label.
+    /// </summary>
+    public IBrush StatusLabelBrush => new SolidColorBrush(Color.Parse("#89919A"));
+
+    /// <summary>
+    /// Gets the compact status dot brush used by the stacked dot-and-label treatment.
+    /// </summary>
+    public IBrush StatusDotBrush => StatusBrushColor;
+
+    /// <summary>
+    /// Gets the subtle glow used by the graph status dot so active and terminal states feel consistent with the tab
+    /// strip markers.
+    /// </summary>
+    public BoxShadows StatusDotShadow => Status switch
+    {
+        ExecutionTaskStatus.Running => BoxShadows.Parse("0 0 5 0 #5563A8FF"),
+        ExecutionTaskStatus.Completed => BoxShadows.Parse("0 0 5 0 #557BE37B"),
+        ExecutionTaskStatus.Failed => BoxShadows.Parse("0 0 5 0 #55FF7575"),
+        ExecutionTaskStatus.Blocked => BoxShadows.Parse("0 0 5 0 #55F1D479"),
+        _ => BoxShadows.Parse("0 0 0 0 Transparent")
+    };
+
+    /// <summary>
+    /// Gets the lighter outline used for group container borders.
+    /// </summary>
+    public IBrush ContainerBorderBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#90D4DEE8" : "#58D4DEE8"));
+
+    /// <summary>
     /// Gets the background brush for a group container body.
     /// </summary>
-    public IBrush ContainerBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#17212C" : "#121922"));
+    public IBrush ContainerBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#18212D" : "#141B25"));
 
     /// <summary>
     /// Gets the background brush for a group header strip.
     /// </summary>
-    public IBrush GroupHeaderBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#1A2633" : "#16202B"));
+    public IBrush GroupHeaderBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#1F2B39" : "#1A2431"));
 
     /// <summary>
     /// Gets the background brush for a leaf task card.
     /// </summary>
-    public IBrush CardBackgroundBrush => new SolidColorBrush(Color.Parse("#181E27"));
+    public IBrush CardBackgroundBrush => new SolidColorBrush(Color.Parse(IsSelected ? "#232E3B" : "#1A2430"));
 
     /// <summary>
     /// Gets the shadow applied to the rendered node when selection should remain visible on the canvas.
     /// </summary>
     public BoxShadows CardShadow => IsSelected
-        ? BoxShadows.Parse("0 0 0 1 #66D8E6F3, 0 12 24 0 #28000000")
-        : BoxShadows.Parse("0 8 18 0 #22000000");
+        ? BoxShadows.Parse("0 0 0 1 #6AA7C2D8, 0 14 28 0 #26000000")
+        : BoxShadows.Parse(IsContainer ? "0 12 26 0 #16000000" : "0 10 20 0 #20000000");
 
     /// <summary>
     /// Gets the border thickness for group containers.
@@ -302,6 +349,55 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Gets the compact hierarchy metadata shown under group titles.
+    /// </summary>
+    public string GroupMetaText
+    {
+        get
+        {
+            if (!IsContainer)
+            {
+                return string.Empty;
+            }
+
+            return $"{DirectChildCount} child items  •  {DescendantTaskCount} runnable tasks";
+        }
+    }
+
+    /// <summary>
+    /// Gets whether the group metadata line should be shown.
+    /// </summary>
+    public bool HasGroupMetaText => !string.IsNullOrWhiteSpace(GroupMetaText);
+
+    /// <summary>
+    /// Gets a trimmed one-line description for leaf cards so the graph stays readable even with long task text.
+    /// </summary>
+    public string CardDescriptionText => string.IsNullOrWhiteSpace(Description)
+        ? string.Empty
+        : Description.Trim();
+
+    /// <summary>
+    /// Gets whether the leaf-card description row should be shown.
+    /// </summary>
+    public bool HasCardDescription => !string.IsNullOrWhiteSpace(CardDescriptionText);
+
+    /// <summary>
+    /// Gets the short suffix used to identify a task inside the current hierarchy without flooding the card with the
+    /// full generated identifier.
+    /// </summary>
+    public string ShortIdText
+    {
+        get
+        {
+            string value = Id.Value;
+            int lastDashIndex = value.LastIndexOf('-');
+            return lastDashIndex >= 0 && lastDashIndex < value.Length - 1
+                ? value[(lastDashIndex + 1)..]
+                : value;
+        }
+    }
+
+    /// <summary>
     /// Updates the rendered task status from live session data.
     /// </summary>
     public void SetStatus(ExecutionTaskStatus status, string? statusReason)
@@ -330,6 +426,8 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         DescendantTaskCount = descendantTaskCount;
         SummaryText = summaryText ?? string.Empty;
         RaisePropertyChanged(nameof(DetailsText));
+        RaisePropertyChanged(nameof(GroupMetaText));
+        RaisePropertyChanged(nameof(HasGroupMetaText));
     }
 
     /// <summary>
@@ -340,6 +438,11 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         RaisePropertyChanged(nameof(StatusText));
         RaisePropertyChanged(nameof(StatusBrush));
         RaisePropertyChanged(nameof(StatusBrushColor));
+        RaisePropertyChanged(nameof(StatusLabelText));
+        RaisePropertyChanged(nameof(StatusLabelBrush));
+        RaisePropertyChanged(nameof(StatusDotBrush));
+        RaisePropertyChanged(nameof(StatusDotShadow));
+        RaisePropertyChanged(nameof(ContainerBorderBrush));
     }
 
     /// <summary>
@@ -358,6 +461,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     private void RaiseSelectionVisualChanged()
     {
+        RaisePropertyChanged(nameof(ContainerBorderBrush));
         RaisePropertyChanged(nameof(ContainerBackgroundBrush));
         RaisePropertyChanged(nameof(GroupHeaderBackgroundBrush));
         RaisePropertyChanged(nameof(CardBackgroundBrush));

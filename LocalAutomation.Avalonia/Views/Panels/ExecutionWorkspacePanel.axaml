@@ -51,21 +51,14 @@
                                                           IsVisible="{Binding UsesDetailedStripLayout}">
                                                         <!-- The marker lane owns its own trailing gap so tabs without a status
                                                              dot do not keep a phantom left offset. -->
-                                                        <Grid Grid.Column="0"
-                                                              Width="12"
-                                                              Margin="0,0,8,0"
-                                                              VerticalAlignment="Center"
-                                                              IsVisible="{Binding ShowsStatusMarker}">
-                                                            <Border Width="6"
-                                                                    Height="6"
-                                                                    CornerRadius="999"
-                                                                    HorizontalAlignment="Center"
-                                                                    VerticalAlignment="Center"
-                                                                    Classes="runtime-status-dot"
-                                                                    Classes.running="{Binding IsRunningStatus}"
-                                                                    Classes.succeeded="{Binding IsSucceededStatus}"
-                                                                    Classes.failed="{Binding IsFailedStatus}" />
-                                                        </Grid>
+                                                        <controls:StatusIndicator Grid.Column="0"
+                                                                                  Width="12"
+                                                                                  Margin="0,0,8,0"
+                                                                                  VerticalAlignment="Center"
+                                                                                  IsVisible="{Binding ShowsStatusMarker}"
+                                                                                  ShowLabel="False"
+                                                                                  DotSize="6"
+                                                                                  Status="{Binding SessionStatusForIndicator}" />
                                                         <StackPanel Grid.Column="1"
                                                                     VerticalAlignment="Center"
                                                                     Spacing="0">

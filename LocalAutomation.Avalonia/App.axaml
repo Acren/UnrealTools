@@ -129,16 +129,16 @@
             <Setter Property="BorderBrush" Value="#66EF8680" />
         </Style>
         <Style Selector="Border.execution-node-card">
-            <Setter Property="Background" Value="#181E27" />
+            <Setter Property="Background" Value="#1A2430" />
             <Setter Property="BorderThickness" Value="1.5" />
-            <Setter Property="BoxShadow" Value="0 8 18 0 #22000000" />
+            <Setter Property="BoxShadow" Value="0 10 20 0 #20000000" />
         </Style>
         <Style Selector="Border.execution-node-card.group">
-            <Setter Property="Background" Value="#141922" />
-            <Setter Property="Opacity" Value="0.92" />
+            <Setter Property="Background" Value="#141B25" />
+            <Setter Property="Opacity" Value="0.96" />
         </Style>
         <Style Selector="Border.execution-node-card.selected">
-            <Setter Property="BoxShadow" Value="0 0 0 1 #66D8E6F3, 0 12 24 0 #28000000" />
+            <Setter Property="BoxShadow" Value="0 0 0 1 #6AA7C2D8, 0 14 28 0 #26000000" />
         </Style>
         <Style Selector="GridSplitter">
             <Setter Property="Background" Value="Transparent" />

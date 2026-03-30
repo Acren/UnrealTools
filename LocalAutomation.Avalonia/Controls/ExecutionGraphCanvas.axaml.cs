@@ -296,8 +296,8 @@ public partial class ExecutionGraphCanvas : UserControl
             Classes = { "execution-node-card", "group" }
         };
 
-        // Bind the group shell visuals so live rollup-status and selection changes repaint in place.
-        BindToDataContext(container, Border.BorderBrushProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
+        // Bind the group shell visuals so hierarchy frames feel lighter than leaf cards while still reflecting status.
+        BindToDataContext(container, Border.BorderBrushProperty, nameof(ExecutionNodeViewModel.ContainerBorderBrush));
         BindToDataContext(container, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.ContainerBackgroundBrush));
         BindToDataContext(container, Border.BorderThicknessProperty, nameof(ExecutionNodeViewModel.ContainerBorderThickness));
         BindToDataContext(container, Border.BoxShadowProperty, nameof(ExecutionNodeViewModel.CardShadow));
@@ -338,6 +338,7 @@ public partial class ExecutionGraphCanvas : UserControl
             DataContext = group,
             Content = CreateGroupHeaderContent(group)
         };
+        ToolTip.SetTip(button, CreateNodeToolTip(group));
         button.Click += ExecutionNode_Click;
         header.Child = button;
         return header;
@@ -376,6 +377,7 @@ public partial class ExecutionGraphCanvas : UserControl
             DataContext = node,
             Content = CreateTaskCardContent(node)
         };
+        ToolTip.SetTip(button, CreateNodeToolTip(node));
         button.Click += ExecutionNode_Click;
         card.Child = button;
         return card;
@@ -389,52 +391,24 @@ public partial class ExecutionGraphCanvas : UserControl
         Grid root = new()
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-            Margin = new Thickness(14, 8, 14, 8)
+            Margin = new Thickness(14, 10, 14, 10)
         };
 
-        StackPanel textColumn = new()
-        {
-            Spacing = 2
-        };
         TextBlock title = new()
         {
+            FontSize = 14,
             FontWeight = FontWeight.SemiBold,
-            TextWrapping = TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(Color.Parse("#F3F6F9"))
         };
         BindToDataContext(title, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Title));
-        textColumn.Children.Add(title);
+        root.Children.Add(title);
 
-        TextBlock summary = new()
-        {
-            TextWrapping = TextWrapping.Wrap
-        };
-        BindToDataContext(summary, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.SummaryText));
-        textColumn.Children.Add(summary);
-        textColumn.Classes.Add("muted");
-        root.Children.Add(textColumn);
-
-        Border statusPill = new()
-        {
-            CornerRadius = new CornerRadius(999),
-            Padding = new Thickness(6, 2),
-            VerticalAlignment = VerticalAlignment.Top,
-            Child = new TextBlock
-            {
-                FontSize = 10,
-                FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(Color.Parse("#0F1115"))
-            }
-        };
-
-        // Bind both the pill background and its label so group rollups update live while execution progresses.
-        BindToDataContext(statusPill, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
-        if (statusPill.Child is TextBlock statusText)
-        {
-            BindToDataContext(statusText, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.StatusText));
-        }
-
-        Grid.SetColumn(statusPill, 1);
-        root.Children.Add(statusPill);
+        StatusIndicator statusRow = CreateStatusIndicator(group, showLabel: true, dotSize: 6, labelFontSize: 11);
+        statusRow.Margin = new Thickness(12, 0, 0, 0);
+        Grid.SetColumn(statusRow, 1);
+        root.Children.Add(statusRow);
         return root;
     }
 
@@ -445,66 +419,75 @@ public partial class ExecutionGraphCanvas : UserControl
     {
         Grid root = new()
         {
-            RowDefinitions = new RowDefinitions("Auto,*,Auto"),
-            Margin = new Thickness(12, 10, 12, 10)
+            RowDefinitions = new RowDefinitions("Auto,Auto"),
+            Margin = new Thickness(14, 12, 14, 12)
         };
 
-        Grid titleRow = new()
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto")
-        };
         TextBlock title = new()
         {
+            FontSize = 14,
             FontWeight = FontWeight.SemiBold,
-            TextWrapping = TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.Parse("#F2F5F8")),
+            MaxHeight = 40,
+            VerticalAlignment = VerticalAlignment.Center
         };
         BindToDataContext(title, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Title));
-        titleRow.Children.Add(title);
+        root.Children.Add(title);
 
-        Border statusPill = new()
+        StatusIndicator statusRow = CreateStatusIndicator(node, showLabel: true, dotSize: 6, labelFontSize: 11);
+        statusRow.Margin = new Thickness(0, 8, 0, 0);
+        Grid.SetRow(statusRow, 1);
+        root.Children.Add(statusRow);
+        return root;
+    }
+
+    /// <summary>
+    /// Creates one shared status-indicator control for execution-graph nodes so the graph reuses the same status
+    /// presentation language as the runtime tab strip instead of rebuilding the dot-and-label markup by hand.
+    /// </summary>
+    private static StatusIndicator CreateStatusIndicator(ExecutionNodeViewModel node, bool showLabel, double dotSize, double labelFontSize)
+    {
+        StatusIndicator indicator = new()
         {
-            CornerRadius = new CornerRadius(999),
-            Padding = new Thickness(6, 2),
-            Child = new TextBlock
+            ShowLabel = showLabel,
+            DotSize = dotSize,
+            LabelFontSize = labelFontSize,
+            VerticalAlignment = VerticalAlignment.Center,
+            DataContext = node
+        };
+        BindToDataContext(indicator, StatusIndicator.StatusProperty, nameof(ExecutionNodeViewModel.Status));
+        return indicator;
+    }
+
+    /// <summary>
+    /// Creates a compact tooltip for graph nodes so descriptions remain available without cluttering the graph surface.
+    /// </summary>
+    private static object? CreateNodeToolTip(ExecutionNodeViewModel node)
+    {
+        if (string.IsNullOrWhiteSpace(node.Description))
+        {
+            return null;
+        }
+
+        ToolTip toolTip = new()
+        {
+            Background = new SolidColorBrush(Color.Parse("#12171D")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#33414F")),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(10, 8),
+            MaxWidth = 320,
+            Content = new TextBlock
             {
-                FontSize = 10,
-                FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(Color.Parse("#0F1115"))
+                Text = node.Description,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = new SolidColorBrush(Color.Parse("#D5DEE7")),
+                FontSize = 12,
+                LineHeight = 16
             }
         };
 
-        // Bind the task status pill so task-level state changes repaint immediately.
-        BindToDataContext(statusPill, Border.BackgroundProperty, nameof(ExecutionNodeViewModel.StatusBrushColor));
-        if (statusPill.Child is TextBlock statusText)
-        {
-            BindToDataContext(statusText, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.StatusText));
-        }
-
-        Grid.SetColumn(statusPill, 1);
-        titleRow.Children.Add(statusPill);
-        root.Children.Add(titleRow);
-
-        TextBlock description = new()
-        {
-            TextWrapping = TextWrapping.Wrap,
-            MaxHeight = 34,
-            Margin = new Thickness(0, 8, 0, 0)
-        };
-        BindToDataContext(description, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Description));
-        description.Classes.Add("muted");
-        Grid.SetRow(description, 1);
-        root.Children.Add(description);
-
-        TextBlock id = new()
-        {
-            Margin = new Thickness(0, 8, 0, 0)
-        };
-        BindToDataContext(id, TextBlock.TextProperty, nameof(ExecutionNodeViewModel.Id));
-        id.Classes.Add("detail-label");
-        id.Classes.Add("mono");
-        Grid.SetRow(id, 2);
-        root.Children.Add(id);
-        return root;
+        return toolTip;
     }
 
     /// <summary>
