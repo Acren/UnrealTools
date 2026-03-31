@@ -209,7 +209,7 @@ public sealed class ExecutionPlanScheduler
         CancellationToken cancellationToken)
     {
         bool startedAny = false;
-        foreach (ExecutionWorkItem item in itemsById.Values.Where(item => statuses[item.TaskId] == ExecutionTaskStatus.Pending && item.DependsOn.All(dependencyId => statuses[dependencyId] == ExecutionTaskStatus.Completed)).OrderBy(item => item.TaskId.Value, StringComparer.Ordinal))
+        foreach (ExecutionWorkItem item in itemsById.Values.Where(item => statuses[item.TaskId] == ExecutionTaskStatus.Pending && item.DependsOn.All(dependencyId => IsDependencySatisfied(dependencyId, itemsById, statuses, new HashSet<ExecutionTaskId>()))).OrderBy(item => item.TaskId.Value, StringComparer.Ordinal))
         {
             if (runningTasks.Count >= _maxParallelism)
             {
@@ -244,9 +244,37 @@ public sealed class ExecutionPlanScheduler
                 continue;
             }
 
-            bool waitingForDependencies = item.DependsOn.Any(dependencyId => statuses[dependencyId] != ExecutionTaskStatus.Completed);
+            bool waitingForDependencies = item.DependsOn.Any(dependencyId => !IsDependencySatisfied(dependencyId, itemsById, statuses, new HashSet<ExecutionTaskId>()));
             SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Pending, waitingForDependencies ? WaitingForDependenciesReason : null);
         }
+    }
+
+    /// <summary>
+    /// Returns whether one dependency is satisfied strongly enough for downstream work to proceed.
+    /// </summary>
+    private static bool IsDependencySatisfied(
+        ExecutionTaskId dependencyId,
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
+        ISet<ExecutionTaskId> visited)
+    {
+        if (!visited.Add(dependencyId))
+        {
+            return false;
+        }
+
+        ExecutionTaskStatus status = statuses[dependencyId];
+        if (status == ExecutionTaskStatus.Completed)
+        {
+            return true;
+        }
+
+        if (status != ExecutionTaskStatus.Disabled)
+        {
+            return false;
+        }
+
+        return itemsById[dependencyId].DependsOn.All(parentDependencyId => IsDependencySatisfied(parentDependencyId, itemsById, statuses, visited));
     }
 
     /// <summary>
