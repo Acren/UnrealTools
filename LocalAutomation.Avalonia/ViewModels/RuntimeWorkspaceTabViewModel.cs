@@ -13,8 +13,6 @@ namespace LocalAutomation.Avalonia.ViewModels;
 public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
 {
     private bool _isSelected;
-    private int _errorCount;
-    private int _warningCount;
     private ObservableCollection<LogEntryViewModel> _selectedLogEntries = new();
 
     /// <summary>
@@ -130,26 +128,6 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     public bool CanTerminate => Session is { IsRunning: true };
 
     /// <summary>
-    /// Gets the warning count surfaced in the workspace header.
-    /// </summary>
-    public int WarningCount => _warningCount;
-
-    /// <summary>
-    /// Gets the error count surfaced in the workspace header.
-    /// </summary>
-    public int ErrorCount => _errorCount;
-
-    /// <summary>
-    /// Gets whether the tab has any warning entries.
-    /// </summary>
-    public bool HasWarnings => WarningCount > 0;
-
-    /// <summary>
-    /// Gets whether the tab has any error entries.
-    /// </summary>
-    public bool HasErrors => ErrorCount > 0;
-
-    /// <summary>
     /// Gets whether the strip should render a status marker for this tab.
     /// </summary>
     public bool ShowsStatusMarker => Presentation.ShowStatusMarker;
@@ -228,13 +206,11 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Replaces the currently displayed log entries and refreshes derived header counts.
+    /// Replaces the currently displayed log entries for the selected graph node or all-output view.
     /// </summary>
     public void SetSelectedLogEntries(System.Collections.Generic.IEnumerable<LogEntryViewModel> entries)
     {
         SelectedLogEntries = new ObservableCollection<LogEntryViewModel>(entries.ToList());
-        _warningCount = SelectedLogEntries.Count(entry => entry.IsWarning);
-        _errorCount = SelectedLogEntries.Count(entry => entry.IsError);
         RaiseSelectionMetricsChanged();
     }
 
@@ -250,14 +226,10 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Raises the header metrics derived from the currently selected log stream.
+    /// Raises selection-sensitive derived properties that still depend on the currently displayed log stream.
     /// </summary>
     private void RaiseSelectionMetricsChanged()
     {
-        RaisePropertyChanged(nameof(WarningCount));
-        RaisePropertyChanged(nameof(ErrorCount));
-        RaisePropertyChanged(nameof(HasWarnings));
-        RaisePropertyChanged(nameof(HasErrors));
         RaisePropertyChanged(nameof(DurationText));
     }
 

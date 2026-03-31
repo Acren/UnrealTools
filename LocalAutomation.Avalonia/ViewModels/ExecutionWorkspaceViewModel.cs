@@ -191,19 +191,45 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     public string SelectedRuntimeTabTitle => SelectedRuntimeTab?.Title ?? "Runtime";
 
     /// <summary>
-    /// Gets whether the selected runtime tab should show task metrics in the header.
-    /// </summary>
+     /// Gets whether the selected runtime tab should show task metrics in the header.
+     /// </summary>
     public bool ShowSelectedRuntimeMetrics => SelectedRuntimeTab?.ShowsRuntimeMetrics == true;
+
+    /// <summary>
+    /// Gets the shared metrics shown in the selected runtime-tab header.
+    /// </summary>
+    public ExecutionTaskMetrics SelectedRuntimeMetrics
+    {
+        get
+        {
+            if (SelectedRuntimeTab?.Session is not ExecutionSession session)
+            {
+                return ExecutionTaskMetrics.Empty;
+            }
+
+            return session.GetTaskMetrics(SelectedRuntimeTab.Graph.SelectedTaskId);
+        }
+    }
 
     /// <summary>
     /// Gets the warning count for the selected runtime tab's active log stream.
     /// </summary>
-    public int SelectedRuntimeWarningCount => SelectedRuntimeTab?.WarningCount ?? 0;
+    public int SelectedRuntimeWarningCount => SelectedRuntimeMetrics.WarningCount;
 
     /// <summary>
     /// Gets the error count for the selected runtime tab's active log stream.
     /// </summary>
-    public int SelectedRuntimeErrorCount => SelectedRuntimeTab?.ErrorCount ?? 0;
+    public int SelectedRuntimeErrorCount => SelectedRuntimeMetrics.ErrorCount;
+
+    /// <summary>
+    /// Gets whether the selected runtime metrics should accent the warning pill.
+    /// </summary>
+    public bool SelectedRuntimeHasWarnings => SelectedRuntimeMetrics.HasWarnings;
+
+    /// <summary>
+    /// Gets whether the selected runtime metrics should accent the error pill.
+    /// </summary>
+    public bool SelectedRuntimeHasErrors => SelectedRuntimeMetrics.HasErrors;
 
     /// <summary>
      /// Gets the elapsed duration text for the selected runtime tab.
@@ -212,24 +238,12 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     {
         get
         {
-            if (SelectedRuntimeTab?.Session is not ExecutionSession session)
+            if (SelectedRuntimeTab?.Session is not ExecutionSession)
             {
                 return SelectedRuntimeTab?.DurationText ?? "--:--";
             }
 
-            ExecutionTaskId? selectedTaskId = SelectedRuntimeTab.Graph.SelectedTaskId;
-            if (selectedTaskId == null)
-            {
-                return SelectedRuntimeTab.DurationText;
-            }
-
-            TimeSpan? selectedTaskDuration = session.GetTaskDuration(selectedTaskId);
-            if (selectedTaskDuration == null)
-            {
-                return SelectedRuntimeTab.DurationText;
-            }
-
-            return FormatDuration(selectedTaskDuration.Value);
+            return ExecutionGraphViewModel.FormatDuration(SelectedRuntimeMetrics.Duration);
         }
     }
 
@@ -296,6 +310,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         ExecutionGraphViewModel graph = new();
         graph.SetPlan(session.Plan);
+        graph.AttachSession(session);
         // Seed the graph from the session's typed runtime task-status map before subscribing to live updates.
         foreach ((ExecutionTaskId taskId, ExecutionTaskStatus status) in session.TaskStatuses)
         {
@@ -504,6 +519,25 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private void AttachSessionLogs(RuntimeWorkspaceTabViewModel runtimeTab, ExecutionSession session)
     {
         AttachLogStream(runtimeTab, session.LogStream);
+
+        /* Graph node metrics are subtree-based, so one new task log line only needs to refresh the emitting task and
+           its ancestor groups rather than forcing a full graph rebuild. */
+        session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
+        {
+            if (entry.TaskId is ExecutionTaskId taskId)
+            {
+                runtimeTab.Graph.RefreshMetricsForTaskAndAncestors(taskId);
+            }
+
+            if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+            {
+                RaisePropertyChanged(nameof(SelectedRuntimeDuration));
+                RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
+                RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
+                RaisePropertyChanged(nameof(SelectedRuntimeHasWarnings));
+                RaisePropertyChanged(nameof(SelectedRuntimeHasErrors));
+            }
+        });
     }
 
     /// <summary>
@@ -715,9 +749,19 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// </summary>
     private void HandleRuntimeDurationTimerTick(object? sender, EventArgs e)
     {
-        /* The selected TIME pill can now represent either whole-session time or selected task/subtree time, so update
-           the same derived property once per second while runtime work remains active. */
+        /* The selected TIME pill and graph metric strips now come from live session task timings rather than from log
+           activity. Refresh them once per second while any execution session remains active so long-running tasks keep
+           counting up even during quiet periods with no new output. */
+        foreach (RuntimeWorkspaceTabViewModel runtimeTab in RuntimeTabs.Where(tab => tab.Session != null))
+        {
+            runtimeTab.Graph.RefreshAllNodeMetrics();
+        }
+
         RaisePropertyChanged(nameof(SelectedRuntimeDuration));
+        RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
+        RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
+        RaisePropertyChanged(nameof(SelectedRuntimeHasWarnings));
+        RaisePropertyChanged(nameof(SelectedRuntimeHasErrors));
 
         if (!RuntimeTabs.Any(tab => tab.IsRunning))
         {
@@ -762,10 +806,12 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SelectedNodeTitle));
         RaisePropertyChanged(nameof(SelectedRuntimeDuration));
         RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
+        RaisePropertyChanged(nameof(SelectedRuntimeHasErrors));
         RaisePropertyChanged(nameof(SelectedRuntimeLogEntries));
         RaisePropertyChanged(nameof(SelectedRuntimeLogSourceId));
         RaisePropertyChanged(nameof(SelectedRuntimeTabTitle));
         RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
+        RaisePropertyChanged(nameof(SelectedRuntimeHasWarnings));
         RaisePropertyChanged(nameof(ShowSelectedRuntimeMetrics));
     }
 
@@ -807,18 +853,4 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         return new LogEntryViewModel(entry.Message, entry.Verbosity, entry.Timestamp);
     }
 
-    /// <summary>
-    /// Formats a duration for the workspace header using the same compact clock style as the runtime-tab strip.
-    /// </summary>
-    private static string FormatDuration(TimeSpan duration)
-    {
-        if (duration < TimeSpan.Zero)
-        {
-            duration = TimeSpan.Zero;
-        }
-
-        return duration.TotalHours >= 1
-            ? duration.ToString(@"h\:mm\:ss")
-            : duration.ToString(@"mm\:ss");
-    }
 }

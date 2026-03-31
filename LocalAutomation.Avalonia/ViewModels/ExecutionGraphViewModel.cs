@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Collections.ObjectModel;
 using System.Linq;
-using Avalonia.Media;
 using LocalAutomation.Avalonia.Collections;
 using LocalAutomation.Core;
 
@@ -16,55 +14,29 @@ namespace LocalAutomation.Avalonia.ViewModels;
 public sealed class ExecutionGraphViewModel : ViewModelBase
 {
     /// <summary>
-    /// Defines the minimum width used for leaf task cards so short titles still read as graph nodes rather than badges.
+    /// Defines the minimum width used for graph nodes so short titles still read as graph nodes rather than badges.
     /// </summary>
     public const double NodeMinWidth = 156;
 
     /// <summary>
-    /// Defines the maximum width used for leaf task cards so content-driven sizing does not create ragged oversized columns.
-    /// </summary>
-    public const double NodeMaxWidth = 320;
+     /// Defines the fixed height used for leaf task cards.
+     /// </summary>
+    public const double NodeHeight = 100;
 
     /// <summary>
-    /// Defines the fixed height used for leaf task cards.
-    /// </summary>
-    public const double NodeHeight = 84;
-
-    /// <summary>
-    /// Defines the fixed height reserved for a group-container header.
-    /// </summary>
-    public const double GroupHeaderHeight = 48;
+     /// Defines the fixed height reserved for a group-container header.
+     /// </summary>
+    public const double GroupHeaderHeight = 56;
 
     /// <summary>
     /// Defines the padding between a group-container border and its child items.
     /// </summary>
     public const double GroupPadding = 18;
 
-    /// <summary>
-    /// Matches the task-card inner padding so content-driven width calculations align with the rendered card chrome.
-    /// </summary>
-    private const double NodeHorizontalPadding = 48;
-
-    /// <summary>
-    /// Matches the title text size used by the execution task card so width measurement stays consistent with the rendered UI.
-    /// </summary>
-    private const double NodeTitleFontSize = 14;
-
-    /// <summary>
-    /// Matches the status-label font size used by the execution task card so status rows contribute the correct width.
-    /// </summary>
-    private const double NodeStatusFontSize = 11;
-
-    /// <summary>
-    /// Reserves space for the status dot and gap so content-driven width sizing reflects the full status row footprint.
-    /// </summary>
-    private const double NodeStatusAdornmentWidth = 20;
-
     /* Column spacing stays generous enough for status glows and dependency elbows even when task cards shrink toward
        their content width. */
     private const double ColumnGap = 84;
     private const double RowGap = 30;
-    private static readonly Typeface GraphNodeTypeface = new(new FontFamily("avares://LocalAutomation.Avalonia/Assets/Fonts#Inter"));
     // The graph keeps one fixed pseudo-node for merged output selection that never participates in runtime plan matching.
     private static readonly ExecutionTaskId AllOutputNodeId = new("all-output");
 
@@ -74,6 +46,8 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _childrenByParentId = new();
     private readonly Dictionary<ExecutionTaskId, ExecutionTaskId?> _parentByTaskId = new();
     private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _leafDescendantsByGroupId = new();
+    private readonly Dictionary<ExecutionTaskId, double> _measuredNodeWidths = new();
+    private ExecutionSession? _session;
     private ExecutionPlan? _plan;
     private ExecutionNodeViewModel? _selectedNode;
     private double _canvasWidth;
@@ -82,6 +56,27 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
     // The root lookup uses a non-runnable sentinel so root-level tasks can share the same typed dictionary shape as nested groups.
     private static readonly ExecutionTaskId RootParentId = new("root-parent");
+
+    /// <summary>
+    /// Formats one optional duration using the compact runtime clock style shared by the workspace header and graph metrics.
+    /// </summary>
+    public static string FormatDuration(TimeSpan? duration)
+    {
+        if (duration == null)
+        {
+            return "--:--";
+        }
+
+        TimeSpan resolvedDuration = duration.Value;
+        if (resolvedDuration < TimeSpan.Zero)
+        {
+            resolvedDuration = TimeSpan.Zero;
+        }
+
+        return resolvedDuration.TotalHours >= 1
+            ? resolvedDuration.ToString(@"h\:mm\:ss")
+            : resolvedDuration.ToString(@"mm\:ss");
+    }
 
     /// <summary>
     /// Creates a graph view model with the fixed all-output pseudo-node available for task-log selection.
@@ -251,6 +246,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             _childrenByParentId.Clear();
             _parentByTaskId.Clear();
             _leafDescendantsByGroupId.Clear();
+            _measuredNodeWidths.Clear();
 
             if (plan == null)
             {
@@ -271,34 +267,14 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
                 BuildHierarchyLookups(plan.Tasks);
             }
 
-            using (PerformanceActivityScope layoutActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.Layout"))
-            {
-                LayoutDirectChildren(parentId: null, originX: 24, originY: 24);
-            }
-
-            using (PerformanceActivityScope metricsActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.ApplyHierarchyMetrics"))
-            {
-                ApplyGroupHierarchyMetrics();
-                ApplyGroupRollupStatuses();
-            }
-
-            using (PerformanceActivityScope edgesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildDependencyEdges"))
-            {
-                BuildDependencyEdges(plan);
-                PerformanceTelemetry.SetTag(edgesActivity, "edge.count", _edges.Count);
-            }
-
-            using (PerformanceActivityScope canvasActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.UpdateCanvasSize"))
-            {
-                UpdateCanvasSize();
-                PerformanceTelemetry.SetTag(canvasActivity, "canvas.width", CanvasWidth);
-                PerformanceTelemetry.SetTag(canvasActivity, "canvas.height", CanvasHeight);
-            }
+            RecalculateLayout(buildEdges: true);
 
             using (PerformanceActivityScope selectionActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.RestoreSelection"))
             {
                 RestoreSelection();
             }
+
+            RefreshAllNodeMetrics();
         }
         finally
         {
@@ -315,6 +291,53 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Attaches the live execution session used to populate subtree metrics for graph nodes.
+    /// </summary>
+    public void AttachSession(ExecutionSession? session)
+    {
+        _session = session;
+        RefreshAllNodeMetrics();
+    }
+
+    /// <summary>
+    /// Recomputes graph layout using the current measured node widths after the canvas has updated them from real XAML
+    /// control measurement.
+    /// </summary>
+    public void Relayout()
+    {
+        if (Plan == null)
+        {
+            return;
+        }
+
+        IsUpdatingGraph = true;
+        try
+        {
+            RecalculateLayout(buildEdges: false);
+        }
+        finally
+        {
+            IsUpdatingGraph = false;
+        }
+    }
+
+    /// <summary>
+    /// Stores the measured natural width for one rendered graph control so layout can use the XAML-owned size instead of
+    /// view-model text heuristics.
+    /// </summary>
+    public bool SetMeasuredNodeWidth(ExecutionTaskId taskId, double width)
+    {
+        double measuredWidth = Math.Max(NodeMinWidth, width);
+        if (_measuredNodeWidths.TryGetValue(taskId, out double existingWidth) && Math.Abs(existingWidth - measuredWidth) <= 0.5)
+        {
+            return false;
+        }
+
+        _measuredNodeWidths[taskId] = measuredWidth;
+        return true;
+    }
+
+    /// <summary>
     /// Updates one rendered task's runtime status from session events and refreshes any parent group summaries.
     /// </summary>
     public void UpdateTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)
@@ -325,7 +348,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         }
 
         node.SetStatus(status, statusReason);
-        RefreshAncestorGroupStatuses(taskId);
+        RefreshMetricsForTaskAndAncestors(taskId);
 
         if (ReferenceEquals(SelectedNode, node) || (SelectedNode != null && SelectedNode.IsContainer))
         {
@@ -444,7 +467,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private LayoutBounds LayoutLeafNode(ExecutionNodeViewModel node, double x, double y)
     {
-        double width = GetLeafNodeWidth(node);
+        double width = GetMeasuredNodeWidth(node.Id);
         node.SetBounds(x, y, width, NodeHeight);
         node.SetHierarchyMetrics(directChildCount: 0, descendantTaskCount: 0, summaryText: string.Empty);
         return new LayoutBounds(x, y, width, NodeHeight);
@@ -458,14 +481,22 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         IReadOnlyList<ExecutionNodeViewModel> children = GetDirectChildren(node.Id);
         if (children.Count == 0)
         {
-            node.SetBounds(x, y, NodeMinWidth, NodeHeight);
+            double emptyGroupWidth = GetMeasuredNodeWidth(node.Id);
+            node.SetBounds(x, y, emptyGroupWidth, NodeHeight);
             node.SetHierarchyMetrics(directChildCount: 0, descendantTaskCount: 0, summaryText: "Empty task group");
-            return new LayoutBounds(x, y, NodeMinWidth, NodeHeight);
+            return new LayoutBounds(x, y, emptyGroupWidth, NodeHeight);
         }
 
-        LayoutBounds childBounds = LayoutDirectChildren(node.Id, x + GroupPadding, y + GroupHeaderHeight + GroupPadding);
-        double width = Math.Max(NodeMinWidth, childBounds.Width + (GroupPadding * 2));
-        double height = Math.Max(NodeHeight, GroupHeaderHeight + childBounds.Height + (GroupPadding * 2));
+        LayoutDirectChildren(node.Id, x + GroupPadding, y + GroupHeaderHeight + GroupPadding);
+        /* Size the outer frame from the actual laid-out direct-child rectangles instead of the aggregated layout-bounds
+           helper so nested groups use the same final child extents that the canvas renders, including any measured-width
+           updates that happened after the child subtree was laid out. */
+        double maxChildRight = children.Max(child => child.X + child.Width);
+        double maxChildBottom = children.Max(child => child.Y + child.Height);
+        double width = Math.Max(
+            GetMeasuredNodeWidth(node.Id),
+            Math.Max(NodeMinWidth, (maxChildRight - x) + GroupPadding));
+        double height = Math.Max(NodeHeight, (maxChildBottom - y) + GroupPadding);
         node.SetBounds(x, y, width, height);
         return new LayoutBounds(x, y, width, height);
     }
@@ -557,6 +588,45 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         while (currentParentId is ExecutionTaskId parent && _nodesById.TryGetValue(parent, out ExecutionNodeViewModel? group))
         {
             ApplyGroupRollupStatus(group);
+            currentParentId = _parentByTaskId.TryGetValue(parent, out ExecutionTaskId? nextParentId) ? nextParentId : null;
+        }
+    }
+
+    /// <summary>
+    /// Refreshes subtree metrics for every currently rendered graph node.
+    /// </summary>
+    public void RefreshAllNodeMetrics()
+    {
+        foreach (ExecutionNodeViewModel node in _nodes)
+        {
+            RefreshNodeMetrics(node.Id);
+        }
+    }
+
+    /// <summary>
+    /// Refreshes subtree metrics for one node when live runtime data changes.
+    /// </summary>
+    public void RefreshNodeMetrics(ExecutionTaskId taskId)
+    {
+        if (!_nodesById.TryGetValue(taskId, out ExecutionNodeViewModel? node))
+        {
+            return;
+        }
+
+        node.SetMetrics(_session?.GetTaskMetrics(taskId) ?? ExecutionTaskMetrics.Empty);
+    }
+
+    /// <summary>
+    /// Refreshes subtree metrics for one task plus every ancestor group whose subtree includes that task.
+    /// </summary>
+    public void RefreshMetricsForTaskAndAncestors(ExecutionTaskId taskId)
+    {
+        RefreshNodeMetrics(taskId);
+
+        ExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(taskId, out ExecutionTaskId? parentId) ? parentId : null;
+        while (currentParentId is ExecutionTaskId parent)
+        {
+            RefreshNodeMetrics(parent);
             currentParentId = _parentByTaskId.TryGetValue(parent, out ExecutionTaskId? nextParentId) ? nextParentId : null;
         }
     }
@@ -657,31 +727,48 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-     /// Sizes one leaf card from the larger of its title row and status row, then clamps the result so the graph stays
-     /// compact while matching the rendered card padding.
-     /// </summary>
-    private static double GetLeafNodeWidth(ExecutionNodeViewModel node)
+    /// Returns the measured natural width for one node when available, falling back to the minimum graph-node width for
+    /// pre-measure layout passes.
+    /// </summary>
+    private double GetMeasuredNodeWidth(ExecutionTaskId taskId)
     {
-        double titleWidth = MeasureSingleLineText(node.Title, NodeTitleFontSize);
-        double statusWidth = MeasureSingleLineText(node.StatusLabelText, NodeStatusFontSize) + NodeStatusAdornmentWidth;
-        double contentWidth = Math.Max(titleWidth, statusWidth);
-        return Math.Clamp(Math.Ceiling(contentWidth + NodeHorizontalPadding), NodeMinWidth, NodeMaxWidth);
+        return _measuredNodeWidths.TryGetValue(taskId, out double width)
+            ? width
+            : NodeMinWidth;
     }
 
     /// <summary>
-    /// Measures one short single-line text fragment with the same typeface used by the execution graph so layout width
-    /// stays close to the rendered card content width.
+    /// Recomputes node bounds, hierarchy summaries, optional dependency edges, and canvas size from the current graph
+    /// structure plus the latest measured node widths.
     /// </summary>
-    private static double MeasureSingleLineText(string text, double fontSize)
+    private void RecalculateLayout(bool buildEdges)
     {
-        FormattedText measuredText = new(
-            text ?? string.Empty,
-            CultureInfo.InvariantCulture,
-            FlowDirection.LeftToRight,
-            GraphNodeTypeface,
-            fontSize,
-            Brushes.White);
-        return measuredText.WidthIncludingTrailingWhitespace;
+        using (PerformanceActivityScope layoutActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.Layout"))
+        {
+            LayoutDirectChildren(parentId: null, originX: 24, originY: 24);
+        }
+
+        using (PerformanceActivityScope metricsActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.ApplyHierarchyMetrics"))
+        {
+            ApplyGroupHierarchyMetrics();
+            ApplyGroupRollupStatuses();
+        }
+
+        if (buildEdges && Plan != null)
+        {
+            using (PerformanceActivityScope edgesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildDependencyEdges"))
+            {
+                BuildDependencyEdges(Plan);
+                PerformanceTelemetry.SetTag(edgesActivity, "edge.count", _edges.Count);
+            }
+        }
+
+        using (PerformanceActivityScope canvasActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.UpdateCanvasSize"))
+        {
+            UpdateCanvasSize();
+            PerformanceTelemetry.SetTag(canvasActivity, "canvas.width", CanvasWidth);
+            PerformanceTelemetry.SetTag(canvasActivity, "canvas.height", CanvasHeight);
+        }
     }
 
     /// <summary>

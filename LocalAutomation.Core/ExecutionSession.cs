@@ -140,6 +140,28 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
+    /// Returns the shared time, warning, and error metrics for one task subtree or for the whole session when no task is selected.
+    /// </summary>
+    public ExecutionTaskMetrics GetTaskMetrics(ExecutionTaskId? taskId, DateTimeOffset? now = null)
+    {
+        if (taskId == null)
+        {
+            return new ExecutionTaskMetrics(GetSessionDuration(now), CountWarnings(LogStream.Entries), CountErrors(LogStream.Entries));
+        }
+
+        IReadOnlyList<ExecutionTaskId> subtreeIds = GetTaskSubtreeIds(taskId.Value);
+        HashSet<ExecutionTaskId> subtreeIdSet = new(subtreeIds);
+        IReadOnlyList<LogEntry> subtreeEntries = LogStream.Entries
+            .Where(entry => entry.TaskId is ExecutionTaskId entryTaskId && subtreeIdSet.Contains(entryTaskId))
+            .ToList();
+
+        return new ExecutionTaskMetrics(
+            GetTaskDuration(taskId, now),
+            CountWarnings(subtreeEntries),
+            CountErrors(subtreeEntries));
+    }
+
+    /// <summary>
     /// Returns the effective runtime duration for a selected task, keeping the parent task open while any descendant is
     /// still active so branch timing matches the user's mental model of "this task is not done yet".
     /// </summary>
@@ -366,6 +388,32 @@ public sealed class ExecutionSession
             descendantTaskIds.Add(childTaskId);
             CollectDescendantTaskIds(childTaskId, descendantTaskIds);
         }
+    }
+
+    /// <summary>
+    /// Returns the whole-session elapsed duration using the same runtime clock semantics as task durations.
+    /// </summary>
+    private TimeSpan GetSessionDuration(DateTimeOffset? now)
+    {
+        DateTimeOffset endTime = FinishedAt ?? now ?? DateTimeOffset.Now;
+        TimeSpan duration = endTime - StartedAt;
+        return duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
+    }
+
+    /// <summary>
+    /// Counts warning lines in a buffered log-entry sequence.
+    /// </summary>
+    private static int CountWarnings(IEnumerable<LogEntry> entries)
+    {
+        return entries.Count(entry => entry.Verbosity == LogLevel.Warning);
+    }
+
+    /// <summary>
+    /// Counts error and more severe lines in a buffered log-entry sequence.
+    /// </summary>
+    private static int CountErrors(IEnumerable<LogEntry> entries)
+    {
+        return entries.Count(entry => entry.Verbosity >= LogLevel.Error);
     }
 
     /// <summary>

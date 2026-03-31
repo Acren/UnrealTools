@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using System.ComponentModel;
 using LocalAutomation.Core;
 using LocalAutomation.Avalonia.ViewModels;
@@ -19,10 +20,11 @@ public partial class ExecutionGroupContainer : UserControl
     private ExecutionNodeViewModel? _observedNode;
 
     /// <summary>
-    /// Identifies the rendered width for the group container.
+    /// Identifies the rendered width for the group container. Defaults to NaN so detached measurement can use the
+    /// control's natural XAML width while final graph rendering can still impose the outer frame width from layout.
     /// </summary>
     public static readonly StyledProperty<double> GroupWidthProperty =
-        AvaloniaProperty.Register<ExecutionGroupContainer, double>(nameof(GroupWidth));
+        AvaloniaProperty.Register<ExecutionGroupContainer, double>(nameof(GroupWidth), double.NaN);
 
     /// <summary>
     /// Identifies the rendered height for the group container.
@@ -83,8 +85,22 @@ public partial class ExecutionGroupContainer : UserControl
     }
 
     /// <summary>
-     /// Loads the compiled Avalonia markup for the group container.
-     /// </summary>
+    /// Returns the actual rendered header-content width, including the header grid margin, so graph layout can size the
+    /// outer group frame from the same XAML measurement that the user sees on screen.
+    /// </summary>
+    public double GetHeaderContentWidth()
+    {
+        Grid headerContentGrid = this.FindControl<Grid>("HeaderContentGrid")
+            ?? throw new InvalidOperationException("ExecutionGroupContainer header content grid was not initialized.");
+        Thickness margin = headerContentGrid.Margin;
+        headerContentGrid.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double contentWidth = headerContentGrid.DesiredSize.Width + margin.Left + margin.Right;
+        return Math.Max(1, contentWidth);
+    }
+
+    /// <summary>
+      /// Loads the compiled Avalonia markup for the group container.
+      /// </summary>
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);

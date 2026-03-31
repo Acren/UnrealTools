@@ -100,28 +100,11 @@
                                         Spacing="8"
                                         VerticalAlignment="Center"
                                         IsVisible="{Binding ShowSelectedRuntimeMetrics}">
-                                <Border Classes="pill"
-                                        Padding="8,4"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Classes="muted metric-pill-text"
-                                               Text="{Binding SelectedRuntimeDuration, StringFormat='TIME {0}'}" />
-                                </Border>
-                                <Border Classes="pill"
-                                        Classes.warning-accent="{Binding SelectedRuntimeTab.HasWarnings}"
-                                        Padding="8,4"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Classes="muted metric-pill-text"
-                                               Classes.warning-accent="{Binding SelectedRuntimeTab.HasWarnings}"
-                                               Text="{Binding SelectedRuntimeWarningCount, StringFormat='WARN {0}'}" />
-                                </Border>
-                                <Border Classes="pill"
-                                        Classes.error-accent="{Binding SelectedRuntimeTab.HasErrors}"
-                                        Padding="8,4"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Classes="muted metric-pill-text"
-                                               Classes.error-accent="{Binding SelectedRuntimeTab.HasErrors}"
-                                               Text="{Binding SelectedRuntimeErrorCount, StringFormat='ERR {0}'}" />
-                                </Border>
+                                <controls:ExecutionMetricsStrip TimeText="{Binding SelectedRuntimeDuration}"
+                                                               WarningCount="{Binding SelectedRuntimeWarningCount}"
+                                                               ErrorCount="{Binding SelectedRuntimeErrorCount}"
+                                                               HasWarnings="{Binding SelectedRuntimeHasWarnings}"
+                                                               HasErrors="{Binding SelectedRuntimeHasErrors}" />
                             </StackPanel>
                             <Button Classes="danger small"
                                     Content="Terminate"

@@ -11,6 +11,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using System.Collections.Generic;
 using LocalAutomation.Core;
 using LocalAutomation.Avalonia.ViewModels;
 using Shape = Avalonia.Controls.Shapes.Shape;
@@ -34,10 +35,12 @@ public partial class ExecutionGraphCanvas : UserControl
     private Border? _viewportHost;
     private Border? _graphContentRoot;
     private ExecutionGraphViewModel? _observedGraph;
+    private readonly Dictionary<ExecutionTaskId, Control> _renderedNodeControls = new();
     private bool _isPanning;
     private bool _pendingRender;
     private string _pendingRenderTrigger = "Deferred";
     private bool _pendingViewportAdjustment;
+    private bool _measurementRenderPending;
     private Point _lastPanPoint;
     private double _zoom = DefaultZoom;
     private double _panX;
@@ -311,6 +314,7 @@ public partial class ExecutionGraphCanvas : UserControl
         }
 
         _graphCanvas.Children.Clear();
+        _renderedNodeControls.Clear();
         if (_observedGraph == null)
         {
             PerformanceTelemetry.SetTag(activity, "render.skipped", "MissingGraph");
@@ -325,7 +329,9 @@ public partial class ExecutionGraphCanvas : UserControl
 
         foreach (ExecutionNodeViewModel group in _observedGraph.Nodes.Where(node => node.IsContainer).OrderByDescending(node => node.Width * node.Height))
         {
-            _graphCanvas.Children.Add(CreateGroupControl(group));
+            Control groupControl = CreateGroupControl(group);
+            _renderedNodeControls[group.Id] = groupControl;
+            _graphCanvas.Children.Add(groupControl);
         }
 
         foreach (ExecutionEdgeViewModel edge in _observedGraph.Edges)
@@ -348,16 +354,71 @@ public partial class ExecutionGraphCanvas : UserControl
 
         foreach (ExecutionNodeViewModel node in _observedGraph.Nodes.Where(node => !node.IsContainer))
         {
-            _graphCanvas.Children.Add(CreateTaskControl(node));
+            Control taskControl = CreateTaskControl(node);
+            _renderedNodeControls[node.Id] = taskControl;
+            _graphCanvas.Children.Add(taskControl);
         }
 
         ApplyViewportTransform();
         PerformanceTelemetry.SetTag(activity, "render.child.count", _graphCanvas.Children.Count);
+
+        if (!_measurementRenderPending)
+        {
+            _measurementRenderPending = true;
+            Dispatcher.UIThread.Post(() => ApplyMeasuredNodeLayout(trigger), DispatcherPriority.Render);
+        }
     }
 
     /// <summary>
-    /// Creates one XAML-backed group control and positions it on the graph canvas.
+    /// Re-measures the actual rendered controls after Avalonia layout so graph bounds can follow real on-screen widths
+    /// instead of detached control guesses.
+     /// </summary>
+    private void ApplyMeasuredNodeLayout(string trigger)
+    {
+        _measurementRenderPending = false;
+        if (_observedGraph == null || _renderedNodeControls.Count == 0)
+        {
+            return;
+        }
+
+        bool anyWidthChanged = UpdateMeasuredNodeWidths(_observedGraph);
+        if (!anyWidthChanged)
+        {
+            return;
+        }
+
+        _observedGraph.Relayout();
+        RenderGraph(trigger: $"MeasuredActual:{trigger}");
+    }
+
+    /// <summary>
+    /// Reads the actual rendered widths from the graph controls and updates the graph VM cache when those widths change.
     /// </summary>
+    private bool UpdateMeasuredNodeWidths(ExecutionGraphViewModel graph)
+    {
+        bool anyWidthChanged = false;
+        foreach (ExecutionNodeViewModel node in graph.Nodes)
+        {
+            if (!_renderedNodeControls.TryGetValue(node.Id, out Control? control))
+            {
+                continue;
+            }
+
+            double measuredWidth = control is ExecutionGroupContainer groupControl
+                ? groupControl.GetHeaderContentWidth()
+                : Math.Max(1, control.Bounds.Width);
+            if (graph.SetMeasuredNodeWidth(node.Id, measuredWidth))
+            {
+                anyWidthChanged = true;
+            }
+        }
+
+        return anyWidthChanged;
+    }
+
+    /// <summary>
+     /// Creates one XAML-backed group control and positions it on the graph canvas.
+     /// </summary>
     private Control CreateGroupControl(ExecutionNodeViewModel group)
     {
         ExecutionGroupContainer container = new()
@@ -376,13 +437,12 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-    /// Creates one XAML-backed task-card control and positions it on the graph canvas.
-    /// </summary>
+     /// Creates one XAML-backed task-card control and positions it on the graph canvas.
+     /// </summary>
     private Control CreateTaskControl(ExecutionNodeViewModel node)
     {
         ExecutionTaskCard card = new()
         {
-            CardWidth = node.Width,
             CardHeight = node.Height,
             DataContext = node
         };

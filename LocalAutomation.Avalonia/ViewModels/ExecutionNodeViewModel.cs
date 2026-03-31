@@ -20,6 +20,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     private double _height = ExecutionGraphViewModel.NodeHeight;
     private int _directChildCount;
     private int _descendantTaskCount;
+    private ExecutionTaskMetrics _metrics;
 
     /// <summary>
     /// Creates a graph-node view model from the shared execution-task model.
@@ -206,6 +207,52 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     public string StatusLabelText => ExecutionTaskStatusDisplay.GetLabel(Status);
 
     /// <summary>
+    /// Gets the shared execution metrics currently displayed for this node.
+    /// </summary>
+    public ExecutionTaskMetrics Metrics
+    {
+        get => _metrics;
+        private set
+        {
+            if (!SetProperty(ref _metrics, value))
+            {
+                return;
+            }
+
+            RaisePropertyChanged(nameof(MetricsTimeText));
+            RaisePropertyChanged(nameof(MetricsWarningCount));
+            RaisePropertyChanged(nameof(MetricsErrorCount));
+            RaisePropertyChanged(nameof(HasMetricsWarnings));
+            RaisePropertyChanged(nameof(HasMetricsErrors));
+        }
+    }
+
+    /// <summary>
+    /// Gets the formatted time text shown in the reusable metrics strip.
+    /// </summary>
+    public string MetricsTimeText => ExecutionGraphViewModel.FormatDuration(Metrics.Duration);
+
+    /// <summary>
+    /// Gets the warning count shown in the reusable metrics strip.
+    /// </summary>
+    public int MetricsWarningCount => Metrics.WarningCount;
+
+    /// <summary>
+    /// Gets the error count shown in the reusable metrics strip.
+    /// </summary>
+    public int MetricsErrorCount => Metrics.ErrorCount;
+
+    /// <summary>
+    /// Gets whether the reusable metrics strip should accent the warning pill.
+    /// </summary>
+    public bool HasMetricsWarnings => Metrics.HasWarnings;
+
+    /// <summary>
+    /// Gets whether the reusable metrics strip should accent the error pill.
+    /// </summary>
+    public bool HasMetricsErrors => Metrics.HasErrors;
+
+    /// <summary>
     /// Gets the border thickness for group containers.
     /// </summary>
     public Thickness ContainerBorderThickness => new(IsSelected ? 2.0 : 1.5);
@@ -322,6 +369,15 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         RaisePropertyChanged(nameof(GroupMetaText));
         RaisePropertyChanged(nameof(HasGroupMetaText));
     }
+
+    /// <summary>
+    /// Updates the shared execution metrics shown on the node card or group header.
+    /// </summary>
+    public void SetMetrics(ExecutionTaskMetrics metrics)
+    {
+        Metrics = metrics;
+    }
+
     /// <summary>
     /// Raises derived graph-node status properties after the runtime state changes.
     /// </summary>

@@ -56,7 +56,7 @@
         </Style>
     </UserControl.Styles>
     <!-- This control owns the full task-card markup so graph canvas code no longer constructs the inner visual tree. -->
-    <Grid Width="{Binding CardWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
+    <Grid MinWidth="156"
           Height="{Binding CardHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
           ClipToBounds="False">
         <Border x:Name="ClickSurface"
@@ -75,9 +75,9 @@
                         CornerRadius="8"
                         IsHitTestVisible="False" />
                     <!-- Center the title/status block within the card so shorter cards do not feel top-weighted. -->
-                    <Grid RowDefinitions="Auto,Auto"
-                          RowSpacing="8"
-                          Margin="20,12,20,12"
+                    <Grid RowDefinitions="Auto,Auto,Auto"
+                          RowSpacing="6"
+                          Margin="18,10,18,10"
                           VerticalAlignment="Center">
                         <TextBlock Text="{Binding Title}"
                                    FontSize="14"
@@ -90,9 +90,16 @@
                                                   Status="{Binding Status}"
                                                   ShowLabel="True"
                                                   DotSize="6"
-                                              LabelFontSize="11"
-                                              VerticalAlignment="Center" />
-                </Grid>
+                                               LabelFontSize="11"
+                                               VerticalAlignment="Center" />
+                        <controls:ExecutionMetricsStrip Grid.Row="2"
+                                                        TimeText="{Binding MetricsTimeText}"
+                                                        WarningCount="{Binding MetricsWarningCount}"
+                                                        ErrorCount="{Binding MetricsErrorCount}"
+                                                        HasWarnings="{Binding HasMetricsWarnings}"
+                                                        HasErrors="{Binding HasMetricsErrors}"
+                                                        VerticalAlignment="Center" />
+                  </Grid>
             </Grid>
         </Border>
 

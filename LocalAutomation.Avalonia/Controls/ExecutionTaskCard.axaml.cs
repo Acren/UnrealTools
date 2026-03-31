@@ -19,12 +19,6 @@ public partial class ExecutionTaskCard : UserControl
     private ExecutionNodeViewModel? _observedNode;
 
     /// <summary>
-    /// Identifies the rendered width for the task card.
-    /// </summary>
-    public static readonly StyledProperty<double> CardWidthProperty =
-        AvaloniaProperty.Register<ExecutionTaskCard, double>(nameof(CardWidth));
-
-    /// <summary>
     /// Identifies the rendered height for the task card.
     /// </summary>
     public static readonly StyledProperty<double> CardHeightProperty =
@@ -48,15 +42,6 @@ public partial class ExecutionTaskCard : UserControl
      /// Raised when the task card is clicked with the pointer.
      /// </summary>
     public event EventHandler<RoutedEventArgs>? Invoked;
-
-    /// <summary>
-    /// Gets or sets the rendered width for the task card.
-    /// </summary>
-    public double CardWidth
-    {
-        get => GetValue(CardWidthProperty);
-        set => SetValue(CardWidthProperty, value);
-    }
 
     /// <summary>
     /// Gets or sets the rendered height for the task card.

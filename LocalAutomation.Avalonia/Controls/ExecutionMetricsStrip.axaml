@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
+             x:Class="LocalAutomation.Avalonia.Controls.ExecutionMetricsStrip"
+             x:DataType="controls:ExecutionMetricsStrip"
+             x:Name="Root">
+    <!-- One shared metrics strip keeps TIME/WARN/ERR pills visually identical in the workspace header and on graph
+         nodes while letting each host feed in its own runtime metric source. -->
+    <StackPanel Orientation="Horizontal"
+                Spacing="8"
+                VerticalAlignment="Center">
+        <Border Classes="pill"
+                Padding="8,4"
+                VerticalAlignment="Center">
+            <TextBlock Classes="muted metric-pill-text"
+                       Text="{Binding TimeText, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}, StringFormat='TIME {0}'}" />
+        </Border>
+        <Border Classes="pill"
+                Classes.warning-accent="{Binding HasWarnings, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}}"
+                Padding="8,4"
+                VerticalAlignment="Center">
+            <TextBlock Classes="muted metric-pill-text"
+                       Classes.warning-accent="{Binding HasWarnings, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}}"
+                       Text="{Binding WarningCount, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}, StringFormat='WARN {0}'}" />
+        </Border>
+        <Border Classes="pill"
+                Classes.error-accent="{Binding HasErrors, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}}"
+                Padding="8,4"
+                VerticalAlignment="Center">
+            <TextBlock Classes="muted metric-pill-text"
+                       Classes.error-accent="{Binding HasErrors, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}}"
+                       Text="{Binding ErrorCount, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}, StringFormat='ERR {0}'}" />
+        </Border>
+    </StackPanel>
+</UserControl>
