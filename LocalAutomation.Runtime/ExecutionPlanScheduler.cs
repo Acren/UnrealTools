@@ -50,7 +50,7 @@ public sealed class ExecutionPlanScheduler
         {
             if (!item.Enabled)
             {
-                SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Skipped, item.SkippedReason);
+                SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Disabled, item.SkippedReason);
                 continue;
             }
 
@@ -72,7 +72,7 @@ public sealed class ExecutionPlanScheduler
             if (runningTasks.Count == 0)
             {
                 IReadOnlyList<ExecutionTaskId> incompleteTasks = statuses
-                    .Where(pair => pair.Value is not ExecutionTaskStatus.Completed and not ExecutionTaskStatus.Cancelled and not ExecutionTaskStatus.Skipped)
+                    .Where(pair => pair.Value is not ExecutionTaskStatus.Completed and not ExecutionTaskStatus.Cancelled and not ExecutionTaskStatus.Skipped and not ExecutionTaskStatus.Disabled)
                     .Select(pair => pair.Key)
                     .ToList();
                 if (incompleteTasks.Count == 0)
@@ -239,7 +239,7 @@ public sealed class ExecutionPlanScheduler
         foreach (ExecutionWorkItem item in itemsById.Values)
         {
             ExecutionTaskStatus currentStatus = statuses[item.TaskId];
-            if (currentStatus is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Running or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Skipped)
+            if (currentStatus is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Running or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Disabled)
             {
                 continue;
             }
@@ -260,7 +260,7 @@ public sealed class ExecutionPlanScheduler
     {
         foreach (ExecutionWorkItem dependent in itemsById.Values.Where(item => item.DependsOn.Contains(failedTaskId)))
         {
-            if (statuses[dependent.TaskId] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled)
+            if (statuses[dependent.TaskId] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Disabled)
             {
                 continue;
             }
@@ -281,7 +281,7 @@ public sealed class ExecutionPlanScheduler
     {
         foreach (ExecutionWorkItem item in itemsById.Values)
         {
-            if (statuses[item.TaskId] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Cancelled)
+            if (statuses[item.TaskId] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Disabled)
             {
                 continue;
             }
