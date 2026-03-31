@@ -63,7 +63,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
        their content width. */
     private const double ColumnGap = 84;
     private const double RowGap = 30;
-    private static readonly Typeface GraphNodeTypeface = new(new FontFamily("Segoe UI"));
+    private static readonly Typeface GraphNodeTypeface = new(new FontFamily("avares://LocalAutomation.Avalonia/Assets/Fonts#Inter"));
     // The graph keeps one fixed pseudo-node for merged output selection that never participates in runtime plan matching.
     private static readonly ExecutionTaskId AllOutputNodeId = new("all-output");
 

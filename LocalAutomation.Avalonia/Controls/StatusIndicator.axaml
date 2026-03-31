@@ -55,7 +55,6 @@
                    Grid.Row="0"
                    Grid.Column="1"
                     Margin="6,0,0,0"
-                    Height="16"
                     FontWeight="SemiBold"
                     VerticalAlignment="Center"
                    TextAlignment="Left" />

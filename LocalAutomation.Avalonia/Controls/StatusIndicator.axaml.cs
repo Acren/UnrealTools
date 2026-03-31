@@ -125,7 +125,6 @@ public partial class StatusIndicator : UserControl
         _labelTextBlock.IsVisible = ShowLabel;
         _labelTextBlock.Text = GetLabelText(Status);
         _labelTextBlock.FontSize = LabelFontSize;
-        _labelTextBlock.LineHeight = 16;
 
         ApplyStatusClasses(_dotBorder.Classes, Status);
         ApplyStatusClasses(_labelTextBlock.Classes, Status);

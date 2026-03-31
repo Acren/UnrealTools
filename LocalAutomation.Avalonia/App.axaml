@@ -5,6 +5,7 @@
              x:Class="LocalAutomation.Avalonia.App">
     <!-- Centralized graphite tokens let the shell mirror the mockup without scattering hard-coded colors. -->
     <Application.Resources>
+        <FontFamily x:Key="AppUiFont">avares://LocalAutomation.Avalonia/Assets/Fonts#Inter</FontFamily>
         <Color x:Key="GraphiteBackgroundColor">#16181B</Color>
         <Color x:Key="GraphitePanelColor">#1B1E22</Color>
         <Color x:Key="GraphiteCardColor">#22262B</Color>
@@ -87,7 +88,7 @@
         <Style Selector="Window">
             <Setter Property="Background" Value="{DynamicResource GraphiteBackgroundBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource GraphiteTextBrush}" />
-            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontFamily" Value="{StaticResource AppUiFont}" />
             <Setter Property="FontSize" Value="13" />
         </Style>
 
