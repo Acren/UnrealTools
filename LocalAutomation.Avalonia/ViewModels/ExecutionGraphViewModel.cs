@@ -78,6 +78,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private ExecutionNodeViewModel? _selectedNode;
     private double _canvasWidth;
     private double _canvasHeight;
+    private bool _isUpdatingGraph;
 
     // The root lookup uses a non-runnable sentinel so root-level tasks can share the same typed dictionary shape as nested groups.
     private static readonly ExecutionTaskId RootParentId = new("root-parent");
@@ -112,6 +113,15 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// Gets the rendered graph-edge collection.
     /// </summary>
     public ObservableCollection<ExecutionEdgeViewModel> Edges => _edges;
+
+    /// <summary>
+    /// Gets whether the graph is currently rebuilding its internal collections and bounds as one bulk update.
+    /// </summary>
+    public bool IsUpdatingGraph
+    {
+        get => _isUpdatingGraph;
+        private set => SetProperty(ref _isUpdatingGraph, value);
+    }
 
     /// <summary>
     /// Gets the special pseudo-node that selects the merged output stream.
@@ -231,60 +241,68 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         PerformanceTelemetry.SetTag(activity, "plan.has_result", plan != null);
         PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
 
-        Plan = plan;
-        _nodes.Clear();
-        _edges.Clear();
-        _nodesById.Clear();
-        _childrenByParentId.Clear();
-        _parentByTaskId.Clear();
-        _leafDescendantsByGroupId.Clear();
-
-        if (plan == null)
+        IsUpdatingGraph = true;
+        try
         {
-            CanvasWidth = NodeMinWidth;
-            CanvasHeight = NodeHeight;
-            SelectNode(AllOutputNode);
-            return;
+            Plan = plan;
+            _nodes.Clear();
+            _edges.Clear();
+            _nodesById.Clear();
+            _childrenByParentId.Clear();
+            _parentByTaskId.Clear();
+            _leafDescendantsByGroupId.Clear();
+
+            if (plan == null)
+            {
+                CanvasWidth = NodeMinWidth;
+                CanvasHeight = NodeHeight;
+                SelectNode(AllOutputNode);
+                return;
+            }
+
+            using (PerformanceActivityScope buildNodesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildNodeLookup"))
+            {
+                PerformanceTelemetry.SetTag(buildNodesActivity, "plan.task.count", plan.Tasks.Count);
+                BuildNodeLookup(plan);
+            }
+
+            using (PerformanceActivityScope buildHierarchyActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildHierarchyLookups"))
+            {
+                BuildHierarchyLookups(plan.Tasks);
+            }
+
+            using (PerformanceActivityScope layoutActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.Layout"))
+            {
+                LayoutDirectChildren(parentId: null, originX: 24, originY: 24);
+            }
+
+            using (PerformanceActivityScope metricsActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.ApplyHierarchyMetrics"))
+            {
+                ApplyGroupHierarchyMetrics();
+                ApplyGroupRollupStatuses();
+            }
+
+            using (PerformanceActivityScope edgesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildDependencyEdges"))
+            {
+                BuildDependencyEdges(plan);
+                PerformanceTelemetry.SetTag(edgesActivity, "edge.count", _edges.Count);
+            }
+
+            using (PerformanceActivityScope canvasActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.UpdateCanvasSize"))
+            {
+                UpdateCanvasSize();
+                PerformanceTelemetry.SetTag(canvasActivity, "canvas.width", CanvasWidth);
+                PerformanceTelemetry.SetTag(canvasActivity, "canvas.height", CanvasHeight);
+            }
+
+            using (PerformanceActivityScope selectionActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.RestoreSelection"))
+            {
+                RestoreSelection();
+            }
         }
-
-        using (PerformanceActivityScope buildNodesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildNodeLookup"))
+        finally
         {
-            PerformanceTelemetry.SetTag(buildNodesActivity, "plan.task.count", plan.Tasks.Count);
-            BuildNodeLookup(plan);
-        }
-
-        using (PerformanceActivityScope buildHierarchyActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildHierarchyLookups"))
-        {
-            BuildHierarchyLookups(plan.Tasks);
-        }
-
-        using (PerformanceActivityScope layoutActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.Layout"))
-        {
-            LayoutDirectChildren(parentId: null, originX: 24, originY: 24);
-        }
-
-        using (PerformanceActivityScope metricsActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.ApplyHierarchyMetrics"))
-        {
-            ApplyGroupHierarchyMetrics();
-            ApplyGroupRollupStatuses();
-        }
-
-        using (PerformanceActivityScope edgesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildDependencyEdges"))
-        {
-            BuildDependencyEdges(plan);
-            PerformanceTelemetry.SetTag(edgesActivity, "edge.count", _edges.Count);
-        }
-
-        using (PerformanceActivityScope canvasActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.UpdateCanvasSize"))
-        {
-            UpdateCanvasSize();
-            PerformanceTelemetry.SetTag(canvasActivity, "canvas.width", CanvasWidth);
-            PerformanceTelemetry.SetTag(canvasActivity, "canvas.height", CanvasHeight);
-        }
-
-        using (PerformanceActivityScope selectionActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.RestoreSelection"))
-        {
-            RestoreSelection();
+            IsUpdatingGraph = false;
         }
     }
 

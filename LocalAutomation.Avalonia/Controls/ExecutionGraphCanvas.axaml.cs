@@ -10,6 +10,7 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using LocalAutomation.Core;
 using LocalAutomation.Avalonia.ViewModels;
 using Shape = Avalonia.Controls.Shapes.Shape;
 using ShapePath = Avalonia.Controls.Shapes.Path;
@@ -33,6 +34,8 @@ public partial class ExecutionGraphCanvas : UserControl
     private ExecutionGraphViewModel? _observedGraph;
     private bool _isPanning;
     private bool _needsInitialFit;
+    private bool _pendingRender;
+    private string _pendingRenderTrigger = "Deferred";
     private Point _lastPanPoint;
     private double _zoom = DefaultZoom;
     private double _panX;
@@ -189,7 +192,7 @@ public partial class ExecutionGraphCanvas : UserControl
 
         ResetViewport();
         _needsInitialFit = true;
-        RenderGraph();
+        RenderGraph(trigger: "DataContextChanged");
     }
 
     /// <summary>
@@ -213,7 +216,20 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void HandleGraphCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        RenderGraph();
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CollectionChanged");
+        PerformanceTelemetry.SetTag(activity, "source", ReferenceEquals(sender, _observedGraph?.Nodes) ? "Nodes" : ReferenceEquals(sender, _observedGraph?.Edges) ? "Edges" : string.Empty);
+        PerformanceTelemetry.SetTag(activity, "action", e.Action.ToString());
+        PerformanceTelemetry.SetTag(activity, "new_item.count", e.NewItems?.Count ?? 0);
+        PerformanceTelemetry.SetTag(activity, "old_item.count", e.OldItems?.Count ?? 0);
+
+        string trigger = $"CollectionChanged:{e.Action}";
+        if (TryQueueRenderWhileUpdating(trigger))
+        {
+            PerformanceTelemetry.SetTag(activity, "render.deferred", true);
+            return;
+        }
+
+        RenderGraph(trigger: trigger);
     }
 
     /// <summary>
@@ -221,30 +237,80 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void HandleGraphPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (string.Equals(e.PropertyName, nameof(ExecutionGraphViewModel.IsUpdatingGraph), StringComparison.Ordinal))
+        {
+            if (_observedGraph?.IsUpdatingGraph == false && _pendingRender)
+            {
+                string pendingTrigger = _pendingRenderTrigger;
+                _pendingRender = false;
+                _pendingRenderTrigger = "Deferred";
+                RenderGraph(trigger: $"Deferred:{pendingTrigger}");
+            }
+
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(e.PropertyName) ||
             string.Equals(e.PropertyName, nameof(ExecutionGraphViewModel.CanvasWidth), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionGraphViewModel.CanvasHeight), StringComparison.Ordinal))
         {
-            RenderGraph();
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.PropertyChanged");
+            PerformanceTelemetry.SetTag(activity, "property.name", e.PropertyName ?? string.Empty);
+
+            string trigger = $"PropertyChanged:{e.PropertyName}";
+            if (TryQueueRenderWhileUpdating(trigger))
+            {
+                PerformanceTelemetry.SetTag(activity, "render.deferred", true);
+                return;
+            }
+
+            RenderGraph(trigger: trigger);
         }
+    }
+
+    /// <summary>
+    /// Queues one render to run after the current bulk graph update completes so collection and canvas-size churn do not
+    /// rebuild the entire visual tree multiple times during one SetPlan pass.
+    /// </summary>
+    private bool TryQueueRenderWhileUpdating(string trigger)
+    {
+        if (_observedGraph?.IsUpdatingGraph != true)
+        {
+            return false;
+        }
+
+        _pendingRender = true;
+        _pendingRenderTrigger = trigger;
+        return true;
     }
 
     /// <summary>
     /// Rebuilds the graph canvas from the current graph view model so comment containers, edges, and task cards render
     /// in a deterministic back-to-front order.
     /// </summary>
-    private void RenderGraph()
+    private void RenderGraph(string trigger)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RenderGraph");
+        PerformanceTelemetry.SetTag(activity, "trigger", trigger);
+
         if (_graphCanvas == null)
         {
+            PerformanceTelemetry.SetTag(activity, "render.skipped", "MissingCanvas");
             return;
         }
 
         _graphCanvas.Children.Clear();
         if (_observedGraph == null)
         {
+            PerformanceTelemetry.SetTag(activity, "render.skipped", "MissingGraph");
             return;
         }
+
+        int groupCount = _observedGraph.Nodes.Count(node => node.IsContainer);
+        int leafCount = _observedGraph.Nodes.Count - groupCount;
+        PerformanceTelemetry.SetTag(activity, "group.count", groupCount);
+        PerformanceTelemetry.SetTag(activity, "leaf.count", leafCount);
+        PerformanceTelemetry.SetTag(activity, "edge.count", _observedGraph.Edges.Count);
 
         foreach (ExecutionNodeViewModel group in _observedGraph.Nodes.Where(node => node.IsContainer).OrderByDescending(node => node.Width * node.Height))
         {
@@ -276,6 +342,7 @@ public partial class ExecutionGraphCanvas : UserControl
 
         TryApplyInitialFit();
         ApplyViewportTransform();
+        PerformanceTelemetry.SetTag(activity, "render.child.count", _graphCanvas.Children.Count);
     }
 
     /// <summary>

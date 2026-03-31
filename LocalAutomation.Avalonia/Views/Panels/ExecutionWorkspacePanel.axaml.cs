@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -13,12 +14,17 @@ namespace LocalAutomation.Avalonia.Views.Panels;
 /// </summary>
 public partial class ExecutionWorkspacePanel : UserControl
 {
+    private Border? _graphHost;
+    private Border? _logHost;
+    private ExecutionWorkspaceViewModel? _observedViewModel;
+
     /// <summary>
     /// Initializes the runtime panel.
     /// </summary>
     public ExecutionWorkspacePanel()
     {
         InitializeComponent();
+        DataContextChanged += HandleDataContextChanged;
     }
 
     /// <summary>
@@ -105,11 +111,73 @@ public partial class ExecutionWorkspacePanel : UserControl
     }
 
     /// <summary>
+    /// Recomputes the shared graph/log host layout whenever the selected workspace tab or panel data context changes.
+    /// </summary>
+    private void HandleDataContextChanged(object? sender, System.EventArgs e)
+    {
+        if (_observedViewModel != null)
+        {
+            _observedViewModel.PropertyChanged -= HandleViewModelPropertyChanged;
+        }
+
+        _observedViewModel = DataContext as ExecutionWorkspaceViewModel;
+        if (_observedViewModel != null)
+        {
+            _observedViewModel.PropertyChanged += HandleViewModelPropertyChanged;
+        }
+
+        UpdateWorkspaceLayout();
+    }
+
+    /// <summary>
+    /// Refreshes the shared workspace layout when the selected tab or graph/log visibility changes in the view model.
+    /// </summary>
+    private void HandleViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.PropertyName) ||
+            e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeTab) ||
+            e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedGraph) ||
+            e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeLogEntries) ||
+            e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeLogSourceId))
+        {
+            UpdateWorkspaceLayout();
+        }
+    }
+
+    /// <summary>
+    /// Applies the selected tab's graph/log presentation to the shared hosts so the panel keeps only one graph canvas
+    /// and one log viewer alive while still switching between split and full-width layouts.
+    /// </summary>
+    private void UpdateWorkspaceLayout()
+    {
+        if (_graphHost == null || _logHost == null)
+        {
+            return;
+        }
+
+        RuntimeWorkspaceTabViewModel? selectedTab = (DataContext as ExecutionWorkspaceViewModel)?.SelectedRuntimeTab;
+        bool showsGraph = selectedTab?.ShowsGraph == true;
+        bool showsLog = selectedTab?.ShowsLog == true;
+        bool usesSplitWorkspace = showsGraph && showsLog;
+
+        _graphHost.IsVisible = showsGraph;
+        Grid.SetColumn(_graphHost, 0);
+        Grid.SetColumnSpan(_graphHost, usesSplitWorkspace ? 1 : 2);
+        _graphHost.BorderThickness = usesSplitWorkspace ? new Thickness(0, 0, 1, 0) : new Thickness(0);
+
+        _logHost.IsVisible = showsLog;
+        Grid.SetColumn(_logHost, usesSplitWorkspace ? 1 : 0);
+        Grid.SetColumnSpan(_logHost, usesSplitWorkspace ? 1 : 2);
+    }
+
+    /// <summary>
     /// Loads the compiled Avalonia markup for the execution workspace panel.
     /// </summary>
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
+        _graphHost = this.FindControl<Border>("GraphHost");
+        _logHost = this.FindControl<Border>("LogHost");
     }
 
 }

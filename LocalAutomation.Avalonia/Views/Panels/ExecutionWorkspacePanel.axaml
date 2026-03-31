@@ -132,43 +132,28 @@
                 </Grid>
             </Border>
 
-            <!-- The active tab chooses between graph-only, log-only, or split workspace layouts without duplicating
-                 the surrounding runtime shell chrome. -->
-            <Grid Grid.Row="1" Margin="0" MinHeight="0">
-                <Grid IsVisible="{Binding SelectedRuntimeTab.IsExecutionSession}"
-                      ColumnDefinitions="1.7*,0.9*"
-                      ColumnSpacing="0"
-                      MinHeight="0">
-                    <Border Margin="0"
-                            Background="{DynamicResource GraphiteTerminalBrush}"
-                            BorderBrush="{DynamicResource GraphiteLineBrush}"
-                            BorderThickness="0,0,1,0">
-                        <controls:ExecutionGraphCanvas Margin="12,10,12,12"
-                                                       DataContext="{Binding SelectedGraph}" />
-                    </Border>
-
-                    <Border Grid.Column="1"
-                            Margin="0"
-                            Background="{DynamicResource GraphiteTerminalBrush}">
-                        <Border.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Clear"
-                                          Click="ClearLog_Click" />
-                            </ContextMenu>
-                        </Border.ContextMenu>
-                        <controls:LogViewer Margin="12,10,12,12"
-                                            Entries="{Binding SelectedRuntimeLogEntries}"
-                                            SourceKey="{Binding SelectedRuntimeLogSourceId}" />
-                    </Border>
-                </Grid>
-
-                <Border IsVisible="{Binding SelectedRuntimeTab.IsPlanPreview}"
-                        Background="{DynamicResource GraphiteTerminalBrush}">
+            <!-- One shared graph host and one shared log host adapt between split and full-width layouts so the active
+                 tab keeps exactly one ExecutionGraphCanvas and one LogViewer alive. -->
+            <Grid Grid.Row="1"
+                  Margin="0"
+                  MinHeight="0"
+                  ColumnDefinitions="1.7*,0.9*"
+                  ColumnSpacing="0">
+                <Border x:Name="GraphHost"
+                        Margin="0"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Background="{DynamicResource GraphiteTerminalBrush}"
+                        BorderBrush="{DynamicResource GraphiteLineBrush}"
+                        BorderThickness="0">
                     <controls:ExecutionGraphCanvas Margin="12,10,12,12"
                                                    DataContext="{Binding SelectedGraph}" />
                 </Border>
 
-                <Border IsVisible="{Binding SelectedRuntimeTab.IsApplicationLog}"
+                <Border x:Name="LogHost"
+                        Grid.Column="0"
+                        Margin="0"
+                        Grid.ColumnSpan="2"
                         Background="{DynamicResource GraphiteTerminalBrush}">
                     <Border.ContextMenu>
                         <ContextMenu>
