@@ -227,12 +227,20 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// <summary>
     /// Replaces the shared task view-model registry for this execution tab from the current plan snapshot.
     /// </summary>
-    public void SetTasks(IEnumerable<ExecutionTask> tasks)
+    public void SetTasks(IEnumerable<ExecutionPlanTask> tasks)
     {
-        _tasksById.Clear();
-        foreach (ExecutionTask task in tasks)
+        foreach (ExecutionTaskViewModel existingTask in _tasksById.Values)
         {
-            _tasksById[task.Id] = new ExecutionTaskViewModel(task);
+            existingTask.Dispose();
+        }
+
+        _tasksById.Clear();
+        List<ExecutionPlanTask> materializedTasks = tasks?.ToList() ?? new List<ExecutionPlanTask>();
+        Dictionary<ExecutionTaskId, ExecutionTaskId?> parentIds = materializedTasks.ToDictionary(task => task.Id, task => task.ParentId);
+        foreach (ExecutionPlanTask task in materializedTasks)
+        {
+            HashSet<ExecutionTaskId> subtreeTaskIds = BuildSubtreeTaskIds(task.Id, parentIds);
+            _tasksById[task.Id] = new ExecutionTaskViewModel(task, Session, Session?.GetTaskRuntimeState(task.Id), subtreeTaskIds);
         }
     }
 
@@ -245,41 +253,58 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Updates one shared task view model's raw runtime status.
-    /// </summary>
-    public void UpdateTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)
-    {
-        if (_tasksById.TryGetValue(taskId, out ExecutionTaskViewModel? task))
-        {
-            task.SetStatus(status, statusReason);
-        }
-    }
-
-    /// <summary>
-    /// Updates one shared task view model's raw runtime metrics.
-    /// </summary>
-    public void UpdateTaskMetrics(ExecutionTaskId taskId, ExecutionTaskMetrics metrics)
-    {
-        if (_tasksById.TryGetValue(taskId, out ExecutionTaskViewModel? task))
-        {
-            task.SetMetrics(metrics);
-        }
-    }
-
-    /// <summary>
-    /// Refreshes all shared task metrics from the current session snapshot.
-    /// </summary>
+     /// Refreshes all shared task metrics from the current session snapshot.
+     /// </summary>
     public void RefreshAllTaskMetrics()
     {
-        if (Session == null)
+        foreach (ExecutionTaskViewModel task in _tasksById.Values)
         {
-            return;
+            task.RefreshTimeSensitiveState();
+        }
+    }
+
+    /// <summary>
+    /// Disposes every shared task view model owned by this tab.
+    /// </summary>
+    public void DisposeTasks()
+    {
+        foreach (ExecutionTaskViewModel task in _tasksById.Values)
+        {
+            task.Dispose();
         }
 
-        foreach ((ExecutionTaskId taskId, ExecutionTaskViewModel task) in _tasksById)
+        _tasksById.Clear();
+    }
+
+    /// <summary>
+    /// Builds the full descendant-inclusive subtree id set for one task from the current plan hierarchy.
+    /// </summary>
+    private static HashSet<ExecutionTaskId> BuildSubtreeTaskIds(ExecutionTaskId rootTaskId, IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskId?> parentIds)
+    {
+        HashSet<ExecutionTaskId> subtreeTaskIds = new() { rootTaskId };
+        foreach ((ExecutionTaskId taskId, ExecutionTaskId? parentId) in parentIds)
         {
-            task.SetMetrics(Session.GetTaskMetrics(taskId));
+            if (taskId == rootTaskId)
+            {
+                continue;
+            }
+
+            ExecutionTaskId? currentParentId = parentId;
+            while (currentParentId != null)
+            {
+                if (currentParentId.Value == rootTaskId)
+                {
+                    subtreeTaskIds.Add(taskId);
+                    break;
+                }
+
+                currentParentId = parentIds.TryGetValue(currentParentId.Value, out ExecutionTaskId? nextParentId)
+                    ? nextParentId
+                    : null;
+            }
         }
+
+        return subtreeTaskIds;
     }
 
     /// <summary>

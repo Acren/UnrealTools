@@ -14,7 +14,7 @@ public sealed class ExecutionPlan
     /// <summary>
     /// Creates an execution plan from the provided metadata, tasks, and dependencies.
     /// </summary>
-    public ExecutionPlan(ExecutionPlanId id, string title, IEnumerable<ExecutionTask> tasks, IEnumerable<ExecutionDependency>? dependencies = null)
+    public ExecutionPlan(ExecutionPlanId id, string title, IEnumerable<ExecutionPlanTask> tasks, IEnumerable<ExecutionDependency>? dependencies = null)
     {
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -23,10 +23,10 @@ public sealed class ExecutionPlan
 
         Id = id;
         Title = title;
-        List<ExecutionTask> materializedTasks = (tasks ?? throw new ArgumentNullException(nameof(tasks))).ToList();
+        List<ExecutionPlanTask> materializedTasks = (tasks ?? throw new ArgumentNullException(nameof(tasks))).ToList();
         List<ExecutionDependency> materializedDependencies = (dependencies ?? Array.Empty<ExecutionDependency>()).ToList();
         Validate(materializedTasks, materializedDependencies);
-        Tasks = new ReadOnlyCollection<ExecutionTask>(materializedTasks);
+        Tasks = new ReadOnlyCollection<ExecutionPlanTask>(materializedTasks);
         Dependencies = new ReadOnlyCollection<ExecutionDependency>(materializedDependencies);
     }
 
@@ -43,7 +43,7 @@ public sealed class ExecutionPlan
     /// <summary>
     /// Gets the tasks contained in the plan.
     /// </summary>
-    public IReadOnlyList<ExecutionTask> Tasks { get; }
+    public IReadOnlyList<ExecutionPlanTask> Tasks { get; }
 
     /// <summary>
     /// Gets the dependencies contained in the plan.
@@ -53,7 +53,7 @@ public sealed class ExecutionPlan
     /// <summary>
     /// Returns the task with the provided identifier when it exists.
     /// </summary>
-    public ExecutionTask? GetTask(ExecutionTaskId? taskId)
+    public ExecutionPlanTask? GetTask(ExecutionTaskId? taskId)
     {
         if (taskId == null)
         {
@@ -88,15 +88,15 @@ public sealed class ExecutionPlan
     /// <summary>
     /// Validates the supplied task and dependency set so hosts can trust that the plan is a well-formed DAG.
     /// </summary>
-    private static void Validate(IReadOnlyList<ExecutionTask> tasks, IReadOnlyList<ExecutionDependency> dependencies)
+    private static void Validate(IReadOnlyList<ExecutionPlanTask> tasks, IReadOnlyList<ExecutionDependency> dependencies)
     {
         if (tasks.Count == 0)
         {
             throw new InvalidOperationException("Execution plans must contain at least one task.");
         }
 
-        Dictionary<ExecutionTaskId, ExecutionTask> tasksById = new();
-        foreach (ExecutionTask task in tasks)
+        Dictionary<ExecutionTaskId, ExecutionPlanTask> tasksById = new();
+        foreach (ExecutionPlanTask task in tasks)
         {
             if (!tasksById.TryAdd(task.Id, task))
             {
@@ -104,7 +104,7 @@ public sealed class ExecutionPlan
             }
         }
 
-        foreach (ExecutionTask task in tasks)
+        foreach (ExecutionPlanTask task in tasks)
         {
             if (task.ParentId is ExecutionTaskId parentId && !tasksById.ContainsKey(parentId))
             {

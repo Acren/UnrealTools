@@ -272,14 +272,6 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Updates the rendered task status from live session data.
-    /// </summary>
-    public void SetStatus(ExecutionTaskStatus status, string? statusReason)
-    {
-        Task.SetStatus(status, statusReason);
-    }
-
-    /// <summary>
     /// Updates the rendered size and position used by the canvas and dependency routing.
     /// </summary>
     public void SetBounds(double x, double y, double width, double height)
@@ -301,14 +293,6 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         RaisePropertyChanged(nameof(DetailsText));
         RaisePropertyChanged(nameof(GroupMetaText));
         RaisePropertyChanged(nameof(HasGroupMetaText));
-    }
-
-    /// <summary>
-    /// Updates the shared execution metrics shown on the node card or group header.
-    /// </summary>
-    public void SetMetrics(ExecutionTaskMetrics metrics)
-    {
-        Task.SetMetrics(metrics);
     }
 
     /// <summary>

@@ -233,7 +233,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
 
         RuntimeWorkspaceTabViewModel planTab = RuntimeTabs.First(tab => tab.Kind == RuntimeWorkspaceTabKind.PlanPreview);
-        planTab.SetTasks(plan?.Tasks ?? Array.Empty<ExecutionTask>());
+        planTab.SetTasks(plan?.Tasks ?? Array.Empty<ExecutionPlanTask>());
         planTab.Graph.SetPlan(plan);
         RebuildTabSelectedLogEntries(planTab);
 
@@ -262,16 +262,10 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             presentation: new RuntimeWorkspaceTabPresentation(showGraph: true, showLog: true, showSubtitle: true, showStatusMarker: true, showRuntimeMetrics: true),
             graph: graph,
             session: session);
-        runtimeTab.SetTasks(session.Plan?.Tasks ?? Array.Empty<ExecutionTask>());
-        runtimeTab.RefreshAllTaskMetrics();
+        runtimeTab.SetTasks(session.Plan?.Tasks ?? Array.Empty<ExecutionPlanTask>());
 
         graph.AttachTasks(runtimeTab.TasksById);
         graph.SetPlan(session.Plan);
-        graph.AttachSession(session);
-        foreach ((ExecutionTaskId taskId, ExecutionTaskStatus status) in session.TaskStatuses)
-        {
-            runtimeTab.UpdateTaskStatus(taskId, status, session.GetTaskStatusReason(taskId));
-        }
 
         HookGraphSelection(runtimeTab);
         RuntimeTabs.Add(runtimeTab);
@@ -284,9 +278,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         AttachSessionLogs(runtimeTab, session);
         session.TaskStatusChanged += (taskId, status, statusReason) => Dispatcher.UIThread.Post(() =>
         {
-            runtimeTab.UpdateTaskStatus(taskId, status, statusReason);
-            runtimeTab.UpdateTaskMetrics(taskId, session.GetTaskMetrics(taskId));
-            runtimeTab.Graph.UpdateTaskStatus(taskId, status, statusReason);
+            runtimeTab.Graph.NotifyTaskStateChanged(taskId);
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
                 RaiseSelectionStateChanged();
@@ -432,6 +424,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         RemovePendingLogEntries(runtimeTab);
         _attachedLogStreams.Remove(runtimeTab);
         _attachedSessions.Remove(runtimeTab);
+        runtimeTab.DisposeTasks();
 
         int removedIndex = RuntimeTabs.IndexOf(runtimeTab);
         RuntimeTabs.Remove(runtimeTab);
@@ -472,11 +465,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
            its ancestor groups rather than forcing a full graph rebuild. */
         session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
         {
-            if (entry.TaskId is ExecutionTaskId taskId)
-            {
-                RefreshTaskMetricsForBranch(runtimeTab, taskId);
-            }
-
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
                 RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
@@ -783,25 +771,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private static LogEntryViewModel CreateLogEntryViewModel(LogEntry entry)
     {
         return new LogEntryViewModel(entry.Message, entry.Verbosity, entry.Timestamp);
-    }
-
-    /// <summary>
-    /// Refreshes the shared task metrics for one task plus every ancestor task whose displayed metrics include that subtree.
-    /// </summary>
-    private static void RefreshTaskMetricsForBranch(RuntimeWorkspaceTabViewModel runtimeTab, ExecutionTaskId taskId)
-    {
-        if (runtimeTab.Session == null)
-        {
-            return;
-        }
-
-        runtimeTab.UpdateTaskMetrics(taskId, runtimeTab.Session.GetTaskMetrics(taskId));
-        ExecutionTaskId? currentParentId = runtimeTab.GetTask(taskId)?.ParentId;
-        while (currentParentId is ExecutionTaskId parentId)
-        {
-            runtimeTab.UpdateTaskMetrics(parentId, runtimeTab.Session.GetTaskMetrics(parentId));
-            currentParentId = runtimeTab.GetTask(parentId)?.ParentId;
-        }
     }
 
 }

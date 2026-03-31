@@ -311,7 +311,7 @@ public abstract class Operation
             title: OperationName,
             tasks: new[]
             {
-                new ExecutionTask(
+                new ExecutionPlanTask(
                     id: taskId,
                     title: OperationName,
                     description: operationParameters.Target.DisplayName,

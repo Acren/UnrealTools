@@ -48,7 +48,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _leafDescendantsByGroupId = new();
     private readonly Dictionary<ExecutionTaskId, double> _measuredNodeWidths = new();
     private IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskViewModel> _tasksById = new Dictionary<ExecutionTaskId, ExecutionTaskViewModel>();
-    private ExecutionSession? _session;
     private ExecutionPlan? _plan;
     private ExecutionNodeViewModel? _selectedNode;
     private double _canvasWidth;
@@ -84,7 +83,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     public ExecutionGraphViewModel()
     {
-        AllOutputNode = new ExecutionNodeViewModel(new ExecutionTaskViewModel(new ExecutionTask(
+        AllOutputNode = new ExecutionNodeViewModel(new ExecutionTaskViewModel(new ExecutionPlanTask(
             id: AllOutputNodeId,
             title: "All Output",
             description: "Show the merged output stream for the current preview or execution session.",
@@ -266,14 +265,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Attaches the live execution session used to populate subtree metrics for graph layout refreshes.
-    /// </summary>
-    public void AttachSession(ExecutionSession? session)
-    {
-        _session = session;
-    }
-
-    /// <summary>
     /// Attaches the shared Avalonia task view-model registry that graph nodes should wrap instead of constructing local copies.
     /// </summary>
     public void AttachTasks(IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskViewModel> tasksById)
@@ -320,9 +311,9 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Updates one rendered task's runtime status from session events and refreshes any parent group summaries.
+    /// Raises selected-node notifications when an underlying shared task VM changed in a way that could affect details UI.
     /// </summary>
-    public void UpdateTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)
+    public void NotifyTaskStateChanged(ExecutionTaskId taskId)
     {
         if (!_nodesById.TryGetValue(taskId, out ExecutionNodeViewModel? node))
         {
@@ -341,7 +332,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private void BuildNodeLookup(ExecutionPlan plan)
     {
         List<ExecutionNodeViewModel> nodes = new(plan.Tasks.Count);
-        foreach (ExecutionTask task in plan.Tasks)
+        foreach (ExecutionPlanTask task in plan.Tasks)
         {
             if (!_tasksById.TryGetValue(task.Id, out ExecutionTaskViewModel? taskViewModel))
             {
@@ -359,9 +350,9 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Builds the parent and child lookup tables that drive nested group-container layout.
     /// </summary>
-    private void BuildHierarchyLookups(IEnumerable<ExecutionTask> tasks)
+    private void BuildHierarchyLookups(IEnumerable<ExecutionPlanTask> tasks)
     {
-        foreach (ExecutionTask task in tasks)
+        foreach (ExecutionPlanTask task in tasks)
         {
             _parentByTaskId[task.Id] = task.ParentId;
             ExecutionTaskId parentId = task.ParentId ?? RootParentId;

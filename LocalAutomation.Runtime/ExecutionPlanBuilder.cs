@@ -70,8 +70,8 @@ public sealed class ExecutionPlanBuilder
     {
         /* Preview plans should preserve the distinction between planned work and queued runtime work. Enabled tasks stay
            Planned in the preview graph, and runtime session updates transition them to Pending when execution starts. */
-        List<ExecutionTask> tasks = _items
-            .Select(item => new ExecutionTask(
+        List<ExecutionPlanTask> tasks = _items
+            .Select(item => new ExecutionPlanTask(
                 id: item.Id,
                 title: item.Title,
                 description: item.Description,

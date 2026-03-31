@@ -3,14 +3,14 @@ using System;
 namespace LocalAutomation.Core;
 
 /// <summary>
-/// Describes one task in an execution plan, including its identity, display metadata, and preview-state hints.
+/// Describes one task definition inside an execution plan, including its identity, display metadata, and preview-state hints.
 /// </summary>
-public sealed class ExecutionTask
+public sealed class ExecutionPlanTask
 {
     /// <summary>
-    /// Creates an execution-plan task with the provided metadata.
-    /// </summary>
-    public ExecutionTask(
+     /// Creates an execution-plan task with the provided metadata.
+     /// </summary>
+    public ExecutionPlanTask(
         ExecutionTaskId id,
         string title,
         string? description = null,
