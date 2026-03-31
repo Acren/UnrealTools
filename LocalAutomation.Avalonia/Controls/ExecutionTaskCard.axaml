@@ -43,7 +43,7 @@
             <Setter Property="BorderBrush" Value="#98A9B8" />
         </Style>
         <Style Selector="Border.task-card-border.cancelled, Border.task-card-border.skipped, Border.task-card-border.disabled">
-            <Setter Property="BorderBrush" Value="#7A838D" />
+            <Setter Property="BorderBrush" Value="#69717A" />
         </Style>
         <Style Selector="Border.task-card-border.running">
             <Setter Property="BorderBrush" Value="#63A8FF" />

@@ -13,7 +13,7 @@
             <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
         </Style>
         <Style Selector="Border.status-indicator-dot.cancelled, Border.status-indicator-dot.disabled, Border.status-indicator-dot.skipped">
-            <Setter Property="Background" Value="#7A838D" />
+            <Setter Property="Background" Value="#69717A" />
             <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
         </Style>
         <Style Selector="TextBlock.status-indicator-label">
@@ -23,7 +23,7 @@
             <Setter Property="Foreground" Value="#B3C1CD" />
         </Style>
         <Style Selector="TextBlock.status-indicator-label.cancelled, TextBlock.status-indicator-label.disabled, TextBlock.status-indicator-label.skipped">
-            <Setter Property="Foreground" Value="#9BA4AD" />
+            <Setter Property="Foreground" Value="#8C949D" />
         </Style>
         <Style Selector="TextBlock.status-indicator-label.running">
             <Setter Property="Foreground" Value="#A9D2F1" />

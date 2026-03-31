@@ -58,7 +58,7 @@
             <Setter Property="BorderBrush" Value="#98A9B8" />
         </Style>
         <Style Selector="Border.group-container-border.cancelled, Border.group-container-border.skipped, Border.group-container-border.disabled">
-            <Setter Property="BorderBrush" Value="#7A838D" />
+            <Setter Property="BorderBrush" Value="#69717A" />
         </Style>
         <Style Selector="Border.group-container-border.running">
             <Setter Property="BorderBrush" Value="#63A8FF" />

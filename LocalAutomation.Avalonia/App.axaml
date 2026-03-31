@@ -412,7 +412,7 @@
             <Setter Property="Stroke" Value="#98A9B8" />
         </Style>
         <Style Selector="Path.execution-edge.cancelled, Path.execution-edge.disabled, Path.execution-edge.skipped">
-            <Setter Property="Stroke" Value="#7A838D" />
+            <Setter Property="Stroke" Value="#69717A" />
         </Style>
         <Style Selector="Path.execution-edge.running">
             <Setter Property="Stroke" Value="#63A8FF" />
