@@ -675,7 +675,18 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void RefreshVisibleExecutionPlan()
     {
-        ExecutionWorkspace.UpdatePlanPreview(VisibleExecutionPlan);
+        /* Trace the shell-level preview refresh separately from the application-service/runtime plan build so the
+           telemetry tree can show whether option-edit sluggishness is in UI orchestration or plan construction. */
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("RefreshVisibleExecutionPlan");
+        PerformanceTelemetry.SetTag(activity, "operation.id", _selectedOperationId?.Value ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "operation.name", _currentOperation?.OperationName ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
+        PerformanceTelemetry.SetTag(activity, "target.present", SelectedTarget?.Target != null);
+
+        ExecutionPlan? plan = VisibleExecutionPlan;
+        PerformanceTelemetry.SetTag(activity, "plan.has_result", plan != null);
+        PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
+        ExecutionWorkspace.UpdatePlanPreview(plan);
     }
 
     /// <summary>

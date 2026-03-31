@@ -245,6 +245,12 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// </summary>
     public void UpdatePlanPreview(ExecutionPlan? plan)
     {
+        /* Trace the workspace-level preview update separately from shell refresh so the timing tree shows whether the
+           cost sits in the plan graph rebuild or elsewhere in the surrounding view-model refresh. */
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("UpdatePlanPreview");
+        PerformanceTelemetry.SetTag(activity, "plan.has_result", plan != null);
+        PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
+
         RuntimeWorkspaceTabViewModel planTab = RuntimeTabs.First(tab => tab.Kind == RuntimeWorkspaceTabKind.PlanPreview);
         planTab.Graph.SetPlan(plan);
         RebuildTabSelectedLogEntries(planTab);

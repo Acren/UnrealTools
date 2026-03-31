@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia.Media;
+using LocalAutomation.Avalonia.Collections;
 using LocalAutomation.Core;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -67,8 +68,8 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     // The graph keeps one fixed pseudo-node for merged output selection that never participates in runtime plan matching.
     private static readonly ExecutionTaskId AllOutputNodeId = new("all-output");
 
-    private readonly ObservableCollection<ExecutionNodeViewModel> _nodes = new();
-    private readonly ObservableCollection<ExecutionEdgeViewModel> _edges = new();
+    private readonly RangeObservableCollection<ExecutionNodeViewModel> _nodes = new();
+    private readonly RangeObservableCollection<ExecutionEdgeViewModel> _edges = new();
     private readonly Dictionary<ExecutionTaskId, ExecutionNodeViewModel> _nodesById = new();
     private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _childrenByParentId = new();
     private readonly Dictionary<ExecutionTaskId, ExecutionTaskId?> _parentByTaskId = new();
@@ -224,6 +225,12 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     public void SetPlan(ExecutionPlan? plan)
     {
+        /* Trace plan-graph rebuild phases separately so option-edit latency can be attributed to lookup creation, layout,
+           metrics, edge construction, or selection restoration rather than treating graph refresh as one opaque cost. */
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraph.SetPlan");
+        PerformanceTelemetry.SetTag(activity, "plan.has_result", plan != null);
+        PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
+
         Plan = plan;
         _nodes.Clear();
         _edges.Clear();
@@ -240,14 +247,45 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return;
         }
 
-        BuildNodeLookup(plan);
-        BuildHierarchyLookups(plan.Tasks);
-        LayoutDirectChildren(parentId: null, originX: 24, originY: 24);
-        ApplyGroupHierarchyMetrics();
-        ApplyGroupRollupStatuses();
-        BuildDependencyEdges(plan);
-        UpdateCanvasSize();
-        RestoreSelection();
+        using (PerformanceActivityScope buildNodesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildNodeLookup"))
+        {
+            PerformanceTelemetry.SetTag(buildNodesActivity, "plan.task.count", plan.Tasks.Count);
+            BuildNodeLookup(plan);
+        }
+
+        using (PerformanceActivityScope buildHierarchyActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildHierarchyLookups"))
+        {
+            BuildHierarchyLookups(plan.Tasks);
+        }
+
+        using (PerformanceActivityScope layoutActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.Layout"))
+        {
+            LayoutDirectChildren(parentId: null, originX: 24, originY: 24);
+        }
+
+        using (PerformanceActivityScope metricsActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.ApplyHierarchyMetrics"))
+        {
+            ApplyGroupHierarchyMetrics();
+            ApplyGroupRollupStatuses();
+        }
+
+        using (PerformanceActivityScope edgesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildDependencyEdges"))
+        {
+            BuildDependencyEdges(plan);
+            PerformanceTelemetry.SetTag(edgesActivity, "edge.count", _edges.Count);
+        }
+
+        using (PerformanceActivityScope canvasActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.UpdateCanvasSize"))
+        {
+            UpdateCanvasSize();
+            PerformanceTelemetry.SetTag(canvasActivity, "canvas.width", CanvasWidth);
+            PerformanceTelemetry.SetTag(canvasActivity, "canvas.height", CanvasHeight);
+        }
+
+        using (PerformanceActivityScope selectionActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.RestoreSelection"))
+        {
+            RestoreSelection();
+        }
     }
 
     /// <summary>
@@ -284,12 +322,15 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private void BuildNodeLookup(ExecutionPlan plan)
     {
+        List<ExecutionNodeViewModel> nodes = new(plan.Tasks.Count);
         foreach (ExecutionTask task in plan.Tasks)
         {
             ExecutionNodeViewModel node = new(task);
-            _nodes.Add(node);
+            nodes.Add(node);
             _nodesById[task.Id] = node;
         }
+
+        _nodes.AddRange(nodes);
     }
 
     /// <summary>
@@ -487,6 +528,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private void BuildDependencyEdges(ExecutionPlan plan)
     {
+        List<ExecutionEdgeViewModel> edges = new();
         foreach (ExecutionDependency dependency in plan.Dependencies)
         {
             if (_nodesById.TryGetValue(dependency.SourceTaskId, out ExecutionNodeViewModel? source) &&
@@ -494,9 +536,11 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
                 !HasChildren(source.Id) &&
                 !HasChildren(target.Id))
             {
-                _edges.Add(new ExecutionEdgeViewModel(source, target));
+                edges.Add(new ExecutionEdgeViewModel(source, target));
             }
         }
+
+        _edges.AddRange(edges);
     }
 
     /// <summary>
