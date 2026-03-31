@@ -9,6 +9,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using LocalAutomation.Core;
 using LocalAutomation.Avalonia.ViewModels;
@@ -27,19 +28,21 @@ public partial class ExecutionGraphCanvas : UserControl
     private const double MinZoom = 0.35;
     private const double MaxZoom = 2.5;
     private const double ZoomStep = 1.15;
+    private const double ViewportRecoveryMargin = 40;
 
     private Canvas? _graphCanvas;
     private Border? _viewportHost;
     private Border? _graphContentRoot;
     private ExecutionGraphViewModel? _observedGraph;
     private bool _isPanning;
-    private bool _needsInitialFit;
     private bool _pendingRender;
     private string _pendingRenderTrigger = "Deferred";
+    private bool _pendingViewportAdjustment;
     private Point _lastPanPoint;
     private double _zoom = DefaultZoom;
     private double _panX;
     private double _panY;
+    private bool _hasViewportState;
 
     /// <summary>
     /// Initializes the execution graph canvas.
@@ -107,7 +110,7 @@ public partial class ExecutionGraphCanvas : UserControl
         _lastPanPoint = currentPoint;
         _panX += delta.X;
         _panY += delta.Y;
-        _needsInitialFit = false;
+        _hasViewportState = true;
         ApplyViewportTransform();
         e.Handled = true;
     }
@@ -150,7 +153,7 @@ public partial class ExecutionGraphCanvas : UserControl
         _zoom = newZoom;
         _panX = pointerPosition.X - (worldPoint.X * _zoom);
         _panY = pointerPosition.Y - (worldPoint.Y * _zoom);
-        _needsInitialFit = false;
+        _hasViewportState = true;
         ApplyViewportTransform();
         e.Handled = true;
     }
@@ -190,9 +193,17 @@ public partial class ExecutionGraphCanvas : UserControl
             _observedGraph.PropertyChanged += HandleGraphPropertyChanged;
         }
 
-        ResetViewport();
-        _needsInitialFit = true;
+        /* Re-evaluate the viewport every time the observed graph changes. First render fits the graph, while later tab
+           switches preserve the current zoom/pan and only apply minimal recovery when the graph has drifted too far out
+           of view. Defer the actual fit/recovery until the next real viewport layout pass so tab switches do not reuse
+           stale bounds from the previously visible workspace mode. */
+        _pendingViewportAdjustment = true;
         RenderGraph(trigger: "DataContextChanged");
+
+        if (_viewportHost != null && _viewportHost.Bounds.Width > 0 && _viewportHost.Bounds.Height > 0)
+        {
+            Dispatcher.UIThread.Post(ApplyPendingViewportAdjustment, DispatcherPriority.Render);
+        }
     }
 
     /// <summary>
@@ -200,7 +211,7 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void HandleAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
-        TryApplyInitialFit();
+        ApplyPendingViewportAdjustment();
     }
 
     /// <summary>
@@ -208,7 +219,7 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void HandleViewportHostSizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        TryApplyInitialFit();
+        ApplyPendingViewportAdjustment();
     }
 
     /// <summary>
@@ -340,7 +351,6 @@ public partial class ExecutionGraphCanvas : UserControl
             _graphCanvas.Children.Add(CreateTaskControl(node));
         }
 
-        TryApplyInitialFit();
         ApplyViewportTransform();
         PerformanceTelemetry.SetTag(activity, "render.child.count", _graphCanvas.Children.Count);
     }
@@ -454,15 +464,17 @@ public partial class ExecutionGraphCanvas : UserControl
         _zoom = DefaultZoom;
         _panX = 0;
         _panY = 0;
+        _hasViewportState = false;
         ApplyViewportTransform();
     }
 
     /// <summary>
-    /// Applies the initial fit once after graph content and viewport bounds are both available.
+    /// Applies the pending first-fit or post-switch visibility recovery once the current viewport has its real post-layout
+    /// size, instead of making that decision during an earlier render triggered from the previous tab layout.
     /// </summary>
-    private void TryApplyInitialFit()
+    private void ApplyPendingViewportAdjustment()
     {
-        if (!_needsInitialFit)
+        if (!_pendingViewportAdjustment)
         {
             return;
         }
@@ -477,9 +489,18 @@ public partial class ExecutionGraphCanvas : UserControl
             return;
         }
 
-        FitGraphToViewportIfNeeded();
+        if (!_hasViewportState)
+        {
+            FitGraphToViewportIfNeeded();
+            _hasViewportState = true;
+        }
+        else
+        {
+            NudgeGraphIntoViewIfNeeded();
+        }
+
         ApplyViewportTransform();
-        _needsInitialFit = false;
+        _pendingViewportAdjustment = false;
     }
 
     /// <summary>
@@ -510,6 +531,83 @@ public partial class ExecutionGraphCanvas : UserControl
         _zoom = Math.Clamp(fitZoom, MinZoom, DefaultZoom);
         _panX = Math.Max(12, (availableWidth - (graphWidth * _zoom)) / 2.0 + 12);
         _panY = Math.Max(12, (availableHeight - (graphHeight * _zoom)) / 2.0 + 12);
+    }
+
+    /// <summary>
+    /// Nudges the graph back into view when the current pan has moved it mostly or completely outside the viewport. The
+    /// current zoom level is preserved and only the minimum pan correction needed to restore a useful amount of visible
+    /// graph area is applied.
+    /// </summary>
+    private void NudgeGraphIntoViewIfNeeded()
+    {
+        if (_viewportHost == null || _observedGraph == null)
+        {
+            return;
+        }
+
+        if (_viewportHost.Bounds.Width <= 0 || _viewportHost.Bounds.Height <= 0)
+        {
+            return;
+        }
+
+        double graphWidth = Math.Max(1, _observedGraph.CanvasWidth * _zoom);
+        double graphHeight = Math.Max(1, _observedGraph.CanvasHeight * _zoom);
+        double graphLeft = _panX;
+        double graphTop = _panY;
+        double graphRight = graphLeft + graphWidth;
+        double graphBottom = graphTop + graphHeight;
+        double viewLeft = ViewportRecoveryMargin;
+        double viewTop = ViewportRecoveryMargin;
+        double viewRight = Math.Max(viewLeft, _viewportHost.Bounds.Width - ViewportRecoveryMargin);
+        double viewBottom = Math.Max(viewTop, _viewportHost.Bounds.Height - ViewportRecoveryMargin);
+        /* Recover more than a token sliver of the graph so tab switches bring the content back into a comfortably
+           visible working area rather than leaving it clinging to the viewport edge. */
+        double requiredVisibleWidth = Math.Min(graphWidth, Math.Max(220, (viewRight - viewLeft) * 0.35));
+        double requiredVisibleHeight = Math.Min(graphHeight, Math.Max(140, (viewBottom - viewTop) * 0.3));
+
+        double deltaX = CalculateRecoveryDelta(graphLeft, graphRight, viewLeft, viewRight, requiredVisibleWidth);
+        double deltaY = CalculateRecoveryDelta(graphTop, graphBottom, viewTop, viewBottom, requiredVisibleHeight);
+
+        if (Math.Abs(deltaX) > 0.001 || Math.Abs(deltaY) > 0.001)
+        {
+            _panX += deltaX;
+            _panY += deltaY;
+        }
+    }
+
+    /// <summary>
+    /// Calculates the smallest translation needed to ensure that at least the requested amount of one axis remains
+    /// visible inside the current viewport bounds.
+    /// </summary>
+    private static double CalculateRecoveryDelta(double graphStart, double graphEnd, double viewStart, double viewEnd, double requiredVisible)
+    {
+        double overlap = Math.Min(graphEnd, viewEnd) - Math.Max(graphStart, viewStart);
+        if (overlap >= requiredVisible)
+        {
+            return 0;
+        }
+
+        if (graphEnd <= viewStart)
+        {
+            return (viewStart + requiredVisible) - graphEnd;
+        }
+
+        if (graphStart >= viewEnd)
+        {
+            return (viewEnd - requiredVisible) - graphStart;
+        }
+
+        if (graphStart < viewStart)
+        {
+            return (viewStart + requiredVisible) - graphEnd;
+        }
+
+        if (graphEnd > viewEnd)
+        {
+            return (viewEnd - requiredVisible) - graphStart;
+        }
+
+        return 0;
     }
 
     /// <summary>
