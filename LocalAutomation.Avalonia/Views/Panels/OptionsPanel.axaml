@@ -50,7 +50,7 @@
                 </controls:ResponsiveMeasuredColumns>
             </ScrollViewer>
 
-            <!-- The blocked-execution reason is a full-width footer so long validation details have room and remain
+            <!-- The execution-status reason is a full-width footer so long validation details have room and remain
                  easy to copy without crowding the narrow command rail. -->
             <Border Grid.Row="2"
                     IsVisible="{Binding ShowExecuteDisabledReason}"

@@ -135,19 +135,7 @@ public partial class StatusIndicator : UserControl
     /// </summary>
     private static string GetLabelText(global::LocalAutomation.Core.ExecutionTaskStatus status)
     {
-        return status switch
-        {
-            global::LocalAutomation.Core.ExecutionTaskStatus.Completed => "Done",
-            global::LocalAutomation.Core.ExecutionTaskStatus.Pending => "Pending",
-            global::LocalAutomation.Core.ExecutionTaskStatus.Blocked => "Blocked",
-            global::LocalAutomation.Core.ExecutionTaskStatus.Running => "Running",
-            global::LocalAutomation.Core.ExecutionTaskStatus.Failed => "Failed",
-            global::LocalAutomation.Core.ExecutionTaskStatus.Skipped => "Skipped",
-            global::LocalAutomation.Core.ExecutionTaskStatus.Disabled => "Disabled",
-            global::LocalAutomation.Core.ExecutionTaskStatus.Cancelled => "Cancelled",
-            global::LocalAutomation.Core.ExecutionTaskStatus.Planned => "Planned",
-            _ => status.ToString()
-        };
+        return global::LocalAutomation.Core.ExecutionTaskStatusDisplay.GetLabel(status);
     }
 
     /// <summary>
@@ -163,7 +151,6 @@ public partial class StatusIndicator : UserControl
         classes.Set("running", status == global::LocalAutomation.Core.ExecutionTaskStatus.Running);
         classes.Set("succeeded", status == global::LocalAutomation.Core.ExecutionTaskStatus.Completed);
         classes.Set("failed", status == global::LocalAutomation.Core.ExecutionTaskStatus.Failed);
-        classes.Set("blocked", status == global::LocalAutomation.Core.ExecutionTaskStatus.Blocked);
         classes.Set("cancelled", status == global::LocalAutomation.Core.ExecutionTaskStatus.Cancelled);
     }
 }

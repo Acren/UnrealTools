@@ -54,9 +54,6 @@
         <Style Selector="Border.task-card-border.failed">
             <Setter Property="BorderBrush" Value="#FF5C5C" />
         </Style>
-        <Style Selector="Border.task-card-border.blocked">
-            <Setter Property="BorderBrush" Value="#F1D479" />
-        </Style>
     </UserControl.Styles>
     <!-- This control owns the full task-card markup so graph canvas code no longer constructs the inner visual tree. -->
     <Grid Width="{Binding CardWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"

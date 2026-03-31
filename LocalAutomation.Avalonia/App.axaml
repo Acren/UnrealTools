@@ -423,10 +423,6 @@
         <Style Selector="Path.execution-edge.failed">
             <Setter Property="Stroke" Value="#FF5C5C" />
         </Style>
-        <Style Selector="Path.execution-edge.blocked">
-            <Setter Property="Stroke" Value="#F1D479" />
-        </Style>
-
         <!-- Inputs use the same compact mechanical treatment as the mockup. -->
         <Style Selector="TextBox">
             <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />

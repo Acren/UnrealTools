@@ -69,9 +69,6 @@
         <Style Selector="Border.group-container-border.failed">
             <Setter Property="BorderBrush" Value="#FF5C5C" />
         </Style>
-        <Style Selector="Border.group-container-border.blocked">
-            <Setter Property="BorderBrush" Value="#F1D479" />
-        </Style>
     </UserControl.Styles>
     <!-- This control owns the full visual structure of one group node so canvas code only decides placement and z-order. -->
     <Grid Width="{Binding GroupWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"

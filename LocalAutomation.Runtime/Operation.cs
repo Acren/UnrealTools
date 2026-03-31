@@ -300,7 +300,7 @@ public abstract class Operation
 
         PrepareRegisteredOptions(operationParameters);
         string? requirementsError = CheckRequirementsSatisfied(operationParameters);
-        ExecutionTaskStatus status = requirementsError == null ? ExecutionTaskStatus.Pending : ExecutionTaskStatus.Disabled;
+        ExecutionTaskStatus status = requirementsError == null ? ExecutionTaskStatus.Planned : ExecutionTaskStatus.Disabled;
         ExecutionPlanId planId = GetDefaultExecutionPlanId();
         ExecutionTaskId taskId = GetDefaultExecutionTaskId(planId);
 

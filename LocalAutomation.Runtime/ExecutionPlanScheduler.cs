@@ -33,7 +33,7 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Executes the provided work items until they complete, fail, become blocked by failed dependencies, or are
+    /// Executes the provided work items until they complete, fail, are skipped because they can no longer run, or are
     /// cancelled.
     /// </summary>
     public async Task<OperationResult> ExecuteAsync(IEnumerable<ExecutionWorkItem> workItems, CancellationToken cancellationToken)
@@ -89,7 +89,7 @@ public sealed class ExecutionPlanScheduler
                             continue;
                         }
 
-                        SetStatus(statuses, statusReasons, taskId, ExecutionTaskStatus.Blocked, UnsatisfiedDependenciesReason);
+                        SetStatus(statuses, statusReasons, taskId, ExecutionTaskStatus.Skipped, UnsatisfiedDependenciesReason);
                     }
 
                     encounteredFailure = true;
@@ -120,6 +120,14 @@ public sealed class ExecutionPlanScheduler
                 UpdateReadiness(itemsById, statuses, statusReasons);
                 continue;
             }
+            catch (Exception ex)
+            {
+                encounteredFailure = true;
+                SetStatus(statuses, statusReasons, completedTaskId, ExecutionTaskStatus.Failed, ex.Message);
+                SkipDependentsOfFailure(completedTaskId, itemsById, statuses, statusReasons);
+                UpdateReadiness(itemsById, statuses, statusReasons);
+                continue;
+            }
 
             if (result.Outcome == RunOutcome.Succeeded)
             {
@@ -135,13 +143,13 @@ public sealed class ExecutionPlanScheduler
             {
                 encounteredFailure = true;
                 SetStatus(statuses, statusReasons, completedTaskId, ExecutionTaskStatus.Failed, "The task execution callback returned failure.");
-                BlockDependentsOfFailure(completedTaskId, itemsById, statuses, statusReasons);
+                SkipDependentsOfFailure(completedTaskId, itemsById, statuses, statusReasons);
             }
 
             UpdateReadiness(itemsById, statuses, statusReasons);
         }
 
-        bool anyFailures = encounteredFailure || statuses.Values.Any(status => status is ExecutionTaskStatus.Failed or ExecutionTaskStatus.Blocked);
+        bool anyFailures = encounteredFailure || statuses.Values.Any(status => status is ExecutionTaskStatus.Failed);
         if (anyFailures)
         {
             return OperationResult.Failed();
@@ -220,8 +228,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Recomputes which pending items remain eligible to run. In the simplified model they all stay pending until they
-    /// either start running or become permanently blocked by upstream failure.
+    /// Recomputes which pending items remain eligible to run. Tasks stay pending until they either start running or are
+    /// marked terminal because they can no longer run.
     /// </summary>
     private void UpdateReadiness(
         IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
@@ -236,22 +244,15 @@ public sealed class ExecutionPlanScheduler
                 continue;
             }
 
-            // Permanently blocked tasks, such as failure-propagated branches, keep their terminal reason and never
-            // return to the runnable pool.
-            if (currentStatus == ExecutionTaskStatus.Blocked)
-            {
-                continue;
-            }
-
             bool waitingForDependencies = item.DependsOn.Any(dependencyId => statuses[dependencyId] != ExecutionTaskStatus.Completed);
             SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Pending, waitingForDependencies ? WaitingForDependenciesReason : null);
         }
     }
 
     /// <summary>
-    /// Marks the transitive dependents of a failed task as blocked so the graph surfaces why they cannot run.
+    /// Marks the transitive dependents of a failed task as skipped because they can no longer run.
     /// </summary>
-    private void BlockDependentsOfFailure(
+    private void SkipDependentsOfFailure(
         ExecutionTaskId failedTaskId,
         IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
         IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
@@ -259,18 +260,19 @@ public sealed class ExecutionPlanScheduler
     {
         foreach (ExecutionWorkItem dependent in itemsById.Values.Where(item => item.DependsOn.Contains(failedTaskId)))
         {
-            if (statuses[dependent.TaskId] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed)
+            if (statuses[dependent.TaskId] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled)
             {
                 continue;
             }
 
-            SetStatus(statuses, statusReasons, dependent.TaskId, ExecutionTaskStatus.Blocked, $"Blocked by failed dependency '{failedTaskId}'.");
-            BlockDependentsOfFailure(dependent.TaskId, itemsById, statuses, statusReasons);
+            SetStatus(statuses, statusReasons, dependent.TaskId, ExecutionTaskStatus.Skipped, $"Skipped because dependency '{failedTaskId}' failed.");
+            SkipDependentsOfFailure(dependent.TaskId, itemsById, statuses, statusReasons);
         }
     }
 
     /// <summary>
-    /// Marks every non-terminal task as cancelled once the scheduler receives a global cancellation request.
+    /// Marks every non-terminal task after a global cancellation request, preserving Cancelled only for work that was
+    /// actively running and using Skipped for work that never started.
     /// </summary>
     private void CancelOutstandingTasks(
         IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
@@ -284,7 +286,13 @@ public sealed class ExecutionPlanScheduler
                 continue;
             }
 
-            SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
+            ExecutionTaskStatus nextStatus = statuses[item.TaskId] == ExecutionTaskStatus.Running
+                ? ExecutionTaskStatus.Cancelled
+                : ExecutionTaskStatus.Skipped;
+            string reason = nextStatus == ExecutionTaskStatus.Cancelled
+                ? "Cancelled."
+                : "Skipped because execution was cancelled.";
+            SetStatus(statuses, statusReasons, item.TaskId, nextStatus, reason);
         }
     }
 

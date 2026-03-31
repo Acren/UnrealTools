@@ -54,7 +54,7 @@ public sealed class ExecutionTask
     public ExecutionTaskStatus Status { get; }
 
     /// <summary>
-    /// Gets the explanatory status text shown when the task is disabled, blocked, skipped, or otherwise notable.
+    /// Gets the explanatory status text shown when the task is disabled, skipped, failed, or otherwise notable.
     /// </summary>
     public string StatusReason { get; }
 

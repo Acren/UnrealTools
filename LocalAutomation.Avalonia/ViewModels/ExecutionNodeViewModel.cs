@@ -139,7 +139,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Gets the explanatory text for disabled, blocked, failed, or otherwise notable states.
+    /// Gets the explanatory text for disabled, skipped, failed, or otherwise notable states.
     /// </summary>
     public string StatusReason
     {
@@ -198,36 +198,12 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets a short uppercase status label rendered on the graph node card.
     /// </summary>
-    public string StatusText => Status switch
-    {
-        ExecutionTaskStatus.Planned => "PLANNED",
-        ExecutionTaskStatus.Pending => "PENDING",
-        ExecutionTaskStatus.Blocked => "BLOCKED",
-        ExecutionTaskStatus.Running => "RUNNING",
-        ExecutionTaskStatus.Completed => "DONE",
-        ExecutionTaskStatus.Failed => "FAILED",
-        ExecutionTaskStatus.Skipped => "SKIPPED",
-        ExecutionTaskStatus.Disabled => "DISABLED",
-        ExecutionTaskStatus.Cancelled => "CANCELLED",
-        _ => Status.ToString().ToUpperInvariant()
-    };
+    public string StatusText => ExecutionTaskStatusDisplay.GetUpperLabel(Status);
 
     /// <summary>
     /// Gets the compact label used by the stacked dot-and-label status treatment.
     /// </summary>
-    public string StatusLabelText => Status switch
-    {
-        ExecutionTaskStatus.Completed => "Done",
-        ExecutionTaskStatus.Pending => "Pending",
-        ExecutionTaskStatus.Blocked => "Blocked",
-        ExecutionTaskStatus.Running => "Running",
-        ExecutionTaskStatus.Failed => "Failed",
-        ExecutionTaskStatus.Skipped => "Skipped",
-        ExecutionTaskStatus.Disabled => "Disabled",
-        ExecutionTaskStatus.Cancelled => "Cancelled",
-        ExecutionTaskStatus.Planned => "Planned",
-        _ => Status.ToString()
-    };
+    public string StatusLabelText => ExecutionTaskStatusDisplay.GetLabel(Status);
 
     /// <summary>
     /// Gets the border thickness for group containers.

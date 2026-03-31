@@ -30,7 +30,6 @@ internal static class ExecutionStatusClasses
         classes.Set("running", status is ExecutionTaskStatus.Running);
         classes.Set("completed", status is ExecutionTaskStatus.Completed);
         classes.Set("failed", status is ExecutionTaskStatus.Failed);
-        classes.Set("blocked", status is ExecutionTaskStatus.Blocked);
         classes.Set("cancelled", status is ExecutionTaskStatus.Cancelled);
     }
 }

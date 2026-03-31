@@ -16,11 +16,6 @@ public enum ExecutionTaskStatus
     Pending,
 
     /// <summary>
-    /// The task cannot run because an upstream dependency failed and the scheduler will never start it.
-    /// </summary>
-    Blocked,
-
-    /// <summary>
     /// The task is currently executing.
     /// </summary>
     Running,
