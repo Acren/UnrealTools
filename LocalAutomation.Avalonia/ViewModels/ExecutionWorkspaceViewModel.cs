@@ -149,7 +149,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Gets the log entries shown for the selected graph node or all-output pseudo-node.
+    /// Gets the log entries shown for the selected graph node, or the full session log when nothing is selected.
     /// </summary>
     public ObservableCollection<LogEntryViewModel> SelectedRuntimeLogEntries => SelectedRuntimeTab?.SelectedLogEntries ?? EmptyLogEntries;
 
@@ -176,9 +176,9 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 return $"{SelectedRuntimeTab.Id}:plan-preview";
             }
 
-            if (SelectedRuntimeTab.Graph.IsAllOutputSelected || SelectedRuntimeTab.Graph.SelectedTaskId == null)
+            if (SelectedRuntimeTab.Graph.SelectedTaskId == null)
             {
-                return $"{SelectedRuntimeTab.Id}:all-output";
+                return $"{SelectedRuntimeTab.Id}:session-output";
             }
 
             return $"{SelectedRuntimeTab.Id}:{SelectedRuntimeTab.Graph.SelectedTaskId.Value}";
@@ -196,7 +196,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     public bool ShowSelectedRuntimeMetrics => SelectedRuntimeTab?.ShowsRuntimeMetrics == true;
 
     /// <summary>
-    /// Gets the selected task view model when the graph selection corresponds to a real task rather than the all-output pseudo-node.
+    /// Gets the selected task view model when the graph selection corresponds to a real task.
     /// </summary>
     public ExecutionTaskViewModel? SelectedTask => SelectedRuntimeTab?.Graph.SelectedNode?.Task;
 
@@ -327,7 +327,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         if (SelectedRuntimeTab.Session != null)
         {
             ExecutionTaskId? selectedTaskId = SelectedRuntimeTab.Graph.SelectedTaskId;
-            if (SelectedRuntimeTab.Graph.IsAllOutputSelected || selectedTaskId == null)
+            if (selectedTaskId == null)
             {
                 SelectedRuntimeTab.Session.LogStream.Clear();
             }
@@ -523,7 +523,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         IReadOnlyList<ExecutionTaskId> selectedTaskIds = runtimeTab.Graph.GetSelectedLogTaskIds();
-        if (runtimeTab.Graph.IsAllOutputSelected || selectedTaskIds.Count == 0)
+        if (selectedTaskIds.Count == 0)
         {
             runtimeTab.SetSelectedLogEntries(runtimeTab.Session.LogStream.Entries.Select(CreateLogEntryViewModel));
             return;
@@ -761,7 +761,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             kind: RuntimeWorkspaceTabKind.PlanPreview,
             presentation: new RuntimeWorkspaceTabPresentation(showGraph: true, showLog: false, showSubtitle: false, showStatusMarker: false, showRuntimeMetrics: false),
             graph: new ExecutionGraphViewModel());
-        planTab.Graph.SelectNode(planTab.Graph.AllOutputNode);
         return planTab;
     }
 

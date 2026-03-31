@@ -75,7 +75,7 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     public IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskViewModel> TasksById => _tasksById;
 
     /// <summary>
-    /// Gets the log entries currently shown in the details pane for the selected graph node or all-output pseudo-node.
+    /// Gets the log entries currently shown in the details pane for the selected graph node or current tab-wide log view.
     /// </summary>
     public ObservableCollection<LogEntryViewModel> SelectedLogEntries
     {
@@ -216,7 +216,7 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Replaces the currently displayed log entries for the selected graph node or all-output view.
+    /// Replaces the currently displayed log entries for the selected graph node or current tab-wide log view.
     /// </summary>
     public void SetSelectedLogEntries(System.Collections.Generic.IEnumerable<LogEntryViewModel> entries)
     {

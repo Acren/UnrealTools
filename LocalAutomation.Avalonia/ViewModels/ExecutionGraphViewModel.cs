@@ -37,9 +37,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
        their content width. */
     private const double ColumnGap = 84;
     private const double RowGap = 30;
-    // The graph keeps one fixed pseudo-node for merged output selection that never participates in runtime plan matching.
-    private static readonly ExecutionTaskId AllOutputNodeId = new("all-output");
-
     private readonly RangeObservableCollection<ExecutionNodeViewModel> _nodes = new();
     private readonly RangeObservableCollection<ExecutionEdgeViewModel> _edges = new();
     private readonly Dictionary<ExecutionTaskId, ExecutionNodeViewModel> _nodesById = new();
@@ -53,9 +50,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private double _canvasWidth;
     private double _canvasHeight;
     private bool _isUpdatingGraph;
-
-    // The root lookup uses a non-runnable sentinel so root-level tasks can share the same typed dictionary shape as nested groups.
-    private static readonly ExecutionTaskId RootParentId = new("root-parent");
 
     /// <summary>
     /// Formats one optional duration using the compact runtime clock style shared by the workspace header and graph metrics.
@@ -76,18 +70,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         return resolvedDuration.TotalHours >= 1
             ? resolvedDuration.ToString(@"h\:mm\:ss")
             : resolvedDuration.ToString(@"mm\:ss");
-    }
-
-    /// <summary>
-    /// Creates a graph view model with the fixed all-output pseudo-node available for task-log selection.
-    /// </summary>
-    public ExecutionGraphViewModel()
-    {
-        AllOutputNode = new ExecutionNodeViewModel(new ExecutionTaskViewModel(new ExecutionPlanTask(
-            id: AllOutputNodeId,
-            title: "All Output",
-            description: "Show the merged output stream for the current preview or execution session.",
-            status: ExecutionTaskStatus.Pending)));
     }
 
     /// <summary>
@@ -119,11 +101,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Gets the special pseudo-node that selects the merged output stream.
-    /// </summary>
-    public ExecutionNodeViewModel AllOutputNode { get; }
-
-    /// <summary>
     /// Gets the currently selected graph node for details and task-log binding.
     /// </summary>
     public ExecutionNodeViewModel? SelectedNode
@@ -150,7 +127,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             RaisePropertyChanged(nameof(SelectedNode));
             RaisePropertyChanged(nameof(SelectedTaskId));
             RaisePropertyChanged(nameof(HasSelectedNode));
-            RaisePropertyChanged(nameof(IsAllOutputSelected));
         }
     }
 
@@ -160,14 +136,9 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     public bool HasSelectedNode => SelectedNode != null;
 
     /// <summary>
-    /// Gets whether the all-output pseudo-node is selected.
+    /// Gets the selected task id for details and status binding.
     /// </summary>
-    public bool IsAllOutputSelected => SelectedNode?.Id == AllOutputNodeId;
-
-    /// <summary>
-    /// Gets the selected task id for details and status binding. Only the synthetic all-output node maps to no task.
-    /// </summary>
-    public ExecutionTaskId? SelectedTaskId => SelectedNode == null || IsAllOutputSelected ? null : SelectedNode.Id;
+    public ExecutionTaskId? SelectedTaskId => SelectedNode?.Id;
 
     /// <summary>
     /// Returns the selected task id plus all descendant task ids so the UI can show one hierarchical task subtree
@@ -175,7 +146,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     public IReadOnlyList<ExecutionTaskId> GetSelectedLogTaskIds()
     {
-        if (SelectedNode == null || IsAllOutputSelected)
+        if (SelectedNode == null)
         {
             return Array.Empty<ExecutionTaskId>();
         }
@@ -228,7 +199,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             {
                 CanvasWidth = NodeMinWidth;
                 CanvasHeight = NodeHeight;
-                SelectNode(AllOutputNode);
+                SelectNode(null);
                 return;
             }
 
@@ -261,7 +232,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     public void SelectNode(ExecutionNodeViewModel? node)
     {
-        SelectedNode = node ?? AllOutputNode;
+        SelectedNode = node;
     }
 
     /// <summary>
@@ -355,7 +326,11 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         foreach (ExecutionPlanTask task in tasks)
         {
             _parentByTaskId[task.Id] = task.ParentId;
-            ExecutionTaskId parentId = task.ParentId ?? RootParentId;
+            if (task.ParentId is not ExecutionTaskId parentId)
+            {
+                continue;
+            }
+
             if (!_childrenByParentId.TryGetValue(parentId, out List<ExecutionTaskId>? childIds))
             {
                 childIds = new List<ExecutionTaskId>();
@@ -602,12 +577,26 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Restores the default graph selection after the plan changes. The runtime workspace deliberately starts on merged
-    /// output so the log pane is useful immediately without forcing a task click.
+    /// Restores the default graph selection after the plan changes by selecting the one real root task when no previous
+    /// selection can be preserved.
     /// </summary>
     private void RestoreSelection()
     {
-        SelectNode(AllOutputNode);
+        if (Plan == null)
+        {
+            SelectNode(null);
+            return;
+        }
+
+        ExecutionTaskId? previouslySelectedTaskId = SelectedNode?.Id;
+        if (previouslySelectedTaskId != null && _nodesById.TryGetValue(previouslySelectedTaskId.Value, out ExecutionNodeViewModel? existingSelection))
+        {
+            SelectNode(existingSelection);
+            return;
+        }
+
+        ExecutionPlanTask rootTask = Plan.Tasks.Single(task => task.ParentId == null);
+        SelectNode(_nodesById[rootTask.Id]);
     }
 
     /// <summary>
@@ -615,8 +604,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private IReadOnlyList<ExecutionNodeViewModel> GetDirectChildren(ExecutionTaskId? parentId)
     {
-        ExecutionTaskId lookupParentId = parentId ?? RootParentId;
-        if (!_childrenByParentId.TryGetValue(lookupParentId, out List<ExecutionTaskId>? childIds))
+        if (parentId == null || !_childrenByParentId.TryGetValue(parentId.Value, out List<ExecutionTaskId>? childIds))
         {
             return Array.Empty<ExecutionNodeViewModel>();
         }
@@ -679,7 +667,16 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     {
         using (PerformanceActivityScope layoutActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.Layout"))
         {
-            LayoutDirectChildren(parentId: null, originX: 24, originY: 24);
+            ExecutionPlanTask rootTask = Plan!.Tasks.Single(task => task.ParentId == null);
+            ExecutionNodeViewModel rootNode = _nodesById[rootTask.Id];
+            if (HasChildren(rootTask.Id))
+            {
+                LayoutGroupNode(rootNode, 24, 24);
+            }
+            else
+            {
+                LayoutLeafNode(rootNode, 24, 24);
+            }
         }
 
         using (PerformanceActivityScope metricsActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.ApplyHierarchyMetrics"))

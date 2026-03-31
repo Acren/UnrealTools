@@ -30,10 +30,12 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Declares one root task in the plan and returns its fluent builder.
+    /// Declares one task in the plan and returns its fluent builder. Exactly one root task is allowed; additional tasks
+    /// must be declared beneath that root.
     /// </summary>
     public ExecutionTaskBuilder Task(string title, string? description = null, ExecutionTaskHandle parent = default)
     {
+        ValidateParent(parent);
         PlanItemDefinition definition = CreateItem(GenerateTaskId(title), title, description, parent.IsValid ? parent.Id : null);
         _items.Add(definition);
         return new ExecutionTaskBuilder(this, definition, parent);
@@ -41,26 +43,24 @@ public sealed class ExecutionPlanBuilder
 
     /// <summary>
     /// Declares one task with an explicit stable identifier so independently authored plans can share the same runtime
-    /// task identities.
+    /// task identities. Exactly one root task is allowed; additional tasks must be declared beneath that root.
     /// </summary>
     public ExecutionTaskBuilder Task(ExecutionTaskId id, string title, string? description = null, ExecutionTaskHandle parent = default)
     {
+        ValidateParent(parent);
         PlanItemDefinition definition = CreateItem(id, title, description, parent.IsValid ? parent.Id : null);
         _items.Add(definition);
         return new ExecutionTaskBuilder(this, definition, parent);
     }
 
     /// <summary>
-    /// Opens the root task scope so repeated Task(...) calls create sequential siblings at the plan root.
+    /// Opening a root-level sibling scope is no longer supported because execution plans now require exactly one real
+    /// root task. Declare the root with Task(...), then call root.Children(...).
     /// </summary>
     public void Children(Action<ExecutionTaskScopeBuilder> build)
     {
-        if (build == null)
-        {
-            throw new ArgumentNullException(nameof(build));
-        }
-
-        build(new ExecutionTaskScopeBuilder(this, default));
+        _ = build ?? throw new ArgumentNullException(nameof(build));
+        throw new InvalidOperationException("Execution plans require exactly one root task. Declare the root with Task(...), then add children from that root task.");
     }
 
     /// <summary>
@@ -147,6 +147,19 @@ public sealed class ExecutionPlanBuilder
     internal ExecutionTaskHandle FinalizeTask(PlanItemDefinition definition)
     {
         return new ExecutionTaskHandle(definition.Id);
+    }
+
+    private void ValidateParent(ExecutionTaskHandle parent)
+    {
+        if (parent.IsValid)
+        {
+            return;
+        }
+
+        if (_items.Any(item => item.ParentId == null))
+        {
+            throw new InvalidOperationException("Execution plans require exactly one root task. Add new tasks beneath the existing root task instead of creating another root.");
+        }
     }
 
     private PlanItemDefinition CreateItem(ExecutionTaskId id, string title, string? description, ExecutionTaskId? parentId)

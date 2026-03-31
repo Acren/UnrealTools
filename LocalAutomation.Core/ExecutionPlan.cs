@@ -112,6 +112,14 @@ public sealed class ExecutionPlan
             }
         }
 
+        int rootTaskCount = tasks.Count(task => task.ParentId == null);
+        if (rootTaskCount != 1)
+        {
+            throw new InvalidOperationException(rootTaskCount == 0
+                ? "Execution plans must contain exactly one root task, but none were found."
+                : $"Execution plans must contain exactly one root task, but found {rootTaskCount}.");
+        }
+
         foreach (ExecutionDependency dependency in dependencies)
         {
             if (!tasksById.ContainsKey(dependency.SourceTaskId))
