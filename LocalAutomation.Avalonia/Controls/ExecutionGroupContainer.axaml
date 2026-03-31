@@ -52,8 +52,13 @@
         <Style Selector="Border.group-container-border.pressed">
             <Setter Property="Opacity" Value="0.96" />
         </Style>
-        <Style Selector="Border.group-container-border.pending, Border.group-container-border.planned, Border.group-container-border.skipped, Border.group-container-border.disabled">
-            <Setter Property="BorderBrush" Value="#89919A" />
+        <!-- Planned and Pending share one neutral queued/preview treatment, while Cancelled, Disabled, and Skipped share
+             a more muted inactive treatment. -->
+        <Style Selector="Border.group-container-border.pending, Border.group-container-border.planned">
+            <Setter Property="BorderBrush" Value="#98A9B8" />
+        </Style>
+        <Style Selector="Border.group-container-border.cancelled, Border.group-container-border.skipped, Border.group-container-border.disabled">
+            <Setter Property="BorderBrush" Value="#7A838D" />
         </Style>
         <Style Selector="Border.group-container-border.running">
             <Setter Property="BorderBrush" Value="#63A8FF" />
@@ -66,9 +71,6 @@
         </Style>
         <Style Selector="Border.group-container-border.blocked">
             <Setter Property="BorderBrush" Value="#F1D479" />
-        </Style>
-        <Style Selector="Border.group-container-border.cancelled">
-            <Setter Property="BorderBrush" Value="#C77DFF" />
         </Style>
     </UserControl.Styles>
     <!-- This control owns the full visual structure of one group node so canvas code only decides placement and z-order. -->

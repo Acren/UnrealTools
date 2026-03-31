@@ -19,11 +19,13 @@ internal static class ExecutionStatusPalette
             ExecutionTaskStatus.Running => "#63A8FF",
             ExecutionTaskStatus.Failed => "#FF5C5C",
             ExecutionTaskStatus.Blocked => "#F1D479",
-            ExecutionTaskStatus.Cancelled => "#C77DFF",
-            ExecutionTaskStatus.Disabled => "#89919A",
-            ExecutionTaskStatus.Pending => "#89919A",
-            ExecutionTaskStatus.Skipped => "#89919A",
-            ExecutionTaskStatus.Planned => "#89919A",
+            /* Pending and Planned intentionally share one neutral preview/queued treatment, while Cancelled, Disabled,
+               and Skipped share a more muted inactive treatment. */
+            ExecutionTaskStatus.Pending => "#98A9B8",
+            ExecutionTaskStatus.Planned => "#98A9B8",
+            ExecutionTaskStatus.Cancelled => "#7A838D",
+            ExecutionTaskStatus.Disabled => "#7A838D",
+            ExecutionTaskStatus.Skipped => "#7A838D",
             _ => "#89919A"
         };
     }

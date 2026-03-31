@@ -151,11 +151,15 @@ public partial class StatusIndicator : UserControl
     }
 
     /// <summary>
-    /// Applies the shared status classes consumed by the XAML styles. Pending, planned, skipped, and disabled all fall
-    /// back to the muted base style, while active and terminal states add one accent class.
+    /// Applies the shared status classes consumed by the XAML styles. Planned/Pending and Cancelled/Disabled/Skipped
+    /// each have explicit grouped styling so the graph can distinguish preview work from inactive work.
     /// </summary>
     private static void ApplyStatusClasses(Classes classes, global::LocalAutomation.Core.ExecutionTaskStatus status)
     {
+        classes.Set("pending", status == global::LocalAutomation.Core.ExecutionTaskStatus.Pending);
+        classes.Set("planned", status == global::LocalAutomation.Core.ExecutionTaskStatus.Planned);
+        classes.Set("skipped", status == global::LocalAutomation.Core.ExecutionTaskStatus.Skipped);
+        classes.Set("disabled", status == global::LocalAutomation.Core.ExecutionTaskStatus.Disabled);
         classes.Set("running", status == global::LocalAutomation.Core.ExecutionTaskStatus.Running);
         classes.Set("succeeded", status == global::LocalAutomation.Core.ExecutionTaskStatus.Completed);
         classes.Set("failed", status == global::LocalAutomation.Core.ExecutionTaskStatus.Failed);
