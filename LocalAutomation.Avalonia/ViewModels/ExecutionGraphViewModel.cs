@@ -364,6 +364,24 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return LayoutBounds.Empty;
         }
 
+        /* Parent groups read more clearly when their child groups stack in authored order rather than fanning out into
+           dependency columns. This keeps high-level branches like per-engine deploy groups easy to scan while leaf-task
+           siblings still use the compact DAG layout below. */
+        if (children.All(child => HasChildren(child.Id)))
+        {
+            LayoutBounds stackedBounds = LayoutBounds.Empty;
+            double currentY = originY;
+
+            foreach (ExecutionNodeViewModel child in children)
+            {
+                LayoutBounds childBounds = LayoutGroupNode(child, originX, currentY);
+                stackedBounds = stackedBounds.Include(childBounds);
+                currentY = childBounds.Bottom + RowGap;
+            }
+
+            return stackedBounds;
+        }
+
         Dictionary<ExecutionTaskId, int> localDepths = ComputeSiblingDepths(children);
         Dictionary<int, List<ExecutionNodeViewModel>> columns = children
             .GroupBy(child => localDepths.TryGetValue(child.Id, out int depth) ? depth : 0)
