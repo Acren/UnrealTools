@@ -8,7 +8,7 @@ namespace LocalAutomation.Runtime;
 
 /// <summary>
 /// Builds a previewable execution plan and, when callbacks are attached, the scheduled work items that execute it.
-/// Operations use typed handles from this builder instead of handwritten string identifiers.
+/// Operations use typed task handles from this builder instead of handwritten string identifiers.
 /// </summary>
 public sealed class ExecutionPlanBuilder
 {
@@ -30,53 +30,37 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Declares a visual grouping in the plan and returns a typed handle that later steps can use as their parent.
+    /// Declares one root task in the plan and returns its fluent builder.
     /// </summary>
-    public ExecutionGroupHandle Group(string title, string? description = null, ExecutionGroupHandle parent = default)
+    public ExecutionTaskBuilder Task(string title, string? description = null, ExecutionTaskHandle parent = default)
     {
-        PlanItemDefinition definition = CreateItem(GenerateTaskId(ExecutionTaskKind.Group, title), title, description, ExecutionTaskKind.Group, parent.IsValid ? parent.Id : null);
+        PlanItemDefinition definition = CreateItem(GenerateTaskId(title), title, description, parent.IsValid ? parent.Id : null);
         _items.Add(definition);
-        return new ExecutionGroupHandle(definition.Id);
+        return new ExecutionTaskBuilder(this, definition, parent);
     }
 
     /// <summary>
-    /// Declares a visual grouping with an explicit stable identifier so independently authored plans can share the same
-    /// runtime task identities.
+    /// Declares one task with an explicit stable identifier so independently authored plans can share the same runtime
+    /// task identities.
     /// </summary>
-    public ExecutionGroupHandle Group(ExecutionTaskId id, string title, string? description = null, ExecutionGroupHandle parent = default)
+    public ExecutionTaskBuilder Task(ExecutionTaskId id, string title, string? description = null, ExecutionTaskHandle parent = default)
     {
-        PlanItemDefinition definition = CreateItem(id, title, description, ExecutionTaskKind.Group, parent.IsValid ? parent.Id : null);
+        PlanItemDefinition definition = CreateItem(id, title, description, parent.IsValid ? parent.Id : null);
         _items.Add(definition);
-        return new ExecutionGroupHandle(definition.Id);
+        return new ExecutionTaskBuilder(this, definition, parent);
     }
 
     /// <summary>
-    /// Starts a new step declaration and returns a fluent builder that can attach dependencies and execution code.
+    /// Opens the root task scope so repeated Task(...) calls create sequential siblings at the plan root.
     /// </summary>
-    public ExecutionStepBuilder Step(string title, string? description = null, ExecutionGroupHandle parent = default)
+    public void Children(Action<ExecutionTaskScopeBuilder> build)
     {
-        PlanItemDefinition definition = CreateItem(GenerateTaskId(ExecutionTaskKind.Step, title), title, description, ExecutionTaskKind.Step, parent.IsValid ? parent.Id : null);
-        _items.Add(definition);
-        return new ExecutionStepBuilder(this, definition);
-    }
+        if (build == null)
+        {
+            throw new ArgumentNullException(nameof(build));
+        }
 
-    /// <summary>
-    /// Starts a new step declaration with an explicit stable identifier so preview and runtime authoring can target the
-    /// same task identity without hand-built string ids.
-    /// </summary>
-    public ExecutionStepBuilder Step(ExecutionTaskId id, string title, string? description = null, ExecutionGroupHandle parent = default)
-    {
-        PlanItemDefinition definition = CreateItem(id, title, description, ExecutionTaskKind.Step, parent.IsValid ? parent.Id : null);
-        _items.Add(definition);
-        return new ExecutionStepBuilder(this, definition);
-    }
-
-    /// <summary>
-    /// Starts a fluent linear sequence within the provided group so consecutive steps chain automatically.
-    /// </summary>
-    public ExecutionSequenceBuilder Sequence(ExecutionGroupHandle parent = default)
-    {
-        return new ExecutionSequenceBuilder(this, parent);
+        build(new ExecutionTaskScopeBuilder(this, default));
     }
 
     /// <summary>
@@ -89,7 +73,6 @@ public sealed class ExecutionPlanBuilder
                 id: item.Id,
                 title: item.Title,
                 description: item.Description,
-                kind: item.Kind,
                 parentId: item.ParentId,
                 status: item.Enabled ? ExecutionTaskStatus.Pending : ExecutionTaskStatus.Disabled,
                 statusReason: item.Enabled ? string.Empty : item.DisabledReason))
@@ -101,12 +84,12 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Builds the scheduler work items for the declared executable steps.
-    /// </summary>
+     /// Builds the scheduler work items for the declared executable steps.
+     /// </summary>
     public IReadOnlyList<ExecutionWorkItem> BuildWorkItems()
     {
         return _items
-            .Where(item => item.Kind != ExecutionTaskKind.Group && item.ExecuteAsync != null)
+            .Where(item => item.ExecuteAsync != null)
             .Select(item =>
             {
                 return new ExecutionWorkItem(
@@ -120,11 +103,11 @@ public sealed class ExecutionPlanBuilder
             .ToList();
     }
 
-    internal void AddDependency(PlanItemDefinition definition, ExecutionStepHandle dependency)
+    internal void AddDependency(PlanItemDefinition definition, ExecutionTaskHandle dependency)
     {
         if (!dependency.IsValid)
         {
-            throw new ArgumentException("Execution step dependency handle is not valid.", nameof(dependency));
+            throw new ArgumentException("Execution task dependency handle is not valid.", nameof(dependency));
         }
 
         if (!definition.DependencyIds.Contains(dependency.Id))
@@ -144,35 +127,33 @@ public sealed class ExecutionPlanBuilder
         definition.Description = description ?? string.Empty;
     }
 
-    internal ExecutionTaskId GetStepId(ExecutionStepHandle handle)
+    internal ExecutionTaskId GetTaskId(ExecutionTaskHandle handle)
     {
         if (!handle.IsValid)
         {
-            throw new ArgumentException("Execution step handle is not valid.", nameof(handle));
+            throw new ArgumentException("Execution task handle is not valid.", nameof(handle));
         }
 
         return handle.Id;
     }
 
-    internal ExecutionStepHandle AttachCallback(PlanItemDefinition definition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
+    internal void AttachCallback(PlanItemDefinition definition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
         definition.ExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
-        return new ExecutionStepHandle(definition.Id);
     }
 
-    internal ExecutionStepHandle FinalizeStep(PlanItemDefinition definition)
+    internal ExecutionTaskHandle FinalizeTask(PlanItemDefinition definition)
     {
-        return new ExecutionStepHandle(definition.Id);
+        return new ExecutionTaskHandle(definition.Id);
     }
 
-    private PlanItemDefinition CreateItem(ExecutionTaskId id, string title, string? description, ExecutionTaskKind kind, ExecutionTaskId? parentId)
+    private PlanItemDefinition CreateItem(ExecutionTaskId id, string title, string? description, ExecutionTaskId? parentId)
     {
         return new PlanItemDefinition
         {
             Id = id,
             Title = string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Execution item title is required.", nameof(title)) : title,
             Description = description ?? string.Empty,
-            Kind = kind,
             ParentId = parentId,
             Enabled = true,
             DisabledReason = string.Empty
@@ -182,9 +163,9 @@ public sealed class ExecutionPlanBuilder
     /// <summary>
     /// Generates a deterministic task identifier for builder-authored nodes when callers do not provide an explicit one.
     /// </summary>
-    private ExecutionTaskId GenerateTaskId(ExecutionTaskKind kind, string title)
+    private ExecutionTaskId GenerateTaskId(string title)
     {
-        return ExecutionIdentifierFactory.CreateTaskId(_planId, kind.ToString(), _nextSequence.ToString("D3"), title);
+        return ExecutionIdentifierFactory.CreateTaskId(_planId, "task", _nextSequence.ToString("D3"), title);
     }
     internal sealed class PlanItemDefinition
     {
@@ -193,8 +174,6 @@ public sealed class ExecutionPlanBuilder
         public string Title { get; set; } = string.Empty;
 
         public string Description { get; set; } = string.Empty;
-
-        public ExecutionTaskKind Kind { get; set; }
 
         public ExecutionTaskId? ParentId { get; set; }
 

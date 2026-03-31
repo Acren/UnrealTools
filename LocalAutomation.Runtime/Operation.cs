@@ -315,7 +315,6 @@ public abstract class Operation
                     id: taskId,
                     title: OperationName,
                     description: operationParameters.Target.DisplayName,
-                    kind: ExecutionTaskKind.Task,
                     status: status,
                     statusReason: requirementsError)
             });

@@ -61,7 +61,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             id: AllOutputNodeId,
             title: "All Output",
             description: "Show the merged output stream for the current preview or execution session.",
-            kind: ExecutionTaskKind.Group,
             status: ExecutionTaskStatus.Pending));
     }
 
@@ -243,7 +242,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         node.SetStatus(status, statusReason);
         RefreshAncestorGroupStatuses(taskId);
 
-        if (ReferenceEquals(SelectedNode, node) || (SelectedNode != null && SelectedNode.IsGroup))
+        if (ReferenceEquals(SelectedNode, node) || (SelectedNode != null && SelectedNode.IsContainer))
         {
             RaisePropertyChanged(nameof(SelectedNodeStatusText));
             RaisePropertyChanged(nameof(SelectedNodeStatusReason));
@@ -302,7 +301,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             .ToDictionary(
                 group => group.Key,
                 group => group
-                    .OrderBy(child => child.IsGroup ? 0 : 1)
+                    .OrderBy(child => HasChildren(child.Id) ? 0 : 1)
                     .ThenBy(child => child.Title, StringComparer.Ordinal)
                     .ToList());
 
@@ -314,7 +313,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
             foreach (ExecutionNodeViewModel node in columnNodes)
             {
-                LayoutBounds nodeBounds = node.IsGroup
+                LayoutBounds nodeBounds = HasChildren(node.Id)
                     ? LayoutGroupNode(node, columnX, currentY)
                     : LayoutLeafNode(node, columnX, currentY);
 
@@ -327,7 +326,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Lays out one non-group task as a normal card.
+    /// Lays out one leaf task as a normal card.
     /// </summary>
     private static LayoutBounds LayoutLeafNode(ExecutionNodeViewModel node, double x, double y)
     {
@@ -337,7 +336,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Lays out one group task as a Blueprint-comment-style container around its direct child nodes.
+    /// Lays out one container task as a Blueprint-comment-style frame around its direct child nodes.
     /// </summary>
     private LayoutBounds LayoutGroupNode(ExecutionNodeViewModel node, double x, double y)
     {
@@ -345,7 +344,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         if (children.Count == 0)
         {
             node.SetBounds(x, y, NodeWidth, NodeHeight);
-            node.SetHierarchyMetrics(directChildCount: 0, descendantTaskCount: 0, summaryText: "Empty group");
+            node.SetHierarchyMetrics(directChildCount: 0, descendantTaskCount: 0, summaryText: "Empty task group");
             return new LayoutBounds(x, y, NodeWidth, NodeHeight);
         }
 
@@ -399,7 +398,10 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private void ApplyGroupHierarchyMetrics()
     {
-        foreach (ExecutionNodeViewModel node in _nodes.Where(node => node.IsGroup))
+        /* Container styling and rendering must be derived from the structural hierarchy rather than the derived
+           IsContainer flag, because DirectChildCount is assigned by this pass. If we filter on IsContainer here, no
+           parent task is ever initialized as a container after the task-kind cleanup. */
+        foreach (ExecutionNodeViewModel node in _nodes.Where(node => HasChildren(node.Id)))
         {
             IReadOnlyList<ExecutionNodeViewModel> directChildren = GetDirectChildren(node.Id);
             List<ExecutionTaskId> leafDescendants = GetLeafDescendantIds(node.Id).ToList();
@@ -453,8 +455,8 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         {
             if (_nodesById.TryGetValue(dependency.SourceTaskId, out ExecutionNodeViewModel? source) &&
                 _nodesById.TryGetValue(dependency.TargetTaskId, out ExecutionNodeViewModel? target) &&
-                !source.IsGroup &&
-                !target.IsGroup)
+                !HasChildren(source.Id) &&
+                !HasChildren(target.Id))
             {
                 _edges.Add(new ExecutionEdgeViewModel(source, target));
             }
@@ -501,7 +503,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Enumerates all descendant runnable task ids beneath the provided group id.
+    /// Enumerates all descendant runnable task ids beneath the provided container task id.
     /// </summary>
     private IEnumerable<ExecutionTaskId> GetLeafDescendantIds(ExecutionTaskId groupId)
     {
@@ -513,7 +515,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         foreach (ExecutionTaskId childId in childIds)
         {
             ExecutionNodeViewModel child = _nodesById[childId];
-            if (!child.IsGroup)
+            if (!HasChildren(childId))
             {
                 yield return childId;
                 continue;
@@ -524,6 +526,16 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
                 yield return descendantId;
             }
         }
+    }
+
+    /// <summary>
+    /// Returns whether the provided task currently has direct child tasks in the hierarchy projection.
+    /// Layout must use
+    /// this lookup directly because container metrics are populated after node bounds are assigned.
+    /// </summary>
+    private bool HasChildren(ExecutionTaskId taskId)
+    {
+        return _childrenByParentId.TryGetValue(taskId, out List<ExecutionTaskId>? childIds) && childIds.Count > 0;
     }
 
     /// <summary>

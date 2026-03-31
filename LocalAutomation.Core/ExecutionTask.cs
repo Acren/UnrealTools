@@ -14,7 +14,6 @@ public sealed class ExecutionTask
         ExecutionTaskId id,
         string title,
         string? description = null,
-        ExecutionTaskKind kind = ExecutionTaskKind.Task,
         ExecutionTaskId? parentId = null,
         ExecutionTaskStatus status = ExecutionTaskStatus.Planned,
         string? statusReason = null)
@@ -24,7 +23,6 @@ public sealed class ExecutionTask
             ? throw new ArgumentException("Execution task title is required.", nameof(title))
             : title;
         Description = description ?? string.Empty;
-        Kind = kind;
         ParentId = parentId;
         Status = status;
         StatusReason = statusReason ?? string.Empty;
@@ -46,14 +44,9 @@ public sealed class ExecutionTask
     public string Description { get; }
 
     /// <summary>
-    /// Gets the parent grouping task identifier when this task participates in a visual hierarchy.
+    /// Gets the parent task identifier when this task participates in a visual hierarchy.
     /// </summary>
     public ExecutionTaskId? ParentId { get; }
-
-    /// <summary>
-    /// Gets the task kind used for grouping and rendering semantics.
-    /// </summary>
-    public ExecutionTaskKind Kind { get; }
 
     /// <summary>
     /// Gets the current preview or runtime status for the task.

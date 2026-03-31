@@ -201,69 +201,68 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Plugin plugin = GetRequiredTarget(UnrealOperationParameters);
             global::LocalAutomation.Runtime.ExecutionPlanBuilder plan = new($"Deploy {Engine.Version.MajorMinorString}", DeployPluginExecutionIds.CreateDeployPlanId(plugin));
-            global::LocalAutomation.Runtime.ExecutionGroupHandle branch = plan.Group(EngineBranchId, $"UE {Engine.Version.MajorMinorString}", "Per-engine deployment branch");
-            global::LocalAutomation.Runtime.ExecutionSequenceBuilder sequence = plan.Sequence(branch);
-            sequence
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.Prepare), "Prepare")
+            global::LocalAutomation.Runtime.ExecutionTaskBuilder branch = plan.Task(EngineBranchId, $"UE {Engine.Version.MajorMinorString}", "Per-engine deployment branch");
+            branch.Children(steps => steps
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.Prepare), "Prepare")
                     .Describe("Resolve source assets, versioning, and staging prerequisites")
                     .Then(() => PrepareStepAsync())
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.Staging), "Stage Plugin")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.Staging), "Stage Plugin")
                     .Describe("Create the staged plugin copy used for packaging and archiving")
                     .Then(() => StagingStepAsync())
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.BuildEditor), "Build Editor")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.BuildEditor), "Build Editor")
                     .Describe("Compile the host project editor before validation runs")
                     .Then(() => BuildEditor())
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestEditor), "Test Editor")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestEditor), "Test Editor")
                     .Describe("Run the editor automation validation pass")
                     .When(automationOptions.RunTests, "Run Tests is off.")
                     .Then(context => RunOptionalStep(context.TaskId, automationOptions.RunTests, "Run Tests is off.", () => TestEditor(automationOptions)))
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestStandalone), "Test Standalone")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestStandalone), "Test Standalone")
                     .Describe("Run the standalone validation pass")
                     .When(automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Test Standalone is off." : "Run Tests is off.")
                     .Then(context => RunOptionalStep(context.TaskId, automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Test Standalone is off." : "Run Tests is off.", () => TestStandalone(automationOptions)))
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.BuildPlugin), "Build Plugin")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.BuildPlugin), "Build Plugin")
                     .Describe("Package the staged plugin into a distributable build")
                     .Then(() => BuildPlugin())
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PrepareExample), "Prepare Example")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PrepareExample), "Prepare Example")
                     .Describe("Assemble the example project used for packaging verification")
                     .Then(() => PrepareExampleProject())
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.ClangCheck), "Clang Check")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.ClangCheck), "Clang Check")
                     .Describe("Run the optional Clang validation against the packaged plugin")
                     .When(deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.")
                     .Then(context => RunOptionalStep(context.TaskId, deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.", () => RunClangCompileCheck()))
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.BuildExample), "Build Example")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.BuildExample), "Build Example")
                     .Describe("Compile the example project before packaging verification")
                     .Then(() => BuildCodeExampleProject())
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PackageProjectPlugin), "Package Project Plugin")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PackageProjectPlugin), "Package Project Plugin")
                     .Describe("Package the example project with the plugin installed at project level")
                     .Then(() => PackageCodeExampleProjectWithProjectPluginAsync(automationOptions))
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestProjectPlugin), "Test Project Plugin")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestProjectPlugin), "Test Project Plugin")
                     .Describe("Launch and validate the project-plugin package")
                     .When(automationOptions.RunTests && deployOptions.TestPackageWithProjectPlugin, automationOptions.RunTests ? "Test Package With Project Plugin is off." : "Run Tests is off.")
                     .Then(context => RunOptionalStep(context.TaskId, automationOptions.RunTests && deployOptions.TestPackageWithProjectPlugin, automationOptions.RunTests ? "Test Package With Project Plugin is off." : "Run Tests is off.", () => TestCodeExampleProjectPackageWithProjectPluginAsync(automationOptions)))
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PrepareEnginePlugin), "Install Engine Plugin")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PrepareEnginePlugin), "Install Engine Plugin")
                     .Describe("Install the built plugin into the engine marketplace folder")
                     .Then(() => PrepareEnginePluginInstallAsync())
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PackageEnginePlugin), "Package Engine Plugin")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PackageEnginePlugin), "Package Engine Plugin")
                     .Describe("Package the example project with the plugin installed to the engine")
                     .Then(() => PackageCodeExampleProjectWithEnginePluginAsync(automationOptions))
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestEnginePlugin), "Test Engine Plugin")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestEnginePlugin), "Test Engine Plugin")
                     .Describe("Launch and validate the engine-plugin package")
                     .When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.")
                     .Then(context => RunOptionalStep(context.TaskId, automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.", () => TestCodeExampleProjectPackageWithEnginePluginAsync(automationOptions)))
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PackageBlueprint), "Package Blueprint")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PackageBlueprint), "Package Blueprint")
                     .Describe("Package the blueprint-only project with the plugin installed to the engine")
                     .Then(() => PackageBlueprintExampleProjectWithEnginePluginAsync(automationOptions))
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestBlueprint), "Test Blueprint")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.TestBlueprint), "Test Blueprint")
                     .Describe("Launch and validate the blueprint-only package")
                     .When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.")
                     .Then(context => RunOptionalStep(context.TaskId, automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.", () => TestBlueprintExampleProjectPackageWithEnginePluginAsync(automationOptions)))
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PackageDemo), "Package Demo")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.PackageDemo), "Package Demo")
                     .Describe("Package the demo executable build")
                     .Then(() => PackageDemoExecutable())
-                .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.Archive), "Archive")
+                .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, Engine.Version, DeployPluginStepKeys.Archive), "Archive")
                     .Describe("Archive the requested deployment artifacts")
-                    .Then(() => ArchiveArtifacts(BuildArchivePrefix()));
+                    .Then(() => ArchiveArtifacts(BuildArchivePrefix())));
 
             return plan;
         }
@@ -1235,56 +1234,79 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
         {
             Plugin plugin = GetRequiredTarget(UnrealOperationParameters);
+            global::LocalAutomation.Core.ExecutionTaskId rootTaskId = DeployPluginExecutionIds.CreateDeployRootId(plugin);
             IReadOnlyList<EngineVersion> selectedVersions = UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions;
             List<EngineVersion> targetVersions = selectedVersions.Count > 0
                 ? selectedVersions.ToList()
                 : new List<EngineVersion> { plugin.EngineInstance.Version };
             Logger.LogInformation($"Versions: {string.Join(", ", targetVersions.Select(x => x.MajorMinorString)) }");
 
-            List<global::LocalAutomation.Runtime.ExecutionWorkItem> workItems = new();
-            foreach (EngineVersion engineVersion in targetVersions)
+            SetTaskStatus(rootTaskId, LocalAutomation.Core.ExecutionTaskStatus.Running);
+            try
             {
-                global::LocalAutomation.Core.ExecutionTaskId branchId = DeployPluginExecutionIds.CreateDeployBranchId(plugin, engineVersion);
-                EngineVersion scheduledVersion = engineVersion;
-                workItems.Add(new global::LocalAutomation.Runtime.ExecutionWorkItem(
-                    taskId: branchId,
-                    title: $"UE {engineVersion.MajorMinorString}",
-                    executeAsync: async context =>
-                    {
-                        SetTaskStatus(branchId, LocalAutomation.Core.ExecutionTaskStatus.Running);
-                        try
+                List<global::LocalAutomation.Runtime.ExecutionWorkItem> workItems = new();
+                foreach (EngineVersion engineVersion in targetVersions)
+                {
+                    global::LocalAutomation.Core.ExecutionTaskId branchId = DeployPluginExecutionIds.CreateDeployBranchId(plugin, engineVersion);
+                    EngineVersion scheduledVersion = engineVersion;
+                    workItems.Add(new global::LocalAutomation.Runtime.ExecutionWorkItem(
+                        taskId: branchId,
+                        title: $"UE {engineVersion.MajorMinorString}",
+                        executeAsync: async context =>
                         {
-                            Engine? engine = EngineFinder.GetEngineInstall(scheduledVersion);
-                            if (engine == null)
+                            SetTaskStatus(branchId, LocalAutomation.Core.ExecutionTaskStatus.Running);
+                            try
                             {
-                                throw new Exception($"Engine {scheduledVersion.MajorMinorString} not found");
+                                Engine? engine = EngineFinder.GetEngineInstall(scheduledVersion);
+                                if (engine == null)
+                                {
+                                    throw new Exception($"Engine {scheduledVersion.MajorMinorString} not found");
+                                }
+
+                                global::LocalAutomation.Runtime.OperationResult result = await DeployForEngine(engine, context.Logger, context.CancellationToken);
+                                LocalAutomation.Core.ExecutionTaskStatus branchStatus = result.Outcome == global::LocalAutomation.Core.RunOutcome.Succeeded
+                                    ? LocalAutomation.Core.ExecutionTaskStatus.Completed
+                                    : result.Outcome == global::LocalAutomation.Core.RunOutcome.Cancelled
+                                        ? LocalAutomation.Core.ExecutionTaskStatus.Cancelled
+                                        : LocalAutomation.Core.ExecutionTaskStatus.Failed;
+                                SetTaskStatus(branchId, branchStatus, result.Outcome == global::LocalAutomation.Core.RunOutcome.Failed ? "Engine deployment failed." : result.Outcome == global::LocalAutomation.Core.RunOutcome.Cancelled ? "Cancelled." : null);
+                                return result;
                             }
+                            catch (OperationCanceledException)
+                            {
+                                SetCancelled();
+                                SetTaskStatus(branchId, LocalAutomation.Core.ExecutionTaskStatus.Cancelled, "Cancelled.");
+                                throw;
+                            }
+                            catch (Exception ex)
+                            {
+                                SetTaskStatus(branchId, LocalAutomation.Core.ExecutionTaskStatus.Failed, ex.Message);
+                                throw;
+                            }
+                        }));
+                }
 
-                            global::LocalAutomation.Runtime.OperationResult result = await DeployForEngine(engine, context.Logger, context.CancellationToken);
-                            LocalAutomation.Core.ExecutionTaskStatus branchStatus = result.Outcome == global::LocalAutomation.Core.RunOutcome.Succeeded
-                                ? LocalAutomation.Core.ExecutionTaskStatus.Completed
-                                : result.Outcome == global::LocalAutomation.Core.RunOutcome.Cancelled
-                                    ? LocalAutomation.Core.ExecutionTaskStatus.Cancelled
-                                    : LocalAutomation.Core.ExecutionTaskStatus.Failed;
-                            SetTaskStatus(branchId, branchStatus, result.Outcome == global::LocalAutomation.Core.RunOutcome.Failed ? "Engine deployment failed." : result.Outcome == global::LocalAutomation.Core.RunOutcome.Cancelled ? "Cancelled." : null);
-                            return result;
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            SetCancelled();
-                            SetTaskStatus(branchId, LocalAutomation.Core.ExecutionTaskStatus.Cancelled, "Cancelled.");
-                            throw;
-                        }
-                        catch (Exception ex)
-                        {
-                            SetTaskStatus(branchId, LocalAutomation.Core.ExecutionTaskStatus.Failed, ex.Message);
-                            throw;
-                        }
-                    }));
+                global::LocalAutomation.Runtime.ExecutionPlanScheduler scheduler = new(Logger, maxParallelism: 1);
+                global::LocalAutomation.Runtime.OperationResult result = await scheduler.ExecuteAsync(workItems, token);
+                LocalAutomation.Core.ExecutionTaskStatus rootStatus = result.Outcome == global::LocalAutomation.Core.RunOutcome.Succeeded
+                    ? LocalAutomation.Core.ExecutionTaskStatus.Completed
+                    : result.Outcome == global::LocalAutomation.Core.RunOutcome.Cancelled
+                        ? LocalAutomation.Core.ExecutionTaskStatus.Cancelled
+                        : LocalAutomation.Core.ExecutionTaskStatus.Failed;
+                SetTaskStatus(rootTaskId, rootStatus, result.Outcome == global::LocalAutomation.Core.RunOutcome.Failed ? "Deployment failed." : result.Outcome == global::LocalAutomation.Core.RunOutcome.Cancelled ? "Cancelled." : null);
+                return result;
             }
-
-            global::LocalAutomation.Runtime.ExecutionPlanScheduler scheduler = new(Logger, maxParallelism: 1);
-            return await scheduler.ExecuteAsync(workItems, token);
+            catch (OperationCanceledException)
+            {
+                SetCancelled();
+                SetTaskStatus(rootTaskId, LocalAutomation.Core.ExecutionTaskStatus.Cancelled, "Cancelled.");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                SetTaskStatus(rootTaskId, LocalAutomation.Core.ExecutionTaskStatus.Failed, ex.Message);
+                throw;
+            }
         }
 
         /// <summary>
@@ -1303,31 +1325,34 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             PluginDeployOptions deployOptions = typedParameters.GetOptions<PluginDeployOptions>();
             global::LocalAutomation.Core.ExecutionPlanId planId = DeployPluginExecutionIds.CreateDeployPlanId(plugin);
             global::LocalAutomation.Runtime.ExecutionPlanBuilder plan = new(OperationName, planId);
-            global::LocalAutomation.Runtime.ExecutionGroupHandle root = plan.Group(DeployPluginExecutionIds.CreateDeployRootId(plugin), OperationName, plugin.DisplayName);
-
-            foreach (EngineVersion engineVersion in targetVersions)
+            global::LocalAutomation.Runtime.ExecutionTaskBuilder root = plan.Task(DeployPluginExecutionIds.CreateDeployRootId(plugin), OperationName, plugin.DisplayName);
+            root.Children(branches =>
             {
-                global::LocalAutomation.Runtime.ExecutionGroupHandle branch = plan.Group(DeployPluginExecutionIds.CreateDeployBranchId(plugin, engineVersion), $"UE {engineVersion.MajorMinorString}", "Per-engine deployment branch", root);
-                plan.Sequence(branch)
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.Prepare), "Prepare plugin", "Resolve source assets, versioning, and staging prerequisites")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.Staging), "Stage plugin", "Create the staged plugin copy used for packaging and archiving")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.BuildEditor), "Build host project editor", "Compile the host project editor before validation runs")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestEditor), "Test host project editor", "Run the editor automation validation pass").When(automationOptions.RunTests, "Disabled because Run Tests is off")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestStandalone), "Test standalone", "Run the standalone validation pass").When(automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Disabled because Test Standalone is off" : "Disabled because Run Tests is off")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.BuildPlugin), "Build plugin", "Package the staged plugin into a distributable build")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PrepareExample), "Prepare host project", "Assemble the example project used for packaging verification")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.ClangCheck), "Run Clang check", "Run the optional Clang validation against the packaged plugin").When(deployOptions.RunClangCompileCheck, "Disabled because Run Clang Compile Check is off")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.BuildExample), "Build example project", "Compile the example project before packaging verification")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PackageProjectPlugin), "Package project plugin", "Package the example project with the plugin installed at project level")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestProjectPlugin), "Test project plugin", "Launch and validate the project-plugin package").When(automationOptions.RunTests && deployOptions.TestPackageWithProjectPlugin, automationOptions.RunTests ? "Disabled because Test Package With Project Plugin is off" : "Disabled because Run Tests is off")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PrepareEnginePlugin), "Install engine plugin", "Install the built plugin into the engine marketplace folder")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PackageEnginePlugin), "Package engine plugin", "Package the example project with the plugin installed to the engine")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestEnginePlugin), "Test engine plugin", "Launch and validate the engine-plugin package").When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Disabled because Test Package With Engine Plugin is off" : "Disabled because Run Tests is off")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PackageBlueprint), "Package blueprint project", "Package the blueprint-only project with the plugin installed to the engine")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestBlueprint), "Test blueprint project", "Launch and validate the blueprint-only package").When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Disabled because Test Package With Engine Plugin is off" : "Disabled because Run Tests is off")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PackageDemo), "Package demo", "Package the demo executable build")
-                    .Step(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.Archive), "Archive artifacts", "Archive the requested deployment artifacts");
-            }
+                foreach (EngineVersion engineVersion in targetVersions)
+                {
+                    branches
+                        .Task(DeployPluginExecutionIds.CreateDeployBranchId(plugin, engineVersion), $"UE {engineVersion.MajorMinorString}", "Per-engine deployment branch")
+                        .Children(steps => steps
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.Prepare), "Prepare plugin", "Resolve source assets, versioning, and staging prerequisites")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.Staging), "Stage plugin", "Create the staged plugin copy used for packaging and archiving")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.BuildEditor), "Build host project editor", "Compile the host project editor before validation runs")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestEditor), "Test host project editor", "Run the editor automation validation pass").When(automationOptions.RunTests, "Disabled because Run Tests is off")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestStandalone), "Test standalone", "Run the standalone validation pass").When(automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Disabled because Test Standalone is off" : "Disabled because Run Tests is off")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.BuildPlugin), "Build plugin", "Package the staged plugin into a distributable build")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PrepareExample), "Prepare host project", "Assemble the example project used for packaging verification")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.ClangCheck), "Run Clang check", "Run the optional Clang validation against the packaged plugin").When(deployOptions.RunClangCompileCheck, "Disabled because Run Clang Compile Check is off")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.BuildExample), "Build example project", "Compile the example project before packaging verification")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PackageProjectPlugin), "Package project plugin", "Package the example project with the plugin installed at project level")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestProjectPlugin), "Test project plugin", "Launch and validate the project-plugin package").When(automationOptions.RunTests && deployOptions.TestPackageWithProjectPlugin, automationOptions.RunTests ? "Disabled because Test Package With Project Plugin is off" : "Disabled because Run Tests is off")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PrepareEnginePlugin), "Install engine plugin", "Install the built plugin into the engine marketplace folder")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PackageEnginePlugin), "Package engine plugin", "Package the example project with the plugin installed to the engine")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestEnginePlugin), "Test engine plugin", "Launch and validate the engine-plugin package").When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Disabled because Test Package With Engine Plugin is off" : "Disabled because Run Tests is off")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PackageBlueprint), "Package blueprint project", "Package the blueprint-only project with the plugin installed to the engine")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.TestBlueprint), "Test blueprint project", "Launch and validate the blueprint-only package").When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Disabled because Test Package With Engine Plugin is off" : "Disabled because Run Tests is off")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.PackageDemo), "Package demo", "Package the demo executable build")
+                            .Task(DeployPluginExecutionIds.CreateDeployStepId(plugin, engineVersion, DeployPluginStepKeys.Archive), "Archive artifacts", "Archive the requested deployment artifacts"));
+                }
+            });
 
             return plan.BuildPlan();
         }

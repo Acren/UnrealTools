@@ -52,26 +52,29 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 : new List<EngineVersion> { plugin.EngineInstance.Version };
             AutomationOptions automationOptions = typedParameters.GetOptions<AutomationOptions>();
             global::LocalAutomation.Runtime.ExecutionPlanBuilder plan = new(OperationName, global::LocalAutomation.Core.ExecutionIdentifierFactory.CreatePlanId(nameof(VerifyDeployment), plugin.Name));
-            global::LocalAutomation.Runtime.ExecutionGroupHandle root = plan.Group(OperationName, plugin.DisplayName);
-
-            foreach (EngineVersion engineVersion in targetVersions)
+            global::LocalAutomation.Runtime.ExecutionTaskBuilder root = plan.Task(OperationName, plugin.DisplayName);
+            root.Children(branches =>
             {
-                global::LocalAutomation.Runtime.ExecutionGroupHandle branch = plan.Group($"UE {engineVersion.MajorMinorString}", "Per-engine verification branch", root);
-                plan.Sequence(branch)
-                    .Step("Prepare")
-                        .Describe("Resolve the installed plugin and matching example project archive")
-                    .Step("Test Editor")
-                        .Describe("Run the editor verification pass")
-                        .When(automationOptions.RunTests, "Disabled because Run Tests is off")
-                    .Step("Test Standalone")
-                        .Describe("Run the standalone verification pass")
-                        .When(automationOptions.RunTests, "Disabled because Run Tests is off")
-                    .Step("Package Project")
-                        .Describe("Package the example project with the installed plugin")
-                    .Step("Test Package")
-                        .Describe("Run the packaged project verification pass")
-                        .When(automationOptions.RunTests, "Disabled because Run Tests is off");
-            }
+                foreach (EngineVersion engineVersion in targetVersions)
+                {
+                    branches
+                        .Task($"UE {engineVersion.MajorMinorString}", "Per-engine verification branch")
+                        .Children(steps => steps
+                            .Task("Prepare")
+                                .Describe("Resolve the installed plugin and matching example project archive")
+                            .Task("Test Editor")
+                                .Describe("Run the editor verification pass")
+                                .When(automationOptions.RunTests, "Disabled because Run Tests is off")
+                            .Task("Test Standalone")
+                                .Describe("Run the standalone verification pass")
+                                .When(automationOptions.RunTests, "Disabled because Run Tests is off")
+                            .Task("Package Project")
+                                .Describe("Package the example project with the installed plugin")
+                            .Task("Test Package")
+                                .Describe("Run the packaged project verification pass")
+                                .When(automationOptions.RunTests, "Disabled because Run Tests is off"));
+                }
+            });
 
             return plan.BuildPlan();
         }

@@ -57,19 +57,9 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     public ExecutionTaskId? ParentId => Task.ParentId;
 
     /// <summary>
-    /// Gets the shared task kind used for subtle visual treatment changes.
-    /// </summary>
-    public ExecutionTaskKind Kind => Task.Kind;
-
-    /// <summary>
-    /// Gets whether this rendered graph node represents a grouping task.
-    /// </summary>
-    public bool IsGroup => Kind == ExecutionTaskKind.Group;
-
-    /// <summary>
     /// Gets whether this graph node currently acts as a visual container around child tasks.
     /// </summary>
-    public bool IsContainer => IsGroup && DirectChildCount > 0;
+    public bool IsContainer => DirectChildCount > 0;
 
     /// <summary>
     /// Gets or sets the x coordinate assigned by the simple auto-layout pass.
