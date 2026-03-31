@@ -180,8 +180,8 @@ public partial class ExecutionTaskCard : UserControl
 
         Border backgroundShell = GetRequiredBorder("CardBackgroundShell");
         Border borderChrome = GetRequiredBorder("CardBorderChrome");
-        ExecutionStatusPalette.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusPalette.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusPalette.ApplyStatusClasses(borderChrome.Classes, _observedNode.Status);
+        ExecutionStatusClasses.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.Status);
     }
 }

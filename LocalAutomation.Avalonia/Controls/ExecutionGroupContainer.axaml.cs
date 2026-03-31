@@ -196,9 +196,9 @@ public partial class ExecutionGroupContainer : UserControl
         Border backgroundShell = GetRequiredBorder("ContainerBackgroundShell");
         Border borderChrome = GetRequiredBorder("ContainerBorderChrome");
         Border headerShell = GetRequiredBorder("HeaderShell");
-        ExecutionStatusPalette.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusPalette.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusPalette.ApplyInteractionClasses(headerShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusPalette.ApplyStatusClasses(borderChrome.Classes, _observedNode.Status);
+        ExecutionStatusClasses.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyInteractionClasses(headerShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.Status);
     }
 }

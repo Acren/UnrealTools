@@ -2,7 +2,6 @@ using System;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Media;
-using LocalAutomation.Avalonia.Controls;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -20,8 +19,8 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
         Source = source ?? throw new ArgumentNullException(nameof(source));
         Target = target ?? throw new ArgumentNullException(nameof(target));
 
-        // Edge geometry and color are derived from the positioned graph-node endpoints, so the edge listens to node
-        // changes and republishes the affected properties for the canvas.
+        // Edge geometry is derived from the positioned graph-node endpoints, so the edge listens to node changes and
+        // republishes the affected path data for the canvas.
         Source.PropertyChanged += HandleEndpointPropertyChanged;
         Target.PropertyChanged += HandleEndpointPropertyChanged;
     }
@@ -57,18 +56,8 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Gets the stroke color used for the edge.
-    /// </summary>
-    public string Stroke => ExecutionStatusPalette.GetColor(Target.Status);
-
-    /// <summary>
-    /// Gets the live stroke brush used by the generated canvas path binding.
-    /// </summary>
-    public IBrush StrokeBrush => new SolidColorBrush(Color.Parse(Stroke));
-
-    /// <summary>
-    /// Raises the derived edge properties when either endpoint moves, resizes, or changes status.
-    /// </summary>
+     /// Raises the derived edge properties when either endpoint moves, resizes, or changes status.
+     /// </summary>
     private void HandleEndpointPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(e.PropertyName) ||
@@ -79,8 +68,6 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal))
         {
             RaisePropertyChanged(nameof(PathData));
-            RaisePropertyChanged(nameof(Stroke));
-            RaisePropertyChanged(nameof(StrokeBrush));
         }
     }
 }

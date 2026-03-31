@@ -403,6 +403,30 @@
             <Setter Property="BoxShadow" Value="0 0 5 0 #55FF7575" />
         </Style>
 
+        <!-- Execution edges share the same semantic status classes as cards and indicators so graph tinting stays in
+             XAML even though the edge geometry itself is still created imperatively in the canvas control. -->
+        <Style Selector="Path.execution-edge">
+            <Setter Property="Stroke" Value="#89919A" />
+        </Style>
+        <Style Selector="Path.execution-edge.pending, Path.execution-edge.planned">
+            <Setter Property="Stroke" Value="#98A9B8" />
+        </Style>
+        <Style Selector="Path.execution-edge.cancelled, Path.execution-edge.disabled, Path.execution-edge.skipped">
+            <Setter Property="Stroke" Value="#7A838D" />
+        </Style>
+        <Style Selector="Path.execution-edge.running">
+            <Setter Property="Stroke" Value="#63A8FF" />
+        </Style>
+        <Style Selector="Path.execution-edge.completed">
+            <Setter Property="Stroke" Value="#7BE37B" />
+        </Style>
+        <Style Selector="Path.execution-edge.failed">
+            <Setter Property="Stroke" Value="#FF5C5C" />
+        </Style>
+        <Style Selector="Path.execution-edge.blocked">
+            <Setter Property="Stroke" Value="#F1D479" />
+        </Style>
+
         <!-- Inputs use the same compact mechanical treatment as the mockup. -->
         <Style Selector="TextBox">
             <Setter Property="Background" Value="{DynamicResource GraphiteInputBrush}" />

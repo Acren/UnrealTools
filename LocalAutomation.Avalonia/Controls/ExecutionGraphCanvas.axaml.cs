@@ -261,9 +261,11 @@ public partial class ExecutionGraphCanvas : UserControl
                 DataContext = edge
             };
 
-            // Bind edge geometry and tint so session-driven status changes repaint without rebuilding the whole canvas.
+            /* Bind edge geometry while semantic classes drive tinting from XAML, so the edge uses the same status
+               language as the rest of the execution graph without hard-coded color values in view models. */
+            path.Classes.Add("execution-edge");
+            ApplyEdgeStatusClasses(path, edge.Target);
             BindToDataContext(path, ShapePath.DataProperty, nameof(ExecutionEdgeViewModel.PathData));
-            BindToDataContext(path, Shape.StrokeProperty, nameof(ExecutionEdgeViewModel.StrokeBrush));
             _graphCanvas.Children.Add(path);
         }
 
@@ -313,6 +315,28 @@ public partial class ExecutionGraphCanvas : UserControl
         Canvas.SetLeft(card, node.X);
         Canvas.SetTop(card, node.Y);
         return card;
+    }
+
+    /// <summary>
+    /// Applies the current target-node status classes to an edge path and keeps them synchronized while the target node
+    /// status changes, so edge tinting can stay fully style-driven in XAML.
+    /// </summary>
+    private static void ApplyEdgeStatusClasses(ShapePath path, ExecutionNodeViewModel target)
+    {
+        ExecutionStatusClasses.ApplyStatusClasses(path.Classes, target.Status);
+
+        PropertyChangedEventHandler? handler = null;
+        handler = (_, e) =>
+        {
+            if (string.IsNullOrWhiteSpace(e.PropertyName) ||
+                string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal))
+            {
+                ExecutionStatusClasses.ApplyStatusClasses(path.Classes, target.Status);
+            }
+        };
+
+        target.PropertyChanged += handler;
+        path.DetachedFromVisualTree += (_, _) => target.PropertyChanged -= handler;
     }
 
     /// <summary>
