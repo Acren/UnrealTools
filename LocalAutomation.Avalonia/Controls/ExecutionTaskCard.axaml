@@ -93,11 +93,7 @@
                                                LabelFontSize="11"
                                                VerticalAlignment="Center" />
                         <controls:ExecutionMetricsStrip Grid.Row="2"
-                                                        TimeText="{Binding MetricsTimeText}"
-                                                        WarningCount="{Binding MetricsWarningCount}"
-                                                        ErrorCount="{Binding MetricsErrorCount}"
-                                                        HasWarnings="{Binding HasMetricsWarnings}"
-                                                        HasErrors="{Binding HasMetricsErrors}"
+                                                        Metrics="{Binding Metrics}"
                                                         VerticalAlignment="Center" />
                   </Grid>
             </Grid>

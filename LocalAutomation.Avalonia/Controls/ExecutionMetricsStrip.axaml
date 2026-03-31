@@ -1,9 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
+             xmlns:conv="clr-namespace:LocalAutomation.Avalonia.Converters"
              x:Class="LocalAutomation.Avalonia.Controls.ExecutionMetricsStrip"
              x:DataType="controls:ExecutionMetricsStrip"
              x:Name="Root">
+    <UserControl.Resources>
+        <conv:DurationTextConverter x:Key="DurationTextConverter" />
+    </UserControl.Resources>
     <!-- One shared metrics strip keeps TIME/WARN/ERR pills visually identical in the workspace header and on graph
          nodes while letting each host feed in its own runtime metric source. -->
     <StackPanel Orientation="Horizontal"
@@ -13,7 +17,7 @@
                 Padding="8,4"
                 VerticalAlignment="Center">
             <TextBlock Classes="muted metric-pill-text"
-                       Text="{Binding TimeText, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}, StringFormat='TIME {0}'}" />
+                       Text="{Binding Duration, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}, Converter={StaticResource DurationTextConverter}, StringFormat='TIME {0}'}" />
         </Border>
         <Border Classes="pill"
                 Classes.warning-accent="{Binding HasWarnings, RelativeSource={RelativeSource AncestorType=controls:ExecutionMetricsStrip}}"

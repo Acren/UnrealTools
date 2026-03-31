@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using LocalAutomation.Core;
 
 namespace LocalAutomation.Avalonia.Controls;
 
@@ -10,31 +11,37 @@ namespace LocalAutomation.Avalonia.Controls;
 public partial class ExecutionMetricsStrip : UserControl
 {
     /// <summary>
-    /// Identifies the formatted time value shown in the TIME pill.
+    /// Identifies the raw execution metrics bound into the shared strip.
     /// </summary>
-    public static readonly StyledProperty<string> TimeTextProperty =
-        AvaloniaProperty.Register<ExecutionMetricsStrip, string>(nameof(TimeText), "--:--");
+    public static readonly StyledProperty<ExecutionTaskMetrics> MetricsProperty =
+        AvaloniaProperty.Register<ExecutionMetricsStrip, ExecutionTaskMetrics>(nameof(Metrics));
 
     /// <summary>
-    /// Identifies the warning count shown in the WARN pill.
+    /// Identifies the raw duration derived from the metrics.
+    /// </summary>
+    public static readonly StyledProperty<TimeSpan?> DurationProperty =
+        AvaloniaProperty.Register<ExecutionMetricsStrip, TimeSpan?>(nameof(Duration));
+
+    /// <summary>
+    /// Identifies the warning count derived from the raw metrics.
     /// </summary>
     public static readonly StyledProperty<int> WarningCountProperty =
         AvaloniaProperty.Register<ExecutionMetricsStrip, int>(nameof(WarningCount));
 
     /// <summary>
-    /// Identifies the error count shown in the ERR pill.
+    /// Identifies the error count derived from the raw metrics.
     /// </summary>
     public static readonly StyledProperty<int> ErrorCountProperty =
         AvaloniaProperty.Register<ExecutionMetricsStrip, int>(nameof(ErrorCount));
 
     /// <summary>
-    /// Identifies whether the warning pill should use the warning accent.
+    /// Identifies whether the warning accent should be enabled for the current metrics.
     /// </summary>
     public static readonly StyledProperty<bool> HasWarningsProperty =
         AvaloniaProperty.Register<ExecutionMetricsStrip, bool>(nameof(HasWarnings));
 
     /// <summary>
-    /// Identifies whether the error pill should use the error accent.
+    /// Identifies whether the error accent should be enabled for the current metrics.
     /// </summary>
     public static readonly StyledProperty<bool> HasErrorsProperty =
         AvaloniaProperty.Register<ExecutionMetricsStrip, bool>(nameof(HasErrors));
@@ -45,51 +52,74 @@ public partial class ExecutionMetricsStrip : UserControl
     public ExecutionMetricsStrip()
     {
         InitializeComponent();
+        ApplyMetrics(Metrics);
     }
 
     /// <summary>
-    /// Gets or sets the formatted time value shown in the TIME pill.
+    /// Gets or sets the raw execution metrics displayed by the strip.
     /// </summary>
-    public string TimeText
+    public ExecutionTaskMetrics Metrics
     {
-        get => GetValue(TimeTextProperty);
-        set => SetValue(TimeTextProperty, value);
+        get => GetValue(MetricsProperty);
+        set => SetValue(MetricsProperty, value);
     }
 
     /// <summary>
-    /// Gets or sets the warning count shown in the WARN pill.
+    /// Gets the raw duration shown by the TIME pill.
+    /// </summary>
+    public TimeSpan? Duration
+    {
+        get => GetValue(DurationProperty);
+        private set => SetValue(DurationProperty, value);
+    }
+
+    /// <summary>
+    /// Gets the warning count shown in the WARN pill.
     /// </summary>
     public int WarningCount
     {
         get => GetValue(WarningCountProperty);
-        set => SetValue(WarningCountProperty, value);
+        private set => SetValue(WarningCountProperty, value);
     }
 
     /// <summary>
-    /// Gets or sets the error count shown in the ERR pill.
+    /// Gets the error count shown in the ERR pill.
     /// </summary>
     public int ErrorCount
     {
         get => GetValue(ErrorCountProperty);
-        set => SetValue(ErrorCountProperty, value);
+        private set => SetValue(ErrorCountProperty, value);
     }
 
     /// <summary>
-    /// Gets or sets whether the warning pill should use the warning accent.
+    /// Gets whether the warning pill should use the warning accent.
     /// </summary>
     public bool HasWarnings
     {
         get => GetValue(HasWarningsProperty);
-        set => SetValue(HasWarningsProperty, value);
+        private set => SetValue(HasWarningsProperty, value);
     }
 
     /// <summary>
-    /// Gets or sets whether the error pill should use the error accent.
+    /// Gets whether the error pill should use the error accent.
     /// </summary>
     public bool HasErrors
     {
         get => GetValue(HasErrorsProperty);
-        set => SetValue(HasErrorsProperty, value);
+        private set => SetValue(HasErrorsProperty, value);
+    }
+
+    /// <summary>
+    /// Projects raw metrics into the strip's internal display properties whenever the single public Metrics input changes.
+    /// </summary>
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == MetricsProperty && change.NewValue is ExecutionTaskMetrics metrics)
+        {
+            ApplyMetrics(metrics);
+        }
     }
 
     /// <summary>
@@ -98,5 +128,17 @@ public partial class ExecutionMetricsStrip : UserControl
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
+    }
+
+    /// <summary>
+    /// Derives all display-facing pill values from one raw metrics object so callers cannot pass inconsistent booleans.
+    /// </summary>
+    private void ApplyMetrics(ExecutionTaskMetrics metrics)
+    {
+        Duration = metrics.Duration;
+        WarningCount = metrics.WarningCount;
+        ErrorCount = metrics.ErrorCount;
+        HasWarnings = metrics.WarningCount > 0;
+        HasErrors = metrics.ErrorCount > 0;
     }
 }

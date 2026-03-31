@@ -14,6 +14,7 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
 {
     private bool _isSelected;
     private ObservableCollection<LogEntryViewModel> _selectedLogEntries = new();
+    private readonly Dictionary<ExecutionTaskId, ExecutionTaskViewModel> _tasksById = new();
 
     /// <summary>
     /// Creates a workspace tab with the provided graph and optional execution session.
@@ -27,6 +28,10 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
         Presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
         Graph = graph ?? throw new ArgumentNullException(nameof(graph));
         Session = session;
+
+        /* Every graph-rendering tab now shares task VMs through its tab-owned registry. Attach the dictionary once here
+           so both execution-session tabs and the always-present plan-preview tab can materialize graph nodes safely. */
+        Graph.AttachTasks(_tasksById);
     }
 
     /// <summary>
@@ -63,6 +68,11 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// Gets the backing execution session when this tab represents a live or completed run.
     /// </summary>
     public ExecutionSession? Session { get; }
+
+    /// <summary>
+    /// Gets the shared task view models for this tab, keyed by execution task id.
+    /// </summary>
+    public IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskViewModel> TasksById => _tasksById;
 
     /// <summary>
     /// Gets the log entries currently shown in the details pane for the selected graph node or all-output pseudo-node.
@@ -212,6 +222,64 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     {
         SelectedLogEntries = new ObservableCollection<LogEntryViewModel>(entries.ToList());
         RaiseSelectionMetricsChanged();
+    }
+
+    /// <summary>
+    /// Replaces the shared task view-model registry for this execution tab from the current plan snapshot.
+    /// </summary>
+    public void SetTasks(IEnumerable<ExecutionTask> tasks)
+    {
+        _tasksById.Clear();
+        foreach (ExecutionTask task in tasks)
+        {
+            _tasksById[task.Id] = new ExecutionTaskViewModel(task);
+        }
+    }
+
+    /// <summary>
+    /// Returns the shared task view model for one execution task id when this tab currently knows about it.
+    /// </summary>
+    public ExecutionTaskViewModel? GetTask(ExecutionTaskId taskId)
+    {
+        return _tasksById.TryGetValue(taskId, out ExecutionTaskViewModel? task) ? task : null;
+    }
+
+    /// <summary>
+    /// Updates one shared task view model's raw runtime status.
+    /// </summary>
+    public void UpdateTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)
+    {
+        if (_tasksById.TryGetValue(taskId, out ExecutionTaskViewModel? task))
+        {
+            task.SetStatus(status, statusReason);
+        }
+    }
+
+    /// <summary>
+    /// Updates one shared task view model's raw runtime metrics.
+    /// </summary>
+    public void UpdateTaskMetrics(ExecutionTaskId taskId, ExecutionTaskMetrics metrics)
+    {
+        if (_tasksById.TryGetValue(taskId, out ExecutionTaskViewModel? task))
+        {
+            task.SetMetrics(metrics);
+        }
+    }
+
+    /// <summary>
+    /// Refreshes all shared task metrics from the current session snapshot.
+    /// </summary>
+    public void RefreshAllTaskMetrics()
+    {
+        if (Session == null)
+        {
+            return;
+        }
+
+        foreach ((ExecutionTaskId taskId, ExecutionTaskViewModel task) in _tasksById)
+        {
+            task.SetMetrics(Session.GetTaskMetrics(taskId));
+        }
     }
 
     /// <summary>

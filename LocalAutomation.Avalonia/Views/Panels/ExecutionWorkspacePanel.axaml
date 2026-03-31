@@ -100,11 +100,7 @@
                                         Spacing="8"
                                         VerticalAlignment="Center"
                                         IsVisible="{Binding ShowSelectedRuntimeMetrics}">
-                                <controls:ExecutionMetricsStrip TimeText="{Binding SelectedRuntimeDuration}"
-                                                               WarningCount="{Binding SelectedRuntimeWarningCount}"
-                                                               ErrorCount="{Binding SelectedRuntimeErrorCount}"
-                                                               HasWarnings="{Binding SelectedRuntimeHasWarnings}"
-                                                               HasErrors="{Binding SelectedRuntimeHasErrors}" />
+                                <controls:ExecutionMetricsStrip Metrics="{Binding SelectedRuntimeMetrics}" />
                             </StackPanel>
                             <Button Classes="danger small"
                                     Content="Terminate"

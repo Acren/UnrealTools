@@ -196,6 +196,11 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     public bool ShowSelectedRuntimeMetrics => SelectedRuntimeTab?.ShowsRuntimeMetrics == true;
 
     /// <summary>
+    /// Gets the selected task view model when the graph selection corresponds to a real task rather than the all-output pseudo-node.
+    /// </summary>
+    public ExecutionTaskViewModel? SelectedTask => SelectedRuntimeTab?.Graph.SelectedNode?.Task;
+
+    /// <summary>
     /// Gets the shared metrics shown in the selected runtime-tab header.
     /// </summary>
     public ExecutionTaskMetrics SelectedRuntimeMetrics
@@ -207,70 +212,9 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 return ExecutionTaskMetrics.Empty;
             }
 
-            return session.GetTaskMetrics(SelectedRuntimeTab.Graph.SelectedTaskId);
+            return SelectedTask?.Metrics ?? session.GetTaskMetrics(SelectedRuntimeTab.Graph.SelectedTaskId);
         }
     }
-
-    /// <summary>
-    /// Gets the warning count for the selected runtime tab's active log stream.
-    /// </summary>
-    public int SelectedRuntimeWarningCount => SelectedRuntimeMetrics.WarningCount;
-
-    /// <summary>
-    /// Gets the error count for the selected runtime tab's active log stream.
-    /// </summary>
-    public int SelectedRuntimeErrorCount => SelectedRuntimeMetrics.ErrorCount;
-
-    /// <summary>
-    /// Gets whether the selected runtime metrics should accent the warning pill.
-    /// </summary>
-    public bool SelectedRuntimeHasWarnings => SelectedRuntimeMetrics.HasWarnings;
-
-    /// <summary>
-    /// Gets whether the selected runtime metrics should accent the error pill.
-    /// </summary>
-    public bool SelectedRuntimeHasErrors => SelectedRuntimeMetrics.HasErrors;
-
-    /// <summary>
-     /// Gets the elapsed duration text for the selected runtime tab.
-     /// </summary>
-    public string SelectedRuntimeDuration
-    {
-        get
-        {
-            if (SelectedRuntimeTab?.Session is not ExecutionSession)
-            {
-                return SelectedRuntimeTab?.DurationText ?? "--:--";
-            }
-
-            return ExecutionGraphViewModel.FormatDuration(SelectedRuntimeMetrics.Duration);
-        }
-    }
-
-    /// <summary>
-    /// Gets the selected graph node title shown in the details pane.
-    /// </summary>
-    public string SelectedNodeTitle => SelectedRuntimeTab?.Graph.SelectedNodeTitle ?? "No node selected";
-
-    /// <summary>
-    /// Gets the selected graph node description shown in the details pane.
-    /// </summary>
-    public string SelectedNodeDescription => SelectedRuntimeTab?.Graph.SelectedNodeDescription ?? string.Empty;
-
-    /// <summary>
-    /// Gets the selected graph node status shown in the details pane.
-    /// </summary>
-    public string SelectedNodeStatusText => SelectedRuntimeTab?.Graph.SelectedNodeStatusText ?? string.Empty;
-
-    /// <summary>
-    /// Gets the selected graph node status reason shown in the details pane.
-    /// </summary>
-    public string SelectedNodeStatusReason => SelectedRuntimeTab?.Graph.SelectedNodeStatusReason ?? string.Empty;
-
-    /// <summary>
-    /// Gets whether the selected graph node has a non-empty status reason worth rendering.
-    /// </summary>
-    public bool HasSelectedNodeStatusReason => !string.IsNullOrWhiteSpace(SelectedNodeStatusReason);
 
     /// <summary>
     /// Gets the graph view model for the currently selected workspace tab when that tab renders a graph pane.
@@ -289,6 +233,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
 
         RuntimeWorkspaceTabViewModel planTab = RuntimeTabs.First(tab => tab.Kind == RuntimeWorkspaceTabKind.PlanPreview);
+        planTab.SetTasks(plan?.Tasks ?? Array.Empty<ExecutionTask>());
         planTab.Graph.SetPlan(plan);
         RebuildTabSelectedLogEntries(planTab);
 
@@ -309,14 +254,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         ExecutionGraphViewModel graph = new();
-        graph.SetPlan(session.Plan);
-        graph.AttachSession(session);
-        // Seed the graph from the session's typed runtime task-status map before subscribing to live updates.
-        foreach ((ExecutionTaskId taskId, ExecutionTaskStatus status) in session.TaskStatuses)
-        {
-            graph.UpdateTaskStatus(taskId, status, session.GetTaskStatusReason(taskId));
-        }
-
         RuntimeWorkspaceTabViewModel runtimeTab = new(
             id: session.Id.Value,
             title: session.OperationName,
@@ -325,6 +262,16 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             presentation: new RuntimeWorkspaceTabPresentation(showGraph: true, showLog: true, showSubtitle: true, showStatusMarker: true, showRuntimeMetrics: true),
             graph: graph,
             session: session);
+        runtimeTab.SetTasks(session.Plan?.Tasks ?? Array.Empty<ExecutionTask>());
+        runtimeTab.RefreshAllTaskMetrics();
+
+        graph.AttachTasks(runtimeTab.TasksById);
+        graph.SetPlan(session.Plan);
+        graph.AttachSession(session);
+        foreach ((ExecutionTaskId taskId, ExecutionTaskStatus status) in session.TaskStatuses)
+        {
+            runtimeTab.UpdateTaskStatus(taskId, status, session.GetTaskStatusReason(taskId));
+        }
 
         HookGraphSelection(runtimeTab);
         RuntimeTabs.Add(runtimeTab);
@@ -335,9 +282,10 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         AttachSessionLogs(runtimeTab, session);
-        // Mirror future typed task-state transitions into the tab graph on the UI thread.
         session.TaskStatusChanged += (taskId, status, statusReason) => Dispatcher.UIThread.Post(() =>
         {
+            runtimeTab.UpdateTaskStatus(taskId, status, statusReason);
+            runtimeTab.UpdateTaskMetrics(taskId, session.GetTaskMetrics(taskId));
             runtimeTab.Graph.UpdateTaskStatus(taskId, status, statusReason);
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
@@ -526,16 +474,12 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         {
             if (entry.TaskId is ExecutionTaskId taskId)
             {
-                runtimeTab.Graph.RefreshMetricsForTaskAndAncestors(taskId);
+                RefreshTaskMetricsForBranch(runtimeTab, taskId);
             }
 
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
-                RaisePropertyChanged(nameof(SelectedRuntimeDuration));
-                RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
-                RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
-                RaisePropertyChanged(nameof(SelectedRuntimeHasWarnings));
-                RaisePropertyChanged(nameof(SelectedRuntimeHasErrors));
+                RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
             }
         });
     }
@@ -754,14 +698,10 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
            counting up even during quiet periods with no new output. */
         foreach (RuntimeWorkspaceTabViewModel runtimeTab in RuntimeTabs.Where(tab => tab.Session != null))
         {
-            runtimeTab.Graph.RefreshAllNodeMetrics();
+            runtimeTab.RefreshAllTaskMetrics();
         }
 
-        RaisePropertyChanged(nameof(SelectedRuntimeDuration));
-        RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
-        RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
-        RaisePropertyChanged(nameof(SelectedRuntimeHasWarnings));
-        RaisePropertyChanged(nameof(SelectedRuntimeHasErrors));
+        RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
 
         if (!RuntimeTabs.Any(tab => tab.IsRunning))
         {
@@ -783,7 +723,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         switch (propertyName)
         {
             case nameof(RuntimeWorkspaceTabViewModel.DurationText):
-                RaisePropertyChanged(nameof(SelectedRuntimeDuration));
+                RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
                 break;
             default:
                 RaiseSelectionStateChanged();
@@ -799,19 +739,11 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ExecutionSummary));
         RaisePropertyChanged(nameof(IsRunning));
         RaisePropertyChanged(nameof(SelectedGraph));
-        RaisePropertyChanged(nameof(SelectedNodeDescription));
-        RaisePropertyChanged(nameof(SelectedNodeStatusReason));
-        RaisePropertyChanged(nameof(HasSelectedNodeStatusReason));
-        RaisePropertyChanged(nameof(SelectedNodeStatusText));
-        RaisePropertyChanged(nameof(SelectedNodeTitle));
-        RaisePropertyChanged(nameof(SelectedRuntimeDuration));
-        RaisePropertyChanged(nameof(SelectedRuntimeErrorCount));
-        RaisePropertyChanged(nameof(SelectedRuntimeHasErrors));
+        RaisePropertyChanged(nameof(SelectedTask));
+        RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
         RaisePropertyChanged(nameof(SelectedRuntimeLogEntries));
         RaisePropertyChanged(nameof(SelectedRuntimeLogSourceId));
         RaisePropertyChanged(nameof(SelectedRuntimeTabTitle));
-        RaisePropertyChanged(nameof(SelectedRuntimeWarningCount));
-        RaisePropertyChanged(nameof(SelectedRuntimeHasWarnings));
         RaisePropertyChanged(nameof(ShowSelectedRuntimeMetrics));
     }
 
@@ -851,6 +783,25 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private static LogEntryViewModel CreateLogEntryViewModel(LogEntry entry)
     {
         return new LogEntryViewModel(entry.Message, entry.Verbosity, entry.Timestamp);
+    }
+
+    /// <summary>
+    /// Refreshes the shared task metrics for one task plus every ancestor task whose displayed metrics include that subtree.
+    /// </summary>
+    private static void RefreshTaskMetricsForBranch(RuntimeWorkspaceTabViewModel runtimeTab, ExecutionTaskId taskId)
+    {
+        if (runtimeTab.Session == null)
+        {
+            return;
+        }
+
+        runtimeTab.UpdateTaskMetrics(taskId, runtimeTab.Session.GetTaskMetrics(taskId));
+        ExecutionTaskId? currentParentId = runtimeTab.GetTask(taskId)?.ParentId;
+        while (currentParentId is ExecutionTaskId parentId)
+        {
+            runtimeTab.UpdateTaskMetrics(parentId, runtimeTab.Session.GetTaskMetrics(parentId));
+            currentParentId = runtimeTab.GetTask(parentId)?.ParentId;
+        }
     }
 
 }

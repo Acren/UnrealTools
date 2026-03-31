@@ -10,8 +10,6 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionNodeViewModel : ViewModelBase
 {
-    private ExecutionTaskStatus _status;
-    private string _statusReason;
     private string _summaryText = string.Empty;
     private bool _isSelected;
     private double _x;
@@ -20,22 +18,20 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     private double _height = ExecutionGraphViewModel.NodeHeight;
     private int _directChildCount;
     private int _descendantTaskCount;
-    private ExecutionTaskMetrics _metrics;
 
     /// <summary>
-    /// Creates a graph-node view model from the shared execution-task model.
+    /// Creates a graph-node view model from one shared Avalonia task view model.
     /// </summary>
-    public ExecutionNodeViewModel(ExecutionTask task)
+    public ExecutionNodeViewModel(ExecutionTaskViewModel task)
     {
         Task = task ?? throw new ArgumentNullException(nameof(task));
-        _status = task.Status;
-        _statusReason = task.StatusReason;
+        Task.PropertyChanged += HandleTaskPropertyChanged;
     }
 
     /// <summary>
-    /// Gets the underlying shared execution task that this graph node renders.
+    /// Gets the shared task/runtime state rendered by this graph node.
     /// </summary>
-    public ExecutionTask Task { get; }
+    public ExecutionTaskViewModel Task { get; }
 
     /// <summary>
     /// Gets the stable task identifier used by the graph-selection layer.
@@ -125,28 +121,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the current runtime or preview status shown on the graph.
     /// </summary>
-    public ExecutionTaskStatus Status
-    {
-        get => _status;
-        private set
-        {
-            if (!SetProperty(ref _status, value))
-            {
-                return;
-            }
-
-            RaiseStatusChanged();
-        }
-    }
-
-    /// <summary>
-    /// Gets the explanatory text for disabled, skipped, failed, or otherwise notable states.
-    /// </summary>
-    public string StatusReason
-    {
-        get => _statusReason;
-        private set => SetProperty(ref _statusReason, value);
-    }
+    public ExecutionTaskStatus Status => Task.Status;
 
     /// <summary>
     /// Gets the number of direct child items rendered inside this group.
@@ -209,48 +184,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the shared execution metrics currently displayed for this node.
     /// </summary>
-    public ExecutionTaskMetrics Metrics
-    {
-        get => _metrics;
-        private set
-        {
-            if (!SetProperty(ref _metrics, value))
-            {
-                return;
-            }
-
-            RaisePropertyChanged(nameof(MetricsTimeText));
-            RaisePropertyChanged(nameof(MetricsWarningCount));
-            RaisePropertyChanged(nameof(MetricsErrorCount));
-            RaisePropertyChanged(nameof(HasMetricsWarnings));
-            RaisePropertyChanged(nameof(HasMetricsErrors));
-        }
-    }
-
-    /// <summary>
-    /// Gets the formatted time text shown in the reusable metrics strip.
-    /// </summary>
-    public string MetricsTimeText => ExecutionGraphViewModel.FormatDuration(Metrics.Duration);
-
-    /// <summary>
-    /// Gets the warning count shown in the reusable metrics strip.
-    /// </summary>
-    public int MetricsWarningCount => Metrics.WarningCount;
-
-    /// <summary>
-    /// Gets the error count shown in the reusable metrics strip.
-    /// </summary>
-    public int MetricsErrorCount => Metrics.ErrorCount;
-
-    /// <summary>
-    /// Gets whether the reusable metrics strip should accent the warning pill.
-    /// </summary>
-    public bool HasMetricsWarnings => Metrics.HasWarnings;
-
-    /// <summary>
-    /// Gets whether the reusable metrics strip should accent the error pill.
-    /// </summary>
-    public bool HasMetricsErrors => Metrics.HasErrors;
+    public ExecutionTaskMetrics Metrics => Task.Metrics;
 
     /// <summary>
     /// Gets the border thickness for group containers.
@@ -342,8 +276,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     public void SetStatus(ExecutionTaskStatus status, string? statusReason)
     {
-        Status = status;
-        StatusReason = statusReason ?? string.Empty;
+        Task.SetStatus(status, statusReason);
     }
 
     /// <summary>
@@ -375,7 +308,39 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     public void SetMetrics(ExecutionTaskMetrics metrics)
     {
-        Metrics = metrics;
+        Task.SetMetrics(metrics);
+    }
+
+    /// <summary>
+    /// Relays shared task/runtime property changes into the graph-node properties that project them.
+    /// </summary>
+    private void HandleTaskPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Status), StringComparison.Ordinal))
+        {
+            RaiseStatusChanged();
+            return;
+        }
+
+        if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Metrics), StringComparison.Ordinal))
+        {
+            RaisePropertyChanged(nameof(Metrics));
+            return;
+        }
+
+        if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Title), StringComparison.Ordinal))
+        {
+            RaisePropertyChanged(nameof(Title));
+            return;
+        }
+
+        if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Description), StringComparison.Ordinal))
+        {
+            RaisePropertyChanged(nameof(Description));
+            RaisePropertyChanged(nameof(CardDescriptionText));
+            RaisePropertyChanged(nameof(HasCardDescription));
+            RaisePropertyChanged(nameof(DetailsText));
+        }
     }
 
     /// <summary>
@@ -383,6 +348,10 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     private void RaiseStatusChanged()
     {
+        /* Graph controls and edge styling still observe the node VM's raw Status property, even though the status now
+           lives on the shared task VM. Relay that notification here before the derived label updates so existing graph
+           listeners keep reacting to runtime status changes. */
+        RaisePropertyChanged(nameof(Status));
         RaisePropertyChanged(nameof(StatusText));
         RaisePropertyChanged(nameof(StatusLabelText));
     }

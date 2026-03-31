@@ -47,6 +47,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private readonly Dictionary<ExecutionTaskId, ExecutionTaskId?> _parentByTaskId = new();
     private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _leafDescendantsByGroupId = new();
     private readonly Dictionary<ExecutionTaskId, double> _measuredNodeWidths = new();
+    private IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskViewModel> _tasksById = new Dictionary<ExecutionTaskId, ExecutionTaskViewModel>();
     private ExecutionSession? _session;
     private ExecutionPlan? _plan;
     private ExecutionNodeViewModel? _selectedNode;
@@ -83,11 +84,11 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     public ExecutionGraphViewModel()
     {
-        AllOutputNode = new ExecutionNodeViewModel(new ExecutionTask(
+        AllOutputNode = new ExecutionNodeViewModel(new ExecutionTaskViewModel(new ExecutionTask(
             id: AllOutputNodeId,
             title: "All Output",
             description: "Show the merged output stream for the current preview or execution session.",
-            status: ExecutionTaskStatus.Pending));
+            status: ExecutionTaskStatus.Pending)));
     }
 
     /// <summary>
@@ -148,10 +149,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             }
 
             RaisePropertyChanged(nameof(SelectedNode));
-            RaisePropertyChanged(nameof(SelectedNodeTitle));
-            RaisePropertyChanged(nameof(SelectedNodeDescription));
-            RaisePropertyChanged(nameof(SelectedNodeStatusText));
-            RaisePropertyChanged(nameof(SelectedNodeStatusReason));
             RaisePropertyChanged(nameof(SelectedTaskId));
             RaisePropertyChanged(nameof(HasSelectedNode));
             RaisePropertyChanged(nameof(IsAllOutputSelected));
@@ -167,16 +164,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// Gets whether the all-output pseudo-node is selected.
     /// </summary>
     public bool IsAllOutputSelected => SelectedNode?.Id == AllOutputNodeId;
-
-    /// <summary>
-    /// Gets the title for the selected graph node details pane.
-    /// </summary>
-    public string SelectedNodeTitle => SelectedNode?.Title ?? "No graph node selected";
-
-    /// <summary>
-    /// Gets the description for the selected graph node details pane.
-    /// </summary>
-    public string SelectedNodeDescription => SelectedNode?.DetailsText ?? "Select a graph node to inspect the underlying task details and output.";
 
     /// <summary>
     /// Gets the selected task id for details and status binding. Only the synthetic all-output node maps to no task.
@@ -196,16 +183,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
         return GetTaskSubtreeIds(SelectedNode.Id).ToList();
     }
-
-    /// <summary>
-    /// Gets the status label for the selected graph node.
-    /// </summary>
-    public string SelectedNodeStatusText => SelectedNode?.StatusText ?? string.Empty;
-
-    /// <summary>
-    /// Gets the status reason for the selected graph node.
-    /// </summary>
-    public string SelectedNodeStatusReason => SelectedNode?.StatusReason ?? string.Empty;
 
     /// <summary>
     /// Gets the total canvas width required to render the current graph.
@@ -273,8 +250,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             {
                 RestoreSelection();
             }
-
-            RefreshAllNodeMetrics();
         }
         finally
         {
@@ -291,12 +266,19 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Attaches the live execution session used to populate subtree metrics for graph nodes.
+    /// Attaches the live execution session used to populate subtree metrics for graph layout refreshes.
     /// </summary>
     public void AttachSession(ExecutionSession? session)
     {
         _session = session;
-        RefreshAllNodeMetrics();
+    }
+
+    /// <summary>
+    /// Attaches the shared Avalonia task view-model registry that graph nodes should wrap instead of constructing local copies.
+    /// </summary>
+    public void AttachTasks(IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskViewModel> tasksById)
+    {
+        _tasksById = tasksById ?? throw new ArgumentNullException(nameof(tasksById));
     }
 
     /// <summary>
@@ -347,14 +329,9 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return;
         }
 
-        node.SetStatus(status, statusReason);
-        RefreshMetricsForTaskAndAncestors(taskId);
-
         if (ReferenceEquals(SelectedNode, node) || (SelectedNode != null && SelectedNode.IsContainer))
         {
-            RaisePropertyChanged(nameof(SelectedNodeStatusText));
-            RaisePropertyChanged(nameof(SelectedNodeStatusReason));
-            RaisePropertyChanged(nameof(SelectedNodeDescription));
+            RaisePropertyChanged(nameof(SelectedNode));
         }
     }
 
@@ -366,7 +343,12 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         List<ExecutionNodeViewModel> nodes = new(plan.Tasks.Count);
         foreach (ExecutionTask task in plan.Tasks)
         {
-            ExecutionNodeViewModel node = new(task);
+            if (!_tasksById.TryGetValue(task.Id, out ExecutionTaskViewModel? taskViewModel))
+            {
+                throw new InvalidOperationException($"No shared ExecutionTaskViewModel exists for task '{task.Id}'.");
+            }
+
+            ExecutionNodeViewModel node = new(taskViewModel);
             nodes.Add(node);
             _nodesById[task.Id] = node;
         }
@@ -588,45 +570,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         while (currentParentId is ExecutionTaskId parent && _nodesById.TryGetValue(parent, out ExecutionNodeViewModel? group))
         {
             ApplyGroupRollupStatus(group);
-            currentParentId = _parentByTaskId.TryGetValue(parent, out ExecutionTaskId? nextParentId) ? nextParentId : null;
-        }
-    }
-
-    /// <summary>
-    /// Refreshes subtree metrics for every currently rendered graph node.
-    /// </summary>
-    public void RefreshAllNodeMetrics()
-    {
-        foreach (ExecutionNodeViewModel node in _nodes)
-        {
-            RefreshNodeMetrics(node.Id);
-        }
-    }
-
-    /// <summary>
-    /// Refreshes subtree metrics for one node when live runtime data changes.
-    /// </summary>
-    public void RefreshNodeMetrics(ExecutionTaskId taskId)
-    {
-        if (!_nodesById.TryGetValue(taskId, out ExecutionNodeViewModel? node))
-        {
-            return;
-        }
-
-        node.SetMetrics(_session?.GetTaskMetrics(taskId) ?? ExecutionTaskMetrics.Empty);
-    }
-
-    /// <summary>
-    /// Refreshes subtree metrics for one task plus every ancestor group whose subtree includes that task.
-    /// </summary>
-    public void RefreshMetricsForTaskAndAncestors(ExecutionTaskId taskId)
-    {
-        RefreshNodeMetrics(taskId);
-
-        ExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(taskId, out ExecutionTaskId? parentId) ? parentId : null;
-        while (currentParentId is ExecutionTaskId parent)
-        {
-            RefreshNodeMetrics(parent);
             currentParentId = _parentByTaskId.TryGetValue(parent, out ExecutionTaskId? nextParentId) ? nextParentId : null;
         }
     }

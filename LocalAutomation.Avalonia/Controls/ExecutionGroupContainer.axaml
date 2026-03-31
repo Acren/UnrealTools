@@ -121,11 +121,7 @@
                                                VerticalAlignment="Center" />
                     <controls:ExecutionMetricsStrip Grid.Column="2"
                                                     Margin="12,0,0,0"
-                                                    TimeText="{Binding MetricsTimeText}"
-                                                    WarningCount="{Binding MetricsWarningCount}"
-                                                    ErrorCount="{Binding MetricsErrorCount}"
-                                                    HasWarnings="{Binding HasMetricsWarnings}"
-                                                    HasErrors="{Binding HasMetricsErrors}"
+                                                    Metrics="{Binding Metrics}"
                                                     VerticalAlignment="Center" />
                 </Grid>
             </Border>
