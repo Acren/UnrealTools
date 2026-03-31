@@ -146,10 +146,7 @@ public abstract class Operation
             IExecutionTaskLoggerFactory? taskLoggerFactory = logger as IExecutionTaskLoggerFactory;
             IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
             ExecutionTaskId? inheritedTaskId = TryGetInheritedTaskId(logger);
-            ExecutionTaskId? defaultExecutionTaskId = UsesDefaultExecutionPlanRouting()
-                ? GetDefaultExecutionTaskId()
-                : null;
-            ExecutionTaskId? effectiveTaskId = inheritedTaskId ?? defaultExecutionTaskId;
+            ExecutionTaskId? effectiveTaskId = inheritedTaskId;
             // Preserve an inherited task scope for nested operations, and only fall back to the shared default
             // single-task routing when the caller did not already execute inside a task-scoped logger.
             ILogger executionLogger = effectiveTaskId != null && taskLoggerFactory != null
@@ -190,7 +187,11 @@ public abstract class Operation
             }
 
             Executing = true;
-            Task<OperationResult> mainTask = OnExecuted(token);
+            Task<OperationResult> mainTask = ExecutePlanAsync(
+                BuildExecutionPlan(operationParameters)
+                    ?? throw new InvalidOperationException($"Operation '{OperationName}' did not produce an execution plan."),
+                eventLogger,
+                token);
             Executing = false;
 
             OperationResult result = await mainTask.ConfigureAwait(false);
@@ -227,17 +228,12 @@ public abstract class Operation
                 }
             }
 
-            if (effectiveTaskId != null)
-            {
-                ApplyExecutionTaskOutcome(eventLogger, effectiveTaskId.Value, result);
-            }
-
             return result;
         }
         catch (OperationCanceledException)
         {
             Executing = false;
-            ExecutionTaskId? effectiveTaskId = TryGetInheritedTaskId(logger) ?? (UsesDefaultExecutionPlanRouting() ? GetDefaultExecutionTaskId() : null);
+            ExecutionTaskId? effectiveTaskId = TryGetInheritedTaskId(logger);
             if (effectiveTaskId != null)
             {
                 IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
@@ -249,7 +245,7 @@ public abstract class Operation
         catch (Exception e)
         {
             Executing = false;
-            ExecutionTaskId? effectiveTaskId = TryGetInheritedTaskId(logger) ?? (UsesDefaultExecutionPlanRouting() ? GetDefaultExecutionTaskId() : null);
+            ExecutionTaskId? effectiveTaskId = TryGetInheritedTaskId(logger);
             if (effectiveTaskId != null)
             {
                 IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
@@ -298,26 +294,36 @@ public abstract class Operation
             return null;
         }
 
-        PrepareRegisteredOptions(operationParameters);
-        string? requirementsError = CheckRequirementsSatisfied(operationParameters);
-        ExecutionTaskStatus status = requirementsError == null ? ExecutionTaskStatus.Planned : ExecutionTaskStatus.Disabled;
         ExecutionPlanId planId = GetDefaultExecutionPlanId();
-        ExecutionTaskId taskId = GetDefaultExecutionTaskId(planId);
+        ExecutionPlanBuilder builder = new(OperationName, planId);
+        ExecutionTaskBuilder root = builder.Task(OperationName, operationParameters.Target.DisplayName, default);
+        DescribeExecutionPlan(operationParameters, root);
+        return builder.BuildPlan();
+    }
 
-        // The default execution plan is a single runnable task so existing operations immediately participate in the
-        // new preview surface even before they define richer composite graphs.
-        return new ExecutionPlan(
-            id: planId,
-            title: OperationName,
-            tasks: new[]
-            {
-                new ExecutionPlanTask(
-                    id: taskId,
-                    title: OperationName,
-                    description: operationParameters.Target.DisplayName,
-                    status: status,
-                    statusReason: requirementsError)
-            });
+    /// <summary>
+    /// Lets the runtime evaluate this operation's authored plan against explicit parameters without running the full
+    /// execution pipeline. Used internally for child-operation plan expansion.
+    /// </summary>
+    internal ExecutionPlan? BuildExecutionPlanForExpansion(OperationParameters operationParameters)
+    {
+        if (operationParameters == null)
+        {
+            throw new ArgumentNullException(nameof(operationParameters));
+        }
+
+        PrepareRegisteredOptions(operationParameters);
+        OperationParameters = operationParameters;
+        return BuildExecutionPlan(operationParameters);
+    }
+
+    /// <summary>
+    /// Executes an authored execution plan through the shared scheduler so composite operations do not own their own
+    /// scheduling lifecycle.
+    /// </summary>
+    private Task<OperationResult> ExecutePlanAsync(ExecutionPlan plan, ILogger logger, CancellationToken token)
+    {
+        return new ExecutionPlanScheduler(logger, maxParallelism: 1).ExecuteAsync(plan, token);
     }
 
     /// <summary>
@@ -330,46 +336,8 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Gets the default execution-task identifier used by operations that rely on the shared single-task preview and
-    /// runtime behavior.
-    /// </summary>
-    protected virtual ExecutionTaskId GetDefaultExecutionTaskId(ExecutionPlanId? planId = null)
-    {
-        return ExecutionIdentifierFactory.CreateTaskId(planId ?? GetDefaultExecutionPlanId(), GetType().Name);
-    }
-
-    /// <summary>
-    /// Determines whether the current operation still relies on the shared single-task execution-plan path instead of a
-    /// custom authored task graph.
-    /// </summary>
-    private bool UsesDefaultExecutionPlanRouting()
-    {
-        return GetType().GetMethod(nameof(BuildExecutionPlan))?.DeclaringType == typeof(Operation);
-    }
-
-    /// <summary>
-    /// Publishes the terminal state for a shared single-task execution after the final operation result has been fully
-    /// normalized by warning and error policy.
-    /// </summary>
-    private static void ApplyExecutionTaskOutcome(EventStreamLogger logger, ExecutionTaskId taskId, OperationResult result)
-    {
-        switch (result.Outcome)
-        {
-            case RunOutcome.Succeeded:
-                logger.SetTaskStatus(taskId, ExecutionTaskStatus.Completed);
-                break;
-            case RunOutcome.Cancelled:
-                logger.SetTaskStatus(taskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
-                break;
-            default:
-                logger.SetTaskStatus(taskId, ExecutionTaskStatus.Failed, "Operation failed.");
-                break;
-        }
-    }
-
-    /// <summary>
-    /// Extracts the currently scoped task identifier from a logger created by the execution runtime so nested
-    /// operations inherit the caller's task stream instead of escaping back into the session-wide log.
+     /// Extracts the currently scoped task identifier from a logger created by the execution runtime so nested
+     /// operations inherit the caller's task stream instead of escaping back into the session-wide log.
     /// </summary>
     private static ExecutionTaskId? TryGetInheritedTaskId(ILogger logger)
     {
@@ -537,9 +505,21 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Runs the operation-specific execution path.
+    /// Lets derived operations describe child tasks beneath the framework-owned root task. The default implementation
+    /// turns the root into a single leaf task that executes the legacy imperative hook.
     /// </summary>
-    protected abstract Task<OperationResult> OnExecuted(CancellationToken token);
+    protected virtual void DescribeExecutionPlan(OperationParameters operationParameters, ExecutionTaskBuilder root)
+    {
+        root.Then(context => ExecuteLeafAsync(context.CancellationToken));
+    }
+
+    /// <summary>
+    /// Runs the legacy imperative leaf execution body for operations that do not override plan description.
+    /// </summary>
+    protected virtual Task<OperationResult> ExecuteLeafAsync(CancellationToken token)
+    {
+        throw new NotSupportedException($"Operation '{OperationName}' must override either {nameof(DescribeExecutionPlan)} or {nameof(ExecuteLeafAsync)}.");
+    }
 
     /// <summary>
     /// Builds the command list for the provided operation parameters.

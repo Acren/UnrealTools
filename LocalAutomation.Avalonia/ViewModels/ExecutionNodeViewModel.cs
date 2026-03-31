@@ -1,7 +1,9 @@
 using System;
 using Avalonia;
 using Avalonia.Media;
-using LocalAutomation.Core;
+using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
+using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
+using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -36,7 +38,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the stable task identifier used by the graph-selection layer.
     /// </summary>
-    public ExecutionTaskId Id => Task.Id;
+    public RuntimeExecutionTaskId Id => Task.Id;
 
     /// <summary>
     /// Gets the display title rendered on the canvas and in the details pane.
@@ -51,7 +53,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the parent grouping identifier when one exists.
     /// </summary>
-    public ExecutionTaskId? ParentId => Task.ParentId;
+    public RuntimeExecutionTaskId? ParentId => Task.ParentId;
 
     /// <summary>
     /// Gets whether this graph node currently acts as a visual container around child tasks.
@@ -121,7 +123,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the current runtime or preview status shown on the graph.
     /// </summary>
-    public ExecutionTaskStatus Status => Task.Status;
+    public RuntimeExecutionTaskStatus Status => Task.Status;
 
     /// <summary>
     /// Gets the number of direct child items rendered inside this group.
@@ -184,7 +186,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets the shared execution metrics currently displayed for this node.
     /// </summary>
-    public ExecutionTaskMetrics Metrics => Task.Metrics;
+    public RuntimeExecutionTaskMetrics Metrics => Task.Metrics;
 
     /// <summary>
     /// Gets the border thickness for group containers.

@@ -36,19 +36,7 @@ public sealed class ExecutionPlanBuilder
     public ExecutionTaskBuilder Task(string title, string? description = null, ExecutionTaskHandle parent = default)
     {
         ValidateParent(parent);
-        PlanItemDefinition definition = CreateItem(GenerateTaskId(title), title, description, parent.IsValid ? parent.Id : null);
-        _items.Add(definition);
-        return new ExecutionTaskBuilder(this, definition, parent);
-    }
-
-    /// <summary>
-    /// Declares one task with an explicit stable identifier so independently authored plans can share the same runtime
-    /// task identities. Exactly one root task is allowed; additional tasks must be declared beneath that root.
-    /// </summary>
-    public ExecutionTaskBuilder Task(ExecutionTaskId id, string title, string? description = null, ExecutionTaskHandle parent = default)
-    {
-        ValidateParent(parent);
-        PlanItemDefinition definition = CreateItem(id, title, description, parent.IsValid ? parent.Id : null);
+        PlanItemDefinition definition = CreateItem(GenerateTaskId(), title, description, parent.IsValid ? parent.Id : null);
         _items.Add(definition);
         return new ExecutionTaskBuilder(this, definition, parent);
     }
@@ -64,45 +52,26 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Builds the preview plan used by the UI.
+    /// Builds the authored execution plan used by both preview and runtime scheduling.
     /// </summary>
     public ExecutionPlan BuildPlan()
     {
-        /* Preview plans should preserve the distinction between planned work and queued runtime work. Enabled tasks stay
-           Planned in the preview graph, and runtime session updates transition them to Pending when execution starts. */
+        ExpandChildOperations();
         List<ExecutionPlanTask> tasks = _items
             .Select(item => new ExecutionPlanTask(
                 id: item.Id,
                 title: item.Title,
                 description: item.Description,
                 parentId: item.ParentId,
-                status: item.Enabled ? ExecutionTaskStatus.Planned : ExecutionTaskStatus.Disabled,
-                statusReason: item.Enabled ? string.Empty : item.DisabledReason))
+                dependsOn: item.DependencyIds,
+                enabled: item.Enabled,
+                disabledReason: item.DisabledReason,
+                executeAsync: item.ExecuteAsync))
             .ToList();
         List<ExecutionDependency> dependencies = _items
             .SelectMany(item => item.DependencyIds.Select(dependencyId => new ExecutionDependency(dependencyId, item.Id)))
             .ToList();
         return new ExecutionPlan(_planId, _title, tasks, dependencies);
-    }
-
-    /// <summary>
-     /// Builds the scheduler work items for the declared executable steps.
-     /// </summary>
-    public IReadOnlyList<ExecutionWorkItem> BuildWorkItems()
-    {
-        return _items
-            .Where(item => item.ExecuteAsync != null)
-            .Select(item =>
-            {
-                return new ExecutionWorkItem(
-                    taskId: item.Id,
-                    title: item.Title,
-                    executeAsync: item.ExecuteAsync!,
-                    dependsOn: item.DependencyIds,
-                    enabled: item.Enabled,
-                    skippedReason: item.DisabledReason);
-            })
-            .ToList();
     }
 
     internal void AddDependency(PlanItemDefinition definition, ExecutionTaskHandle dependency)
@@ -144,6 +113,50 @@ public sealed class ExecutionPlanBuilder
         definition.ExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
     }
 
+    internal void AttachChildOperation(PlanItemDefinition definition, Type operationType, Func<OperationParameters> createParameters)
+    {
+        if (definition.ExecuteAsync != null)
+        {
+            throw new InvalidOperationException("Execution tasks cannot define both a direct callback and a child operation expansion.");
+        }
+
+        definition.ChildOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
+        definition.CreateChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters));
+    }
+
+    internal void ImportPlan(ExecutionPlan plan, ExecutionTaskHandle parent)
+    {
+        if (plan == null)
+        {
+            throw new ArgumentNullException(nameof(plan));
+        }
+
+        Dictionary<ExecutionTaskId, ExecutionTaskId> remappedIds = new();
+        Dictionary<ExecutionTaskId, PlanItemDefinition> importedDefinitions = new();
+        foreach (ExecutionPlanTask task in plan.Tasks)
+        {
+            ExecutionTaskHandle targetParent = task.ParentId is ExecutionTaskId parentId
+                ? new ExecutionTaskHandle(remappedIds[parentId])
+                : parent;
+            PlanItemDefinition importedDefinition = CreateItem(GenerateTaskId(), task.Title, task.Description, targetParent.IsValid ? targetParent.Id : null);
+            importedDefinition.Enabled = task.Enabled;
+            importedDefinition.DisabledReason = task.DisabledReason;
+            importedDefinition.ExecuteAsync = task.ExecuteAsync;
+            _items.Add(importedDefinition);
+            remappedIds[task.Id] = importedDefinition.Id;
+            importedDefinitions[task.Id] = importedDefinition;
+        }
+
+        foreach (ExecutionPlanTask task in plan.Tasks)
+        {
+            PlanItemDefinition importedDefinition = importedDefinitions[task.Id];
+            foreach (ExecutionTaskId dependencyId in task.DependsOn)
+            {
+                importedDefinition.DependencyIds.Add(remappedIds[dependencyId]);
+            }
+        }
+    }
+
     internal ExecutionTaskHandle FinalizeTask(PlanItemDefinition definition)
     {
         return new ExecutionTaskHandle(definition.Id);
@@ -175,12 +188,71 @@ public sealed class ExecutionPlanBuilder
         };
     }
 
+    private void ExpandChildOperations()
+    {
+        List<PlanItemDefinition> definitionsToExpand = _items
+            .Where(item => item.ChildOperationType != null)
+            .ToList();
+
+        foreach (PlanItemDefinition definition in definitionsToExpand)
+        {
+            Operation childOperation = Operation.CreateOperation(definition.ChildOperationType!);
+            OperationParameters childParameters = definition.CreateChildParameters!();
+            ExecutionPlan childPlan = childOperation.BuildExecutionPlanForExpansion(childParameters)
+                ?? throw new InvalidOperationException($"Child operation '{definition.ChildOperationType!.Name}' returned no execution plan during expansion.");
+            ExecutionPlanTask childRoot = childPlan.Tasks.Single(task => task.ParentId == null);
+
+            definition.Enabled = childRoot.Enabled;
+            definition.DisabledReason = childRoot.DisabledReason;
+            definition.ExecuteAsync = childRoot.ExecuteAsync;
+            definition.ChildOperationType = null;
+            definition.CreateChildParameters = null;
+
+            Dictionary<ExecutionTaskId, ExecutionTaskId> remappedIds = new()
+            {
+                [childRoot.Id] = definition.Id
+            };
+            Dictionary<ExecutionTaskId, PlanItemDefinition> importedDefinitions = new();
+
+            foreach (ExecutionPlanTask childTask in childPlan.Tasks.Where(task => task.Id != childRoot.Id))
+            {
+                ExecutionTaskId parentId = childTask.ParentId == childRoot.Id
+                    ? definition.Id
+                    : remappedIds[childTask.ParentId!.Value];
+                PlanItemDefinition importedDefinition = CreateItem(GenerateTaskId(), childTask.Title, childTask.Description, parentId);
+                importedDefinition.Enabled = childTask.Enabled;
+                importedDefinition.DisabledReason = childTask.DisabledReason;
+                importedDefinition.ExecuteAsync = childTask.ExecuteAsync;
+                _items.Add(importedDefinition);
+                remappedIds[childTask.Id] = importedDefinition.Id;
+                importedDefinitions[childTask.Id] = importedDefinition;
+            }
+
+            definition.DependencyIds.Clear();
+            foreach (ExecutionTaskId dependencyId in childRoot.DependsOn)
+            {
+                definition.DependencyIds.Add(remappedIds[dependencyId]);
+            }
+
+            foreach (ExecutionPlanTask childTask in childPlan.Tasks.Where(task => task.Id != childRoot.Id))
+            {
+                PlanItemDefinition importedDefinition = importedDefinitions[childTask.Id];
+                importedDefinition.DependencyIds.Clear();
+                foreach (ExecutionTaskId dependencyId in childTask.DependsOn)
+                {
+                    importedDefinition.DependencyIds.Add(remappedIds[dependencyId]);
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// Generates a deterministic task identifier for builder-authored nodes when callers do not provide an explicit one.
     /// </summary>
-    private ExecutionTaskId GenerateTaskId(string title)
+    private ExecutionTaskId GenerateTaskId()
     {
-        return ExecutionIdentifierFactory.CreateTaskId(_planId, "task", _nextSequence.ToString("D3"), title);
+        _nextSequence += 1;
+        return ExecutionIdentifierFactory.CreateTaskId(_planId, "task", _nextSequence.ToString("D6"));
     }
     internal sealed class PlanItemDefinition
     {
@@ -199,5 +271,9 @@ public sealed class ExecutionPlanBuilder
         public string DisabledReason { get; set; } = string.Empty;
 
         public Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync { get; set; }
+
+        public Type? ChildOperationType { get; set; }
+
+        public Func<OperationParameters>? CreateChildParameters { get; set; }
     }
 }

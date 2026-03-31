@@ -2,7 +2,11 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using LocalAutomation.Core;
-using ExecutionTaskStatus = LocalAutomation.Core.ExecutionTaskStatus;
+using RuntimeExecutionRunOutcome = LocalAutomation.Runtime.RunOutcome;
+using RuntimeExecutionPlanTask = LocalAutomation.Runtime.ExecutionPlanTask;
+using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
+using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
+using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -14,12 +18,12 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
 {
     private bool _isSelected;
     private ObservableCollection<LogEntryViewModel> _selectedLogEntries = new();
-    private readonly Dictionary<ExecutionTaskId, ExecutionTaskViewModel> _tasksById = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel> _tasksById = new();
 
     /// <summary>
     /// Creates a workspace tab with the provided graph and optional execution session.
     /// </summary>
-    public RuntimeWorkspaceTabViewModel(string id, string title, string subtitle, RuntimeWorkspaceTabKind kind, RuntimeWorkspaceTabPresentation presentation, ExecutionGraphViewModel graph, ExecutionSession? session = null)
+    public RuntimeWorkspaceTabViewModel(string id, string title, string subtitle, RuntimeWorkspaceTabKind kind, RuntimeWorkspaceTabPresentation presentation, ExecutionGraphViewModel graph, RuntimeExecutionSession? session = null)
     {
         Id = id ?? throw new ArgumentNullException(nameof(id));
         Title = title ?? throw new ArgumentNullException(nameof(title));
@@ -67,12 +71,12 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// <summary>
     /// Gets the backing execution session when this tab represents a live or completed run.
     /// </summary>
-    public ExecutionSession? Session { get; }
+    public RuntimeExecutionSession? Session { get; }
 
     /// <summary>
     /// Gets the shared task view models for this tab, keyed by execution task id.
     /// </summary>
-    public IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskViewModel> TasksById => _tasksById;
+    public IReadOnlyDictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel> TasksById => _tasksById;
 
     /// <summary>
     /// Gets the log entries currently shown in the details pane for the selected graph node or current tab-wide log view.
@@ -165,30 +169,30 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// <summary>
     /// Gets whether the status marker should show the success accent.
     /// </summary>
-    public bool IsSucceededStatus => Session?.IsRunning != true && Session?.Outcome == RunOutcome.Succeeded;
+    public bool IsSucceededStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionRunOutcome.Succeeded;
 
     /// <summary>
     /// Gets whether the status marker should show the failure accent.
     /// </summary>
-    public bool IsFailedStatus => Session?.IsRunning != true && Session?.Outcome == RunOutcome.Failed;
+    public bool IsFailedStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionRunOutcome.Failed;
 
     /// <summary>
      /// Gets whether the status marker should show the cancelled accent.
      /// </summary>
-    public bool IsCancelledStatus => Session?.IsRunning != true && Session?.Outcome == RunOutcome.Cancelled;
+    public bool IsCancelledStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionRunOutcome.Cancelled;
 
     /// <summary>
     /// Gets the semantic status rendered by the shared status-indicator control.
     /// </summary>
-    public ExecutionTaskStatus SessionStatusForIndicator => Session?.IsRunning == true
-        ? ExecutionTaskStatus.Running
-        : Session?.Outcome == RunOutcome.Succeeded
-            ? ExecutionTaskStatus.Completed
-            : Session?.Outcome == RunOutcome.Failed
-                ? ExecutionTaskStatus.Failed
-                : Session?.Outcome == RunOutcome.Cancelled
-                    ? ExecutionTaskStatus.Cancelled
-                    : ExecutionTaskStatus.Pending;
+    public RuntimeExecutionTaskStatus SessionStatusForIndicator => Session?.IsRunning == true
+        ? RuntimeExecutionTaskStatus.Running
+        : Session?.Outcome == RuntimeExecutionRunOutcome.Succeeded
+            ? RuntimeExecutionTaskStatus.Completed
+            : Session?.Outcome == RuntimeExecutionRunOutcome.Failed
+                ? RuntimeExecutionTaskStatus.Failed
+                : Session?.Outcome == RuntimeExecutionRunOutcome.Cancelled
+                    ? RuntimeExecutionTaskStatus.Cancelled
+                    : RuntimeExecutionTaskStatus.Pending;
 
     /// <summary>
     /// Gets the execution duration text shown in the selected-tab header.
@@ -227,7 +231,7 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// <summary>
     /// Replaces the shared task view-model registry for this execution tab from the current plan snapshot.
     /// </summary>
-    public void SetTasks(IEnumerable<ExecutionPlanTask> tasks)
+    public void SetTasks(IEnumerable<RuntimeExecutionPlanTask> tasks)
     {
         foreach (ExecutionTaskViewModel existingTask in _tasksById.Values)
         {
@@ -235,11 +239,11 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
         }
 
         _tasksById.Clear();
-        List<ExecutionPlanTask> materializedTasks = tasks?.ToList() ?? new List<ExecutionPlanTask>();
-        Dictionary<ExecutionTaskId, ExecutionTaskId?> parentIds = materializedTasks.ToDictionary(task => task.Id, task => task.ParentId);
-        foreach (ExecutionPlanTask task in materializedTasks)
+        List<RuntimeExecutionPlanTask> materializedTasks = tasks?.ToList() ?? new List<RuntimeExecutionPlanTask>();
+        Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> parentIds = materializedTasks.ToDictionary(task => task.Id, task => task.ParentId);
+        foreach (RuntimeExecutionPlanTask task in materializedTasks)
         {
-            HashSet<ExecutionTaskId> subtreeTaskIds = BuildSubtreeTaskIds(task.Id, parentIds);
+            HashSet<RuntimeExecutionTaskId> subtreeTaskIds = BuildSubtreeTaskIds(task.Id, parentIds);
             _tasksById[task.Id] = new ExecutionTaskViewModel(task, Session, Session?.GetTaskRuntimeState(task.Id), subtreeTaskIds);
         }
     }
@@ -247,7 +251,7 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// <summary>
     /// Returns the shared task view model for one execution task id when this tab currently knows about it.
     /// </summary>
-    public ExecutionTaskViewModel? GetTask(ExecutionTaskId taskId)
+    public ExecutionTaskViewModel? GetTask(RuntimeExecutionTaskId taskId)
     {
         return _tasksById.TryGetValue(taskId, out ExecutionTaskViewModel? task) ? task : null;
     }
@@ -279,17 +283,17 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// <summary>
     /// Builds the full descendant-inclusive subtree id set for one task from the current plan hierarchy.
     /// </summary>
-    private static HashSet<ExecutionTaskId> BuildSubtreeTaskIds(ExecutionTaskId rootTaskId, IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskId?> parentIds)
+    private static HashSet<RuntimeExecutionTaskId> BuildSubtreeTaskIds(RuntimeExecutionTaskId rootTaskId, IReadOnlyDictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> parentIds)
     {
-        HashSet<ExecutionTaskId> subtreeTaskIds = new() { rootTaskId };
-        foreach ((ExecutionTaskId taskId, ExecutionTaskId? parentId) in parentIds)
+        HashSet<RuntimeExecutionTaskId> subtreeTaskIds = new() { rootTaskId };
+        foreach ((RuntimeExecutionTaskId taskId, RuntimeExecutionTaskId? parentId) in parentIds)
         {
             if (taskId == rootTaskId)
             {
                 continue;
             }
 
-            ExecutionTaskId? currentParentId = parentId;
+            RuntimeExecutionTaskId? currentParentId = parentId;
             while (currentParentId != null)
             {
                 if (currentParentId.Value == rootTaskId)
@@ -298,7 +302,7 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
                     break;
                 }
 
-                currentParentId = parentIds.TryGetValue(currentParentId.Value, out ExecutionTaskId? nextParentId)
+                currentParentId = parentIds.TryGetValue(currentParentId.Value, out RuntimeExecutionTaskId? nextParentId)
                     ? nextParentId
                     : null;
             }

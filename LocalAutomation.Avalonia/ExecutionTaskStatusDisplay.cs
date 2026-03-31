@@ -1,16 +1,13 @@
 using System;
+using LocalAutomation.Runtime;
 
-namespace LocalAutomation.Core;
+namespace LocalAutomation.Avalonia;
 
 /// <summary>
-/// Provides the shared user-facing text for execution task statuses so graph nodes, indicators, and other UI surfaces
-/// do not duplicate label mappings.
+/// Provides shared user-facing text for execution task statuses inside Avalonia surfaces.
 /// </summary>
 public static class ExecutionTaskStatusDisplay
 {
-    /// <summary>
-    /// Returns the shared title-case label for one execution task status.
-    /// </summary>
     public static string GetLabel(ExecutionTaskStatus status)
     {
         return status switch
@@ -27,9 +24,6 @@ public static class ExecutionTaskStatusDisplay
         };
     }
 
-    /// <summary>
-    /// Returns the shared uppercase label for compact graph badges.
-    /// </summary>
     public static string GetUpperLabel(ExecutionTaskStatus status)
     {
         return GetLabel(status).ToUpperInvariant();

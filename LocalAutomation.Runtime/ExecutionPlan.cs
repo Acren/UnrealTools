@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using LocalAutomation.Core;
 
-namespace LocalAutomation.Core;
+namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Represents the previewable execution DAG for an operation, including tasks, dependencies, and lightweight
-/// validation helpers for UI and runtime consumers.
+/// Represents the authored execution DAG for an operation, including task hierarchy, dependencies, and executable task
+/// callbacks.
 /// </summary>
 public sealed class ExecutionPlan
 {

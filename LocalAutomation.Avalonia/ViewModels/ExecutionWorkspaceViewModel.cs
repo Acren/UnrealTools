@@ -6,7 +6,15 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using LocalAutomation.Core;
+using LocalAutomation.Runtime;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
+using RuntimeExecutionPlan = LocalAutomation.Runtime.ExecutionPlan;
+using RuntimeExecutionPlanTask = LocalAutomation.Runtime.ExecutionPlanTask;
+using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
+using RuntimeExecutionRunOutcome = LocalAutomation.Runtime.RunOutcome;
+using RuntimeExecutionSessionId = LocalAutomation.Runtime.ExecutionSessionId;
+using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
+using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -28,7 +36,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private readonly DispatcherTimer _runtimeDurationTimer;
     private readonly Dictionary<RuntimeWorkspaceTabViewModel, Queue<LogEntryViewModel>> _pendingLogEntries = new();
     private readonly Dictionary<RuntimeWorkspaceTabViewModel, ILogStream> _attachedLogStreams = new();
-    private readonly Dictionary<RuntimeWorkspaceTabViewModel, ExecutionSession> _attachedSessions = new();
+    private readonly Dictionary<RuntimeWorkspaceTabViewModel, RuntimeExecutionSession> _attachedSessions = new();
     private bool _isPendingLogFlushStartQueued;
     private RuntimeWorkspaceTabViewModel? _observedWorkspaceTab;
     private RuntimeWorkspaceTabViewModel? _selectedRuntimeTab;
@@ -129,12 +137,12 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 return $"Running {SelectedRuntimeTab.Session.OperationName} on {SelectedRuntimeTab.Session.TargetName}";
             }
 
-            if (SelectedRuntimeTab.Session?.Outcome == RunOutcome.Succeeded)
+            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionRunOutcome.Succeeded)
             {
                 return $"{SelectedRuntimeTab.Session.OperationName} succeeded for {SelectedRuntimeTab.Session.TargetName}";
             }
 
-            if (SelectedRuntimeTab.Session?.Outcome == RunOutcome.Cancelled)
+            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionRunOutcome.Cancelled)
             {
                 return $"{SelectedRuntimeTab.Session.OperationName} was cancelled for {SelectedRuntimeTab.Session.TargetName}";
             }
@@ -203,13 +211,13 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// <summary>
     /// Gets the shared metrics shown in the selected runtime-tab header.
     /// </summary>
-    public ExecutionTaskMetrics SelectedRuntimeMetrics
+    public RuntimeExecutionTaskMetrics SelectedRuntimeMetrics
     {
         get
         {
-            if (SelectedRuntimeTab?.Session is not ExecutionSession session)
+            if (SelectedRuntimeTab?.Session is not RuntimeExecutionSession session)
             {
-                return ExecutionTaskMetrics.Empty;
+                return RuntimeExecutionTaskMetrics.Empty;
             }
 
             return SelectedTask?.Metrics ?? session.GetTaskMetrics(SelectedRuntimeTab.Graph.SelectedTaskId);
@@ -224,7 +232,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// <summary>
     /// Refreshes the permanent plan-preview tab from the latest selected target, operation, and option values.
     /// </summary>
-    public void UpdatePlanPreview(ExecutionPlan? plan)
+    public void UpdatePlanPreview(RuntimeExecutionPlan? plan)
     {
         /* Trace the workspace-level preview update separately from shell refresh so the timing tree shows whether the
            cost sits in the plan graph rebuild or elsewhere in the surrounding view-model refresh. */
@@ -233,7 +241,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
 
         RuntimeWorkspaceTabViewModel planTab = RuntimeTabs.First(tab => tab.Kind == RuntimeWorkspaceTabKind.PlanPreview);
-        planTab.SetTasks(plan?.Tasks ?? Array.Empty<ExecutionPlanTask>());
+        planTab.SetTasks(plan?.Tasks ?? Array.Empty<RuntimeExecutionPlanTask>());
         planTab.Graph.SetPlan(plan);
         RebuildTabSelectedLogEntries(planTab);
 
@@ -246,7 +254,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// <summary>
     /// Adds a newly started execution session to the workspace and begins mirroring its plan, task states, and logs.
     /// </summary>
-    public void AttachExecutionSession(ExecutionSession session)
+    public void AttachExecutionSession(RuntimeExecutionSession session)
     {
         if (session == null)
         {
@@ -262,7 +270,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             presentation: new RuntimeWorkspaceTabPresentation(showGraph: true, showLog: true, showSubtitle: true, showStatusMarker: true, showRuntimeMetrics: true),
             graph: graph,
             session: session);
-        runtimeTab.SetTasks(session.Plan?.Tasks ?? Array.Empty<ExecutionPlanTask>());
+        runtimeTab.SetTasks(session.Plan?.Tasks ?? Array.Empty<RuntimeExecutionPlanTask>());
 
         graph.AttachTasks(runtimeTab.TasksById);
         graph.SetPlan(session.Plan);
@@ -326,7 +334,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         if (SelectedRuntimeTab.Session != null)
         {
-            ExecutionTaskId? selectedTaskId = SelectedRuntimeTab.Graph.SelectedTaskId;
+            RuntimeExecutionTaskId? selectedTaskId = SelectedRuntimeTab.Graph.SelectedTaskId;
             if (selectedTaskId == null)
             {
                 SelectedRuntimeTab.Session.LogStream.Clear();
@@ -386,7 +394,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// </summary>
     private async Task WatchExecutionCompletionAsync(RuntimeWorkspaceTabViewModel runtimeTab)
     {
-        ExecutionSession session = runtimeTab.Session!;
+        RuntimeExecutionSession session = runtimeTab.Session!;
         while (session.IsRunning)
         {
             await Task.Delay(100);
@@ -401,11 +409,11 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 RaiseSelectionStateChanged();
             }
 
-            if (session.Outcome == RunOutcome.Succeeded)
+            if (session.Outcome == RuntimeExecutionRunOutcome.Succeeded)
             {
                 _setStatus($"{session.OperationName} succeeded for {session.TargetName}.");
             }
-            else if (session.Outcome == RunOutcome.Cancelled)
+            else if (session.Outcome == RuntimeExecutionRunOutcome.Cancelled)
             {
                 _setStatus($"{session.OperationName} was cancelled for {session.TargetName}.");
             }
@@ -457,7 +465,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// Attaches the aggregate log stream for one execution session. Task and subtree views are rebuilt by filtering the
     /// session-wide stream so hierarchical selections stay correct even when descendant tasks are created dynamically.
     /// </summary>
-    private void AttachSessionLogs(RuntimeWorkspaceTabViewModel runtimeTab, ExecutionSession session)
+    private void AttachSessionLogs(RuntimeWorkspaceTabViewModel runtimeTab, RuntimeExecutionSession session)
     {
         AttachLogStream(runtimeTab, session.LogStream);
 
@@ -465,7 +473,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
            trigger a UI re-read rather than pushing cached metric snapshots around. */
         session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
         {
-            if (entry.TaskId is ExecutionTaskId taskId)
+            if (RuntimeExecutionTaskId.FromNullable(entry.TaskId) is RuntimeExecutionTaskId taskId)
             {
                 runtimeTab.Graph.NotifyTaskStateChanged(taskId);
             }
@@ -527,16 +535,16 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             return;
         }
 
-        IReadOnlyList<ExecutionTaskId> selectedTaskIds = runtimeTab.Graph.GetSelectedLogTaskIds();
+        IReadOnlyList<RuntimeExecutionTaskId> selectedTaskIds = runtimeTab.Graph.GetSelectedLogTaskIds();
         if (selectedTaskIds.Count == 0)
         {
             runtimeTab.SetSelectedLogEntries(runtimeTab.Session.LogStream.Entries.Select(CreateLogEntryViewModel));
             return;
         }
 
-        HashSet<ExecutionTaskId> selectedTaskIdSet = new(selectedTaskIds);
+        HashSet<RuntimeExecutionTaskId> selectedTaskIdSet = new(selectedTaskIds);
         runtimeTab.SetSelectedLogEntries(runtimeTab.Session.LogStream.Entries
-            .Where(entry => entry.TaskId is ExecutionTaskId taskId && selectedTaskIdSet.Contains(taskId))
+            .Where(entry => RuntimeExecutionTaskId.FromNullable(entry.TaskId) is RuntimeExecutionTaskId taskId && selectedTaskIdSet.Contains(taskId))
             .Select(CreateLogEntryViewModel));
     }
 

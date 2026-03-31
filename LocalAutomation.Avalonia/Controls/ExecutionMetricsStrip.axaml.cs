@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
-using LocalAutomation.Core;
+using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
 
 namespace LocalAutomation.Avalonia.Controls;
 
@@ -13,8 +13,8 @@ public partial class ExecutionMetricsStrip : UserControl
     /// <summary>
     /// Identifies the raw execution metrics bound into the shared strip.
     /// </summary>
-    public static readonly StyledProperty<ExecutionTaskMetrics> MetricsProperty =
-        AvaloniaProperty.Register<ExecutionMetricsStrip, ExecutionTaskMetrics>(nameof(Metrics));
+    public static readonly StyledProperty<RuntimeExecutionTaskMetrics> MetricsProperty =
+        AvaloniaProperty.Register<ExecutionMetricsStrip, RuntimeExecutionTaskMetrics>(nameof(Metrics));
 
     /// <summary>
     /// Identifies the raw duration derived from the metrics.
@@ -58,7 +58,7 @@ public partial class ExecutionMetricsStrip : UserControl
     /// <summary>
     /// Gets or sets the raw execution metrics displayed by the strip.
     /// </summary>
-    public ExecutionTaskMetrics Metrics
+    public RuntimeExecutionTaskMetrics Metrics
     {
         get => GetValue(MetricsProperty);
         set => SetValue(MetricsProperty, value);
@@ -116,7 +116,7 @@ public partial class ExecutionMetricsStrip : UserControl
     {
         base.OnPropertyChanged(change);
 
-        if (change.Property == MetricsProperty && change.NewValue is ExecutionTaskMetrics metrics)
+        if (change.Property == MetricsProperty && change.NewValue is RuntimeExecutionTaskMetrics metrics)
         {
             ApplyMetrics(metrics);
         }
@@ -133,7 +133,7 @@ public partial class ExecutionMetricsStrip : UserControl
     /// <summary>
     /// Derives all display-facing pill values from one raw metrics object so callers cannot pass inconsistent booleans.
     /// </summary>
-    private void ApplyMetrics(ExecutionTaskMetrics metrics)
+    private void ApplyMetrics(RuntimeExecutionTaskMetrics metrics)
     {
         Duration = metrics.Duration;
         WarningCount = metrics.WarningCount;

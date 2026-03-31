@@ -93,6 +93,16 @@ public sealed class ExecutionTaskBuilder
     }
 
     /// <summary>
+    /// Declares that this task's subtree is provided by another operation whose plan the framework should expand.
+    /// </summary>
+    public ExecutionTaskBuilder ExpandChildOperation<TOperation>(Func<OperationParameters> createParameters)
+        where TOperation : Operation, new()
+    {
+        _owner.AttachChildOperation(_definition, typeof(TOperation), createParameters);
+        return this;
+    }
+
+    /// <summary>
     /// Attaches a parameterless async callback to the task.
     /// </summary>
     public ExecutionTaskBuilder Then(Func<Task> executeAsync)
@@ -111,21 +121,11 @@ public sealed class ExecutionTaskBuilder
     }
 
     /// <summary>
-    /// Declares one sequential sibling task under the same parent as this task and automatically depends on this task.
-    /// </summary>
+     /// Declares one sequential sibling task under the same parent as this task and automatically depends on this task.
+     /// </summary>
     public ExecutionTaskBuilder Task(string title, string? description = null)
     {
         ExecutionTaskBuilder nextTask = _owner.Task(title, description, _parent);
-        nextTask.After(Handle);
-        return nextTask;
-    }
-
-    /// <summary>
-    /// Declares one sequential sibling task with an explicit stable identifier under the same parent as this task.
-    /// </summary>
-    public ExecutionTaskBuilder Task(LocalAutomation.Core.ExecutionTaskId id, string title, string? description = null)
-    {
-        ExecutionTaskBuilder nextTask = _owner.Task(id, title, description, _parent);
         nextTask.After(Handle);
         return nextTask;
     }
@@ -141,6 +141,15 @@ public sealed class ExecutionTaskBuilder
         }
 
         build(new ExecutionTaskScopeBuilder(_owner, Handle));
+        return this;
+    }
+
+    /// <summary>
+    /// Imports the tasks from one authored sub-plan beneath this task.
+    /// </summary>
+    public ExecutionTaskBuilder Import(ExecutionPlan plan)
+    {
+        _owner.ImportPlan(plan, Handle);
         return this;
     }
 }

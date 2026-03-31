@@ -20,7 +20,7 @@ public static class BundledExtensionLoader
     private static readonly HashSet<string> SharedAssemblyNames = new(StringComparer.OrdinalIgnoreCase)
     {
         typeof(IExtensionModule).Assembly.GetName().Name ?? string.Empty,
-        typeof(LocalAutomation.Core.ExecutionSession).Assembly.GetName().Name ?? string.Empty,
+        typeof(LocalAutomation.Runtime.ExecutionSession).Assembly.GetName().Name ?? string.Empty,
         typeof(Microsoft.Extensions.Logging.ILogger).Assembly.GetName().Name ?? string.Empty,
         typeof(Newtonsoft.Json.JsonConvert).Assembly.GetName().Name ?? string.Empty,
         // Property-grid adapters exchange PropertyModels collection/editor types with the host UI. These must come

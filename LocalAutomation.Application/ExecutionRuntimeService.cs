@@ -4,6 +4,9 @@ using LocalAutomation.Core;
 using LocalAutomation.Runtime;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
+using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
+using RuntimeExecutionRunOutcome = LocalAutomation.Runtime.RunOutcome;
 
 namespace LocalAutomation.Application;
 
@@ -23,7 +26,7 @@ public sealed class ExecutionRuntimeService
      /// Starts a shared execution session for the provided runtime operation. Callers can supply a session-created hook
      /// so UI or host services attach listeners before execution begins and early task-state transitions are not lost.
      /// </summary>
-    public LocalAutomation.Core.ExecutionSession StartExecution(Operation operation, OperationParameters parameters, Action<ExecutionSession>? onSessionCreated = null)
+    public LocalAutomation.Runtime.ExecutionSession StartExecution(Operation operation, OperationParameters parameters, Action<LocalAutomation.Runtime.ExecutionSession>? onSessionCreated = null)
     {
         if (operation == null)
         {
@@ -32,13 +35,13 @@ public sealed class ExecutionRuntimeService
 
         Runner runner = new(operation, parameters);
         BufferedLogStream logStream = new();
-        ExecutionPlan? plan = operation.BuildExecutionPlan(parameters);
+        LocalAutomation.Runtime.ExecutionPlan? plan = operation.BuildExecutionPlan(parameters);
         ILogger previousLogger = TryGetCurrentLogger();
-        ExecutionSession? session = null;
+        LocalAutomation.Runtime.ExecutionSession? session = null;
         ForwardingLogger forwardingLogger = new(() => session!, previousLogger);
         ApplicationLogger.Logger = forwardingLogger;
 
-        session = new ExecutionSession(logStream, cancelAsync: async () =>
+        session = new LocalAutomation.Runtime.ExecutionSession(logStream, cancelAsync: async () =>
         {
             if (runner.IsRunning)
             {
@@ -75,7 +78,7 @@ public sealed class ExecutionRuntimeService
     /// <summary>
     /// Runs the current runtime runner asynchronously and updates the shared execution session as it completes.
     /// </summary>
-    private static async Task RunAsync(Runner runner, ExecutionSession session, ILogger previousLogger)
+    private static async Task RunAsync(Runner runner, LocalAutomation.Runtime.ExecutionSession session, ILogger previousLogger)
     {
         try
         {
@@ -84,18 +87,18 @@ public sealed class ExecutionRuntimeService
         }
         catch (OperationCanceledException)
         {
-            session.Outcome = RunOutcome.Cancelled;
+            session.Outcome = RuntimeExecutionRunOutcome.Cancelled;
         }
         catch (Exception ex)
         {
             session.AddLogEntry(new LogEntry
             {
-                SessionId = session.Id,
+                SessionId = session.Id.Value,
                 Message = ex.ToString(),
                 Verbosity = LogLevel.Error
             });
 
-            session.Outcome = RunOutcome.Failed;
+            session.Outcome = RuntimeExecutionRunOutcome.Failed;
         }
         finally
         {
@@ -122,16 +125,16 @@ public sealed class ExecutionRuntimeService
     /// <summary>
     /// Forwards shared logger output into the execution session's buffered log stream.
     /// </summary>
-    private sealed class ForwardingLogger : ILogger, IExecutionTaskLoggerFactory, IExecutionTaskStateSink, IExecutionTaskScope
+    private sealed class ForwardingLogger : ILogger, LocalAutomation.Runtime.IExecutionTaskLoggerFactory, LocalAutomation.Runtime.IExecutionTaskStateSink, LocalAutomation.Runtime.IExecutionTaskScope
     {
-        private readonly Func<ExecutionSession> _getSession;
+        private readonly Func<LocalAutomation.Runtime.ExecutionSession> _getSession;
         private readonly ILogger _fallbackLogger;
-        private readonly ExecutionTaskId? _taskId;
+        private readonly RuntimeExecutionTaskId? _taskId;
 
         /// <summary>
         /// Creates a forwarding logger around the provided buffered log stream.
         /// </summary>
-        public ForwardingLogger(Func<ExecutionSession> getSession, ILogger fallbackLogger, ExecutionTaskId? taskId = null)
+        public ForwardingLogger(Func<LocalAutomation.Runtime.ExecutionSession> getSession, ILogger fallbackLogger, RuntimeExecutionTaskId? taskId = null)
         {
             _getSession = getSession;
             _fallbackLogger = fallbackLogger;
@@ -149,11 +152,11 @@ public sealed class ExecutionRuntimeService
                 message += Environment.NewLine + exception;
             }
 
-            ExecutionSession session = _getSession();
+            LocalAutomation.Runtime.ExecutionSession session = _getSession();
             session.AddLogEntry(new LogEntry
             {
-                SessionId = session.Id,
-                TaskId = _taskId,
+                SessionId = session.Id.Value,
+                TaskId = _taskId?.Value,
                 Message = message,
                 Verbosity = logLevel
             });
@@ -164,7 +167,7 @@ public sealed class ExecutionRuntimeService
         /// <summary>
         /// Gets the current task scope carried by this logger so nested operations can inherit the same task identity.
         /// </summary>
-        public ExecutionTaskId? CurrentTaskId => _taskId;
+        public RuntimeExecutionTaskId? CurrentTaskId => _taskId;
 
         /// <summary>
         /// Indicates that all log levels are enabled for the buffered execution stream.
@@ -185,7 +188,7 @@ public sealed class ExecutionRuntimeService
         /// <summary>
         /// Creates a child logger that attributes all output to the provided execution task.
         /// </summary>
-        public ILogger CreateTaskLogger(ExecutionTaskId taskId)
+        public ILogger CreateTaskLogger(RuntimeExecutionTaskId taskId)
         {
             return new ForwardingLogger(_getSession, _fallbackLogger, taskId);
         }
@@ -194,7 +197,7 @@ public sealed class ExecutionRuntimeService
         /// Forwards explicit task-state transitions into the current execution session so graph views can react without
         /// parsing human-readable log lines.
         /// </summary>
-        public void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null)
+        public void SetTaskStatus(RuntimeExecutionTaskId taskId, RuntimeExecutionTaskStatus status, string? statusReason = null)
         {
             _getSession().SetTaskStatus(taskId, status, statusReason);
         }

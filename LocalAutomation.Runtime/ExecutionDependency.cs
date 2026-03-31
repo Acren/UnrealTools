@@ -1,4 +1,6 @@
-namespace LocalAutomation.Core;
+using LocalAutomation.Core;
+
+namespace LocalAutomation.Runtime;
 
 /// <summary>
 /// Represents one dependency inside an execution plan DAG.

@@ -3,6 +3,12 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using Avalonia.Threading;
 using LocalAutomation.Core;
+using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
+using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
+using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
+using RuntimeExecutionPlanTask = LocalAutomation.Runtime.ExecutionPlanTask;
+using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
+using RuntimeExecutionTaskRuntimeState = LocalAutomation.Runtime.ExecutionTaskRuntimeState;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -12,20 +18,20 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
 {
-    private readonly ExecutionSession? _session;
-    private readonly ExecutionTaskRuntimeState? _runtimeState;
-    private readonly IReadOnlySet<ExecutionTaskId> _subtreeTaskIds;
+    private readonly RuntimeExecutionSession? _session;
+    private readonly RuntimeExecutionTaskRuntimeState? _runtimeState;
+    private readonly IReadOnlySet<RuntimeExecutionTaskId> _subtreeTaskIds;
     private bool _isDisposed;
 
     /// <summary>
      /// Creates a shared Avalonia task view model from one execution-task model.
      /// </summary>
-    public ExecutionTaskViewModel(ExecutionPlanTask task, ExecutionSession? session = null, ExecutionTaskRuntimeState? runtimeState = null, IReadOnlySet<ExecutionTaskId>? subtreeTaskIds = null)
+    public ExecutionTaskViewModel(RuntimeExecutionPlanTask task, RuntimeExecutionSession? session = null, RuntimeExecutionTaskRuntimeState? runtimeState = null, IReadOnlySet<RuntimeExecutionTaskId>? subtreeTaskIds = null)
     {
         Task = task ?? throw new ArgumentNullException(nameof(task));
         _session = session;
         _runtimeState = runtimeState;
-        _subtreeTaskIds = subtreeTaskIds ?? new HashSet<ExecutionTaskId> { task.Id };
+        _subtreeTaskIds = subtreeTaskIds ?? new HashSet<RuntimeExecutionTaskId> { task.Id };
 
         if (_runtimeState != null)
         {
@@ -41,12 +47,12 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Gets the underlying immutable execution-task model.
     /// </summary>
-    public ExecutionPlanTask Task { get; }
+    public RuntimeExecutionPlanTask Task { get; }
 
     /// <summary>
     /// Gets the stable task identifier used across graph, logs, and runtime state.
     /// </summary>
-    public ExecutionTaskId Id => Task.Id;
+    public RuntimeExecutionTaskId Id => Task.Id;
 
     /// <summary>
     /// Gets the short display title for the task.
@@ -61,14 +67,14 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Gets the parent task identifier when this task participates in the execution hierarchy.
     /// </summary>
-    public ExecutionTaskId? ParentId => Task.ParentId;
+    public RuntimeExecutionTaskId? ParentId => Task.ParentId;
 
     /// <summary>
     /// Gets the raw current task status.
     /// </summary>
-    public ExecutionTaskStatus Status
+    public RuntimeExecutionTaskStatus Status
     {
-        get => _runtimeState?.Status ?? Task.Status;
+        get => _runtimeState?.Status ?? (Task.Enabled ? RuntimeExecutionTaskStatus.Planned : RuntimeExecutionTaskStatus.Disabled);
     }
 
     /// <summary>
@@ -76,15 +82,15 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// </summary>
     public string StatusReason
     {
-        get => _runtimeState?.StatusReason ?? Task.StatusReason;
+        get => _runtimeState?.StatusReason ?? (Task.Enabled ? string.Empty : Task.DisabledReason);
     }
 
     /// <summary>
     /// Gets the raw runtime metrics for this task or task subtree.
     /// </summary>
-    public ExecutionTaskMetrics Metrics
+    public RuntimeExecutionTaskMetrics Metrics
     {
-        get => _session?.GetTaskMetrics(Task.Id) ?? ExecutionTaskMetrics.Empty;
+        get => _session?.GetTaskMetrics(Task.Id) ?? RuntimeExecutionTaskMetrics.Empty;
     }
 
     /// <summary>
@@ -134,20 +140,20 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
                 return;
             }
 
-            if (string.Equals(e.PropertyName, nameof(ExecutionTaskRuntimeState.Status), StringComparison.Ordinal))
+            if (string.Equals(e.PropertyName, nameof(RuntimeExecutionTaskRuntimeState.Status), StringComparison.Ordinal))
             {
                 RaisePropertyChanged(nameof(Status));
                 return;
             }
 
-            if (string.Equals(e.PropertyName, nameof(ExecutionTaskRuntimeState.StatusReason), StringComparison.Ordinal))
+            if (string.Equals(e.PropertyName, nameof(RuntimeExecutionTaskRuntimeState.StatusReason), StringComparison.Ordinal))
             {
                 RaisePropertyChanged(nameof(StatusReason));
                 return;
             }
 
-            if (string.Equals(e.PropertyName, nameof(ExecutionTaskRuntimeState.StartedAt), StringComparison.Ordinal) ||
-                string.Equals(e.PropertyName, nameof(ExecutionTaskRuntimeState.FinishedAt), StringComparison.Ordinal))
+            if (string.Equals(e.PropertyName, nameof(RuntimeExecutionTaskRuntimeState.StartedAt), StringComparison.Ordinal) ||
+                string.Equals(e.PropertyName, nameof(RuntimeExecutionTaskRuntimeState.FinishedAt), StringComparison.Ordinal))
             {
                 RaisePropertyChanged(nameof(Metrics));
             }
@@ -160,7 +166,7 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void HandleSessionLogEntryAdded(LogEntry entry)
     {
-        if (_runtimeState == null || entry.TaskId is not ExecutionTaskId taskId || !_subtreeTaskIds.Contains(taskId))
+        if (_runtimeState == null || RuntimeExecutionTaskId.FromNullable(entry.TaskId) is not RuntimeExecutionTaskId taskId || !_subtreeTaskIds.Contains(taskId))
         {
             return;
         }

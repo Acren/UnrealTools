@@ -135,7 +135,7 @@ public sealed class OperationRuntimeService
     /// Builds the previewable execution plan for the provided operation and parameter state when the operation can
     /// describe one.
     /// </summary>
-    public ExecutionPlan? BuildExecutionPlan(Operation? operation, OperationParameters parameters)
+    public LocalAutomation.Runtime.ExecutionPlan? BuildExecutionPlan(Operation? operation, OperationParameters parameters)
     {
         if (operation == null)
         {

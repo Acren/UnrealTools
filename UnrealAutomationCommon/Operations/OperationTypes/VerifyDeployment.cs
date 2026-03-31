@@ -15,34 +15,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class VerifyDeployment : UnrealOperation<Plugin>
     {
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
-        {
-            Plugin plugin = GetRequiredTarget(UnrealOperationParameters);
-
-            Logger.LogInformation($"Versions: {string.Join(", ", UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions.Select(x => x.MajorMinorString)) }");
-            foreach (EngineVersion engineVersion in UnrealOperationParameters.GetOptions<EngineVersionOptions>().EnabledVersions)
-            {
-                Engine? engine = EngineFinder.GetEngineInstall(engineVersion);
-                if (engine == null)
-                {
-                    throw new Exception("Engine not found");
-                }
-                global::LocalAutomation.Runtime.OperationResult result = await VerifyForEngine(engine, token);
-                if (result.Outcome != global::LocalAutomation.Core.RunOutcome.Succeeded)
-                {
-                    // Failure
-                    return result;
-                }
-            }
-
-            return global::LocalAutomation.Runtime.OperationResult.Succeeded();
-        }
-
         /// <summary>
-        /// Builds a preview graph for deployment verification with one per-engine verification branch and explicit test
-        /// nodes that reflect the current automation options.
+        /// Describes the deployment-verification subtree beneath the framework-owned root task.
         /// </summary>
-        public override LocalAutomation.Core.ExecutionPlan? BuildExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
         {
             UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             Plugin plugin = GetRequiredTarget(typedParameters);
@@ -51,8 +27,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 ? enabledVersions.ToList()
                 : new List<EngineVersion> { plugin.EngineInstance.Version };
             AutomationOptions automationOptions = typedParameters.GetOptions<AutomationOptions>();
-            global::LocalAutomation.Runtime.ExecutionPlanBuilder plan = new(OperationName, global::LocalAutomation.Core.ExecutionIdentifierFactory.CreatePlanId(nameof(VerifyDeployment), plugin.Name));
-            global::LocalAutomation.Runtime.ExecutionTaskBuilder root = plan.Task(OperationName, plugin.DisplayName);
             root.Children(branches =>
             {
                 foreach (EngineVersion engineVersion in targetVersions)
@@ -75,8 +49,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 .When(automationOptions.RunTests, "Disabled because Run Tests is off"));
                 }
             });
-
-            return plan.BuildPlan();
         }
 
         /// <summary>

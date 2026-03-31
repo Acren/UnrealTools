@@ -9,6 +9,8 @@ using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
+using RuntimeExecutionPlan = LocalAutomation.Runtime.ExecutionPlan;
+using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -255,7 +257,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// Gets the current previewable execution plan for the selected target, operation, and options.
     /// </summary>
-    public ExecutionPlan? VisibleExecutionPlan => _services.OperationSession.GetExecutionPlan(_currentOperation, _parameterSession.RawValue);
+    public RuntimeExecutionPlan? VisibleExecutionPlan => _services.OperationSession.GetExecutionPlan(_currentOperation, _parameterSession.RawValue);
 
     /// <summary>
     /// Flushes any queued session and target-setting saves immediately so the most recent UI edits are persisted before
@@ -315,7 +317,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
         // Attach the execution workspace and shared session registry before the runner starts so early task-state
         // transitions, especially the initial Running state, are not missed by the UI.
-        ExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _parameterSession.RawValue, session =>
+        RuntimeExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _parameterSession.RawValue, session =>
         {
             ExecutionWorkspace.AttachExecutionSession(session);
             _services.Execution.AddSession(session);
@@ -683,7 +685,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         PerformanceTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
         PerformanceTelemetry.SetTag(activity, "target.present", SelectedTarget?.Target != null);
 
-        ExecutionPlan? plan = VisibleExecutionPlan;
+        RuntimeExecutionPlan? plan = VisibleExecutionPlan;
         PerformanceTelemetry.SetTag(activity, "plan.has_result", plan != null);
         PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
         ExecutionWorkspace.UpdatePlanPreview(plan);

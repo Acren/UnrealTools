@@ -19,8 +19,8 @@ public sealed class ExecutionTaskScopeBuilder
     }
 
     /// <summary>
-    /// Declares the next sibling task in this scope.
-    /// </summary>
+     /// Declares the next sibling task in this scope.
+     /// </summary>
     public ExecutionTaskBuilder Task(string title, string? description = null)
     {
         ExecutionTaskBuilder task = _owner.Task(title, description, _parent);
@@ -33,18 +33,4 @@ public sealed class ExecutionTaskScopeBuilder
         return task;
     }
 
-    /// <summary>
-    /// Declares the next sibling task in this scope with an explicit stable identifier.
-    /// </summary>
-    public ExecutionTaskBuilder Task(ExecutionTaskId id, string title, string? description = null)
-    {
-        ExecutionTaskBuilder task = _owner.Task(id, title, description, _parent);
-        if (_lastTask != null)
-        {
-            task.After(_lastTask.Handle);
-        }
-
-        _lastTask = task;
-        return task;
-    }
 }

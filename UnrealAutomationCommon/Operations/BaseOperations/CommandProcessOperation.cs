@@ -33,7 +33,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return new List<global::LocalAutomation.Runtime.Command> { BuildCommand((UnrealAutomationCommon.Operations.UnrealOperationParameters)operationParameters) };
         }
 
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(CancellationToken token)
         {
             global::LocalAutomation.Runtime.Command command = BuildCommand(UnrealOperationParameters);
 
@@ -152,14 +152,14 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                     ? global::LocalAutomation.Runtime.OperationResult.Succeeded(_process.ExitCode)
                     : global::LocalAutomation.Runtime.OperationResult.Failed(_process.ExitCode);
 
-            LogLevel exitLevel = result.Outcome == global::LocalAutomation.Core.RunOutcome.Cancelled
+            LogLevel exitLevel = result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Cancelled
                 ? LogLevel.Warning
-                : result.Outcome == global::LocalAutomation.Core.RunOutcome.Succeeded
+                : result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Succeeded
                     ? LogLevel.Information
                     : LogLevel.Error;
-            string exitLabel = result.Outcome == global::LocalAutomation.Core.RunOutcome.Cancelled
+            string exitLabel = result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Cancelled
                 ? "cancelled"
-                : result.Outcome == global::LocalAutomation.Core.RunOutcome.Succeeded
+                : result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Succeeded
                     ? "succeeded"
                     : "failed";
             Logger.Log(exitLevel, "Process '" + FileAndProcess + "' " + exitLabel + " with code " + result.ExitCode);

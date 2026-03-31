@@ -111,7 +111,7 @@ public sealed class OperationSessionService
     /// <summary>
     /// Builds the previewable execution plan for the selected operation and parameter state when one exists.
     /// </summary>
-    public ExecutionPlan? GetExecutionPlan(Operation? operation, OperationParameters parameters)
+    public LocalAutomation.Runtime.ExecutionPlan? GetExecutionPlan(Operation? operation, OperationParameters parameters)
     {
         /* Trace plan-preview construction at the application-service boundary so shells can distinguish the end-to-end
            refresh cost from the runtime cost of building the underlying execution plan. */
@@ -121,7 +121,7 @@ public sealed class OperationSessionService
         PerformanceTelemetry.SetTag(activity, "operation.name", operation?.OperationName ?? string.Empty);
         PerformanceTelemetry.SetTag(activity, "target.type", parameters.Target?.GetType().Name ?? string.Empty);
 
-        ExecutionPlan? plan = _runtime.BuildExecutionPlan(operation, parameters);
+        LocalAutomation.Runtime.ExecutionPlan? plan = _runtime.BuildExecutionPlan(operation, parameters);
         PerformanceTelemetry.SetTag(activity, "plan.has_result", plan != null);
         PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
         return plan;

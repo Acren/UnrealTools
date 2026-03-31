@@ -33,12 +33,12 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Executes the provided work items until they complete, fail, are skipped because they can no longer run, or are
-    /// cancelled.
+    /// Executes the provided authored execution plan until its runnable tasks complete, fail, are skipped because they
+    /// can no longer run, or are cancelled.
     /// </summary>
-    public async Task<OperationResult> ExecuteAsync(IEnumerable<ExecutionWorkItem> workItems, CancellationToken cancellationToken)
+    public async Task<OperationResult> ExecuteAsync(ExecutionPlan plan, CancellationToken cancellationToken)
     {
-        Dictionary<ExecutionTaskId, ExecutionWorkItem> itemsById = Materialize(workItems);
+        Dictionary<ExecutionTaskId, ExecutionPlanTask> itemsById = Materialize(plan);
         Dictionary<ExecutionTaskId, ExecutionTaskStatus> statuses = new();
         Dictionary<ExecutionTaskId, string?> statusReasons = new();
         Dictionary<ExecutionTaskId, Task<OperationResult>> runningTasks = new();
@@ -46,17 +46,23 @@ public sealed class ExecutionPlanScheduler
         bool encounteredFailure = false;
         bool encounteredCancellation = false;
 
-        foreach (ExecutionWorkItem item in itemsById.Values)
+        foreach (ExecutionPlanTask item in itemsById.Values)
         {
+            if (item.ExecuteAsync == null)
+            {
+                SetStatus(statuses, statusReasons, item.Id, ExecutionTaskStatus.Pending);
+                continue;
+            }
+
             if (!item.Enabled)
             {
-                SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Disabled, item.SkippedReason);
+                SetStatus(statuses, statusReasons, item.Id, ExecutionTaskStatus.Disabled, item.DisabledReason);
                 continue;
             }
 
             // Before a task actually starts, the design only needs to know that the task is still pending. Whether it
             // is waiting on dependencies or scheduler turn is internal scheduler detail rather than a user-facing state.
-            SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Pending, item.DependsOn.Count > 0 ? WaitingForDependenciesReason : null);
+            SetStatus(statuses, statusReasons, item.Id, ExecutionTaskStatus.Pending, plan.GetTaskDependencies(item.Id).Count > 0 ? WaitingForDependenciesReason : null);
         }
 
         while (true)
@@ -71,9 +77,10 @@ public sealed class ExecutionPlanScheduler
             bool startedAny = StartReadyItems(itemsById, statuses, statusReasons, runningTasks, taskOwners, cancellationToken);
             if (runningTasks.Count == 0)
             {
-                IReadOnlyList<ExecutionTaskId> incompleteTasks = statuses
-                    .Where(pair => pair.Value is not ExecutionTaskStatus.Completed and not ExecutionTaskStatus.Cancelled and not ExecutionTaskStatus.Skipped and not ExecutionTaskStatus.Disabled)
-                    .Select(pair => pair.Key)
+                IReadOnlyList<ExecutionTaskId> incompleteTasks = itemsById.Values
+                    .Where(task => task.ExecuteAsync != null)
+                    .Select(task => task.Id)
+                    .Where(taskId => statuses[taskId] is not ExecutionTaskStatus.Completed and not ExecutionTaskStatus.Cancelled and not ExecutionTaskStatus.Skipped and not ExecutionTaskStatus.Disabled)
                     .ToList();
                 if (incompleteTasks.Count == 0)
                 {
@@ -165,31 +172,31 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Materializes and validates the declared work-item set before execution begins.
+    /// Materializes and validates the declared executable task set before execution begins.
     /// </summary>
-    private static Dictionary<ExecutionTaskId, ExecutionWorkItem> Materialize(IEnumerable<ExecutionWorkItem> workItems)
+    private static Dictionary<ExecutionTaskId, ExecutionPlanTask> Materialize(ExecutionPlan plan)
     {
-        if (workItems == null)
+        if (plan == null)
         {
-            throw new ArgumentNullException(nameof(workItems));
+            throw new ArgumentNullException(nameof(plan));
         }
 
-        Dictionary<ExecutionTaskId, ExecutionWorkItem> itemsById = new();
-        foreach (ExecutionWorkItem item in workItems)
+        Dictionary<ExecutionTaskId, ExecutionPlanTask> itemsById = new();
+        foreach (ExecutionPlanTask item in plan.Tasks)
         {
-            if (!itemsById.TryAdd(item.TaskId, item))
+            if (!itemsById.TryAdd(item.Id, item))
             {
-                throw new InvalidOperationException($"Execution scheduler contains duplicate work item '{item.TaskId}'.");
+                throw new InvalidOperationException($"Execution scheduler contains duplicate task '{item.Id}'.");
             }
         }
 
-        foreach (ExecutionWorkItem item in itemsById.Values)
+        foreach (ExecutionPlanTask item in itemsById.Values.Where(task => task.ExecuteAsync != null))
         {
-            foreach (ExecutionTaskId dependencyId in item.DependsOn)
+            foreach (ExecutionTaskId dependencyId in plan.GetTaskDependencies(item.Id))
             {
                 if (!itemsById.ContainsKey(dependencyId))
                 {
-                    throw new InvalidOperationException($"Execution work item '{item.TaskId}' depends on unknown item '{dependencyId}'.");
+                    throw new InvalidOperationException($"Execution task '{item.Id}' depends on unknown task '{dependencyId}'.");
                 }
             }
         }
@@ -201,7 +208,7 @@ public sealed class ExecutionPlanScheduler
     /// Starts any ready work items while scheduler capacity remains available.
     /// </summary>
     private bool StartReadyItems(
-        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionPlanTask> itemsById,
         IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
         IDictionary<ExecutionTaskId, string?> statusReasons,
         IDictionary<ExecutionTaskId, Task<OperationResult>> runningTasks,
@@ -209,18 +216,18 @@ public sealed class ExecutionPlanScheduler
         CancellationToken cancellationToken)
     {
         bool startedAny = false;
-        foreach (ExecutionWorkItem item in itemsById.Values.Where(item => statuses[item.TaskId] == ExecutionTaskStatus.Pending && item.DependsOn.All(dependencyId => IsDependencySatisfied(dependencyId, itemsById, statuses, new HashSet<ExecutionTaskId>()))).OrderBy(item => item.TaskId.Value, StringComparer.Ordinal))
+        foreach (ExecutionPlanTask item in itemsById.Values.Where(item => item.ExecuteAsync != null && statuses[item.Id] == ExecutionTaskStatus.Pending && GetTaskDependencies(item.Id, itemsById).All(dependencyId => IsDependencySatisfied(dependencyId, itemsById, statuses, new HashSet<ExecutionTaskId>()))).OrderBy(item => item.Id.Value, StringComparer.Ordinal))
         {
             if (runningTasks.Count >= _maxParallelism)
             {
                 break;
             }
 
-            SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Running);
-            ExecutionTaskContext context = new(item.TaskId, item.Title, CreateTaskLogger(item.TaskId), cancellationToken);
-            Task<OperationResult> task = item.ExecuteAsync(context);
-            runningTasks[item.TaskId] = task;
-            taskOwners[task] = item.TaskId;
+            SetStatus(statuses, statusReasons, item.Id, ExecutionTaskStatus.Running);
+            ExecutionTaskContext context = new(item.Id, item.Title, CreateTaskLogger(item.Id), cancellationToken);
+            Task<OperationResult> task = item.ExecuteAsync!(context);
+            runningTasks[item.Id] = task;
+            taskOwners[task] = item.Id;
             startedAny = true;
         }
 
@@ -232,20 +239,20 @@ public sealed class ExecutionPlanScheduler
     /// marked terminal because they can no longer run.
     /// </summary>
     private void UpdateReadiness(
-        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionPlanTask> itemsById,
         IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
         IDictionary<ExecutionTaskId, string?> statusReasons)
     {
-        foreach (ExecutionWorkItem item in itemsById.Values)
+        foreach (ExecutionPlanTask item in itemsById.Values.Where(task => task.ExecuteAsync != null))
         {
-            ExecutionTaskStatus currentStatus = statuses[item.TaskId];
+            ExecutionTaskStatus currentStatus = statuses[item.Id];
             if (currentStatus is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Running or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Disabled)
             {
                 continue;
             }
 
-            bool waitingForDependencies = item.DependsOn.Any(dependencyId => !IsDependencySatisfied(dependencyId, itemsById, statuses, new HashSet<ExecutionTaskId>()));
-            SetStatus(statuses, statusReasons, item.TaskId, ExecutionTaskStatus.Pending, waitingForDependencies ? WaitingForDependenciesReason : null);
+            bool waitingForDependencies = GetTaskDependencies(item.Id, itemsById).Any(dependencyId => !IsDependencySatisfied(dependencyId, itemsById, statuses, new HashSet<ExecutionTaskId>()));
+            SetStatus(statuses, statusReasons, item.Id, ExecutionTaskStatus.Pending, waitingForDependencies ? WaitingForDependenciesReason : null);
         }
     }
 
@@ -254,7 +261,7 @@ public sealed class ExecutionPlanScheduler
     /// </summary>
     private static bool IsDependencySatisfied(
         ExecutionTaskId dependencyId,
-        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionPlanTask> itemsById,
         IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
         ISet<ExecutionTaskId> visited)
     {
@@ -274,7 +281,7 @@ public sealed class ExecutionPlanScheduler
             return false;
         }
 
-        return itemsById[dependencyId].DependsOn.All(parentDependencyId => IsDependencySatisfied(parentDependencyId, itemsById, statuses, visited));
+        return GetTaskDependencies(dependencyId, itemsById).All(parentDependencyId => IsDependencySatisfied(parentDependencyId, itemsById, statuses, visited));
     }
 
     /// <summary>
@@ -282,19 +289,19 @@ public sealed class ExecutionPlanScheduler
     /// </summary>
     private void SkipDependentsOfFailure(
         ExecutionTaskId failedTaskId,
-        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionPlanTask> itemsById,
         IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
         IDictionary<ExecutionTaskId, string?> statusReasons)
     {
-        foreach (ExecutionWorkItem dependent in itemsById.Values.Where(item => item.DependsOn.Contains(failedTaskId)))
+        foreach (ExecutionPlanTask dependent in itemsById.Values.Where(item => item.ExecuteAsync != null && GetTaskDependencies(item.Id, itemsById).Contains(failedTaskId)))
         {
-            if (statuses[dependent.TaskId] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Disabled)
+            if (statuses[dependent.Id] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Disabled)
             {
                 continue;
             }
 
-            SetStatus(statuses, statusReasons, dependent.TaskId, ExecutionTaskStatus.Skipped, $"Skipped because dependency '{failedTaskId}' failed.");
-            SkipDependentsOfFailure(dependent.TaskId, itemsById, statuses, statusReasons);
+            SetStatus(statuses, statusReasons, dependent.Id, ExecutionTaskStatus.Skipped, $"Skipped because dependency '{failedTaskId}' failed.");
+            SkipDependentsOfFailure(dependent.Id, itemsById, statuses, statusReasons);
         }
     }
 
@@ -303,25 +310,38 @@ public sealed class ExecutionPlanScheduler
     /// actively running and using Skipped for work that never started.
     /// </summary>
     private void CancelOutstandingTasks(
-        IReadOnlyDictionary<ExecutionTaskId, ExecutionWorkItem> itemsById,
+        IReadOnlyDictionary<ExecutionTaskId, ExecutionPlanTask> itemsById,
         IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
         IDictionary<ExecutionTaskId, string?> statusReasons)
     {
-        foreach (ExecutionWorkItem item in itemsById.Values)
+        foreach (ExecutionPlanTask item in itemsById.Values.Where(task => task.ExecuteAsync != null))
         {
-            if (statuses[item.TaskId] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Disabled)
+            if (statuses[item.Id] is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Disabled)
             {
                 continue;
             }
 
-            ExecutionTaskStatus nextStatus = statuses[item.TaskId] == ExecutionTaskStatus.Running
+            ExecutionTaskStatus nextStatus = statuses[item.Id] == ExecutionTaskStatus.Running
                 ? ExecutionTaskStatus.Cancelled
                 : ExecutionTaskStatus.Skipped;
             string reason = nextStatus == ExecutionTaskStatus.Cancelled
                 ? "Cancelled."
                 : "Skipped because execution was cancelled.";
-            SetStatus(statuses, statusReasons, item.TaskId, nextStatus, reason);
+            SetStatus(statuses, statusReasons, item.Id, nextStatus, reason);
         }
+    }
+
+    /// <summary>
+    /// Returns the direct dependency ids for one executable task, excluding purely hierarchical parent relationships.
+    /// </summary>
+    private static IReadOnlyList<ExecutionTaskId> GetTaskDependencies(ExecutionTaskId taskId, IReadOnlyDictionary<ExecutionTaskId, ExecutionPlanTask> itemsById)
+    {
+        if (!itemsById.TryGetValue(taskId, out ExecutionPlanTask? task))
+        {
+            return Array.Empty<ExecutionTaskId>();
+        }
+
+        return task.DependsOn;
     }
 
     /// <summary>

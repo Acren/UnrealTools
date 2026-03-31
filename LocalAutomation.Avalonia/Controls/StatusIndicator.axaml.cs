@@ -16,8 +16,8 @@ public partial class StatusIndicator : UserControl
     /// <summary>
     /// Identifies the semantic status value rendered by the indicator.
     /// </summary>
-    public static readonly StyledProperty<global::LocalAutomation.Core.ExecutionTaskStatus> StatusProperty =
-        AvaloniaProperty.Register<StatusIndicator, global::LocalAutomation.Core.ExecutionTaskStatus>(nameof(Status), global::LocalAutomation.Core.ExecutionTaskStatus.Pending);
+    public static readonly StyledProperty<global::LocalAutomation.Runtime.ExecutionTaskStatus> StatusProperty =
+        AvaloniaProperty.Register<StatusIndicator, global::LocalAutomation.Runtime.ExecutionTaskStatus>(nameof(Status), global::LocalAutomation.Runtime.ExecutionTaskStatus.Pending);
 
     /// <summary>
     /// Identifies whether the text label should be shown next to the dot.
@@ -49,7 +49,7 @@ public partial class StatusIndicator : UserControl
     /// <summary>
     /// Gets or sets the semantic status rendered by the control.
     /// </summary>
-    public global::LocalAutomation.Core.ExecutionTaskStatus Status
+    public global::LocalAutomation.Runtime.ExecutionTaskStatus Status
     {
         get => GetValue(StatusProperty);
         set => SetValue(StatusProperty, value);
@@ -133,24 +133,24 @@ public partial class StatusIndicator : UserControl
     /// <summary>
     /// Maps one semantic status to the shared short label used across tabs and graph nodes.
     /// </summary>
-    private static string GetLabelText(global::LocalAutomation.Core.ExecutionTaskStatus status)
+    private static string GetLabelText(global::LocalAutomation.Runtime.ExecutionTaskStatus status)
     {
-        return global::LocalAutomation.Core.ExecutionTaskStatusDisplay.GetLabel(status);
+        return global::LocalAutomation.Avalonia.ExecutionTaskStatusDisplay.GetLabel(status);
     }
 
     /// <summary>
     /// Applies the shared status classes consumed by the XAML styles. Planned/Pending and Cancelled/Disabled/Skipped
     /// each have explicit grouped styling so the graph can distinguish preview work from inactive work.
     /// </summary>
-    private static void ApplyStatusClasses(Classes classes, global::LocalAutomation.Core.ExecutionTaskStatus status)
+    private static void ApplyStatusClasses(Classes classes, global::LocalAutomation.Runtime.ExecutionTaskStatus status)
     {
-        classes.Set("pending", status == global::LocalAutomation.Core.ExecutionTaskStatus.Pending);
-        classes.Set("planned", status == global::LocalAutomation.Core.ExecutionTaskStatus.Planned);
-        classes.Set("skipped", status == global::LocalAutomation.Core.ExecutionTaskStatus.Skipped);
-        classes.Set("disabled", status == global::LocalAutomation.Core.ExecutionTaskStatus.Disabled);
-        classes.Set("running", status == global::LocalAutomation.Core.ExecutionTaskStatus.Running);
-        classes.Set("succeeded", status == global::LocalAutomation.Core.ExecutionTaskStatus.Completed);
-        classes.Set("failed", status == global::LocalAutomation.Core.ExecutionTaskStatus.Failed);
-        classes.Set("cancelled", status == global::LocalAutomation.Core.ExecutionTaskStatus.Cancelled);
+        classes.Set("pending", status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Pending);
+        classes.Set("planned", status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Planned);
+        classes.Set("skipped", status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Skipped);
+        classes.Set("disabled", status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Disabled);
+        classes.Set("running", status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Running);
+        classes.Set("succeeded", status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Completed);
+        classes.Set("failed", status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Failed);
+        classes.Set("cancelled", status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Cancelled);
     }
 }

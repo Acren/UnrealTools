@@ -12,8 +12,9 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.Collections.Generic;
-using LocalAutomation.Core;
 using LocalAutomation.Avalonia.ViewModels;
+using LocalAutomation.Core;
+using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using Shape = Avalonia.Controls.Shapes.Shape;
 using ShapePath = Avalonia.Controls.Shapes.Path;
 
@@ -35,7 +36,7 @@ public partial class ExecutionGraphCanvas : UserControl
     private Border? _viewportHost;
     private Border? _graphContentRoot;
     private ExecutionGraphViewModel? _observedGraph;
-    private readonly Dictionary<ExecutionTaskId, Control> _renderedNodeControls = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, Control> _renderedNodeControls = new();
     private bool _isPanning;
     private bool _pendingRender;
     private string _pendingRenderTrigger = "Deferred";

@@ -1,5 +1,5 @@
 using Avalonia.Controls;
-using LocalAutomation.Core;
+using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
 
 namespace LocalAutomation.Avalonia.Controls;
 
@@ -21,15 +21,15 @@ internal static class ExecutionStatusClasses
     /// <summary>
     /// Applies the shared semantic status classes used by execution-graph styles.
     /// </summary>
-    public static void ApplyStatusClasses(Classes classes, ExecutionTaskStatus status)
+    public static void ApplyStatusClasses(Classes classes, RuntimeExecutionTaskStatus status)
     {
-        classes.Set("pending", status is ExecutionTaskStatus.Pending);
-        classes.Set("planned", status is ExecutionTaskStatus.Planned);
-        classes.Set("skipped", status is ExecutionTaskStatus.Skipped);
-        classes.Set("disabled", status is ExecutionTaskStatus.Disabled);
-        classes.Set("running", status is ExecutionTaskStatus.Running);
-        classes.Set("completed", status is ExecutionTaskStatus.Completed);
-        classes.Set("failed", status is ExecutionTaskStatus.Failed);
-        classes.Set("cancelled", status is ExecutionTaskStatus.Cancelled);
+        classes.Set("pending", status is RuntimeExecutionTaskStatus.Pending);
+        classes.Set("planned", status is RuntimeExecutionTaskStatus.Planned);
+        classes.Set("skipped", status is RuntimeExecutionTaskStatus.Skipped);
+        classes.Set("disabled", status is RuntimeExecutionTaskStatus.Disabled);
+        classes.Set("running", status is RuntimeExecutionTaskStatus.Running);
+        classes.Set("completed", status is RuntimeExecutionTaskStatus.Completed);
+        classes.Set("failed", status is RuntimeExecutionTaskStatus.Failed);
+        classes.Set("cancelled", status is RuntimeExecutionTaskStatus.Cancelled);
     }
 }

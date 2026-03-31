@@ -52,7 +52,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new global::LocalAutomation.Runtime.Command(package.ExecutablePath, args.ToString());
         }
 
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> OnExecuted(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(CancellationToken token)
         {
             AutomationOptions automationOptions = UnrealOperationParameters.GetOptions<AutomationOptions>();
             if (automationOptions.RunTests)
@@ -83,7 +83,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            return await base.OnExecuted(token);
+            return await base.ExecuteLeafAsync(token);
         }
 
         protected override string GetOperationName()

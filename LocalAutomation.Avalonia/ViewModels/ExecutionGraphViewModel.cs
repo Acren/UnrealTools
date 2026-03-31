@@ -4,6 +4,10 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using LocalAutomation.Avalonia.Collections;
 using LocalAutomation.Core;
+using RuntimeExecutionDependency = LocalAutomation.Runtime.ExecutionDependency;
+using RuntimeExecutionPlan = LocalAutomation.Runtime.ExecutionPlan;
+using RuntimeExecutionPlanTask = LocalAutomation.Runtime.ExecutionPlanTask;
+using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -39,13 +43,13 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private const double RowGap = 30;
     private readonly RangeObservableCollection<ExecutionNodeViewModel> _nodes = new();
     private readonly RangeObservableCollection<ExecutionEdgeViewModel> _edges = new();
-    private readonly Dictionary<ExecutionTaskId, ExecutionNodeViewModel> _nodesById = new();
-    private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _childrenByParentId = new();
-    private readonly Dictionary<ExecutionTaskId, ExecutionTaskId?> _parentByTaskId = new();
-    private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _leafDescendantsByGroupId = new();
-    private readonly Dictionary<ExecutionTaskId, double> _measuredNodeWidths = new();
-    private IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskViewModel> _tasksById = new Dictionary<ExecutionTaskId, ExecutionTaskViewModel>();
-    private ExecutionPlan? _plan;
+    private readonly Dictionary<RuntimeExecutionTaskId, ExecutionNodeViewModel> _nodesById = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _childrenByParentId = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> _parentByTaskId = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _leafDescendantsByGroupId = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, double> _measuredNodeWidths = new();
+    private IReadOnlyDictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel> _tasksById = new Dictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel>();
+    private RuntimeExecutionPlan? _plan;
     private ExecutionNodeViewModel? _selectedNode;
     private double _canvasWidth;
     private double _canvasHeight;
@@ -75,7 +79,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Gets the current execution plan rendered by the graph.
     /// </summary>
-    public ExecutionPlan? Plan
+    public RuntimeExecutionPlan? Plan
     {
         get => _plan;
         private set => SetProperty(ref _plan, value);
@@ -138,17 +142,17 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Gets the selected task id for details and status binding.
     /// </summary>
-    public ExecutionTaskId? SelectedTaskId => SelectedNode?.Id;
+    public RuntimeExecutionTaskId? SelectedTaskId => SelectedNode?.Id;
 
     /// <summary>
     /// Returns the selected task id plus all descendant task ids so the UI can show one hierarchical task subtree
     /// without treating parent tasks specially at runtime.
     /// </summary>
-    public IReadOnlyList<ExecutionTaskId> GetSelectedLogTaskIds()
+    public IReadOnlyList<RuntimeExecutionTaskId> GetSelectedLogTaskIds()
     {
         if (SelectedNode == null)
         {
-            return Array.Empty<ExecutionTaskId>();
+            return Array.Empty<RuntimeExecutionTaskId>();
         }
 
         return GetTaskSubtreeIds(SelectedNode.Id).ToList();
@@ -175,7 +179,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Replaces the rendered graph with the provided plan and recomputes the nested comment-container layout.
     /// </summary>
-    public void SetPlan(ExecutionPlan? plan)
+    public void SetPlan(RuntimeExecutionPlan? plan)
     {
         /* Trace plan-graph rebuild phases separately so option-edit latency can be attributed to lookup creation, layout,
            metrics, edge construction, or selection restoration rather than treating graph refresh as one opaque cost. */
@@ -238,7 +242,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Attaches the shared Avalonia task view-model registry that graph nodes should wrap instead of constructing local copies.
     /// </summary>
-    public void AttachTasks(IReadOnlyDictionary<ExecutionTaskId, ExecutionTaskViewModel> tasksById)
+    public void AttachTasks(IReadOnlyDictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel> tasksById)
     {
         _tasksById = tasksById ?? throw new ArgumentNullException(nameof(tasksById));
     }
@@ -269,7 +273,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// Stores the measured natural width for one rendered graph control so layout can use the XAML-owned size instead of
     /// view-model text heuristics.
     /// </summary>
-    public bool SetMeasuredNodeWidth(ExecutionTaskId taskId, double width)
+    public bool SetMeasuredNodeWidth(RuntimeExecutionTaskId taskId, double width)
     {
         double measuredWidth = Math.Max(NodeMinWidth, width);
         if (_measuredNodeWidths.TryGetValue(taskId, out double existingWidth) && Math.Abs(existingWidth - measuredWidth) <= 0.5)
@@ -284,7 +288,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Raises selected-node notifications when an underlying shared task VM changed in a way that could affect details UI.
     /// </summary>
-    public void NotifyTaskStateChanged(ExecutionTaskId taskId)
+    public void NotifyTaskStateChanged(RuntimeExecutionTaskId taskId)
     {
         if (!_nodesById.TryGetValue(taskId, out ExecutionNodeViewModel? node))
         {
@@ -300,10 +304,10 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Materializes one graph node view model for every task in the source plan.
     /// </summary>
-    private void BuildNodeLookup(ExecutionPlan plan)
+    private void BuildNodeLookup(RuntimeExecutionPlan plan)
     {
         List<ExecutionNodeViewModel> nodes = new(plan.Tasks.Count);
-        foreach (ExecutionPlanTask task in plan.Tasks)
+        foreach (RuntimeExecutionPlanTask task in plan.Tasks)
         {
             if (!_tasksById.TryGetValue(task.Id, out ExecutionTaskViewModel? taskViewModel))
             {
@@ -321,19 +325,19 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Builds the parent and child lookup tables that drive nested group-container layout.
     /// </summary>
-    private void BuildHierarchyLookups(IEnumerable<ExecutionPlanTask> tasks)
+    private void BuildHierarchyLookups(IEnumerable<RuntimeExecutionPlanTask> tasks)
     {
-        foreach (ExecutionPlanTask task in tasks)
+        foreach (RuntimeExecutionPlanTask task in tasks)
         {
             _parentByTaskId[task.Id] = task.ParentId;
-            if (task.ParentId is not ExecutionTaskId parentId)
+            if (task.ParentId is not RuntimeExecutionTaskId parentId)
             {
                 continue;
             }
 
-            if (!_childrenByParentId.TryGetValue(parentId, out List<ExecutionTaskId>? childIds))
+            if (!_childrenByParentId.TryGetValue(parentId, out List<RuntimeExecutionTaskId>? childIds))
             {
-                childIds = new List<ExecutionTaskId>();
+                childIds = new List<RuntimeExecutionTaskId>();
                 _childrenByParentId[parentId] = childIds;
             }
 
@@ -345,7 +349,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// Lays out one sibling set using a local dependency-depth arrangement so grouped tasks remain readable inside their
     /// containers.
     /// </summary>
-    private LayoutBounds LayoutDirectChildren(ExecutionTaskId? parentId, double originX, double originY)
+    private LayoutBounds LayoutDirectChildren(RuntimeExecutionTaskId? parentId, double originX, double originY)
     {
         IReadOnlyList<ExecutionNodeViewModel> children = GetDirectChildren(parentId);
         if (children.Count == 0)
@@ -371,7 +375,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return stackedBounds;
         }
 
-        Dictionary<ExecutionTaskId, int> localDepths = ComputeSiblingDepths(children);
+        Dictionary<RuntimeExecutionTaskId, int> localDepths = ComputeSiblingDepths(children);
         Dictionary<int, List<ExecutionNodeViewModel>> columns = children
             .GroupBy(child => localDepths.TryGetValue(child.Id, out int depth) ? depth : 0)
             .OrderBy(group => group.Key)
@@ -452,24 +456,24 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Computes dependency depths only within one sibling set so local group contents can lay out like a compact DAG.
     /// </summary>
-    private Dictionary<ExecutionTaskId, int> ComputeSiblingDepths(IReadOnlyList<ExecutionNodeViewModel> siblings)
+    private Dictionary<RuntimeExecutionTaskId, int> ComputeSiblingDepths(IReadOnlyList<ExecutionNodeViewModel> siblings)
     {
         if (Plan == null)
         {
-            return new Dictionary<ExecutionTaskId, int>();
+            return new Dictionary<RuntimeExecutionTaskId, int>();
         }
 
-        HashSet<ExecutionTaskId> siblingIds = new(siblings.Select(sibling => sibling.Id));
-        Dictionary<ExecutionTaskId, int> depths = new();
+        HashSet<RuntimeExecutionTaskId> siblingIds = new(siblings.Select(sibling => sibling.Id));
+        Dictionary<RuntimeExecutionTaskId, int> depths = new();
 
-        int ComputeDepth(ExecutionTaskId taskId)
+        int ComputeDepth(RuntimeExecutionTaskId taskId)
         {
             if (depths.TryGetValue(taskId, out int existingDepth))
             {
                 return existingDepth;
             }
 
-            IReadOnlyList<ExecutionTaskId> dependencies = Plan
+            IReadOnlyList<RuntimeExecutionTaskId> dependencies = Plan
                 .GetTaskDependencies(taskId)
                 .Where(siblingIds.Contains)
                 .ToList();
@@ -498,7 +502,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         foreach (ExecutionNodeViewModel node in _nodes.Where(node => HasChildren(node.Id)))
         {
             IReadOnlyList<ExecutionNodeViewModel> directChildren = GetDirectChildren(node.Id);
-            List<ExecutionTaskId> leafDescendants = GetLeafDescendantIds(node.Id).ToList();
+            List<RuntimeExecutionTaskId> leafDescendants = GetLeafDescendantIds(node.Id).ToList();
             _leafDescendantsByGroupId[node.Id] = leafDescendants;
 
             string summaryText = directChildren.Count == 0
@@ -530,23 +534,23 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Recomputes every ancestor group of the updated task so nested containers stay in sync with live execution.
     /// </summary>
-    private void RefreshAncestorGroupStatuses(ExecutionTaskId taskId)
+    private void RefreshAncestorGroupStatuses(RuntimeExecutionTaskId taskId)
     {
-        ExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(taskId, out ExecutionTaskId? parentId) ? parentId : null;
-        while (currentParentId is ExecutionTaskId parent && _nodesById.TryGetValue(parent, out ExecutionNodeViewModel? group))
+        RuntimeExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(taskId, out RuntimeExecutionTaskId? parentId) ? parentId : null;
+        while (currentParentId is RuntimeExecutionTaskId parent && _nodesById.TryGetValue(parent, out ExecutionNodeViewModel? group))
         {
             ApplyGroupRollupStatus(group);
-            currentParentId = _parentByTaskId.TryGetValue(parent, out ExecutionTaskId? nextParentId) ? nextParentId : null;
+            currentParentId = _parentByTaskId.TryGetValue(parent, out RuntimeExecutionTaskId? nextParentId) ? nextParentId : null;
         }
     }
 
     /// <summary>
     /// Builds the visible dependency edges between runnable leaf nodes after layout has produced their coordinates.
     /// </summary>
-    private void BuildDependencyEdges(ExecutionPlan plan)
+    private void BuildDependencyEdges(RuntimeExecutionPlan plan)
     {
         List<ExecutionEdgeViewModel> edges = new();
-        foreach (ExecutionDependency dependency in plan.Dependencies)
+        foreach (RuntimeExecutionDependency dependency in plan.Dependencies)
         {
             if (_nodesById.TryGetValue(dependency.SourceTaskId, out ExecutionNodeViewModel? source) &&
                 _nodesById.TryGetValue(dependency.TargetTaskId, out ExecutionNodeViewModel? target) &&
@@ -588,23 +592,23 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return;
         }
 
-        ExecutionTaskId? previouslySelectedTaskId = SelectedNode?.Id;
+        RuntimeExecutionTaskId? previouslySelectedTaskId = SelectedNode?.Id;
         if (previouslySelectedTaskId != null && _nodesById.TryGetValue(previouslySelectedTaskId.Value, out ExecutionNodeViewModel? existingSelection))
         {
             SelectNode(existingSelection);
             return;
         }
 
-        ExecutionPlanTask rootTask = Plan.Tasks.Single(task => task.ParentId == null);
+        RuntimeExecutionPlanTask rootTask = Plan.Tasks.Single(task => task.ParentId == null);
         SelectNode(_nodesById[rootTask.Id]);
     }
 
     /// <summary>
     /// Returns the direct child graph nodes for the provided parent task id.
     /// </summary>
-    private IReadOnlyList<ExecutionNodeViewModel> GetDirectChildren(ExecutionTaskId? parentId)
+    private IReadOnlyList<ExecutionNodeViewModel> GetDirectChildren(RuntimeExecutionTaskId? parentId)
     {
-        if (parentId == null || !_childrenByParentId.TryGetValue(parentId.Value, out List<ExecutionTaskId>? childIds))
+        if (parentId == null || !_childrenByParentId.TryGetValue(parentId.Value, out List<RuntimeExecutionTaskId>? childIds))
         {
             return Array.Empty<ExecutionNodeViewModel>();
         }
@@ -615,14 +619,14 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Enumerates all descendant runnable task ids beneath the provided container task id.
     /// </summary>
-    private IEnumerable<ExecutionTaskId> GetLeafDescendantIds(ExecutionTaskId groupId)
+    private IEnumerable<RuntimeExecutionTaskId> GetLeafDescendantIds(RuntimeExecutionTaskId groupId)
     {
-        if (!_childrenByParentId.TryGetValue(groupId, out List<ExecutionTaskId>? childIds))
+        if (!_childrenByParentId.TryGetValue(groupId, out List<RuntimeExecutionTaskId>? childIds))
         {
             yield break;
         }
 
-        foreach (ExecutionTaskId childId in childIds)
+        foreach (RuntimeExecutionTaskId childId in childIds)
         {
             ExecutionNodeViewModel child = _nodesById[childId];
             if (!HasChildren(childId))
@@ -631,7 +635,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
                 continue;
             }
 
-            foreach (ExecutionTaskId descendantId in GetLeafDescendantIds(childId))
+            foreach (RuntimeExecutionTaskId descendantId in GetLeafDescendantIds(childId))
             {
                 yield return descendantId;
             }
@@ -643,16 +647,16 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// Layout must use
     /// this lookup directly because container metrics are populated after node bounds are assigned.
     /// </summary>
-    private bool HasChildren(ExecutionTaskId taskId)
+    private bool HasChildren(RuntimeExecutionTaskId taskId)
     {
-        return _childrenByParentId.TryGetValue(taskId, out List<ExecutionTaskId>? childIds) && childIds.Count > 0;
+        return _childrenByParentId.TryGetValue(taskId, out List<RuntimeExecutionTaskId>? childIds) && childIds.Count > 0;
     }
 
     /// <summary>
     /// Returns the measured natural width for one node when available, falling back to the minimum graph-node width for
     /// pre-measure layout passes.
     /// </summary>
-    private double GetMeasuredNodeWidth(ExecutionTaskId taskId)
+    private double GetMeasuredNodeWidth(RuntimeExecutionTaskId taskId)
     {
         return _measuredNodeWidths.TryGetValue(taskId, out double width)
             ? width
@@ -667,7 +671,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     {
         using (PerformanceActivityScope layoutActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.Layout"))
         {
-            ExecutionPlanTask rootTask = Plan!.Tasks.Single(task => task.ParentId == null);
+            RuntimeExecutionPlanTask rootTask = Plan!.Tasks.Single(task => task.ParentId == null);
             ExecutionNodeViewModel rootNode = _nodesById[rootTask.Id];
             if (HasChildren(rootTask.Id))
             {
@@ -706,18 +710,18 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// Enumerates one task subtree including the selected task itself and every descendant task so log selection can be
     /// hierarchical without mutating runtime task ownership.
     /// </summary>
-    private IEnumerable<ExecutionTaskId> GetTaskSubtreeIds(ExecutionTaskId rootId)
+    private IEnumerable<RuntimeExecutionTaskId> GetTaskSubtreeIds(RuntimeExecutionTaskId rootId)
     {
         yield return rootId;
 
-        if (!_childrenByParentId.TryGetValue(rootId, out List<ExecutionTaskId>? childIds))
+        if (!_childrenByParentId.TryGetValue(rootId, out List<RuntimeExecutionTaskId>? childIds))
         {
             yield break;
         }
 
-        foreach (ExecutionTaskId childId in childIds)
+        foreach (RuntimeExecutionTaskId childId in childIds)
         {
-            foreach (ExecutionTaskId descendantId in GetTaskSubtreeIds(childId))
+            foreach (RuntimeExecutionTaskId descendantId in GetTaskSubtreeIds(childId))
             {
                 yield return descendantId;
             }
