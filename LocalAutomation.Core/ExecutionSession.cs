@@ -36,10 +36,7 @@ public sealed class ExecutionSession
             foreach (ExecutionPlanTask task in plan.Tasks)
             {
                 _taskLogStreams[task.Id] = new BufferedLogStream();
-                _taskRuntimeStates[task.Id] = new ExecutionTaskRuntimeState(task.Id, task.Status, task.StatusReason)
-                {
-                    Metrics = ExecutionTaskMetrics.Empty
-                };
+                _taskRuntimeStates[task.Id] = new ExecutionTaskRuntimeState(task.Id, task.Status, task.StatusReason);
                 _parentTaskIds[task.Id] = task.ParentId;
 
                 /* Cache the structural child relationships from the immutable plan once so later runtime status
@@ -236,7 +233,6 @@ public sealed class ExecutionSession
         }
 
         EnsureTaskLogStream(entry.TaskId.Value).Add(entry);
-        RefreshMetricsForTaskAndAncestors(entry.TaskId.Value);
     }
 
     /// <summary>
@@ -301,7 +297,6 @@ public sealed class ExecutionSession
             runtimeState.StatusReason = string.Empty;
         }
 
-        RefreshAllTaskMetrics();
     }
 
     /// <summary>
@@ -362,7 +357,6 @@ public sealed class ExecutionSession
         ExecutionTaskRuntimeState runtimeState = EnsureTaskRuntimeState(taskId);
         runtimeState.Status = status;
         runtimeState.StatusReason = statusReason ?? string.Empty;
-        RefreshMetricsForTaskAndAncestors(taskId);
         TaskStatusChanged?.Invoke(taskId, status, statusReason);
     }
 
@@ -500,32 +494,6 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Recomputes subtree metrics for every known task runtime state.
-    /// </summary>
-    private void RefreshAllTaskMetrics()
-    {
-        foreach (ExecutionTaskId taskId in _taskRuntimeStates.Keys)
-        {
-            EnsureTaskRuntimeState(taskId).Metrics = GetTaskMetrics(taskId);
-        }
-    }
-
-    /// <summary>
-    /// Recomputes subtree metrics for one task plus every ancestor task whose displayed metrics include that subtree.
-    /// </summary>
-    private void RefreshMetricsForTaskAndAncestors(ExecutionTaskId taskId)
-    {
-        EnsureTaskRuntimeState(taskId).Metrics = GetTaskMetrics(taskId);
-
-        ExecutionTaskId? currentParentId = _parentTaskIds.TryGetValue(taskId, out ExecutionTaskId? parentId) ? parentId : null;
-        while (currentParentId != null)
-        {
-            EnsureTaskRuntimeState(currentParentId.Value).Metrics = GetTaskMetrics(currentParentId.Value);
-            currentParentId = _parentTaskIds.TryGetValue(currentParentId.Value, out ExecutionTaskId? nextParentId) ? nextParentId : null;
-        }
-    }
-
-    /// <summary>
     /// Returns the runtime-state object for a task, creating a default entry when runtime discovers a new task id late.
     /// </summary>
     private ExecutionTaskRuntimeState EnsureTaskRuntimeState(ExecutionTaskId taskId)
@@ -535,10 +503,7 @@ public sealed class ExecutionSession
             return state;
         }
 
-        state = new ExecutionTaskRuntimeState(taskId, ExecutionTaskStatus.Pending)
-        {
-            Metrics = ExecutionTaskMetrics.Empty
-        };
+        state = new ExecutionTaskRuntimeState(taskId, ExecutionTaskStatus.Pending);
         _taskRuntimeStates[taskId] = state;
         return state;
     }

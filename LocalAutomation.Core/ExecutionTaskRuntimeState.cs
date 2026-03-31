@@ -13,7 +13,6 @@ public sealed class ExecutionTaskRuntimeState : INotifyPropertyChanged
     private string _statusReason;
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _finishedAt;
-    private ExecutionTaskMetrics _metrics;
 
     /// <summary>
     /// Creates runtime state for one execution-plan task.
@@ -69,15 +68,6 @@ public sealed class ExecutionTaskRuntimeState : INotifyPropertyChanged
     {
         get => _finishedAt;
         internal set => SetProperty(ref _finishedAt, value);
-    }
-
-    /// <summary>
-    /// Gets the current subtree metrics for the task.
-    /// </summary>
-    public ExecutionTaskMetrics Metrics
-    {
-        get => _metrics;
-        internal set => SetProperty(ref _metrics, value);
     }
 
     /// <summary>

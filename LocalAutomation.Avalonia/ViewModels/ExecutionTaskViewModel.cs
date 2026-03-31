@@ -84,7 +84,7 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// </summary>
     public ExecutionTaskMetrics Metrics
     {
-        get => _runtimeState?.Metrics ?? ExecutionTaskMetrics.Empty;
+        get => _session?.GetTaskMetrics(Task.Id) ?? ExecutionTaskMetrics.Empty;
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// </summary>
     public void RefreshTimeSensitiveState()
     {
-        if (_runtimeState?.StartedAt != null)
+        if (_session != null)
         {
             RaisePropertyChanged(nameof(Metrics));
         }
@@ -131,7 +131,6 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
             {
                 RaisePropertyChanged(nameof(Status));
                 RaisePropertyChanged(nameof(StatusReason));
-                RaisePropertyChanged(nameof(Metrics));
                 return;
             }
 
@@ -147,8 +146,7 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
                 return;
             }
 
-            if (string.Equals(e.PropertyName, nameof(ExecutionTaskRuntimeState.Metrics), StringComparison.Ordinal) ||
-                string.Equals(e.PropertyName, nameof(ExecutionTaskRuntimeState.StartedAt), StringComparison.Ordinal) ||
+            if (string.Equals(e.PropertyName, nameof(ExecutionTaskRuntimeState.StartedAt), StringComparison.Ordinal) ||
                 string.Equals(e.PropertyName, nameof(ExecutionTaskRuntimeState.FinishedAt), StringComparison.Ordinal))
             {
                 RaisePropertyChanged(nameof(Metrics));

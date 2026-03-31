@@ -461,10 +461,15 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     {
         AttachLogStream(runtimeTab, session.LogStream);
 
-        /* Graph node metrics are subtree-based, so one new task log line only needs to refresh the emitting task and
-           its ancestor groups rather than forcing a full graph rebuild. */
+        /* Graph and header metrics are derived from session state and logs, so one new task log line only needs to
+           trigger a UI re-read rather than pushing cached metric snapshots around. */
         session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
         {
+            if (entry.TaskId is ExecutionTaskId taskId)
+            {
+                runtimeTab.Graph.NotifyTaskStateChanged(taskId);
+            }
+
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
                 RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
