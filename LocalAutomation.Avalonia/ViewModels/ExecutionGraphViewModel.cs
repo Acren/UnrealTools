@@ -376,26 +376,28 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
                     .ToList());
 
         LayoutBounds bounds = LayoutBounds.Empty;
-        Dictionary<int, double> columnWidths = columns.ToDictionary(
-            group => group.Key,
-            group => group.Value.Max(GetLayoutWidth));
+        double currentColumnX = originX;
 
-        foreach ((int depth, List<ExecutionNodeViewModel> columnNodes) in columns)
+        foreach ((_, List<ExecutionNodeViewModel> columnNodes) in columns)
         {
-            /* Columns are positioned from the cumulative widths of the preceding sibling columns so leaf cards can size
-               to content without breaking edge routing or nested group padding. */
-            double columnX = originX + GetColumnOffset(columnWidths, depth);
+            /* Container columns cannot be sized from placeholder node widths because group bounds are only known after
+               laying out their descendants. Lay out each column in order, measure its real bounds, then place the next
+               column after that actual width. */
             double currentY = originY;
+            LayoutBounds columnBounds = LayoutBounds.Empty;
 
             foreach (ExecutionNodeViewModel node in columnNodes)
             {
                 LayoutBounds nodeBounds = HasChildren(node.Id)
-                    ? LayoutGroupNode(node, columnX, currentY)
-                    : LayoutLeafNode(node, columnX, currentY);
+                    ? LayoutGroupNode(node, currentColumnX, currentY)
+                    : LayoutLeafNode(node, currentColumnX, currentY);
 
                 bounds = bounds.Include(nodeBounds);
+                columnBounds = columnBounds.Include(nodeBounds);
                 currentY = nodeBounds.Bottom + RowGap;
             }
+
+            currentColumnX = columnBounds.Right + ColumnGap;
         }
 
         return bounds;
@@ -619,32 +621,9 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Returns the width the layout should reserve for one node. Container nodes use their computed bounds, while leaf
-    /// cards size from their rendered title and status content.
-    /// </summary>
-    private double GetLayoutWidth(ExecutionNodeViewModel node)
-    {
-        return HasChildren(node.Id) ? Math.Max(NodeMinWidth, node.Width) : GetLeafNodeWidth(node);
-    }
-
-    /// <summary>
-    /// Returns the cumulative x offset for one column based on the actual widths of all earlier columns.
-    /// </summary>
-    private static double GetColumnOffset(IReadOnlyDictionary<int, double> columnWidths, int targetDepth)
-    {
-        double offset = 0;
-        for (int depth = 0; depth < targetDepth; depth++)
-        {
-            offset += columnWidths.TryGetValue(depth, out double width) ? width + ColumnGap : ColumnGap;
-        }
-
-        return offset;
-    }
-
-    /// <summary>
-    /// Sizes one leaf card from the larger of its title row and status row, then clamps the result so the graph stays
-    /// compact while matching the rendered card padding.
-    /// </summary>
+     /// Sizes one leaf card from the larger of its title row and status row, then clamps the result so the graph stays
+     /// compact while matching the rendered card padding.
+     /// </summary>
     private static double GetLeafNodeWidth(ExecutionNodeViewModel node)
     {
         double titleWidth = MeasureSingleLineText(node.Title, NodeTitleFontSize);
