@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Avalonia.Media;
 using LocalAutomation.Core;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -13,9 +15,14 @@ namespace LocalAutomation.Avalonia.ViewModels;
 public sealed class ExecutionGraphViewModel : ViewModelBase
 {
     /// <summary>
-    /// Defines the fixed width used for leaf task cards.
+    /// Defines the minimum width used for leaf task cards so short titles still read as graph nodes rather than badges.
     /// </summary>
-    public const double NodeWidth = 236;
+    public const double NodeMinWidth = 156;
+
+    /// <summary>
+    /// Defines the maximum width used for leaf task cards so content-driven sizing does not create ragged oversized columns.
+    /// </summary>
+    public const double NodeMaxWidth = 320;
 
     /// <summary>
     /// Defines the fixed height used for leaf task cards.
@@ -32,9 +39,31 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     public const double GroupPadding = 18;
 
-    // Tighter spacing keeps the graph readable once cards only carry title and status.
+    /// <summary>
+    /// Matches the task-card inner padding so content-driven width calculations align with the rendered card chrome.
+    /// </summary>
+    private const double NodeHorizontalPadding = 48;
+
+    /// <summary>
+    /// Matches the title text size used by the execution task card so width measurement stays consistent with the rendered UI.
+    /// </summary>
+    private const double NodeTitleFontSize = 14;
+
+    /// <summary>
+    /// Matches the status-label font size used by the execution task card so status rows contribute the correct width.
+    /// </summary>
+    private const double NodeStatusFontSize = 11;
+
+    /// <summary>
+    /// Reserves space for the status dot and gap so content-driven width sizing reflects the full status row footprint.
+    /// </summary>
+    private const double NodeStatusAdornmentWidth = 20;
+
+    /* Column spacing stays generous enough for status glows and dependency elbows even when task cards shrink toward
+       their content width. */
     private const double ColumnGap = 84;
     private const double RowGap = 30;
+    private static readonly Typeface GraphNodeTypeface = new(new FontFamily("Segoe UI"));
     // The graph keeps one fixed pseudo-node for merged output selection that never participates in runtime plan matching.
     private static readonly ExecutionTaskId AllOutputNodeId = new("all-output");
 
@@ -205,7 +234,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
         if (plan == null)
         {
-            CanvasWidth = NodeWidth;
+            CanvasWidth = NodeMinWidth;
             CanvasHeight = NodeHeight;
             SelectNode(AllOutputNode);
             return;
@@ -306,9 +335,15 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
                     .ToList());
 
         LayoutBounds bounds = LayoutBounds.Empty;
+        Dictionary<int, double> columnWidths = columns.ToDictionary(
+            group => group.Key,
+            group => group.Value.Max(GetLayoutWidth));
+
         foreach ((int depth, List<ExecutionNodeViewModel> columnNodes) in columns)
         {
-            double columnX = originX + (depth * (NodeWidth + ColumnGap));
+            /* Columns are positioned from the cumulative widths of the preceding sibling columns so leaf cards can size
+               to content without breaking edge routing or nested group padding. */
+            double columnX = originX + GetColumnOffset(columnWidths, depth);
             double currentY = originY;
 
             foreach (ExecutionNodeViewModel node in columnNodes)
@@ -328,11 +363,12 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Lays out one leaf task as a normal card.
     /// </summary>
-    private static LayoutBounds LayoutLeafNode(ExecutionNodeViewModel node, double x, double y)
+    private LayoutBounds LayoutLeafNode(ExecutionNodeViewModel node, double x, double y)
     {
-        node.SetBounds(x, y, NodeWidth, NodeHeight);
+        double width = GetLeafNodeWidth(node);
+        node.SetBounds(x, y, width, NodeHeight);
         node.SetHierarchyMetrics(directChildCount: 0, descendantTaskCount: 0, summaryText: string.Empty);
-        return new LayoutBounds(x, y, NodeWidth, NodeHeight);
+        return new LayoutBounds(x, y, width, NodeHeight);
     }
 
     /// <summary>
@@ -343,13 +379,13 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         IReadOnlyList<ExecutionNodeViewModel> children = GetDirectChildren(node.Id);
         if (children.Count == 0)
         {
-            node.SetBounds(x, y, NodeWidth, NodeHeight);
+            node.SetBounds(x, y, NodeMinWidth, NodeHeight);
             node.SetHierarchyMetrics(directChildCount: 0, descendantTaskCount: 0, summaryText: "Empty task group");
-            return new LayoutBounds(x, y, NodeWidth, NodeHeight);
+            return new LayoutBounds(x, y, NodeMinWidth, NodeHeight);
         }
 
         LayoutBounds childBounds = LayoutDirectChildren(node.Id, x + GroupPadding, y + GroupHeaderHeight + GroupPadding);
-        double width = Math.Max(NodeWidth, childBounds.Width + (GroupPadding * 2));
+        double width = Math.Max(NodeMinWidth, childBounds.Width + (GroupPadding * 2));
         double height = Math.Max(NodeHeight, GroupHeaderHeight + childBounds.Height + (GroupPadding * 2));
         node.SetBounds(x, y, width, height);
         return new LayoutBounds(x, y, width, height);
@@ -470,7 +506,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     {
         if (_nodes.Count == 0)
         {
-            CanvasWidth = NodeWidth;
+            CanvasWidth = NodeMinWidth;
             CanvasHeight = NodeHeight;
             return;
         }
@@ -536,6 +572,57 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private bool HasChildren(ExecutionTaskId taskId)
     {
         return _childrenByParentId.TryGetValue(taskId, out List<ExecutionTaskId>? childIds) && childIds.Count > 0;
+    }
+
+    /// <summary>
+    /// Returns the width the layout should reserve for one node. Container nodes use their computed bounds, while leaf
+    /// cards size from their rendered title and status content.
+    /// </summary>
+    private double GetLayoutWidth(ExecutionNodeViewModel node)
+    {
+        return HasChildren(node.Id) ? Math.Max(NodeMinWidth, node.Width) : GetLeafNodeWidth(node);
+    }
+
+    /// <summary>
+    /// Returns the cumulative x offset for one column based on the actual widths of all earlier columns.
+    /// </summary>
+    private static double GetColumnOffset(IReadOnlyDictionary<int, double> columnWidths, int targetDepth)
+    {
+        double offset = 0;
+        for (int depth = 0; depth < targetDepth; depth++)
+        {
+            offset += columnWidths.TryGetValue(depth, out double width) ? width + ColumnGap : ColumnGap;
+        }
+
+        return offset;
+    }
+
+    /// <summary>
+    /// Sizes one leaf card from the larger of its title row and status row, then clamps the result so the graph stays
+    /// compact while matching the rendered card padding.
+    /// </summary>
+    private static double GetLeafNodeWidth(ExecutionNodeViewModel node)
+    {
+        double titleWidth = MeasureSingleLineText(node.Title, NodeTitleFontSize);
+        double statusWidth = MeasureSingleLineText(node.StatusLabelText, NodeStatusFontSize) + NodeStatusAdornmentWidth;
+        double contentWidth = Math.Max(titleWidth, statusWidth);
+        return Math.Clamp(Math.Ceiling(contentWidth + NodeHorizontalPadding), NodeMinWidth, NodeMaxWidth);
+    }
+
+    /// <summary>
+    /// Measures one short single-line text fragment with the same typeface used by the execution graph so layout width
+    /// stays close to the rendered card content width.
+    /// </summary>
+    private static double MeasureSingleLineText(string text, double fontSize)
+    {
+        FormattedText measuredText = new(
+            text ?? string.Empty,
+            CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            GraphNodeTypeface,
+            fontSize,
+            Brushes.White);
+        return measuredText.WidthIncludingTrailingWhitespace;
     }
 
     /// <summary>

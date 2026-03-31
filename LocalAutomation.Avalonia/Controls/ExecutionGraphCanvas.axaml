@@ -9,7 +9,7 @@
     <Border x:Name="ViewportHost"
             Background="Transparent"
             UseLayoutRounding="True"
-            ClipToBounds="True"
+            ClipToBounds="False"
             PointerPressed="ViewportHost_PointerPressed"
             PointerMoved="ViewportHost_PointerMoved"
             PointerReleased="ViewportHost_PointerReleased"

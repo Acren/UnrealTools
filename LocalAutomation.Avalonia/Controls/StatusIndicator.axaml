@@ -3,7 +3,8 @@
              xmlns:controls="clr-namespace:LocalAutomation.Avalonia.Controls"
              x:Class="LocalAutomation.Avalonia.Controls.StatusIndicator"
              x:DataType="controls:StatusIndicator"
-             x:Name="Root">
+             x:Name="Root"
+             ClipToBounds="False">
     <UserControl.Styles>
         <!-- Reuse the tab marker class directly so running, success, and failure keep the original animation/glow
              language, while local styles only extend the missing blocked/cancelled and label colors. -->
@@ -35,26 +36,28 @@
         </Style>
     </UserControl.Styles>
     <!-- One shared status-indicator control keeps tab dots and graph status rows visually aligned while still letting
-         each host choose whether the label is shown. The arrangement stays declarative in XAML: one centered row with
-         a dot and optional label. -->
-    <Grid ColumnDefinitions="Auto,Auto"
-          RowDefinitions="Auto"
-          VerticalAlignment="Center">
+         each host choose whether the label is shown. The dot sits in a compact dedicated column so the glow can extend
+         slightly past the row bounds without adding an obvious left-side spacer before the label. -->
+    <Grid ColumnDefinitions="8,Auto"
+           RowDefinitions="Auto"
+           VerticalAlignment="Center"
+           ClipToBounds="False">
         <Border x:Name="DotBorder"
                 Classes="runtime-status-dot status-indicator-dot"
                 CornerRadius="999"
                 Grid.Row="0"
                 Grid.Column="0"
-                Margin="0,1,0,0"
+                ClipToBounds="False"
+                HorizontalAlignment="Center"
                 VerticalAlignment="Center" />
         <TextBlock x:Name="LabelTextBlock"
                    Classes="status-indicator-label"
                    Grid.Row="0"
                    Grid.Column="1"
-                   Margin="6,0,0,0"
-                   Height="16"
-                   FontWeight="SemiBold"
-                   VerticalAlignment="Center"
+                    Margin="6,0,0,0"
+                    Height="16"
+                    FontWeight="SemiBold"
+                    VerticalAlignment="Center"
                    TextAlignment="Left" />
     </Grid>
 </UserControl>

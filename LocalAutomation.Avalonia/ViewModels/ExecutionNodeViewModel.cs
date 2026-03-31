@@ -16,7 +16,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     private bool _isSelected;
     private double _x;
     private double _y;
-    private double _width = ExecutionGraphViewModel.NodeWidth;
+    private double _width = ExecutionGraphViewModel.NodeMinWidth;
     private double _height = ExecutionGraphViewModel.NodeHeight;
     private int _directChildCount;
     private int _descendantTaskCount;

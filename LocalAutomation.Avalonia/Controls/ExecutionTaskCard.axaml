@@ -6,7 +6,7 @@
              x:Name="Root">
     <UserControl.Styles>
         <!-- Task card styling is driven entirely by semantic classes so state owns hue while hover and selection only
-             adjust opacity and emphasis. -->
+             adjust emphasis. Hover uses a lighter fill so cards feel more obviously interactive. -->
         <Style Selector="Border.task-card-background">
             <Setter Property="Background" Value="#1D2835" />
         </Style>
@@ -14,10 +14,13 @@
             <Setter Property="Background" Value="#263342" />
         </Style>
         <Style Selector="Border.task-card-background.hover">
-            <Setter Property="Opacity" Value="0.92" />
+            <Setter Property="Background" Value="#253344" />
+        </Style>
+        <Style Selector="Border.task-card-background.selected.hover">
+            <Setter Property="Background" Value="#2C3C4E" />
         </Style>
         <Style Selector="Border.task-card-background.pressed">
-            <Setter Property="Opacity" Value="0.82" />
+            <Setter Property="Opacity" Value="0.9" />
         </Style>
         <Style Selector="Border.task-card-border">
             <Setter Property="Opacity" Value="0.78" />
@@ -55,36 +58,39 @@
     </UserControl.Styles>
     <!-- This control owns the full task-card markup so graph canvas code no longer constructs the inner visual tree. -->
     <Grid Width="{Binding CardWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
-          Height="{Binding CardHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}">
+          Height="{Binding CardHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
+          ClipToBounds="False">
         <Border x:Name="ClickSurface"
                 Classes="graph-interactive"
                 Background="Transparent"
                 CornerRadius="8"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch">
-            <Grid>
-                <Border x:Name="CardBackgroundShell"
-                        Classes="task-card-background"
-                        CornerRadius="8" />
+                <Grid>
+                    <Border x:Name="CardBackgroundShell"
+                            Classes="task-card-background"
+                            CornerRadius="8" />
                 <Border x:Name="CardBorderChrome"
                         Classes="task-card-border"
                         BorderThickness="{Binding CardBorderThickness}"
                         CornerRadius="8"
                         IsHitTestVisible="False" />
-                <Grid RowDefinitions="Auto,Auto"
-                      Margin="14,12,14,12">
-                    <TextBlock Text="{Binding Title}"
-                               FontSize="14"
-                               FontWeight="SemiBold"
+                    <!-- Center the title/status block within the card so shorter cards do not feel top-weighted. -->
+                    <Grid RowDefinitions="Auto,Auto"
+                          RowSpacing="8"
+                          Margin="20,12,20,12"
+                          VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
                                Foreground="#F2F5F8"
                                MaxHeight="40"
                                TextWrapping="Wrap"
                                VerticalAlignment="Center" />
-                    <controls:StatusIndicator Grid.Row="1"
-                                              Margin="0,8,0,0"
-                                              Status="{Binding Status}"
-                                              ShowLabel="True"
-                                              DotSize="6"
+                        <controls:StatusIndicator Grid.Row="1"
+                                                  Status="{Binding Status}"
+                                                  ShowLabel="True"
+                                                  DotSize="6"
                                               LabelFontSize="11"
                                               VerticalAlignment="Center" />
                 </Grid>

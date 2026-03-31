@@ -6,7 +6,7 @@
              x:Name="Root">
     <UserControl.Styles>
         <!-- Group visuals also use semantic classes so status hue is centralized in styles while hover and selection
-             adjust only opacity and emphasis. -->
+             adjust emphasis. Hover uses lighter layered fills so headers read as active affordances. -->
         <Style Selector="Border.group-container-background">
             <Setter Property="Background" Value="#131A24" />
         </Style>
@@ -14,10 +14,13 @@
             <Setter Property="Background" Value="#1A2430" />
         </Style>
         <Style Selector="Border.group-container-background.hover">
-            <Setter Property="Opacity" Value="0.96" />
+            <Setter Property="Background" Value="#172130" />
+        </Style>
+        <Style Selector="Border.group-container-background.selected.hover">
+            <Setter Property="Background" Value="#1E2A39" />
         </Style>
         <Style Selector="Border.group-container-background.pressed">
-            <Setter Property="Opacity" Value="0.88" />
+            <Setter Property="Opacity" Value="0.92" />
         </Style>
         <Style Selector="Border.group-header-shell">
             <Setter Property="Background" Value="#182230" />
@@ -26,10 +29,13 @@
             <Setter Property="Background" Value="#202D3B" />
         </Style>
         <Style Selector="Border.group-header-shell.hover">
-            <Setter Property="Opacity" Value="0.94" />
+            <Setter Property="Background" Value="#223142" />
+        </Style>
+        <Style Selector="Border.group-header-shell.selected.hover">
+            <Setter Property="Background" Value="#29394A" />
         </Style>
         <Style Selector="Border.group-header-shell.pressed">
-            <Setter Property="Opacity" Value="0.84" />
+            <Setter Property="Opacity" Value="0.92" />
         </Style>
         <Style Selector="Border.group-container-border">
             <Setter Property="Opacity" Value="0.58" />
@@ -67,7 +73,8 @@
     </UserControl.Styles>
     <!-- This control owns the full visual structure of one group node so canvas code only decides placement and z-order. -->
     <Grid Width="{Binding GroupWidth, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
-          Height="{Binding GroupHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}">
+          Height="{Binding GroupHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
+          ClipToBounds="False">
         <!-- The outer frame carries the status-tinted border around the full group, including the header region. -->
         <Border x:Name="ContainerBackgroundShell"
                 Classes="group-container-background"
@@ -82,6 +89,7 @@
         <Border x:Name="ClickSurface"
                 Classes="graph-interactive"
                 Background="Transparent"
+                ClipToBounds="False"
                 CornerRadius="10,10,0,0"
                 Margin="{Binding ContainerBorderThickness}"
                 Height="{Binding HeaderHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
@@ -89,9 +97,13 @@
                 VerticalAlignment="Top">
             <Border x:Name="HeaderShell"
                     Classes="group-header-shell"
+                    ClipToBounds="False"
                     CornerRadius="10,10,0,0">
+                <!-- Center the title/status row within the header so the compact status indicator shares the same
+                     visual baseline as the title. -->
                 <Grid ColumnDefinitions="Auto,Auto,*"
-                      Margin="14,10,14,10">
+                      Margin="14,10,14,10"
+                      VerticalAlignment="Center">
                     <TextBlock Text="{Binding Title}"
                                FontSize="14"
                                FontWeight="SemiBold"
