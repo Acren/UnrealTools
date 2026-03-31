@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using System.Threading.Tasks;
 
@@ -15,6 +16,7 @@ public sealed class ExecutionSession
     private readonly Dictionary<ExecutionTaskId, BufferedLogStream> _taskLogStreams = new();
     private readonly Dictionary<ExecutionTaskId, ExecutionTaskStatus> _taskStatuses = new();
     private readonly Dictionary<ExecutionTaskId, string> _taskStatusReasons = new();
+    private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _childTaskIdsByParent = new();
 
     /// <summary>
     /// Creates an execution session around a shared log stream and optional cancellation action.
@@ -36,6 +38,19 @@ public sealed class ExecutionSession
                 _taskLogStreams[task.Id] = new BufferedLogStream();
                 _taskStatuses[task.Id] = task.Status;
                 _taskStatusReasons[task.Id] = task.StatusReason;
+
+                /* Cache the structural child relationships from the immutable plan once so later runtime status
+                   propagation can cheaply update untouched descendants when a parent branch becomes terminal. */
+                if (task.ParentId is ExecutionTaskId parentId)
+                {
+                    if (!_childTaskIdsByParent.TryGetValue(parentId, out List<ExecutionTaskId>? childTaskIds))
+                    {
+                        childTaskIds = new List<ExecutionTaskId>();
+                        _childTaskIdsByParent[parentId] = childTaskIds;
+                    }
+
+                    childTaskIds.Add(task.Id);
+                }
             }
         }
     }
@@ -164,9 +179,32 @@ public sealed class ExecutionSession
     /// </summary>
     public void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null)
     {
-        _taskStatuses[taskId] = status;
-        _taskStatusReasons[taskId] = statusReason ?? string.Empty;
-        TaskStatusChanged?.Invoke(taskId, status, statusReason);
+        SetTaskStatusCore(taskId, status, statusReason);
+
+        /* Session state starts with preview hierarchy copied from the plan. When a parent branch reaches a terminal
+           runtime state before some descendants ever start, those untouched descendants must leave preview state too so
+           the execution graph does not keep showing stale Planned/Pending children under a skipped/cancelled branch. */
+        PropagateTerminalStatusToUntouchedDescendants(taskId, status, statusReason);
+    }
+
+    /// <summary>
+    /// Transitions plan-derived preview tasks into runtime-ready session state when execution starts.
+    /// </summary>
+    public void BeginExecution()
+    {
+        /* The preview graph intentionally shows Planned, but once a real execution session exists every enabled task is
+           part of that runtime session. Seed them as Pending up front so later scheduler or operation updates only need
+           to describe real runtime transitions rather than also cleaning up stale preview state. */
+        foreach (ExecutionTaskId taskId in _taskStatuses.Keys.ToList())
+        {
+            if (_taskStatuses[taskId] != ExecutionTaskStatus.Planned)
+            {
+                continue;
+            }
+
+            _taskStatuses[taskId] = ExecutionTaskStatus.Pending;
+            _taskStatusReasons[taskId] = string.Empty;
+        }
     }
 
     /// <summary>
@@ -201,5 +239,79 @@ public sealed class ExecutionSession
     public Task CancelAsync()
     {
         return _cancelAsync != null ? _cancelAsync() : Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Records one task status change in the session map and notifies live listeners.
+    /// </summary>
+    private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)
+    {
+        _taskStatuses[taskId] = status;
+        _taskStatusReasons[taskId] = statusReason ?? string.Empty;
+        TaskStatusChanged?.Invoke(taskId, status, statusReason);
+    }
+
+    /// <summary>
+    /// Applies inherited terminal state to descendants that never started so hierarchical branches stay visually
+    /// consistent with their parent task.
+    /// </summary>
+    private void PropagateTerminalStatusToUntouchedDescendants(ExecutionTaskId parentTaskId, ExecutionTaskStatus status, string? statusReason)
+    {
+        if (!_childTaskIdsByParent.TryGetValue(parentTaskId, out List<ExecutionTaskId>? childTaskIds))
+        {
+            return;
+        }
+
+        /* Only the parent task itself should show Failed or Cancelled when it was actively executing. Descendants that
+           never started should become Skipped instead, while an explicitly skipped parent keeps the same semantic state
+           for its untouched subtree. */
+        ExecutionTaskStatus descendantStatus = status switch
+        {
+            ExecutionTaskStatus.Skipped => ExecutionTaskStatus.Skipped,
+            ExecutionTaskStatus.Cancelled => ExecutionTaskStatus.Skipped,
+            ExecutionTaskStatus.Failed => ExecutionTaskStatus.Skipped,
+            _ => default
+        };
+
+        if (descendantStatus == default)
+        {
+            return;
+        }
+
+        string? descendantReason = BuildInheritedDescendantReason(parentTaskId, status, statusReason);
+        foreach (ExecutionTaskId childTaskId in childTaskIds)
+        {
+            ExecutionTaskStatus childStatus = _taskStatuses.TryGetValue(childTaskId, out ExecutionTaskStatus existingStatus)
+                ? existingStatus
+                : ExecutionTaskStatus.Planned;
+            if (childStatus is not ExecutionTaskStatus.Planned and not ExecutionTaskStatus.Pending)
+            {
+                continue;
+            }
+
+            SetTaskStatusCore(childTaskId, descendantStatus, descendantReason);
+            PropagateTerminalStatusToUntouchedDescendants(childTaskId, descendantStatus, descendantReason);
+        }
+    }
+
+    /// <summary>
+    /// Builds a clear inherited reason when a descendant is skipped because its parent branch stopped first.
+    /// </summary>
+    private string? BuildInheritedDescendantReason(ExecutionTaskId parentTaskId, ExecutionTaskStatus status, string? statusReason)
+    {
+        if (!string.IsNullOrWhiteSpace(statusReason))
+        {
+            return status == ExecutionTaskStatus.Skipped
+                ? statusReason
+                : $"Skipped because parent task '{parentTaskId}' {status.ToString().ToLowerInvariant()}: {statusReason}";
+        }
+
+        return status switch
+        {
+            ExecutionTaskStatus.Skipped => $"Skipped because parent task '{parentTaskId}' was skipped.",
+            ExecutionTaskStatus.Cancelled => $"Skipped because parent task '{parentTaskId}' was cancelled.",
+            ExecutionTaskStatus.Failed => $"Skipped because parent task '{parentTaskId}' failed.",
+            _ => null
+        };
     }
 }

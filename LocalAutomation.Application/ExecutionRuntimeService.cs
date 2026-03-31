@@ -52,6 +52,10 @@ public sealed class ExecutionRuntimeService
             TargetName = parameters.Target?.DisplayName ?? string.Empty
         };
 
+        /* Copying the preview plan into the session preserves the authored graph structure, but the live execution tab
+           should start from runtime-ready state instead of continuing to show preview-only Planned nodes. */
+        session.BeginExecution();
+
         // Let UI consumers subscribe to task-status and task-log streams before the runner starts so the first Running
         // transition for long-lived tasks is visible on the graph instead of being lost during startup.
         try
