@@ -137,12 +137,12 @@
             <Grid Grid.Row="1"
                   Margin="0"
                   MinHeight="0"
-                  ColumnDefinitions="1.7*,0.9*"
+                  ColumnDefinitions="1.7*,6,0.9*"
                   ColumnSpacing="0">
                 <Border x:Name="GraphHost"
                         Margin="0"
                         Grid.Column="0"
-                        Grid.ColumnSpan="2"
+                        Grid.ColumnSpan="3"
                         Background="{DynamicResource GraphiteTerminalBrush}"
                         BorderBrush="{DynamicResource GraphiteLineBrush}"
                         BorderThickness="0">
@@ -150,10 +150,17 @@
                                                    DataContext="{Binding SelectedGraph}" />
                 </Border>
 
+                <!-- Keep the workspace divider in the view layer so users can resize the shared graph and log hosts
+                     without pushing layout state into the view model. -->
+                <GridSplitter x:Name="GraphLogSplitter"
+                              Grid.Column="1"
+                              ResizeDirection="Columns"
+                              Classes="resize-handle-vertical" />
+
                 <Border x:Name="LogHost"
                         Grid.Column="0"
                         Margin="0"
-                        Grid.ColumnSpan="2"
+                        Grid.ColumnSpan="3"
                         Background="{DynamicResource GraphiteTerminalBrush}">
                     <Border.ContextMenu>
                         <ContextMenu>

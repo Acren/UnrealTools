@@ -15,6 +15,7 @@ namespace LocalAutomation.Avalonia.Views.Panels;
 public partial class ExecutionWorkspacePanel : UserControl
 {
     private Border? _graphHost;
+    private GridSplitter? _graphLogSplitter;
     private Border? _logHost;
     private ExecutionWorkspaceViewModel? _observedViewModel;
 
@@ -150,7 +151,7 @@ public partial class ExecutionWorkspacePanel : UserControl
     /// </summary>
     private void UpdateWorkspaceLayout()
     {
-        if (_graphHost == null || _logHost == null)
+        if (_graphHost == null || _graphLogSplitter == null || _logHost == null)
         {
             return;
         }
@@ -162,12 +163,16 @@ public partial class ExecutionWorkspacePanel : UserControl
 
         _graphHost.IsVisible = showsGraph;
         Grid.SetColumn(_graphHost, 0);
-        Grid.SetColumnSpan(_graphHost, usesSplitWorkspace ? 1 : 2);
-        _graphHost.BorderThickness = usesSplitWorkspace ? new Thickness(0, 0, 1, 0) : new Thickness(0);
+        Grid.SetColumnSpan(_graphHost, usesSplitWorkspace ? 1 : 3);
+        _graphHost.BorderThickness = new Thickness(0);
+
+        /* The splitter exists only for the true split workspace. Full-width modes keep the single surviving host clean
+           and uninterrupted instead of leaving behind an inert divider gutter. */
+        _graphLogSplitter.IsVisible = usesSplitWorkspace;
 
         _logHost.IsVisible = showsLog;
-        Grid.SetColumn(_logHost, usesSplitWorkspace ? 1 : 0);
-        Grid.SetColumnSpan(_logHost, usesSplitWorkspace ? 1 : 2);
+        Grid.SetColumn(_logHost, usesSplitWorkspace ? 2 : 0);
+        Grid.SetColumnSpan(_logHost, usesSplitWorkspace ? 1 : 3);
     }
 
     /// <summary>
@@ -177,6 +182,7 @@ public partial class ExecutionWorkspacePanel : UserControl
     {
         AvaloniaXamlLoader.Load(this);
         _graphHost = this.FindControl<Border>("GraphHost");
+        _graphLogSplitter = this.FindControl<GridSplitter>("GraphLogSplitter");
         _logHost = this.FindControl<Border>("LogHost");
     }
 

@@ -206,9 +206,32 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     public int SelectedRuntimeErrorCount => SelectedRuntimeTab?.ErrorCount ?? 0;
 
     /// <summary>
-    /// Gets the elapsed duration text for the selected runtime tab.
-    /// </summary>
-    public string SelectedRuntimeDuration => SelectedRuntimeTab?.DurationText ?? "--:--";
+     /// Gets the elapsed duration text for the selected runtime tab.
+     /// </summary>
+    public string SelectedRuntimeDuration
+    {
+        get
+        {
+            if (SelectedRuntimeTab?.Session is not ExecutionSession session)
+            {
+                return SelectedRuntimeTab?.DurationText ?? "--:--";
+            }
+
+            ExecutionTaskId? selectedTaskId = SelectedRuntimeTab.Graph.SelectedTaskId;
+            if (selectedTaskId == null)
+            {
+                return SelectedRuntimeTab.DurationText;
+            }
+
+            TimeSpan? selectedTaskDuration = session.GetTaskDuration(selectedTaskId);
+            if (selectedTaskDuration == null)
+            {
+                return SelectedRuntimeTab.DurationText;
+            }
+
+            return FormatDuration(selectedTaskDuration.Value);
+        }
+    }
 
     /// <summary>
     /// Gets the selected graph node title shown in the details pane.
@@ -692,6 +715,8 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// </summary>
     private void HandleRuntimeDurationTimerTick(object? sender, EventArgs e)
     {
+        /* The selected TIME pill can now represent either whole-session time or selected task/subtree time, so update
+           the same derived property once per second while runtime work remains active. */
         RaisePropertyChanged(nameof(SelectedRuntimeDuration));
 
         if (!RuntimeTabs.Any(tab => tab.IsRunning))
@@ -780,5 +805,20 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private static LogEntryViewModel CreateLogEntryViewModel(LogEntry entry)
     {
         return new LogEntryViewModel(entry.Message, entry.Verbosity, entry.Timestamp);
+    }
+
+    /// <summary>
+    /// Formats a duration for the workspace header using the same compact clock style as the runtime-tab strip.
+    /// </summary>
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration < TimeSpan.Zero)
+        {
+            duration = TimeSpan.Zero;
+        }
+
+        return duration.TotalHours >= 1
+            ? duration.ToString(@"h\:mm\:ss")
+            : duration.ToString(@"mm\:ss");
     }
 }

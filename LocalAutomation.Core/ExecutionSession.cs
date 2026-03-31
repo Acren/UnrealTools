@@ -17,6 +17,8 @@ public sealed class ExecutionSession
     private readonly Dictionary<ExecutionTaskId, ExecutionTaskStatus> _taskStatuses = new();
     private readonly Dictionary<ExecutionTaskId, string> _taskStatusReasons = new();
     private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _childTaskIdsByParent = new();
+    private readonly Dictionary<ExecutionTaskId, DateTimeOffset?> _taskStartedAt = new();
+    private readonly Dictionary<ExecutionTaskId, DateTimeOffset?> _taskFinishedAt = new();
 
     /// <summary>
     /// Creates an execution session around a shared log stream and optional cancellation action.
@@ -38,6 +40,8 @@ public sealed class ExecutionSession
                 _taskLogStreams[task.Id] = new BufferedLogStream();
                 _taskStatuses[task.Id] = task.Status;
                 _taskStatusReasons[task.Id] = task.StatusReason;
+                _taskStartedAt[task.Id] = null;
+                _taskFinishedAt[task.Id] = null;
 
                 /* Cache the structural child relationships from the immutable plan once so later runtime status
                    propagation can cheaply update untouched descendants when a parent branch becomes terminal. */
@@ -124,6 +128,67 @@ public sealed class ExecutionSession
     /// Gets or sets the target display name for the current session.
     /// </summary>
     public string TargetName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Returns the direct and transitive descendants for one task id.
+    /// </summary>
+    public IReadOnlyList<ExecutionTaskId> GetTaskSubtreeIds(ExecutionTaskId taskId)
+    {
+        List<ExecutionTaskId> subtreeIds = new() { taskId };
+        CollectDescendantTaskIds(taskId, subtreeIds);
+        return subtreeIds;
+    }
+
+    /// <summary>
+    /// Returns the effective runtime duration for a selected task, keeping the parent task open while any descendant is
+    /// still active so branch timing matches the user's mental model of "this task is not done yet".
+    /// </summary>
+    public TimeSpan? GetTaskDuration(ExecutionTaskId? taskId, DateTimeOffset? now = null)
+    {
+        if (taskId == null)
+        {
+            return null;
+        }
+
+        IReadOnlyList<ExecutionTaskId> subtreeIds = GetTaskSubtreeIds(taskId.Value);
+        DateTimeOffset? effectiveStart = null;
+        DateTimeOffset? effectiveEnd = null;
+        DateTimeOffset timestampNow = now ?? DateTimeOffset.Now;
+
+        /* Parent tasks are real tasks, but the user expectation here is branch-oriented: when selected child work is
+           still running, the selected parent task should still look in progress. Use the earliest known start in the
+           selected subtree and keep the end open until every task in that subtree is terminal. */
+        foreach (ExecutionTaskId subtreeTaskId in subtreeIds)
+        {
+            if (_taskStartedAt.TryGetValue(subtreeTaskId, out DateTimeOffset? startedAt) && startedAt != null)
+            {
+                effectiveStart = effectiveStart == null || startedAt < effectiveStart ? startedAt : effectiveStart;
+            }
+
+            if (GetTaskStatus(subtreeTaskId) == ExecutionTaskStatus.Running)
+            {
+                effectiveEnd = timestampNow;
+                continue;
+            }
+
+            if (_taskFinishedAt.TryGetValue(subtreeTaskId, out DateTimeOffset? finishedAt) && finishedAt != null)
+            {
+                if (effectiveEnd == null || finishedAt > effectiveEnd)
+                {
+                    effectiveEnd = finishedAt;
+                }
+            }
+        }
+
+        if (effectiveStart == null)
+        {
+            return null;
+        }
+
+        DateTimeOffset resolvedEnd = effectiveEnd ?? timestampNow;
+        TimeSpan duration = resolvedEnd - effectiveStart.Value;
+        return duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
+    }
 
     /// <summary>
     /// Appends the provided log entry to the aggregate stream and, when a task id exists, to that task's stream as
@@ -246,9 +311,61 @@ public sealed class ExecutionSession
     /// </summary>
     private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)
     {
+        RecordTaskTiming(taskId, status);
         _taskStatuses[taskId] = status;
         _taskStatusReasons[taskId] = statusReason ?? string.Empty;
         TaskStatusChanged?.Invoke(taskId, status, statusReason);
+    }
+
+    /// <summary>
+    /// Captures runtime task start and finish timestamps from status transitions so UI duration displays do not need to
+    /// infer timing from log traffic.
+    /// </summary>
+    private void RecordTaskTiming(ExecutionTaskId taskId, ExecutionTaskStatus status)
+    {
+        DateTimeOffset timestamp = DateTimeOffset.Now;
+        if (!_taskStartedAt.ContainsKey(taskId))
+        {
+            _taskStartedAt[taskId] = null;
+        }
+
+        if (!_taskFinishedAt.ContainsKey(taskId))
+        {
+            _taskFinishedAt[taskId] = null;
+        }
+
+        if (status == ExecutionTaskStatus.Running && _taskStartedAt[taskId] == null)
+        {
+            _taskStartedAt[taskId] = timestamp;
+            _taskFinishedAt[taskId] = null;
+            return;
+        }
+
+        if (status is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Disabled)
+        {
+            /* Some tasks can jump straight to a terminal state without an explicit Running transition, especially when
+               execution policy disables or skips a whole branch. Seed a zero-or-near-zero duration from that terminal
+               transition so selected task timing still exists even when no logs were emitted. */
+            _taskStartedAt[taskId] ??= timestamp;
+            _taskFinishedAt[taskId] = timestamp;
+        }
+    }
+
+    /// <summary>
+    /// Recursively collects descendant task ids from the cached parent-child map.
+    /// </summary>
+    private void CollectDescendantTaskIds(ExecutionTaskId parentTaskId, ICollection<ExecutionTaskId> descendantTaskIds)
+    {
+        if (!_childTaskIdsByParent.TryGetValue(parentTaskId, out List<ExecutionTaskId>? childTaskIds))
+        {
+            return;
+        }
+
+        foreach (ExecutionTaskId childTaskId in childTaskIds)
+        {
+            descendantTaskIds.Add(childTaskId);
+            CollectDescendantTaskIds(childTaskId, descendantTaskIds);
+        }
     }
 
     /// <summary>
