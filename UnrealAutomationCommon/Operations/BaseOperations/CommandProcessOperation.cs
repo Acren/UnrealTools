@@ -17,7 +17,6 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         private string? _processName;
         private int _cancellationTerminationRequested;
         private bool _wasCancelled;
-        private Microsoft.Extensions.Logging.ILogger? _activeLogger;
 
         // Process metadata is populated only after launch, so diagnostics fall back to placeholders during setup or
         // teardown paths that run before every field has been assigned.
@@ -38,13 +37,13 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         protected override async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             _wasCancelled = false;
-            _activeLogger = context.Logger;
+            ILogger logger = context.Logger;
             UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
             global::LocalAutomation.Runtime.Command command = BuildCommand(unrealOperationParameters);
 
             _fileName = Path.GetFileName(command.File);
 
-            _activeLogger.LogInformation("Running command: " + command);
+            logger.LogInformation("Running command: " + command);
 
             if (!File.Exists(command.File))
             {
@@ -63,12 +62,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             _process = new Process { StartInfo = startInfo };
             _process.EnableRaisingEvents = true;
-            _process.OutputDataReceived += (sender, args) => { HandleLogLine(args.Data); };
+            _process.OutputDataReceived += (sender, args) => { HandleLogLine(logger, args.Data); };
             _process.ErrorDataReceived += (sender, args) =>
             {
                 if (args.Data != null)
                 {
-                    _activeLogger.LogError(args.Data);
+                    logger.LogError(args.Data);
                 }
             };
             _process.Start();
@@ -77,13 +76,13 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             _processName = _process.ProcessName;
 
-            _activeLogger.LogInformation("Launched process '" + FileAndProcess + "'");
+            logger.LogInformation("Launched process '" + FileAndProcess + "'");
 
             var tcs = new TaskCompletionSource<int>();
 
             _process.Exited += (sender, args) =>
             {
-                _activeLogger.LogDebug($"Process '{FileAndProcess}' exited");
+                logger.LogDebug($"Process '{FileAndProcess}' exited");
                 tcs.TrySetResult(0);
             };
 
@@ -94,10 +93,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             // Dispose registration, otherwise GC is prevented through above lambda
             await registration.DisposeAsync();
 
-            return HandleProcessEnded(context, unrealOperationParameters);
+            return HandleProcessEnded(logger, context, unrealOperationParameters);
         }
 
-        private void HandleLogLine(string line)
+        private void HandleLogLine(ILogger logger, string line)
         {
             if (string.IsNullOrEmpty(line))
             {
@@ -141,10 +140,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 level = LogLevel.Warning;
             }
 
-            _activeLogger!.Log(level, line);
+            logger.Log(level, line);
         }
 
-        private global::LocalAutomation.Runtime.OperationResult HandleProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters)
+        private global::LocalAutomation.Runtime.OperationResult HandleProcessEnded(ILogger logger, global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters)
         {
             if (_process == null)
             {
@@ -167,7 +166,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 : result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Succeeded
                     ? "succeeded"
                     : "failed";
-            _activeLogger!.Log(exitLevel, "Process '" + FileAndProcess + "' " + exitLabel + " with code " + result.ExitCode);
+            logger.Log(exitLevel, "Process '" + FileAndProcess + "' " + exitLabel + " with code " + result.ExitCode);
 
             OnProcessEnded(context, operationParameters, result);
 
