@@ -1,11 +1,12 @@
+using System;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
-using System.ComponentModel;
-using LocalAutomation.Core;
+using Avalonia.Markup.Xaml;
 using LocalAutomation.Avalonia.ViewModels;
+using LocalAutomation.Core;
 
 namespace LocalAutomation.Avalonia.Controls;
 
@@ -30,17 +31,19 @@ public partial class ExecutionTaskCard : UserControl
     public ExecutionTaskCard()
     {
         InitializeComponent();
+
         Border clickSurface = GetRequiredBorder("ClickSurface");
         clickSurface.PointerEntered += ClickSurface_PointerEntered;
         clickSurface.PointerExited += ClickSurface_PointerExited;
         clickSurface.PointerPressed += ClickSurface_PointerPressed;
         clickSurface.PointerReleased += ClickSurface_PointerReleased;
+
         DataContextChanged += HandleDataContextChanged;
     }
 
     /// <summary>
-     /// Raised when the task card is clicked with the pointer.
-     /// </summary>
+    /// Raised when the task card is clicked with the pointer.
+    /// </summary>
     public event EventHandler<RoutedEventArgs>? Invoked;
 
     /// <summary>
@@ -53,8 +56,8 @@ public partial class ExecutionTaskCard : UserControl
     }
 
     /// <summary>
-     /// Loads the compiled Avalonia markup for the task card.
-     /// </summary>
+    /// Loads the compiled Avalonia markup for the task card.
+    /// </summary>
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
@@ -123,6 +126,15 @@ public partial class ExecutionTaskCard : UserControl
     }
 
     /// <summary>
+    /// Looks up the dedicated animated border control that owns the reusable conic border animation.
+    /// </summary>
+    private AnimatedConicBorder GetRequiredAnimatedBorder(string name)
+    {
+        return this.FindControl<AnimatedConicBorder>(name)
+            ?? throw new InvalidOperationException($"ExecutionTaskCard animated border '{name}' was not initialized.");
+    }
+
+    /// <summary>
     /// Rebinds property-change observation when the control starts rendering a different node view model.
     /// </summary>
     private void HandleDataContextChanged(object? sender, EventArgs e)
@@ -154,7 +166,8 @@ public partial class ExecutionTaskCard : UserControl
     }
 
     /// <summary>
-    /// Applies the task-card semantic classes consumed by the local Avalonia styles.
+    /// Applies the task-card semantic classes consumed by the local Avalonia styles and forwards whether the extracted
+    /// animated border control should be active for the current task status.
     /// </summary>
     private void ApplySemanticClasses()
     {
@@ -165,8 +178,15 @@ public partial class ExecutionTaskCard : UserControl
 
         Border backgroundShell = GetRequiredBorder("CardBackgroundShell");
         Border borderChrome = GetRequiredBorder("CardBorderChrome");
+        AnimatedConicBorder animatedBorderChrome = GetRequiredAnimatedBorder("AnimatedBorderChrome");
+
         ExecutionStatusClasses.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
         ExecutionStatusClasses.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
         ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.Status);
+        ExecutionStatusClasses.ApplyStatusClasses(animatedBorderChrome.Classes, _observedNode.Status);
+
+        /* Let the extracted control own the timer and conic brush creation while the task card only forwards whether the
+           current task status should display the animated accent treatment. */
+        animatedBorderChrome.IsAnimated = _observedNode.Status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Running;
     }
 }

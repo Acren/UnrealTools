@@ -7,6 +7,33 @@
     <UserControl.Styles>
         <!-- Task card styling is driven entirely by semantic classes so state owns hue while hover and selection only
              adjust emphasis. Hover uses a lighter fill so cards feel more obviously interactive. -->
+        <Style Selector="controls|AnimatedConicBorder.task-card-animated-border">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsVisible" Value="False" />
+            <!-- Keep the animated border colors in styling so callers can replace the whole conic highlight treatment
+                 without threading individual color properties through the control API. -->
+            <Setter Property="AnimationBrush">
+                <ConicGradientBrush Center="50%,50%">
+                    <GradientStop Color="#4563A8FF" Offset="0.00" />
+                    <GradientStop Color="#4563A8FF" Offset="0.20" />
+                    <GradientStop Color="#79BEFF" Offset="0.24" />
+                    <GradientStop Color="#EAF8FF" Offset="0.27" />
+                    <GradientStop Color="#79BEFF" Offset="0.30" />
+                    <GradientStop Color="#4563A8FF" Offset="0.34" />
+                    <GradientStop Color="#4563A8FF" Offset="0.70" />
+                    <GradientStop Color="#79BEFF" Offset="0.74" />
+                    <GradientStop Color="#EAF8FF" Offset="0.77" />
+                    <GradientStop Color="#79BEFF" Offset="0.80" />
+                    <GradientStop Color="#4563A8FF" Offset="0.84" />
+                    <GradientStop Color="#4563A8FF" Offset="1.00" />
+                </ConicGradientBrush>
+            </Setter>
+        </Style>
+        <Style Selector="controls|AnimatedConicBorder.task-card-animated-border.running">
+            <!-- The animated border sits on top of the base stroke and only appears for the active status treatment. -->
+            <Setter Property="IsVisible" Value="True" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <Style Selector="Border.task-card-background">
             <Setter Property="Background" Value="#1D2835" />
         </Style>
@@ -46,7 +73,8 @@
             <Setter Property="BorderBrush" Value="#69717A" />
         </Style>
         <Style Selector="Border.task-card-border.running">
-            <Setter Property="BorderBrush" Value="#63A8FF" />
+            <!-- Keep a faint continuous stroke under the animated highlights so the card still reads as one border. -->
+            <Setter Property="BorderBrush" Value="#4563A8FF" />
         </Style>
         <Style Selector="Border.task-card-border.completed">
             <Setter Property="BorderBrush" Value="#7BE37B" />
@@ -69,11 +97,18 @@
                     <Border x:Name="CardBackgroundShell"
                             Classes="task-card-background"
                             CornerRadius="8" />
-                <Border x:Name="CardBorderChrome"
-                        Classes="task-card-border"
-                        BorderThickness="{Binding CardBorderThickness}"
-                        CornerRadius="8"
-                        IsHitTestVisible="False" />
+                    <Border x:Name="CardBorderChrome"
+                            Classes="task-card-border"
+                            BorderThickness="{Binding CardBorderThickness}"
+                            CornerRadius="8"
+                            IsHitTestVisible="False" />
+                    <!-- Keep the animated border as a real Border stroke so rounded corners and stroke thickness stay
+                         consistent while the conic brush rotates two opposing highlights around the card. -->
+                    <controls:AnimatedConicBorder x:Name="AnimatedBorderChrome"
+                                                  Classes="task-card-animated-border"
+                                                  BorderThickness="{Binding CardBorderThickness}"
+                                                  CornerRadius="8"
+                                                  IsHitTestVisible="False" />
                     <!-- Center the title/status block within the card so shorter cards do not feel top-weighted. -->
                     <Grid RowDefinitions="Auto,Auto,Auto"
                           RowSpacing="6"
