@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using LocalAutomation.Core;
@@ -28,6 +29,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
     private const int MaxLogEntriesPerFlush = 100;
     private static readonly TimeSpan PendingLogFlushInterval = TimeSpan.FromMilliseconds(50);
+    private const int DispatcherInstrumentationInterval = 250;
 
     private readonly LocalAutomationApplicationHost _services;
     private readonly object _pendingLogSyncRoot = new();
@@ -37,6 +39,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private readonly Dictionary<RuntimeWorkspaceTabViewModel, Queue<LogEntryViewModel>> _pendingLogEntries = new();
     private readonly Dictionary<RuntimeWorkspaceTabViewModel, ILogStream> _attachedLogStreams = new();
     private readonly Dictionary<RuntimeWorkspaceTabViewModel, RuntimeExecutionSession> _attachedSessions = new();
+    private int _taskStatusDispatcherPostCount;
     private bool _isPendingLogFlushStartQueued;
     private RuntimeWorkspaceTabViewModel? _observedWorkspaceTab;
     private RuntimeWorkspaceTabViewModel? _selectedRuntimeTab;
@@ -99,6 +102,15 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             foreach (RuntimeWorkspaceTabViewModel tab in RuntimeTabs)
             {
                 tab.IsSelected = ReferenceEquals(tab, value);
+            }
+
+            if (value != null)
+            {
+                RebuildTabSelectedLogEntries(value);
+                foreach (RuntimeWorkspaceTabViewModel tab in RuntimeTabs.Where(tab => !ReferenceEquals(tab, value) && _attachedLogStreams.ContainsKey(tab)).ToList())
+                {
+                    RemovePendingLogEntries(tab);
+                }
             }
 
             RaiseSelectionStateChanged();
@@ -286,7 +298,19 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         AttachSessionLogs(runtimeTab, session);
         session.TaskStatusChanged += (taskId, status, statusReason) => Dispatcher.UIThread.Post(() =>
         {
+            int postSequence = Interlocked.Increment(ref _taskStatusDispatcherPostCount);
+            using PerformanceActivityScope uiActivity = CreateDispatcherPostedActivity(
+                "ExecutionWorkspace.TaskStatusChanged.Dispatch",
+                runtimeTab,
+                postedAtUtc: DateTime.UtcNow,
+                postSequence,
+                extraTags: activity => activity
+                    .SetTag("task.id", taskId.Value)
+                    .SetTag("task.status", status.ToString())
+                    .SetTag("task.status_reason", statusReason ?? string.Empty));
+
             runtimeTab.Graph.NotifyTaskStateChanged(taskId);
+            runtimeTab.RefreshAllTaskMetrics();
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
                 RaiseSelectionStateChanged();
@@ -390,7 +414,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Polls the running session until it completes so completion state can be reflected back into the workspace.
+    /// Awaits the runtime-owned completion signal so completion state can be reflected back into the workspace.
     /// </summary>
     private async Task WatchExecutionCompletionAsync(RuntimeWorkspaceTabViewModel runtimeTab)
     {
@@ -398,19 +422,19 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionWorkspace.WatchExecutionCompletion")
             .SetTag("operation.name", session.OperationName)
             .SetTag("target.name", session.TargetName);
-        while (session.IsRunning)
-        {
-            await Task.Delay(100);
-        }
+        await session.Completion.ConfigureAwait(false);
 
         activity.SetTag("session.outcome", session.Outcome.ToString());
+        DateTime uiDispatchRequestedAtUtc = DateTime.UtcNow;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             using PerformanceActivityScope uiActivity = PerformanceTelemetry.StartActivity("ExecutionWorkspace.ApplyCompletionState")
                 .SetTag("operation.name", session.OperationName)
                 .SetTag("target.name", session.TargetName)
-                .SetTag("session.outcome", session.Outcome.ToString());
+                .SetTag("session.outcome", session.Outcome.ToString())
+                .SetTag("ui.dispatch.delay_ms", (DateTime.UtcNow - uiDispatchRequestedAtUtc).TotalMilliseconds.ToString("0"));
             session.FinishedAt = DateTimeOffset.Now;
+            runtimeTab.RefreshAllTaskMetrics();
             runtimeTab.NotifyStateChanged();
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
@@ -476,21 +500,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private void AttachSessionLogs(RuntimeWorkspaceTabViewModel runtimeTab, RuntimeExecutionSession session)
     {
         AttachLogStream(runtimeTab, session.LogStream);
-
-        /* Graph and header metrics are derived from session state and logs, so one new task log line only needs to
-           trigger a UI re-read rather than pushing cached metric snapshots around. */
-        session.LogStream.EntryAdded += entry => Dispatcher.UIThread.Post(() =>
-        {
-            if (RuntimeExecutionTaskId.FromNullable(entry.TaskId) is RuntimeExecutionTaskId taskId)
-            {
-                runtimeTab.Graph.NotifyTaskStateChanged(taskId);
-            }
-
-            if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
-            {
-                RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
-            }
-        });
     }
 
     /// <summary>
@@ -500,7 +509,15 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     {
         _attachedLogStreams[runtimeTab] = logStream;
         RebuildTabSelectedLogEntries(runtimeTab);
-        logStream.EntryAdded += entry => EnqueuePendingLogEntry(runtimeTab, CreateLogEntryViewModel(entry));
+        logStream.EntryAdded += entry =>
+        {
+            if (!ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+            {
+                return;
+            }
+
+            EnqueuePendingLogEntry(runtimeTab, CreateLogEntryViewModel(entry));
+        };
     }
 
     /// <summary>
@@ -637,6 +654,11 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         bool selectedTabChanged = false;
         foreach (RuntimeWorkspaceTabViewModel runtimeTab in tabsToRefresh)
         {
+            if (!ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+            {
+                continue;
+            }
+
             RebuildTabSelectedLogEntries(runtimeTab);
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
@@ -695,6 +717,24 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         return tabsToRefresh;
+    }
+
+    /// <summary>
+    /// Creates one activity for a dispatcher-posted callback and records how long the work sat in the UI queue before it ran.
+    /// </summary>
+    private static PerformanceActivityScope CreateDispatcherPostedActivity(string activityName, RuntimeWorkspaceTabViewModel runtimeTab, DateTime postedAtUtc, int postSequence, Func<PerformanceActivityScope, PerformanceActivityScope>? extraTags = null)
+    {
+        if (postSequence % DispatcherInstrumentationInterval != 0)
+        {
+            return default;
+        }
+
+        PerformanceActivityScope activity = PerformanceTelemetry.StartActivity(activityName)
+            .SetTag("tab.id", runtimeTab.Id)
+            .SetTag("tab.title", runtimeTab.Title)
+            .SetTag("dispatch.post.sequence", postSequence)
+            .SetTag("dispatch.queue.delay_ms", (DateTime.UtcNow - postedAtUtc).TotalMilliseconds.ToString("0"));
+        return extraTags != null ? extraTags(activity) : activity;
     }
 
     /// <summary>

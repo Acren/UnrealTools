@@ -14,6 +14,7 @@ namespace LocalAutomation.Runtime;
 public sealed class ExecutionSession
 {
     private readonly Func<Task>? _cancelAsync;
+    private readonly TaskCompletionSource<bool> _completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Dictionary<ExecutionTaskId, BufferedLogStream> _taskLogStreams = new();
     private readonly Dictionary<ExecutionTaskId, ExecutionTaskRuntimeState> _taskRuntimeStates = new();
     private readonly Dictionary<ExecutionTaskId, List<ExecutionTaskId>> _childTaskIdsByParent = new();
@@ -75,6 +76,11 @@ public sealed class ExecutionSession
     public DateTimeOffset? FinishedAt { get; set; }
 
     public bool IsRunning { get; set; }
+
+    /// <summary>
+    /// Gets the task that completes when the runtime has fully finalized the session outcome and running state.
+    /// </summary>
+    public Task Completion => _completionSource.Task;
 
     public RunOutcome? Outcome { get; set; }
 
@@ -254,6 +260,15 @@ public sealed class ExecutionSession
     public Task CancelAsync()
     {
         return _cancelAsync != null ? _cancelAsync() : Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Marks the session as fully complete so host UI layers can await the authoritative runtime completion signal
+    /// instead of polling mutable state.
+    /// </summary>
+    public void CompleteExecution()
+    {
+        _completionSource.TrySetResult(true);
     }
 
     private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)

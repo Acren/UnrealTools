@@ -47,7 +47,6 @@ public sealed class ExecutionRuntimeService
             if (runner.IsRunning)
             {
                 await runner.Cancel();
-                session!.IsRunning = false;
             }
         }, plan: plan)
         {
@@ -118,6 +117,7 @@ public sealed class ExecutionRuntimeService
             session.IsRunning = false;
             activity.SetTag("session.is_running", session.IsRunning);
             ApplicationLogger.Logger = previousLogger;
+            session.CompleteExecution();
         }
     }
 

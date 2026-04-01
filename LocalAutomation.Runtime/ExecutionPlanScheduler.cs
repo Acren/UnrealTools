@@ -236,7 +236,7 @@ public sealed class ExecutionPlanScheduler
                 .SetTag("task.title", item.Title);
             SetStatus(statuses, statusReasons, item.Id, ExecutionTaskStatus.Running);
             ExecutionTaskContext context = new(item.Id, item.Title, CreateTaskLogger(item.Id), cancellationToken, item.OperationParameters, sharedData);
-            Task<OperationResult> task = item.ExecuteAsync!(context);
+            Task<OperationResult> task = ExecuteTaskBodyAsync(item, context);
             runningTasks[item.Id] = task;
             taskOwners[task] = item.Id;
             startedAny = true;
@@ -366,6 +366,35 @@ public sealed class ExecutionPlanScheduler
         }
 
         return _logger;
+    }
+
+    /// <summary>
+    /// Executes one authored task callback so task-body time is measured separately from scheduler bookkeeping.
+    /// </summary>
+    private async Task<OperationResult> ExecuteTaskBodyAsync(ExecutionPlanTask task, ExecutionTaskContext context)
+    {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.ExecuteTaskBody")
+            .SetTag("task.id", task.Id.Value)
+            .SetTag("task.title", task.Title);
+        try
+        {
+            OperationResult result = await task.ExecuteAsync!(context).ConfigureAwait(false);
+            activity.SetTag("task.outcome", result.Outcome.ToString());
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            activity.SetTag("task.outcome", RunOutcome.Cancelled.ToString());
+            _taskStateSink?.SetTaskStatus(context.TaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            activity.SetTag("task.outcome", "Exception")
+                .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name);
+            _taskStateSink?.SetTaskStatus(context.TaskId, ExecutionTaskStatus.Failed, ex.Message);
+            throw new Exception($"Exception encountered running execution task '{task.Title}'", ex);
+        }
     }
 
     /// <summary>

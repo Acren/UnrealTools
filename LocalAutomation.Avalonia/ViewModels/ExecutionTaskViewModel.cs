@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
+using System.Threading;
 using Avalonia.Threading;
 using LocalAutomation.Core;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
@@ -18,29 +18,22 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
 {
-    private readonly RuntimeExecutionSession? _session;
     private readonly RuntimeExecutionTaskRuntimeState? _runtimeState;
-    private readonly IReadOnlySet<RuntimeExecutionTaskId> _subtreeTaskIds;
+    private int _uiPostCount;
     private bool _isDisposed;
 
     /// <summary>
      /// Creates a shared Avalonia task view model from one execution-task model.
      /// </summary>
-    public ExecutionTaskViewModel(RuntimeExecutionPlanTask task, RuntimeExecutionSession? session = null, RuntimeExecutionTaskRuntimeState? runtimeState = null, IReadOnlySet<RuntimeExecutionTaskId>? subtreeTaskIds = null)
+    public ExecutionTaskViewModel(RuntimeExecutionPlanTask task, RuntimeExecutionSession? session = null, RuntimeExecutionTaskRuntimeState? runtimeState = null)
     {
         Task = task ?? throw new ArgumentNullException(nameof(task));
-        _session = session;
+        Session = session;
         _runtimeState = runtimeState;
-        _subtreeTaskIds = subtreeTaskIds ?? new HashSet<RuntimeExecutionTaskId> { task.Id };
 
         if (_runtimeState != null)
         {
             _runtimeState.PropertyChanged += HandleRuntimeStatePropertyChanged;
-        }
-
-        if (_session != null)
-        {
-            _session.LogStream.EntryAdded += HandleSessionLogEntryAdded;
         }
     }
 
@@ -90,15 +83,20 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// </summary>
     public RuntimeExecutionTaskMetrics Metrics
     {
-        get => _session?.GetTaskMetrics(Task.Id) ?? RuntimeExecutionTaskMetrics.Empty;
+        get => Session?.GetTaskMetrics(Task.Id) ?? RuntimeExecutionTaskMetrics.Empty;
     }
+
+    /// <summary>
+    /// Gets the backing execution session when this task belongs to a live or completed runtime tab.
+    /// </summary>
+    private RuntimeExecutionSession? Session { get; }
 
     /// <summary>
     /// Raises duration-sensitive property changes while the task or one of its descendants is still active.
     /// </summary>
     public void RefreshTimeSensitiveState()
     {
-        if (_session != null)
+        if (Session != null)
         {
             RaisePropertyChanged(nameof(Metrics));
         }
@@ -119,11 +117,6 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
         {
             _runtimeState.PropertyChanged -= HandleRuntimeStatePropertyChanged;
         }
-
-        if (_session != null)
-        {
-            _session.LogStream.EntryAdded -= HandleSessionLogEntryAdded;
-        }
     }
 
     /// <summary>
@@ -131,60 +124,55 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void HandleRuntimeStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        PostToUiThread(() =>
+        if (Dispatcher.UIThread.CheckAccess())
         {
-            if (string.IsNullOrWhiteSpace(e.PropertyName))
-            {
-                RaisePropertyChanged(nameof(Status));
-                RaisePropertyChanged(nameof(StatusReason));
-                return;
-            }
+            RaiseRuntimeStateProperties(e.PropertyName);
+            return;
+        }
 
-            if (string.Equals(e.PropertyName, nameof(RuntimeExecutionTaskRuntimeState.Status), StringComparison.Ordinal))
-            {
-                RaisePropertyChanged(nameof(Status));
-                return;
-            }
-
-            if (string.Equals(e.PropertyName, nameof(RuntimeExecutionTaskRuntimeState.StatusReason), StringComparison.Ordinal))
-            {
-                RaisePropertyChanged(nameof(StatusReason));
-                return;
-            }
-
-            if (string.Equals(e.PropertyName, nameof(RuntimeExecutionTaskRuntimeState.StartedAt), StringComparison.Ordinal) ||
-                string.Equals(e.PropertyName, nameof(RuntimeExecutionTaskRuntimeState.FinishedAt), StringComparison.Ordinal))
-            {
-                RaisePropertyChanged(nameof(Metrics));
-            }
+        int postSequence = Interlocked.Increment(ref _uiPostCount);
+        DateTime postedAtUtc = DateTime.UtcNow;
+        Dispatcher.UIThread.Post(() =>
+        {
+            using PerformanceActivityScope activity = postSequence % 250 == 0
+                ? PerformanceTelemetry.StartActivity("ExecutionTaskViewModel.RuntimeState.Dispatch")
+                    .SetTag("task.id", Task.Id.Value)
+                    .SetTag("task.title", Task.Title)
+                    .SetTag("dispatch.post.sequence", postSequence)
+                    .SetTag("dispatch.queue.delay_ms", (DateTime.UtcNow - postedAtUtc).TotalMilliseconds.ToString("0"))
+                : default;
+            RaiseRuntimeStateProperties(e.PropertyName);
         });
     }
 
     /// <summary>
-    /// Refreshes metrics on task-scoped log entries that affect this task's subtree so the VM remains self-contained and
-    /// relies on the session/runtime-state layer rather than workspace code pushing snapshots into it.
+    /// Applies the relevant property notifications for one runtime-state change.
     /// </summary>
-    private void HandleSessionLogEntryAdded(LogEntry entry)
+    private void RaiseRuntimeStateProperties(string? propertyName)
     {
-        if (_runtimeState == null || RuntimeExecutionTaskId.FromNullable(entry.TaskId) is not RuntimeExecutionTaskId taskId || !_subtreeTaskIds.Contains(taskId))
+        if (string.IsNullOrWhiteSpace(propertyName))
         {
+            RaisePropertyChanged(nameof(Status));
+            RaisePropertyChanged(nameof(StatusReason));
             return;
         }
 
-        PostToUiThread(() => RaisePropertyChanged(nameof(Metrics)));
-    }
-
-    /// <summary>
-    /// Marshals task-view-model notifications to Avalonia's UI thread because runtime state changes originate from worker threads.
-    /// </summary>
-    private static void PostToUiThread(Action action)
-    {
-        if (Dispatcher.UIThread.CheckAccess())
+        if (string.Equals(propertyName, nameof(RuntimeExecutionTaskRuntimeState.Status), StringComparison.Ordinal))
         {
-            action();
+            RaisePropertyChanged(nameof(Status));
             return;
         }
 
-        Dispatcher.UIThread.Post(action);
+        if (string.Equals(propertyName, nameof(RuntimeExecutionTaskRuntimeState.StatusReason), StringComparison.Ordinal))
+        {
+            RaisePropertyChanged(nameof(StatusReason));
+            return;
+        }
+
+        if (string.Equals(propertyName, nameof(RuntimeExecutionTaskRuntimeState.StartedAt), StringComparison.Ordinal) ||
+            string.Equals(propertyName, nameof(RuntimeExecutionTaskRuntimeState.FinishedAt), StringComparison.Ordinal))
+        {
+            RaisePropertyChanged(nameof(Metrics));
+        }
     }
 }

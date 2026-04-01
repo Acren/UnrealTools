@@ -240,11 +240,9 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
 
         _tasksById.Clear();
         List<RuntimeExecutionPlanTask> materializedTasks = tasks?.ToList() ?? new List<RuntimeExecutionPlanTask>();
-        Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> parentIds = materializedTasks.ToDictionary(task => task.Id, task => task.ParentId);
         foreach (RuntimeExecutionPlanTask task in materializedTasks)
         {
-            HashSet<RuntimeExecutionTaskId> subtreeTaskIds = BuildSubtreeTaskIds(task.Id, parentIds);
-            _tasksById[task.Id] = new ExecutionTaskViewModel(task, Session, Session?.GetTaskRuntimeState(task.Id), subtreeTaskIds);
+            _tasksById[task.Id] = new ExecutionTaskViewModel(task, Session, Session?.GetTaskRuntimeState(task.Id));
         }
     }
 
@@ -278,37 +276,6 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
         }
 
         _tasksById.Clear();
-    }
-
-    /// <summary>
-    /// Builds the full descendant-inclusive subtree id set for one task from the current plan hierarchy.
-    /// </summary>
-    private static HashSet<RuntimeExecutionTaskId> BuildSubtreeTaskIds(RuntimeExecutionTaskId rootTaskId, IReadOnlyDictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> parentIds)
-    {
-        HashSet<RuntimeExecutionTaskId> subtreeTaskIds = new() { rootTaskId };
-        foreach ((RuntimeExecutionTaskId taskId, RuntimeExecutionTaskId? parentId) in parentIds)
-        {
-            if (taskId == rootTaskId)
-            {
-                continue;
-            }
-
-            RuntimeExecutionTaskId? currentParentId = parentId;
-            while (currentParentId != null)
-            {
-                if (currentParentId.Value == rootTaskId)
-                {
-                    subtreeTaskIds.Add(taskId);
-                    break;
-                }
-
-                currentParentId = parentIds.TryGetValue(currentParentId.Value, out RuntimeExecutionTaskId? nextParentId)
-                    ? nextParentId
-                    : null;
-            }
-        }
-
-        return subtreeTaskIds;
     }
 
     /// <summary>
