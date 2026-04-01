@@ -16,6 +16,8 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         private Process? _process;
         private string? _processName;
         private int _cancellationTerminationRequested;
+        private bool _wasCancelled;
+        private Microsoft.Extensions.Logging.ILogger? _activeLogger;
 
         // Process metadata is populated only after launch, so diagnostics fall back to placeholders during setup or
         // teardown paths that run before every field has been assigned.
@@ -33,13 +35,16 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return new List<global::LocalAutomation.Runtime.Command> { BuildCommand((UnrealAutomationCommon.Operations.UnrealOperationParameters)operationParameters) };
         }
 
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            global::LocalAutomation.Runtime.Command command = BuildCommand(UnrealOperationParameters);
+            _wasCancelled = false;
+            _activeLogger = context.Logger;
+            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
+            global::LocalAutomation.Runtime.Command command = BuildCommand(unrealOperationParameters);
 
             _fileName = Path.GetFileName(command.File);
 
-            Logger.LogInformation("Running command: " + command);
+            _activeLogger.LogInformation("Running command: " + command);
 
             if (!File.Exists(command.File))
             {
@@ -63,7 +68,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             {
                 if (args.Data != null)
                 {
-                    Logger.LogError(args.Data);
+                    _activeLogger.LogError(args.Data);
                 }
             };
             _process.Start();
@@ -72,24 +77,24 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             _processName = _process.ProcessName;
 
-            Logger.LogInformation("Launched process '" + FileAndProcess + "'");
+            _activeLogger.LogInformation("Launched process '" + FileAndProcess + "'");
 
             var tcs = new TaskCompletionSource<int>();
 
             _process.Exited += (sender, args) =>
             {
-                Logger.LogDebug($"Process '{FileAndProcess}' exited");
+                _activeLogger.LogDebug($"Process '{FileAndProcess}' exited");
                 tcs.TrySetResult(0);
             };
 
-            CancellationTokenRegistration registration = token.Register(() => TryTerminateProcessForCancellation());
+            CancellationTokenRegistration registration = context.CancellationToken.Register(() => TryTerminateProcessForCancellation());
 
             await tcs.Task;
 
             // Dispose registration, otherwise GC is prevented through above lambda
             await registration.DisposeAsync();
 
-            return HandleProcessEnded();
+            return HandleProcessEnded(context, unrealOperationParameters);
         }
 
         private void HandleLogLine(string line)
@@ -136,17 +141,17 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 level = LogLevel.Warning;
             }
 
-            Logger.Log(level, line);
+            _activeLogger!.Log(level, line);
         }
 
-        private global::LocalAutomation.Runtime.OperationResult HandleProcessEnded()
+        private global::LocalAutomation.Runtime.OperationResult HandleProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters)
         {
             if (_process == null)
             {
                 throw new InvalidOperationException("Process completion was reported before the process was started.");
             }
 
-            global::LocalAutomation.Runtime.OperationResult result = Cancelled
+            global::LocalAutomation.Runtime.OperationResult result = _wasCancelled
                 ? global::LocalAutomation.Runtime.OperationResult.Cancelled(_process.ExitCode)
                 : _process.ExitCode == 0
                     ? global::LocalAutomation.Runtime.OperationResult.Succeeded(_process.ExitCode)
@@ -162,14 +167,14 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 : result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Succeeded
                     ? "succeeded"
                     : "failed";
-            Logger.Log(exitLevel, "Process '" + FileAndProcess + "' " + exitLabel + " with code " + result.ExitCode);
+            _activeLogger!.Log(exitLevel, "Process '" + FileAndProcess + "' " + exitLabel + " with code " + result.ExitCode);
 
-            OnProcessEnded(result);
+            OnProcessEnded(context, operationParameters, result);
 
             return result;
         }
 
-        protected virtual void OnProcessEnded(global::LocalAutomation.Runtime.OperationResult result)
+        protected virtual void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
         {
         }
 
@@ -178,7 +183,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         /// </summary>
         private void TryTerminateProcessForCancellation()
         {
-            SetCancelled();
+            _wasCancelled = true;
             if (Interlocked.Exchange(ref _cancellationTerminationRequested, 1) != 0)
             {
                 return;

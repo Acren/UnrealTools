@@ -24,6 +24,7 @@ public sealed class ExecutionPlanTask
         IEnumerable<ExecutionTaskId>? dependsOn = null,
         bool enabled = true,
         string? disabledReason = null,
+        OperationParameters? operationParameters = null,
         Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync = null)
     {
         Id = id;
@@ -35,6 +36,7 @@ public sealed class ExecutionPlanTask
         DependsOn = new ReadOnlyCollection<ExecutionTaskId>((dependsOn ?? Array.Empty<ExecutionTaskId>()).Distinct().ToList());
         Enabled = enabled;
         DisabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
+        OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
         ExecuteAsync = executeAsync;
     }
 
@@ -72,6 +74,12 @@ public sealed class ExecutionPlanTask
     /// Gets the explanation for why this authored task is disabled.
     /// </summary>
     public string DisabledReason { get; }
+
+    /// <summary>
+    /// Gets the parameter state that authored this task so execution callbacks receive the same explicit runtime input
+    /// even after operation instances stop storing execution-scoped mutable state.
+    /// </summary>
+    public OperationParameters OperationParameters { get; }
 
     /// <summary>
     /// Gets the optional runtime callback that executes this task when the scheduler reaches it.

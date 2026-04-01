@@ -1,7 +1,5 @@
 using System;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using LocalAutomation.Core;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
@@ -15,11 +13,6 @@ namespace UnrealAutomationCommon.Operations.BaseOperations;
 /// </summary>
 public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operation
 {
-    /// <summary>
-    /// Returns the active parameter object cast back to the Unreal-specific parameter type.
-    /// </summary>
-    protected UnrealAutomationCommon.Operations.UnrealOperationParameters UnrealOperationParameters => (UnrealAutomationCommon.Operations.UnrealOperationParameters)base.OperationParameters;
-
     /// <summary>
     /// Creates a new Unreal parameter object so Unreal-specific engine resolution remains available during option
     /// discovery and child operation flows.
@@ -76,6 +69,15 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
     {
         return GetTargetEngineInstall(operationParameters)
             ?? throw new InvalidOperationException("Operation requires a resolved Unreal engine install before execution.");
+    }
+
+    /// <summary>
+    /// Returns the execution parameters from one scheduled task callback cast back to the Unreal-specific parameter
+    /// model.
+    /// </summary>
+    protected UnrealAutomationCommon.Operations.UnrealOperationParameters GetUnrealOperationParameters(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+    {
+        return (UnrealAutomationCommon.Operations.UnrealOperationParameters)context.OperationParameters;
     }
 
 }

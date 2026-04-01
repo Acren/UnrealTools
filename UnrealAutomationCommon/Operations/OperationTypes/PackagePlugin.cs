@@ -81,11 +81,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         // Compare Unreal's reported target platform list with what the user requested so silent skips become failures.
-        protected override void OnProcessEnded(global::LocalAutomation.Runtime.OperationResult result)
+        protected override void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
         {
-            base.OnProcessEnded(result);
+            base.OnProcessEnded(context, operationParameters, result);
 
-            if (result.Outcome != global::LocalAutomation.Runtime.RunOutcome.Succeeded || Cancelled || _requestedTargetPlatforms.Count == 0)
+            if (result.Outcome != global::LocalAutomation.Runtime.RunOutcome.Succeeded || result.WasCancelled || _requestedTargetPlatforms.Count == 0)
             {
                 return;
             }
@@ -99,7 +99,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 return;
             }
 
-            Logger.LogError(
+            context.Logger.LogError(
                 "Unreal BuildPlugin skipped requested target platform(s): {Platforms}. Requested: {Requested}. Built: {Built}.",
                 string.Join(", ", skippedPlatforms),
                 string.Join(", ", _requestedTargetPlatforms),

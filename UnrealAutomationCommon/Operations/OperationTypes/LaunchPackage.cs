@@ -52,13 +52,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new global::LocalAutomation.Runtime.Command(package.ExecutablePath, args.ToString());
         }
 
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(CancellationToken token)
+        protected override async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            AutomationOptions automationOptions = UnrealOperationParameters.GetOptions<AutomationOptions>();
+            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
+            AutomationOptions automationOptions = unrealOperationParameters.GetOptions<AutomationOptions>();
             if (automationOptions.RunTests)
             {
-                T target = GetRequiredTarget(UnrealOperationParameters);
-                Engine engine = GetRequiredTargetEngineInstall(UnrealOperationParameters);
+                T target = GetRequiredTarget(unrealOperationParameters);
+                Engine engine = GetRequiredTargetEngineInstall(unrealOperationParameters);
                 Package package = target.GetProvidedPackage(engine)
                     ?? throw new InvalidOperationException("Launch Package requires a packaged build before execution.");
 
@@ -83,7 +84,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            return await base.ExecuteLeafAsync(token);
+            return await base.ExecuteLeafAsync(context);
         }
 
         protected override string GetOperationName()

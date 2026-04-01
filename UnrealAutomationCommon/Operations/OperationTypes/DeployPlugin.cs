@@ -16,34 +16,89 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class DeployPluginForEngine : UnrealOperation<Plugin>
     {
-        // This operation is populated in phases by the deployment pipeline, so these members are assigned before the
-        // corresponding step uses them even though construction happens earlier.
-        public Engine Engine { get; set; } = null!;
-        
-        private Plugin Plugin { get; set; } = null!;
-        
-        private Project HostProject { get; set; } = null!;
-        
-        private Plugin BuiltPlugin { get; set; } = null!;
-        
-        private Project ExampleProject { get; set; } = null!;
-        
-        private Package DemoPackage { get; set; } = null!;
-        
         private string[] _allowedPluginFileExtensions = { ".uplugin" };
-        
-        private Plugin StagingPlugin { get; set; } = null!;
+
+        private sealed class DeploymentState
+        {
+            public DeploymentState(Engine engine, Plugin sourcePlugin, Project hostProject, Plugin? stagingPlugin = null, Plugin? builtPlugin = null, Project? exampleProject = null, Package? demoPackage = null)
+            {
+                Engine = engine ?? throw new ArgumentNullException(nameof(engine));
+                SourcePlugin = sourcePlugin ?? throw new ArgumentNullException(nameof(sourcePlugin));
+                HostProject = hostProject ?? throw new ArgumentNullException(nameof(hostProject));
+                StagingPlugin = stagingPlugin;
+                BuiltPlugin = builtPlugin;
+                ExampleProject = exampleProject;
+                DemoPackage = demoPackage;
+            }
+
+            public Engine Engine { get; }
+
+            public Plugin SourcePlugin { get; }
+
+            public Project HostProject { get; }
+
+            public Plugin? StagingPlugin { get; }
+
+            public Plugin? BuiltPlugin { get; }
+
+            public Project? ExampleProject { get; }
+
+            public Package? DemoPackage { get; }
+
+            public Plugin GetRequiredStagingPlugin()
+            {
+                return StagingPlugin ?? throw new InvalidOperationException("Staging plugin is not available yet.");
+            }
+
+            public Plugin GetRequiredBuiltPlugin()
+            {
+                return BuiltPlugin ?? throw new InvalidOperationException("Built plugin is not available yet.");
+            }
+
+            public Project GetRequiredExampleProject()
+            {
+                return ExampleProject ?? throw new InvalidOperationException("Example project is not available yet.");
+            }
+
+            public Package GetRequiredDemoPackage()
+            {
+                return DemoPackage ?? throw new InvalidOperationException("Demo package is not available yet.");
+            }
+
+            public DeploymentState WithStagingPlugin(Plugin stagingPlugin)
+            {
+                return new DeploymentState(Engine, SourcePlugin, HostProject, stagingPlugin, BuiltPlugin, ExampleProject, DemoPackage);
+            }
+
+            public DeploymentState WithBuiltPlugin(Plugin builtPlugin)
+            {
+                return new DeploymentState(Engine, SourcePlugin, HostProject, StagingPlugin, builtPlugin, ExampleProject, DemoPackage);
+            }
+
+            public DeploymentState WithExampleProject(Project exampleProject)
+            {
+                return new DeploymentState(Engine, SourcePlugin, HostProject, StagingPlugin, BuiltPlugin, exampleProject, DemoPackage);
+            }
+
+            public DeploymentState WithDemoPackage(Package demoPackage)
+            {
+                return new DeploymentState(Engine, SourcePlugin, HostProject, StagingPlugin, BuiltPlugin, ExampleProject, demoPackage);
+            }
+        }
 
         /// <summary>
          /// Gets the isolated per-engine temp root so multiple engine branches can execute without colliding in shared
          /// staging or package folders.
-        /// </summary>
-        private string EngineTempPath => Path.Combine(base.GetOperationTempPath(), $"UE_{Engine.Version.MajorMinorString}");
-
-        private void UpdatePluginDescriptorForArchive(Plugin plugin)
+         /// </summary>
+        private string GetEngineTempPath(Engine engine)
         {
-            Engine engine = Engine;
-            Plugin sourcePlugin = Plugin;
+            return Path.Combine(base.GetOperationTempPath(), $"UE_{engine.Version.MajorMinorString}");
+        }
+
+        private void UpdatePluginDescriptorForArchive(DeploymentState state, Plugin plugin)
+        {
+            Engine engine = state.Engine;
+            Plugin sourcePlugin = state.SourcePlugin;
             EngineVersion engineVersion = engine.Version;
             PluginDescriptor pluginDescriptorModel = sourcePlugin.PluginDescriptor;
             JObject pluginDescriptor = JObject.Parse(File.ReadAllText(plugin.UPluginPath));
@@ -63,9 +118,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
         
-        private void UpdateProjectDescriptorForArchive(Project project)
+        private void UpdateProjectDescriptorForArchive(DeploymentState state, Project project)
         {
-            Engine engine = Engine;
+            Engine engine = state.Engine;
             JObject projectDescriptor = JObject.Parse(File.ReadAllText(project.UProjectPath));
             bool modified = false;
 
@@ -85,10 +140,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
         {
             UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            Engine = typedParameters.EngineOverride ?? typedParameters.Engine
-                ?? throw new Exception("Engine not specified");
-            Logger.LogInformation($"Deploying plugin for {Engine.Version.MajorMinorString}");
-
             AutomationOptions automationOptions = typedParameters.GetOptions<AutomationOptions>();
             PluginDeployOptions deployOptions = typedParameters.GetOptions<PluginDeployOptions>();
 
@@ -152,7 +203,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     .Then(context => PackageDemoExecutable(context))
                 .Task("Archive")
                     .Describe("Archive the requested deployment artifacts")
-                    .Then(context => ArchiveArtifacts(context, BuildArchivePrefix())));
+                    .Then(context => ArchiveArtifacts(context)));
         }
 
         /// <summary>
@@ -175,14 +226,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task BuildEditor(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Building host project editor");
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             UnrealOperationParameters buildEditorParams = new()
             {
-                Target = HostProject,
-                EngineOverride = Engine
+                Target = state.HostProject,
+                EngineOverride = state.Engine
             };
 
             await EnsureChildOperationOutcome(
-                () => new BuildEditor().Execute(buildEditorParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new BuildEditor(), buildEditorParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Failed to build host project editor");
         }
@@ -218,11 +270,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PrepareStepAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing plugin");
-            Plugin = GetRequiredTarget(UnrealOperationParameters);
-            Plugin plugin = Plugin;
+            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
+            Engine engine = unrealOperationParameters.EngineOverride ?? unrealOperationParameters.Engine
+                ?? throw new Exception("Engine not specified");
+            Plugin plugin = GetRequiredTarget(unrealOperationParameters);
             PluginDescriptor pluginDescriptor = plugin.PluginDescriptor;
-            HostProject = plugin.HostProject;
-            Project hostProject = HostProject;
+            Project hostProject = plugin.HostProject;
+            DeploymentState state = new(engine, plugin, hostProject);
             ProjectDescriptor projectDescriptor = hostProject.ProjectDescriptor;
 
             if (!projectDescriptor.HasPluginEnabled(plugin.Name))
@@ -230,22 +284,22 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Host project must have plugin enabled");
             }
 
-            context.Logger.LogInformation($"Engine version: {Engine.Version}");
-            string archivePrefix = BuildArchivePrefix();
+            context.Logger.LogInformation($"Engine version: {engine.Version}");
+            string archivePrefix = BuildArchivePrefix(state);
             context.Logger.LogInformation($"Archive name prefix is '{archivePrefix}'");
 
-            string enginePluginsMarketplacePath = Path.Combine(Engine.TargetPath, @"Engine\Plugins\Marketplace");
+            string enginePluginsMarketplacePath = Path.Combine(engine.TargetPath, @"Engine\Plugins\Marketplace");
             string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, plugin.Name);
             Policy policy = Policy
                 .Handle<UnauthorizedAccessException>()
                 .RetryForever((ex, retryAttempt, ctx) =>
                 {
                     context.Logger.LogInformation(ex.ToString());
-                    UnrealOperationParameters.RetryHandler?.Invoke(ex);
+                    unrealOperationParameters.RetryHandler?.Invoke(ex);
                 });
             policy.Execute(() => { FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath); });
 
-            Directory.CreateDirectory(EngineTempPath);
+            Directory.CreateDirectory(GetEngineTempPath(engine));
             int version = pluginDescriptor.SemVersion.ToInt();
             context.Logger.LogInformation($"Version '{pluginDescriptor.VersionName}' -> {version}");
             bool updated = plugin.UpdateVersionInteger();
@@ -285,7 +339,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            hostProject.SetProjectVersion(plugin.PluginDescriptor.VersionName, Logger);
+            hostProject.SetProjectVersion(plugin.PluginDescriptor.VersionName, context.Logger);
+            context.SetSharedData(state);
             await Task.CompletedTask;
         }
 
@@ -295,24 +350,26 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task StagingStepAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing plugin staging copy");
-            string stagingPluginPath = Path.Combine(EngineTempPath, @"PluginStaging", Plugin.Name);
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            string stagingPluginPath = Path.Combine(GetEngineTempPath(state.Engine), @"PluginStaging", state.SourcePlugin.Name);
             FileUtils.DeleteDirectoryIfExists(stagingPluginPath);
-            FileUtils.CopyDirectory(Plugin.PluginPath, stagingPluginPath);
-            StagingPlugin = new Plugin(stagingPluginPath);
-            UpdatePluginDescriptorForArchive(StagingPlugin);
-            context.Logger.LogInformation($"Updated plugin descriptor for staging: {StagingPlugin.PluginDescriptor.VersionName}");
+            FileUtils.CopyDirectory(state.SourcePlugin.PluginPath, stagingPluginPath);
+            Plugin stagingPlugin = new(stagingPluginPath);
+            UpdatePluginDescriptorForArchive(state, stagingPlugin);
+            context.SetSharedData(state.WithStagingPlugin(stagingPlugin));
+            context.Logger.LogInformation($"Updated plugin descriptor for staging: {stagingPlugin.PluginDescriptor.VersionName}");
             await Task.CompletedTask;
         }
 
         /// <summary>
         /// Builds the archive filename prefix for the active engine branch.
         /// </summary>
-        private string BuildArchivePrefix()
+        private string BuildArchivePrefix(DeploymentState state)
         {
-            Plugin plugin = Plugin;
+            Plugin plugin = state.SourcePlugin;
             PluginDescriptor pluginDescriptor = plugin.PluginDescriptor;
             bool standardBranch = true;
-            string branchName = VersionControlUtils.GetBranchName(HostProject.ProjectPath);
+            string branchName = VersionControlUtils.GetBranchName(state.HostProject.ProjectPath);
             if (!string.IsNullOrEmpty(branchName))
             {
                 string[] standardBranchNames = { "master", "develop", "development" };
@@ -331,14 +388,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string fullPluginVersionString = pluginVersionString;
             if (!string.IsNullOrEmpty(branchName) &&
                 !pluginDescriptor.VersionName.Contains(branchName) &&
-                !Engine.Version.ToString().Contains(branchName) &&
+                !state.Engine.Version.ToString().Contains(branchName) &&
                 !standardBranch)
             {
                 fullPluginVersionString = $"{pluginVersionString}-{branchName.Replace("/", "-")}";
             }
 
             archivePrefix += $"_{fullPluginVersionString}";
-            archivePrefix += $"_UE{Engine.Version.MajorMinorString}";
+            archivePrefix += $"_UE{state.Engine.Version.MajorMinorString}";
             archivePrefix += "_";
             return archivePrefix;
         }
@@ -349,15 +406,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestEditor(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing host project editor");
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             UnrealOperationParameters launchEditorParams = new()
             {
-                Target = HostProject,
-                EngineOverride = Engine
+                Target = state.HostProject,
+                EngineOverride = state.Engine
             };
             launchEditorParams.SetOptions(automationOptions);
 
             await EnsureChildOperationOutcome(
-                () => new LaunchProjectEditor().Execute(launchEditorParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new LaunchProjectEditor(), launchEditorParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Failed to launch host project");
         }
@@ -365,15 +423,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestStandalone(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing standalone");
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             UnrealOperationParameters launchStandaloneParams = new()
             {
-                Target = HostProject,
-                EngineOverride = Engine
+                Target = state.HostProject,
+                EngineOverride = state.Engine
             };
             launchStandaloneParams.SetOptions(automationOptions);
 
             await EnsureChildOperationOutcome(
-                () => new LaunchStandalone().Execute(launchStandaloneParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new LaunchStandalone(), launchStandaloneParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Failed to launch standalone");
         }
@@ -382,26 +441,27 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task BuildPlugin(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Building plugin");
-            Plugin plugin = Plugin;
-            Plugin stagingPlugin = StagingPlugin;
-            Engine engine = Engine;
-            string pluginBuildPath = Path.Combine(EngineTempPath, @"PluginBuild", plugin.Name);
+            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            Plugin stagingPlugin = state.GetRequiredStagingPlugin();
+            string pluginBuildPath = Path.Combine(GetEngineTempPath(state.Engine), @"PluginBuild", state.SourcePlugin.Name);
             FileUtils.DeleteDirectoryIfExists(pluginBuildPath);
 
             UnrealOperationParameters buildPluginParams = new()
             {
                 Target = stagingPlugin,
-                EngineOverride = engine,
+                EngineOverride = state.Engine,
                 OutputPathOverride = pluginBuildPath
             };
-            buildPluginParams.SetOptions(UnrealOperationParameters.GetOptions<PluginBuildOptions>());
+            buildPluginParams.SetOptions(unrealOperationParameters.GetOptions<PluginBuildOptions>());
 
             await EnsureChildOperationOutcome(
-                () => new PackagePlugin().Execute(buildPluginParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new PackagePlugin(), buildPluginParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Plugin build failed");
             
-            BuiltPlugin = new Plugin(pluginBuildPath);
+            Plugin builtPlugin = new(pluginBuildPath);
+            context.SetSharedData(state.WithBuiltPlugin(builtPlugin));
 
             context.Logger.LogInformation("Plugin build complete");
         }
@@ -409,14 +469,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PrepareExampleProject(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing host project");
-            Project hostProject = HostProject;
-            Plugin plugin = Plugin;
-            Plugin builtPlugin = BuiltPlugin;
-            Engine engine = Engine;
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            Project hostProject = state.HostProject;
+            Plugin plugin = state.SourcePlugin;
+            Plugin builtPlugin = state.GetRequiredBuiltPlugin();
+            Engine engine = state.Engine;
             string uProjectFilename = Path.GetFileName(hostProject.UProjectPath);
             string projectName = Path.GetFileNameWithoutExtension(hostProject.UProjectPath);
 
-            string exampleProjectPath = Path.Combine(EngineTempPath, @"ExampleProject");
+            string exampleProjectPath = Path.Combine(GetEngineTempPath(engine), @"ExampleProject");
 
             FileUtils.DeleteDirectoryIfExists(exampleProjectPath);
 
@@ -434,10 +495,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string exampleProjectBuildUProjectPath = Path.Combine(exampleProjectPath, uProjectFilename);
             File.WriteAllText(exampleProjectBuildUProjectPath, uProjectContents.ToString());
 
-            ExampleProject = new(exampleProjectPath);
-            Project exampleProject = ExampleProject;
+            Project exampleProject = new(exampleProjectPath);
 
-            UpdateProjectDescriptorForArchive(exampleProject);
+            UpdateProjectDescriptorForArchive(state, exampleProject);
             context.Logger.LogInformation($"Updated project descriptor for archive: EngineAssociation = {engine.Version}");
 
             var sourcePlugins = hostProject.Plugins;
@@ -451,37 +511,35 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             exampleProject.AddPlugin(builtPlugin);
             string exampleProjectVersion = ProjectConfig.BuildVersionWithEnginePrefix(plugin.PluginDescriptor.VersionName, engine.Version);
-            exampleProject.SetProjectVersion(exampleProjectVersion, Logger);
+            exampleProject.SetProjectVersion(exampleProjectVersion, context.Logger);
+            context.SetSharedData(state.WithExampleProject(exampleProject));
             await Task.CompletedTask;
         }
 
         private async Task BuildCodeExampleProject(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             context.Logger.LogInformation("Building example project with modules");
-            Project exampleProject = ExampleProject;
-            Engine engine = Engine;
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
 
             UnrealOperationParameters buildExampleProjectParams = new()
             {
-                Target = exampleProject,
-                EngineOverride = engine
+                Target = state.GetRequiredExampleProject(),
+                EngineOverride = state.Engine
             };
             await EnsureChildOperationOutcome(
-                () => new BuildEditor().Execute(buildExampleProjectParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new BuildEditor(), buildExampleProjectParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Failed to build example project with modules");
         }
 
         // Reuse the example project's prebuilt editor binaries so the packaging validation passes do not spend time
         // recompiling the editor target before cooking and staging.
-        private UnrealOperationParameters CreateExampleProjectPackageParams(string outputPath)
+        private UnrealOperationParameters CreateExampleProjectPackageParams(DeploymentState state, string outputPath)
         {
-            Project exampleProject = ExampleProject;
-            Engine engine = Engine;
             return new UnrealOperationParameters
             {
-                Target = exampleProject,
-                EngineOverride = engine,
+                Target = state.GetRequiredExampleProject(),
+                EngineOverride = state.Engine,
                 OutputPathOverride = outputPath,
                 AdditionalArguments = "-nocompileeditor"
             };
@@ -491,9 +549,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task RunClangCompileCheck(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Running Clang compile check");
-            Project exampleProject = ExampleProject;
-            Plugin builtPlugin = BuiltPlugin;
-            Engine engine = Engine;
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            Project exampleProject = state.GetRequiredExampleProject();
+            Plugin builtPlugin = state.GetRequiredBuiltPlugin();
             Plugin exampleProjectPlugin = exampleProject.Plugins.SingleOrDefault(plugin => plugin.Name == builtPlugin.Name);
             if (exampleProjectPlugin == null)
             {
@@ -503,7 +561,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             UnrealOperationParameters clangBuildParams = new()
             {
                 Target = exampleProjectPlugin,
-                EngineOverride = engine
+                EngineOverride = state.Engine
             };
 
             clangBuildParams.SetOptions(new BuildConfigurationOptions
@@ -516,7 +574,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             });
 
             await EnsureChildOperationOutcome(
-                () => new BuildPlugin().Execute(clangBuildParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new BuildPlugin(), clangBuildParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Clang compile check failed");
         }
@@ -527,11 +585,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PackageCodeExampleProjectWithProjectPluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging code example project with plugin inside project");
-            string projectPluginPackagePath = Path.Combine(EngineTempPath, @"ProjectPluginPackage");
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            string projectPluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"ProjectPluginPackage");
             FileUtils.DeleteDirectoryIfExists(projectPluginPackagePath);
-            UnrealOperationParameters packageWithPluginParams = CreateExampleProjectPackageParams(projectPluginPackagePath);
+            UnrealOperationParameters packageWithPluginParams = CreateExampleProjectPackageParams(state, projectPluginPackagePath);
             await EnsureChildOperationOutcome(
-                () => new PackageProject().Execute(packageWithPluginParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new PackageProject(), packageWithPluginParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Package project with included plugin failed");
         }
@@ -542,16 +601,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestCodeExampleProjectPackageWithProjectPluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing code project package with project plugin");
-            string projectPluginPackagePath = Path.Combine(EngineTempPath, @"ProjectPluginPackage");
-            Package projectPluginPackage = new(Path.Combine(projectPluginPackagePath, Engine.GetWindowsPlatformName()));
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            string projectPluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"ProjectPluginPackage");
+            Package projectPluginPackage = new(Path.Combine(projectPluginPackagePath, state.Engine.GetWindowsPlatformName()));
             UnrealOperationParameters testParams = new()
             {
                 Target = projectPluginPackage,
-                EngineOverride = Engine
+                EngineOverride = state.Engine
             };
             testParams.SetOptions(automationOptions);
             await EnsureChildOperationOutcome(
-                () => new LaunchPackage().Execute(testParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new LaunchPackage(), testParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Launch and test with project plugin failed");
         }
@@ -562,11 +622,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PrepareEnginePluginInstallAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing to package example project with installed plugin");
-            string enginePluginsMarketplacePath = Path.Combine(Engine.TargetPath, @"Engine\Plugins\Marketplace");
-            string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, Plugin.Name);
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            string enginePluginsMarketplacePath = Path.Combine(state.Engine.TargetPath, @"Engine\Plugins\Marketplace");
+            string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, state.SourcePlugin.Name);
             context.Logger.LogInformation($"Copying plugin to {enginePluginsMarketplacePluginPath}");
             FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath);
-            FileUtils.CopyDirectory(BuiltPlugin.PluginPath, enginePluginsMarketplacePluginPath);
+            FileUtils.CopyDirectory(state.GetRequiredBuiltPlugin().PluginPath, enginePluginsMarketplacePluginPath);
             await Task.CompletedTask;
         }
 
@@ -576,11 +637,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PackageCodeExampleProjectWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging code example project with installed plugin");
-            ExampleProject.RemovePlugin(Plugin.Name);
-            string enginePluginPackagePath = Path.Combine(EngineTempPath, @"EnginePluginPackage");
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            state.GetRequiredExampleProject().RemovePlugin(state.SourcePlugin.Name);
+            string enginePluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"EnginePluginPackage");
             FileUtils.DeleteDirectoryIfExists(enginePluginPackagePath);
-            UnrealOperationParameters packageParams = CreateExampleProjectPackageParams(enginePluginPackagePath);
-            global::LocalAutomation.Runtime.OperationResult result = await new PackageProject().Execute(packageParams, context.Logger, context.CancellationToken);
+            UnrealOperationParameters packageParams = CreateExampleProjectPackageParams(state, enginePluginPackagePath);
+            global::LocalAutomation.Runtime.OperationResult result = await RunChildOperationAsync(new PackageProject(), packageParams, context.Logger, context.CancellationToken);
             if (result.Outcome != global::LocalAutomation.Runtime.RunOutcome.Succeeded)
             {
                 throw new Exception("Package project with engine plugin failed");
@@ -593,16 +655,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestCodeExampleProjectPackageWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing code project package with installed plugin");
-            string enginePluginPackagePath = Path.Combine(EngineTempPath, @"EnginePluginPackage");
-            Package enginePluginPackage = new(Path.Combine(enginePluginPackagePath, Engine.GetWindowsPlatformName()));
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            string enginePluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"EnginePluginPackage");
+            Package enginePluginPackage = new(Path.Combine(enginePluginPackagePath, state.Engine.GetWindowsPlatformName()));
             UnrealOperationParameters testParams = new()
             {
                 Target = enginePluginPackage,
-                EngineOverride = Engine
+                EngineOverride = state.Engine
             };
             testParams.SetOptions(automationOptions);
             await EnsureChildOperationOutcome(
-                () => new LaunchPackage().Execute(testParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new LaunchPackage(), testParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Launch and test with installed plugin failed");
         }
@@ -613,13 +676,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PackageBlueprintExampleProjectWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging blueprint-only example project");
-            ExampleProject.ConvertToBlueprintOnly();
-            PreparePluginsForProject(ExampleProject);
-            string blueprintOnlyPackagePath = Path.Combine(EngineTempPath, @"BlueprintOnlyPackage");
+            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            state.GetRequiredExampleProject().ConvertToBlueprintOnly();
+            PreparePluginsForProject(state, state.GetRequiredExampleProject(), unrealOperationParameters.GetOptions<PluginDeployOptions>());
+            string blueprintOnlyPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"BlueprintOnlyPackage");
             FileUtils.DeleteDirectoryIfExists(blueprintOnlyPackagePath);
-            UnrealOperationParameters packageParams = CreateExampleProjectPackageParams(blueprintOnlyPackagePath);
+            UnrealOperationParameters packageParams = CreateExampleProjectPackageParams(state, blueprintOnlyPackagePath);
             await EnsureChildOperationOutcome(
-                () => new PackageProject().Execute(packageParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new PackageProject(), packageParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Package blueprint-only project failed");
         }
@@ -630,26 +695,28 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestBlueprintExampleProjectPackageWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing blueprint project package with installed plugin");
-            string blueprintOnlyPackagePath = Path.Combine(EngineTempPath, @"BlueprintOnlyPackage");
-            Package package = new(Path.Combine(blueprintOnlyPackagePath, Engine.GetWindowsPlatformName()));
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            string blueprintOnlyPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"BlueprintOnlyPackage");
+            Package package = new(Path.Combine(blueprintOnlyPackagePath, state.Engine.GetWindowsPlatformName()));
             UnrealOperationParameters testParams = new()
             {
                 Target = package,
-                EngineOverride = Engine
+                EngineOverride = state.Engine
             };
             testParams.SetOptions(automationOptions);
             await EnsureChildOperationOutcome(
-                () => new LaunchPackage().Execute(testParams, context.Logger, context.CancellationToken),
+                () => RunChildOperationAsync(new LaunchPackage(), testParams, context.Logger, context.CancellationToken),
                 context.CancellationToken,
                 "Launch and test blueprint project with installed plugin failed");
         }
 
         private async Task PackageDemoExecutable(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            Engine engine = Engine;
-            Plugin plugin = Plugin;
-            Plugin builtPlugin = BuiltPlugin;
-            Project exampleProject = ExampleProject;
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            Engine engine = state.Engine;
+            Plugin plugin = state.SourcePlugin;
+            Plugin builtPlugin = state.GetRequiredBuiltPlugin();
+            Project exampleProject = state.GetRequiredExampleProject();
             // If true, the demo executable will be packaged with the plugin installed to the project
             // This is currently disabled because in 5.3 blueprint-only projects will fail to load plugins that are installed to the project
             bool packageDemoExecutableWithProjectPlugin = false;
@@ -659,7 +726,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Uninstall plugin from engine because test has completed
                 // Now we'll be using the plugin in the project directory instead
 
-                Logger.LogInformation("Uninstall from Engine/Plugins/Marketplace");
+                context.Logger.LogInformation("Uninstall from Engine/Plugins/Marketplace");
                 
                 engine.UninstallPlugin(plugin.Name);
 
@@ -671,35 +738,35 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // Package demo executable
 
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging host project for demo");
-            string demoPackagePath = Path.Combine(EngineTempPath, @"DemoExe");
+            string demoPackagePath = Path.Combine(GetEngineTempPath(engine), @"DemoExe");
 
             FileUtils.DeleteDirectoryIfExists(demoPackagePath);
 
             PackageProject demoPackageOperation = new();
-            UnrealOperationParameters demoPackageParams = (UnrealOperationParameters)demoPackageOperation.CreateParameters(CreateExampleProjectPackageParams(demoPackagePath));
+            UnrealOperationParameters demoPackageParams = (UnrealOperationParameters)demoPackageOperation.CreateParameters(CreateExampleProjectPackageParams(state, demoPackagePath));
 
             demoPackageParams.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
             demoPackageParams.GetOptions<PackageOptions>().NoDebugInfo = true;
 
-            global::LocalAutomation.Runtime.OperationResult demoExePackageOperationResult = await demoPackageOperation.Execute(demoPackageParams, context.Logger, context.CancellationToken);
+            global::LocalAutomation.Runtime.OperationResult demoExePackageOperationResult = await RunChildOperationAsync(demoPackageOperation, demoPackageParams, context.Logger, context.CancellationToken);
 
             if (!demoExePackageOperationResult.Success)
             {
                 throw new Exception("Example project build failed");
             }
 
-            DemoPackage = new Package(Path.Combine(demoPackagePath, engine.GetWindowsPlatformName()));
+            context.SetSharedData(state.WithDemoPackage(new Package(Path.Combine(demoPackagePath, engine.GetWindowsPlatformName()))));
         }
 
-        private void PreparePluginsForProject(Project targetProject)
+        private void PreparePluginsForProject(DeploymentState state, Project targetProject, PluginDeployOptions deployOptions)
         {
-            Plugin plugin = Plugin;
+            Plugin plugin = state.SourcePlugin;
             var exampleProjectPlugins = targetProject.Plugins;
             
-            string[] excludePlugins = UnrealOperationParameters.GetOptions<PluginDeployOptions>().ExcludePlugins.Replace(" ", "").Split(",");
+            string[] excludePlugins = deployOptions.ExcludePlugins.Replace(" ", "").Split(",");
             foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
             {
-                if (exampleProjectPlugin.Name == plugin.Name || !UnrealOperationParameters.GetOptions<PluginDeployOptions>().IncludeOtherPlugins || excludePlugins.Contains(exampleProjectPlugin.Name))
+                if (exampleProjectPlugin.Name == plugin.Name || !deployOptions.IncludeOtherPlugins || excludePlugins.Contains(exampleProjectPlugin.Name))
                 {
                     // Delete target or excluded plugin from example project
                     FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
@@ -713,22 +780,26 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
 
-        private async Task ArchiveArtifacts(global::LocalAutomation.Runtime.ExecutionTaskContext context, string archivePrefix)
+        private async Task ArchiveArtifacts(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Archiving");
-            Plugin plugin = Plugin;
-            Plugin builtPlugin = BuiltPlugin;
-            Project exampleProject = ExampleProject;
-            Package demoPackage = DemoPackage;
-            Plugin stagingPlugin = StagingPlugin;
-            string archivePath = Path.Combine(GetOutputPath(UnrealOperationParameters), "Archives");
+            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
+            PluginDeployOptions deployOptions = unrealOperationParameters.GetOptions<PluginDeployOptions>();
+            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            Plugin plugin = state.SourcePlugin;
+            Plugin builtPlugin = state.GetRequiredBuiltPlugin();
+            Project exampleProject = state.GetRequiredExampleProject();
+            Package demoPackage = state.GetRequiredDemoPackage();
+            Plugin stagingPlugin = state.GetRequiredStagingPlugin();
+            string archivePrefix = BuildArchivePrefix(state);
+            string archivePath = Path.Combine(GetOutputPath(unrealOperationParameters), "Archives");
 
             Directory.CreateDirectory(archivePath);
 
                 // Archive plugin build
 
                 string pluginBuildZipPath = Path.Combine(archivePath, archivePrefix + "PluginBuild.zip");
-                bool archivePluginBuild = UnrealOperationParameters.GetOptions<PluginDeployOptions>().ArchivePluginBuild;
+                bool archivePluginBuild = deployOptions.ArchivePluginBuild;
                 if (archivePluginBuild)
                 {
                     context.Logger.LogInformation("Archiving plugin build");
@@ -739,7 +810,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Archive demo exe
 
                 string demoPackageZipPath = Path.Combine(archivePath, archivePrefix + "DemoPackage.zip");
-                bool archiveDemoPackage = UnrealOperationParameters.GetOptions<PluginDeployOptions>().ArchiveDemoPackage;
+                bool archiveDemoPackage = deployOptions.ArchiveDemoPackage;
                 if (archiveDemoPackage)
                 {
                     context.Logger.LogInformation("Archiving demo");
@@ -751,7 +822,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Archive example project
 
                 string exampleProjectZipPath = Path.Combine(archivePath, archivePrefix + "ExampleProject.zip");
-                bool archiveExampleProject = UnrealOperationParameters.GetOptions<PluginDeployOptions>().ArchiveExampleProject;
+                bool archiveExampleProject = deployOptions.ArchiveExampleProject;
 
                 if (archiveExampleProject)
                 {
@@ -761,7 +832,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
                     FileUtils.DeleteOtherSubdirectories(exampleProject.ProjectPath, allowedExampleProjectSubDirectoryNames);
                     
-                    PreparePluginsForProject(exampleProject);
+                    PreparePluginsForProject(state, exampleProject, deployOptions);
 
                     // Delete debug files recursive
                     FileUtils.DeleteFilesWithExtension(exampleProject.ProjectPath, new[] { ".pdb" }, SearchOption.AllDirectories);
@@ -775,7 +846,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 context.Logger.LogInformation("Archiving plugin source");
 
                 // Use staging plugin which already has updated descriptor
-                string pluginSourcePath = Path.Combine(EngineTempPath, @"PluginSource", plugin.Name);
+                string pluginSourcePath = Path.Combine(GetEngineTempPath(state.Engine), @"PluginSource", plugin.Name);
                 FileUtils.DeleteDirectoryIfExists(pluginSourcePath);
                 FileUtils.CopyDirectory(stagingPlugin.PluginPath, pluginSourcePath);
 
@@ -789,7 +860,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 FileUtils.DeleteFileIfExists(pluginSourceArchiveZipPath);
                 ZipFile.CreateFromDirectory(pluginSourcePath, pluginSourceArchiveZipPath, CompressionLevel.Optimal, true);
 
-                string archiveOutputPath = UnrealOperationParameters.GetOptions<PluginDeployOptions>().ArchivePath;
+                string archiveOutputPath = deployOptions.ArchivePath;
                 if (!string.IsNullOrEmpty(archiveOutputPath))
                 {
                     context.Logger.LogInformation("Copying to archive output path");
@@ -870,7 +941,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 ? enabledVersions.ToList()
                 : new List<EngineVersion> { plugin.EngineInstance.Version };
 
-            Logger.LogInformation($"Versions: {string.Join(", ", targetVersions.Select(x => x.MajorMinorString)) }");
             root.Children(branches =>
             {
                 foreach (EngineVersion engineVersion in targetVersions)

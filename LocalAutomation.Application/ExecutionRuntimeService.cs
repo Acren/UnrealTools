@@ -35,7 +35,7 @@ public sealed class ExecutionRuntimeService
 
         Runner runner = new(operation, parameters);
         BufferedLogStream logStream = new();
-        LocalAutomation.Runtime.ExecutionPlan? plan = operation.BuildExecutionPlan(parameters);
+        LocalAutomation.Runtime.ExecutionPlan? plan = runner.BuildPlan();
         ILogger previousLogger = TryGetCurrentLogger();
         LocalAutomation.Runtime.ExecutionSession? session = null;
         ForwardingLogger forwardingLogger = new(() => session!, previousLogger);

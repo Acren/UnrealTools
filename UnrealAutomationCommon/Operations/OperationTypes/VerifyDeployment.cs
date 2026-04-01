@@ -15,9 +15,31 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class VerifyDeployment : UnrealOperation<Plugin>
     {
+        private sealed class VerificationState
+        {
+            public VerificationState(Plugin sourcePlugin, Engine engine, Project exampleProject, string tempPath, string packageOutputPath)
+            {
+                SourcePlugin = sourcePlugin ?? throw new ArgumentNullException(nameof(sourcePlugin));
+                Engine = engine ?? throw new ArgumentNullException(nameof(engine));
+                ExampleProject = exampleProject ?? throw new ArgumentNullException(nameof(exampleProject));
+                TempPath = tempPath ?? throw new ArgumentNullException(nameof(tempPath));
+                PackageOutputPath = packageOutputPath ?? throw new ArgumentNullException(nameof(packageOutputPath));
+            }
+
+            public Plugin SourcePlugin { get; }
+
+            public Engine Engine { get; }
+
+            public Project ExampleProject { get; }
+
+            public string TempPath { get; }
+
+            public string PackageOutputPath { get; }
+        }
+
         /// <summary>
-        /// Describes the deployment-verification subtree beneath the framework-owned root task.
-        /// </summary>
+         /// Describes the deployment-verification subtree beneath the framework-owned root task.
+         /// </summary>
         protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
         {
             UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
@@ -31,22 +53,28 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 foreach (EngineVersion engineVersion in targetVersions)
                 {
+                    EngineVersion currentEngineVersion = engineVersion;
                     branches
-                        .Task($"UE {engineVersion.MajorMinorString}", "Per-engine verification branch")
+                        .Task($"UE {currentEngineVersion.MajorMinorString}", "Per-engine verification branch")
                         .Children(steps => steps
                             .Task("Prepare")
-                                .Describe("Resolve the installed plugin and matching example project archive")
+                                .Describe("Resolve the installed plugin and extract the matching example project archive")
+                                .Then(context => PrepareVerificationState(context, currentEngineVersion))
                             .Task("Test Editor")
                                 .Describe("Run the editor verification pass")
-                                .When(automationOptions.RunTests, "Disabled because Run Tests is off")
+                                .When(automationOptions.RunTests, "Run Tests is off.")
+                                .Then(TestEditorAsync)
                             .Task("Test Standalone")
                                 .Describe("Run the standalone verification pass")
-                                .When(automationOptions.RunTests, "Disabled because Run Tests is off")
+                                .When(automationOptions.RunTests, "Run Tests is off.")
+                                .Then(TestStandaloneAsync)
                             .Task("Package Project")
                                 .Describe("Package the example project with the installed plugin")
+                                .Then(PackageProjectAsync)
                             .Task("Test Package")
                                 .Describe("Run the packaged project verification pass")
-                                .When(automationOptions.RunTests, "Disabled because Run Tests is off"));
+                                .When(automationOptions.RunTests, "Run Tests is off.")
+                                .Then(TestPackageAsync));
                 }
             });
         }
@@ -63,11 +91,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             optionSetTypes.Add(typeof(VerifyDeploymentOptions));
         }
 
-        private async Task<global::LocalAutomation.Runtime.OperationResult> VerifyForEngine(Engine engine, CancellationToken token)
+        private async Task PrepareVerificationState(global::LocalAutomation.Runtime.ExecutionTaskContext context, EngineVersion engineVersion)
         {
-            Plugin plugin = GetRequiredTarget(UnrealOperationParameters);
-            EngineVersion engineVersion = engine.Version ?? throw new Exception("Engine version is not available");
-            Logger.LogInformation($"Verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
+            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
+            Plugin plugin = GetRequiredTarget(unrealOperationParameters);
+            Engine engine = EngineFinder.GetEngineInstall(engineVersion)
+                ?? throw new Exception($"Engine {engineVersion.MajorMinorString} not found");
+            EngineVersion resolvedEngineVersion = engine.Version ?? throw new Exception("Engine version is not available");
+            context.Logger.LogInformation($"Verifying plugin {plugin.Name} for {resolvedEngineVersion.MajorMinorString}");
 
             Plugin? installedPlugin = engine.FindInstalledPlugin(plugin.Name);
 
@@ -77,23 +108,23 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             string pluginVersionName = (plugin.PluginDescriptor ?? throw new Exception("Plugin descriptor is not loaded")).VersionName;
-            Logger.LogInformation($"Source plugin version: {pluginVersionName}");
+            context.Logger.LogInformation($"Source plugin version: {pluginVersionName}");
             string installedPluginVersionName = (installedPlugin.PluginDescriptor ?? throw new Exception("Installed plugin descriptor is not loaded")).VersionName;
-            Logger.LogInformation($"Installed plugin version: {pluginVersionName}");
+            context.Logger.LogInformation($"Installed plugin version: {pluginVersionName}");
 
             if (!installedPluginVersionName.Contains(pluginVersionName))
             {
                 throw new Exception($"Installed plugin version {installedPluginVersionName} does not include reference version {pluginVersionName}");
             }
 
-            string exampleProjects = UnrealOperationParameters.GetOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
+            string exampleProjects = unrealOperationParameters.GetOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
             string exampleProjectZip = FindExampleProjectZip(plugin, exampleProjects, engine);
             if (exampleProjectZip == null)
             {
                 throw new Exception($"Could not find example project zip in {exampleProjects}");
             }
 
-            Logger.LogInformation($"Identified {exampleProjectZip} as best example project");
+            context.Logger.LogInformation($"Identified {exampleProjectZip} as best example project");
 
             string temp = GetOperationTempPath();
             string exampleProjectTestPath = Path.Combine(temp, "ExampleProject");
@@ -108,89 +139,92 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception($"Couldn't create project from {exampleProjectZip}");
             }
 
-            // Launch and test example project editor
-
-            AutomationOptions automationOpts = UnrealOperationParameters.GetOptions<AutomationOptions>();
-
-            if (automationOpts.RunTests)
-            {
-                Logger.LogInformation("Launching and testing example project editor");
-
-                UnrealOperationParameters launchEditorParams = new()
-                {
-                    Target = exampleProject,
-                    EngineOverride = engine
-                };
-                launchEditorParams.SetOptions(automationOpts);
-
-                if (!(await new LaunchProjectEditor().Execute(launchEditorParams, Logger, token)).Success)
-                {
-                    throw new Exception("Failed to launch example project");
-                }
-            }
-
-            // Launch and test standalone
-
-            if (automationOpts.RunTests)
-            {
-                Logger.LogInformation("Launching and testing standalone");
-
-                UnrealOperationParameters launchStandaloneParams = new()
-                {
-                    Target = exampleProject,
-                    EngineOverride = engine
-                };
-                launchStandaloneParams.SetOptions(automationOpts);
-
-                if (!(await new LaunchStandalone().Execute(launchStandaloneParams, Logger, token)).Success)
-                {
-                    throw new Exception("Failed to launch standalone");
-                }
-            }
-
-            // Package example project and test
-
             string packageOutput = Path.Combine(temp, "Package");
-
             FileUtils.DeleteDirectoryIfExists(packageOutput);
 
+            context.SetSharedData(new VerificationState(plugin, engine, exampleProject, temp, packageOutput));
+            await Task.CompletedTask;
+        }
+
+        private async Task TestEditorAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            VerificationState state = context.GetRequiredSharedData<VerificationState>();
+            AutomationOptions automationOptions = GetUnrealOperationParameters(context).GetOptions<AutomationOptions>();
+
+            context.Logger.LogInformation("Launching and testing example project editor");
+
+            UnrealOperationParameters launchEditorParams = new()
+            {
+                Target = state.ExampleProject,
+                EngineOverride = state.Engine
+            };
+            launchEditorParams.SetOptions(automationOptions);
+
+            if (!(await RunChildOperationAsync(new LaunchProjectEditor(), launchEditorParams, context.Logger, context.CancellationToken)).Success)
+            {
+                throw new Exception("Failed to launch example project");
+            }
+        }
+
+        private async Task TestStandaloneAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            VerificationState state = context.GetRequiredSharedData<VerificationState>();
+            AutomationOptions automationOptions = GetUnrealOperationParameters(context).GetOptions<AutomationOptions>();
+
+            context.Logger.LogInformation("Launching and testing standalone");
+
+            UnrealOperationParameters launchStandaloneParams = new()
+            {
+                Target = state.ExampleProject,
+                EngineOverride = state.Engine
+            };
+            launchStandaloneParams.SetOptions(automationOptions);
+
+            if (!(await RunChildOperationAsync(new LaunchStandalone(), launchStandaloneParams, context.Logger, context.CancellationToken)).Success)
+            {
+                throw new Exception("Failed to launch standalone");
+            }
+        }
+
+        private async Task PackageProjectAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            VerificationState state = context.GetRequiredSharedData<VerificationState>();
             PackageProject packageExampleProject = new();
             UnrealOperationParameters packageExampleProjectParams = new()
             {
-                Target = exampleProject,
-                EngineOverride = engine,
-                OutputPathOverride = packageOutput
+                Target = state.ExampleProject,
+                EngineOverride = state.Engine,
+                OutputPathOverride = state.PackageOutputPath
             };
 
-            global::LocalAutomation.Runtime.OperationResult packageExampleProjectResult = await packageExampleProject.Execute(packageExampleProjectParams, Logger, token);
+            global::LocalAutomation.Runtime.OperationResult packageExampleProjectResult = await RunChildOperationAsync(packageExampleProject, packageExampleProjectParams, context.Logger, context.CancellationToken);
 
             if (!packageExampleProjectResult.Success)
             {
                 throw new Exception("Failed to package example project");
             }
+        }
 
-            // Test the package
+        private async Task TestPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            VerificationState state = context.GetRequiredSharedData<VerificationState>();
+            AutomationOptions automationOptions = GetUnrealOperationParameters(context).GetOptions<AutomationOptions>();
 
-            if (automationOpts.RunTests)
+            UnrealOperationParameters testPackageParams = new()
             {
-                UnrealOperationParameters testPackageParams = new()
-                {
-                    Target = exampleProject,
-                    EngineOverride = engine
-                };
-                testPackageParams.SetOptions(automationOpts);
+                Target = state.ExampleProject,
+                EngineOverride = state.Engine
+            };
+            testPackageParams.SetOptions(automationOptions);
 
-                global::LocalAutomation.Runtime.OperationResult testPackageResult = await new LaunchStagedPackage().Execute(testPackageParams, Logger, token);
+            global::LocalAutomation.Runtime.OperationResult testPackageResult = await RunChildOperationAsync(new LaunchStagedPackage(), testPackageParams, context.Logger, context.CancellationToken);
 
-                if (!testPackageResult.Success)
-                {
-                    throw new Exception("Launch and test package failed");
-                }
+            if (!testPackageResult.Success)
+            {
+                throw new Exception("Launch and test package failed");
             }
 
-            Logger.LogInformation($"Finished verifying plugin {plugin.Name} for {engineVersion.MajorMinorString}");
-
-            return new global::LocalAutomation.Runtime.OperationResult(true);
+            context.Logger.LogInformation($"Finished verifying plugin {state.SourcePlugin.Name} for {state.Engine.Version.MajorMinorString}");
         }
 
         protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)

@@ -16,11 +16,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new List<LocalAutomation.Runtime.Command>();
         }
 
-        protected override Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(CancellationToken token)
+        protected override Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            Logger.LogInformation("Cleaning binaries");
+            context.Logger.LogInformation("Cleaning binaries");
 
-            Project project = GetRequiredTarget(UnrealOperationParameters);
+            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
+            Project project = GetRequiredTarget(unrealOperationParameters);
             Engine engine = project.EngineInstance ?? throw new InvalidOperationException("Clean Project requires a resolved engine install.");
 
             // Clean targets
@@ -37,7 +38,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            Logger.LogInformation("Deleting intermediate folders");
+            context.Logger.LogInformation("Deleting intermediate folders");
 
             // Delete intermediate folders
             foreach (string path in Directory.GetDirectories(project.ProjectPath, "Intermediate", SearchOption.AllDirectories))
@@ -45,7 +46,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 FileUtils.DeleteDirectory(path);
             }
 
-            Logger.LogInformation("Cleaning complete");
+            context.Logger.LogInformation("Cleaning complete");
 
             return Task.FromResult(new global::LocalAutomation.Runtime.OperationResult(true));
         }

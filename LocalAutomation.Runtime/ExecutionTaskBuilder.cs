@@ -17,6 +17,7 @@ public sealed class ExecutionTaskBuilder
         _owner = owner;
         _definition = definition;
         _parent = parent;
+        _owner.SetOperationParameters(_definition, owner.OperationParameters);
         Handle = _owner.FinalizeTask(_definition);
     }
 

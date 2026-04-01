@@ -144,7 +144,7 @@ public sealed class OperationRuntimeService
 
         try
         {
-            return operation.BuildExecutionPlan(parameters);
+            return Runner.BuildPlan(operation, parameters);
         }
         catch (Exception ex)
         {

@@ -39,6 +39,7 @@ public sealed class ExecutionPlanScheduler
     public async Task<OperationResult> ExecuteAsync(ExecutionPlan plan, CancellationToken cancellationToken)
     {
         Dictionary<ExecutionTaskId, ExecutionPlanTask> itemsById = Materialize(plan);
+        Dictionary<Type, object> sharedData = new();
         Dictionary<ExecutionTaskId, ExecutionTaskStatus> statuses = new();
         Dictionary<ExecutionTaskId, string?> statusReasons = new();
         Dictionary<ExecutionTaskId, Task<OperationResult>> runningTasks = new();
@@ -74,7 +75,7 @@ public sealed class ExecutionPlanScheduler
                 break;
             }
 
-            bool startedAny = StartReadyItems(itemsById, statuses, statusReasons, runningTasks, taskOwners, cancellationToken);
+            bool startedAny = StartReadyItems(itemsById, sharedData, statuses, statusReasons, runningTasks, taskOwners, cancellationToken);
             if (runningTasks.Count == 0)
             {
                 IReadOnlyList<ExecutionTaskId> incompleteTasks = itemsById.Values
@@ -209,6 +210,7 @@ public sealed class ExecutionPlanScheduler
     /// </summary>
     private bool StartReadyItems(
         IReadOnlyDictionary<ExecutionTaskId, ExecutionPlanTask> itemsById,
+        IDictionary<Type, object> sharedData,
         IDictionary<ExecutionTaskId, ExecutionTaskStatus> statuses,
         IDictionary<ExecutionTaskId, string?> statusReasons,
         IDictionary<ExecutionTaskId, Task<OperationResult>> runningTasks,
@@ -224,7 +226,7 @@ public sealed class ExecutionPlanScheduler
             }
 
             SetStatus(statuses, statusReasons, item.Id, ExecutionTaskStatus.Running);
-            ExecutionTaskContext context = new(item.Id, item.Title, CreateTaskLogger(item.Id), cancellationToken);
+            ExecutionTaskContext context = new(item.Id, item.Title, CreateTaskLogger(item.Id), cancellationToken, item.OperationParameters, sharedData);
             Task<OperationResult> task = item.ExecuteAsync!(context);
             runningTasks[item.Id] = task;
             taskOwners[task] = item.Id;

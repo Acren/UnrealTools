@@ -13,56 +13,82 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Coordinates lifecycle, cancellation, and high-level logging for a runtime operation execution.
+/// Builds authored execution plans and runs them through the shared scheduler so operations only describe task
+/// structure and task behavior while the framework owns orchestration.
 /// </summary>
-public class Runner
+public sealed class Runner
 {
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly OperationParameters _operationParameters;
     private readonly List<string> _errors = new();
     private readonly List<string> _warnings = new();
     private Task<OperationResult>? _currentTask;
-    private ILogger _logger = ApplicationLogger.Logger;
+    private ILogger _logger = NullLogger.Instance;
 
     /// <summary>
-    /// Creates a runtime runner for the provided operation and parameters.
+    /// Creates a runtime runner for the provided operation and parameter state.
     /// </summary>
     public Runner(Operation operation, OperationParameters operationParameters)
     {
-        Operation = operation;
-        _operationParameters = operationParameters;
+        Operation = operation ?? throw new ArgumentNullException(nameof(operation));
+        _operationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
     }
 
     /// <summary>
-    /// Gets whether the runner currently has an active operation task.
+    /// Gets whether the runner currently has an active scheduler task.
     /// </summary>
     public bool IsRunning => _currentTask is { IsCompleted: false };
 
     /// <summary>
-    /// Gets the operation associated with this runner.
+    /// Gets the operation whose plan this runner owns.
     /// </summary>
     public Operation Operation { get; }
 
     /// <summary>
-    /// Executes the current operation and returns the final runtime result.
+    /// Builds the preview/runtime plan for the current operation using the same framework-owned authoring path that
+    /// execution uses.
+    /// </summary>
+    public ExecutionPlan? BuildPlan()
+    {
+        return BuildPlan(Operation, _operationParameters);
+    }
+
+    /// <summary>
+    /// Builds the preview/runtime plan for any operation using the shared framework-owned authoring pipeline.
+    /// </summary>
+    public static ExecutionPlan? BuildPlan(Operation operation, OperationParameters operationParameters)
+    {
+        if (operation == null)
+        {
+            throw new ArgumentNullException(nameof(operation));
+        }
+
+        if (operationParameters == null)
+        {
+            throw new ArgumentNullException(nameof(operationParameters));
+        }
+
+        operation.PrepareRegisteredOptions(operationParameters);
+        if (operationParameters.Target == null)
+        {
+            return null;
+        }
+
+        return BuildWrappedPlan(operation, operationParameters, NullLogger.Instance);
+    }
+
+    /// <summary>
+    /// Executes the current operation by building its plan, wrapping task callbacks with framework-owned execution
+    /// context, and then running that plan through the shared scheduler.
     /// </summary>
     public async Task<OperationResult> Run()
     {
         if (_currentTask != null)
         {
-            throw new Exception("Task is already running");
+            throw new InvalidOperationException("Task is already running");
         }
 
-        // Resolve the logger at execution time instead of construction time so the current host can swap in a
-        // session-specific forwarding logger before the run starts.
-        try
-        {
-            _logger = ApplicationLogger.Logger;
-        }
-        catch (InvalidOperationException)
-        {
-            _logger = NullLogger.Instance;
-        }
+        _logger = ResolveCurrentLogger();
 
         string outputPath = Operation.GetOutputPath(_operationParameters);
         if (Directory.Exists(outputPath))
@@ -71,75 +97,57 @@ public class Runner
         }
 
         Operation.PrepareForExecution(_operationParameters, _logger);
-
-        // Preserve any task-aware routing capabilities from the host logger so runtime task-status updates and
-        // task-scoped loggers continue flowing into the active execution session instead of collapsing into aggregate
-        // output only.
-        EventStreamLogger eventLogger = new(
-            _logger as IExecutionTaskLoggerFactory,
-            _logger as IExecutionTaskStateSink);
-        eventLogger.Output += (level, output) =>
+        EventStreamLogger eventLogger = CreateAggregatingLogger();
+        string? requirementsError = Operation.CheckRequirementsSatisfied(_operationParameters);
+        if (requirementsError != null)
         {
-            if (output == null)
-            {
-                throw new Exception("Null line");
-            }
-
-            if (level >= LogLevel.Error)
-            {
-                _errors.Add(output);
-            }
-            else if (level == LogLevel.Warning)
-            {
-                _warnings.Add(output);
-            }
-
-            _logger.Log(level, output);
-        };
-
-        _currentTask = Operation.ExecuteOnThread(_operationParameters, eventLogger, _cancellationTokenSource.Token);
-        OperationResult result = await _currentTask.ConfigureAwait(false);
-        _logger.LogDebug($"'{Operation.OperationName}' task ended");
-        _currentTask = null;
-
-        if (result.Outcome == RunOutcome.Succeeded)
-        {
-            if (_warnings.Count > 0)
-            {
-                int numToShow = Math.Min(_warnings.Count, 50);
-                _logger.LogWarning($"{numToShow} of {_warnings.Count} warnings:");
-                foreach (string warning in _warnings.Take(numToShow))
-                {
-                    _logger.LogWarning(warning);
-                }
-            }
-
-            if (_errors.Count > 0)
-            {
-                int numToShow = Math.Min(_errors.Count, 50);
-                _logger.LogWarning($"{numToShow} of {_errors.Count} errors:");
-                foreach (string error in _errors.Take(numToShow))
-                {
-                    _logger.LogError(error);
-                }
-            }
-
-            _logger.LogInformation($"'{Operation.OperationName}' finished with result: success");
-        }
-        else if (result.Outcome == RunOutcome.Cancelled)
-        {
-            _logger.LogWarning($"'{Operation.OperationName}' finished with result: cancelled");
-        }
-        else
-        {
-            _logger.LogError($"'{Operation.OperationName}' finished with result: failure");
+            _logger.LogError(requirementsError);
+            return OperationResult.Failed();
         }
 
-        return result;
+        ExecutionPlan plan = BuildWrappedPlan(Operation, _operationParameters, eventLogger)
+            ?? throw new InvalidOperationException($"Operation '{Operation.OperationName}' did not produce an execution plan.");
+
+        using IDisposable operationTimingScope = eventLogger.BeginSection(Operation.OperationName);
+        _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, maxParallelism: 1).ExecuteAsync(plan, _cancellationTokenSource.Token));
+        try
+        {
+            OperationResult result = await _currentTask.ConfigureAwait(false);
+            return FinalizeOutcome(result, eventLogger);
+        }
+        finally
+        {
+            _logger.LogDebug("'{OperationName}' task ended", Operation.OperationName);
+            _currentTask = null;
+        }
     }
 
     /// <summary>
-    /// Cancels the current operation and waits for it to stop.
+    /// Executes one nested child operation through the same plan-first runtime path while reusing the caller's logger
+    /// and cancellation token.
+    /// </summary>
+    public static Task<OperationResult> RunChildOperation(Operation operation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken)
+    {
+        if (operation == null)
+        {
+            throw new ArgumentNullException(nameof(operation));
+        }
+
+        if (operationParameters == null)
+        {
+            throw new ArgumentNullException(nameof(operationParameters));
+        }
+
+        if (logger == null)
+        {
+            throw new ArgumentNullException(nameof(logger));
+        }
+
+        return ExecuteWithLogger(operation, operationParameters, logger, cancellationToken);
+    }
+
+    /// <summary>
+    /// Cancels the current operation and waits for the scheduler to stop.
     /// </summary>
     public async Task Cancel()
     {
@@ -149,8 +157,236 @@ public class Runner
             return;
         }
 
-        _logger.LogWarning($"Cancelling operation '{Operation.OperationName}'");
+        _logger.LogWarning("Cancelling operation '{OperationName}'", Operation.OperationName);
         _cancellationTokenSource.Cancel();
         await currentTask.ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Executes one operation with an externally supplied logger instead of the ambient application logger.
+    /// </summary>
+    private static async Task<OperationResult> ExecuteWithLogger(Operation operation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken)
+    {
+        EventStreamLogger eventLogger = CreateAggregatingLogger(logger, null, null, null);
+        string? requirementsError = operation.CheckRequirementsSatisfied(operationParameters);
+        if (requirementsError != null)
+        {
+            logger.LogError(requirementsError);
+            return OperationResult.Failed();
+        }
+
+        ExecutionPlan plan = BuildWrappedPlan(operation, operationParameters, eventLogger)
+            ?? throw new InvalidOperationException($"Operation '{operation.OperationName}' did not produce an execution plan.");
+
+        using IDisposable operationTimingScope = eventLogger.BeginSection(operation.OperationName);
+        OperationResult result = await new ExecutionPlanScheduler(eventLogger, maxParallelism: 1)
+            .ExecuteAsync(plan, cancellationToken)
+            .ConfigureAwait(false);
+        return FinalizeOutcome(operation, result, eventLogger, logger, 0, 0);
+    }
+
+    /// <summary>
+    /// Builds one operation plan and wraps every executable task callback so task execution happens inside a
+    /// framework-owned operation execution context.
+    /// </summary>
+    private static ExecutionPlan? BuildWrappedPlan(Operation operation, OperationParameters operationParameters, ILogger logger)
+    {
+        operation.PrepareRegisteredOptions(operationParameters);
+        if (operationParameters.Target == null)
+        {
+            return null;
+        }
+
+        ExecutionPlanId planId = ExecutionIdentifierFactory.CreatePlanId(operation.GetType().Name);
+        ExecutionPlanBuilder builder = new(operation.OperationName, planId, (childOperation, childParameters) => BuildWrappedPlan(childOperation, childParameters, logger));
+        builder.SetBuilderOperationParameters(operationParameters);
+        ExecutionTaskBuilder root = builder.Task(operation.OperationName, operationParameters.Target.DisplayName, default);
+        operation.AuthorExecutionPlan(operationParameters, root);
+        return builder.BuildPlan();
+    }
+
+    /// <summary>
+    /// Executes one authored task callback and preserves task-state error/cancellation propagation at the scheduler
+    /// boundary.
+    /// </summary>
+    private static async Task<OperationResult> ExecuteTaskCallback(Operation operation, ILogger logger, ExecutionPlanTask task, ExecutionTaskContext context)
+    {
+        try
+        {
+            return await task.ExecuteAsync!(context).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            (logger as IExecutionTaskStateSink)?.SetTaskStatus(context.TaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            (logger as IExecutionTaskStateSink)?.SetTaskStatus(context.TaskId, ExecutionTaskStatus.Failed, ex.Message);
+            throw new Exception($"Exception encountered running operation '{operation.OperationName}' task '{task.Title}'", ex);
+        }
+    }
+
+    /// <summary>
+    /// Executes one delegate on a worker thread so UI-triggered runs remain asynchronous even though the framework now
+    /// owns the plan lifecycle instead of the operation instance.
+    /// </summary>
+    private static Task<OperationResult> ExecuteOnThread(Func<Task<OperationResult>> executeAsync)
+    {
+        TaskCompletionSource<OperationResult> completionSource = new();
+        ThreadPool.QueueUserWorkItem(async _ =>
+        {
+            try
+            {
+                completionSource.SetResult(await executeAsync().ConfigureAwait(false));
+            }
+            catch (OperationCanceledException)
+            {
+                completionSource.SetResult(OperationResult.Cancelled());
+            }
+            catch (Exception ex)
+            {
+                completionSource.SetException(ex);
+            }
+        });
+
+        return completionSource.Task;
+    }
+
+    /// <summary>
+    /// Creates the aggregate logger used during one top-level run so warning/error counting and task-state forwarding
+    /// continue to work after plan ownership moved out of operations.
+    /// </summary>
+    private EventStreamLogger CreateAggregatingLogger()
+    {
+        return CreateAggregatingLogger(
+            _logger,
+            _logger as IExecutionTaskLoggerFactory,
+            _logger as IExecutionTaskStateSink,
+            (level, output) =>
+            {
+                if (level >= LogLevel.Error)
+                {
+                    _errors.Add(output);
+                }
+                else if (level == LogLevel.Warning)
+                {
+                    _warnings.Add(output);
+                }
+
+                _logger.Log(level, output);
+            });
+    }
+
+    /// <summary>
+    /// Creates an event-stream logger that forwards formatted output to the supplied sink while preserving task logging
+    /// and task-state routing when the host logger supports them.
+    /// </summary>
+    private static EventStreamLogger CreateAggregatingLogger(ILogger fallbackLogger, IExecutionTaskLoggerFactory? taskLoggerFactory, IExecutionTaskStateSink? taskStateSink, Action<LogLevel, string>? onOutput)
+    {
+        EventStreamLogger eventLogger = new(taskLoggerFactory ?? fallbackLogger as IExecutionTaskLoggerFactory, taskStateSink ?? fallbackLogger as IExecutionTaskStateSink);
+        if (onOutput != null)
+        {
+            eventLogger.Output += (level, output) =>
+            {
+                if (output == null)
+                {
+                    throw new InvalidOperationException("Null line");
+                }
+
+                onOutput(level, output);
+            };
+        }
+
+        return eventLogger;
+    }
+
+    /// <summary>
+    /// Applies the historical operation-level warning and error rollup semantics after the scheduler has finished.
+    /// </summary>
+    private OperationResult FinalizeOutcome(OperationResult result, ILogger logger)
+    {
+        return FinalizeOutcome(Operation, result, logger, _logger, _warnings.Count, _errors.Count);
+    }
+
+    /// <summary>
+    /// Applies the historical operation-level warning and error rollup semantics for both top-level and nested runs.
+    /// </summary>
+    private static OperationResult FinalizeOutcome(Operation operation, OperationResult result, ILogger aggregateLogger, ILogger summaryLogger, int warningCount, int errorCount)
+    {
+        if (result.Outcome == RunOutcome.Cancelled)
+        {
+            aggregateLogger.LogWarning("Operation '{OperationName}' terminated by user", operation.OperationName);
+        }
+        else if (result.Outcome == RunOutcome.Succeeded)
+        {
+            aggregateLogger.LogInformation("Operation '{OperationName}' completed successfully - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
+        }
+        else
+        {
+            aggregateLogger.LogWarning("Operation '{OperationName}' finished with failure - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
+        }
+
+        if (result.Outcome == RunOutcome.Succeeded)
+        {
+            if (errorCount > 0)
+            {
+                aggregateLogger.LogError("{ErrorCount} error(s) encountered", errorCount);
+                result.Outcome = RunOutcome.Failed;
+            }
+
+            if (warningCount > 0)
+            {
+                aggregateLogger.LogWarning("{WarningCount} warning(s) encountered", warningCount);
+                if (operation.ShouldFailOnWarning())
+                {
+                    aggregateLogger.LogError("Operation fails on warnings");
+                    result.Outcome = RunOutcome.Failed;
+                }
+            }
+        }
+
+        if (result.Outcome == RunOutcome.Succeeded)
+        {
+            if (warningCount > 0)
+            {
+                int numToShow = Math.Min(warningCount, 50);
+                summaryLogger.LogWarning("{ShownCount} of {WarningCount} warnings:", numToShow, warningCount);
+            }
+
+            if (errorCount > 0)
+            {
+                int numToShow = Math.Min(errorCount, 50);
+                summaryLogger.LogWarning("{ShownCount} of {ErrorCount} errors:", numToShow, errorCount);
+            }
+
+            summaryLogger.LogInformation("'{OperationName}' finished with result: success", operation.OperationName);
+        }
+        else if (result.Outcome == RunOutcome.Cancelled)
+        {
+            summaryLogger.LogWarning("'{OperationName}' finished with result: cancelled", operation.OperationName);
+        }
+        else
+        {
+            summaryLogger.LogError("'{OperationName}' finished with result: failure", operation.OperationName);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Resolves the active host logger at run time so session-specific forwarding loggers can be installed before the
+    /// framework-owned execution path begins.
+    /// </summary>
+    private static ILogger ResolveCurrentLogger()
+    {
+        try
+        {
+            return ApplicationLogger.Logger;
+        }
+        catch (InvalidOperationException)
+        {
+            return NullLogger.Instance;
+        }
     }
 }

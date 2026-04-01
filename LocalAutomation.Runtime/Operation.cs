@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 #nullable enable
 
@@ -21,26 +20,6 @@ public abstract class Operation
     /// Gets the user-facing operation name.
     /// </summary>
     public string OperationName => GetOperationName();
-
-    /// <summary>
-     /// Gets whether the operation is currently executing.
-     /// </summary>
-    public bool Executing { get; private set; }
-
-    /// <summary>
-    /// Gets whether the operation was cancelled.
-    /// </summary>
-    public bool Cancelled { get; private set; }
-
-    /// <summary>
-    /// Gets the logger used while the current execution is active.
-    /// </summary>
-    protected ILogger Logger { get; private set; } = NullLogger.Instance;
-
-    /// <summary>
-    /// Gets the parameter state used by the current execution.
-    /// </summary>
-    protected OperationParameters OperationParameters { get; private set; } = null!;
 
     /// <summary>
     /// Creates a runtime operation instance for the provided type.
@@ -104,159 +83,6 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Executes the operation on a thread-pool worker so UI callers remain responsive.
-    /// </summary>
-    public async Task<OperationResult> ExecuteOnThread(OperationParameters operationParameters, ILogger logger, CancellationToken token)
-    {
-        TaskCompletionSource<OperationResult> tcs = new();
-        ThreadPool.QueueUserWorkItem(async _ =>
-        {
-            try
-            {
-                OperationResult result = await Execute(operationParameters, logger, token).ConfigureAwait(false);
-                tcs.SetResult(result);
-            }
-            catch (OperationCanceledException)
-            {
-                tcs.SetResult(OperationResult.Cancelled());
-            }
-            catch (Exception e)
-            {
-                logger.LogCritical($"Worker thread encountered exception:\n{e}");
-                tcs.SetResult(OperationResult.Failed());
-            }
-        });
-
-        return await tcs.Task.ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Executes the operation against the provided parameter state.
-    /// </summary>
-    public async Task<OperationResult> Execute(OperationParameters operationParameters, ILogger logger, CancellationToken token)
-    {
-        try
-        {
-            PrepareRegisteredOptions(operationParameters);
-            using IDisposable operationTimingScope = logger.BeginSection(OperationName);
-
-            int warnings = 0;
-            int errors = 0;
-
-            IExecutionTaskLoggerFactory? taskLoggerFactory = logger as IExecutionTaskLoggerFactory;
-            IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
-            ExecutionTaskId? inheritedTaskId = TryGetInheritedTaskId(logger);
-            ExecutionTaskId? effectiveTaskId = inheritedTaskId;
-            // Preserve an inherited task scope for nested operations, and only fall back to the shared default
-            // single-task routing when the caller did not already execute inside a task-scoped logger.
-            ILogger executionLogger = effectiveTaskId != null && taskLoggerFactory != null
-                ? taskLoggerFactory.CreateTaskLogger(effectiveTaskId.Value)
-                : logger;
-            EventStreamLogger eventLogger = new(taskLoggerFactory, taskStateSink);
-            Logger = eventLogger;
-            eventLogger.Output += (level, output) =>
-            {
-                if (level >= LogLevel.Error)
-                {
-                    errors++;
-                }
-                else if (level == LogLevel.Warning)
-                {
-                    warnings++;
-                }
-
-                executionLogger.Log(level, output);
-            };
-
-            string? requirementsError = CheckRequirementsSatisfied(operationParameters);
-            if (requirementsError != null)
-            {
-                if (effectiveTaskId != null)
-                {
-                    eventLogger.SetTaskStatus(effectiveTaskId.Value, ExecutionTaskStatus.Disabled, requirementsError);
-                }
-
-                Logger.LogError(requirementsError);
-                return OperationResult.Failed();
-            }
-
-            OperationParameters = operationParameters;
-            if (effectiveTaskId != null)
-            {
-                eventLogger.SetTaskStatus(effectiveTaskId.Value, ExecutionTaskStatus.Running);
-            }
-
-            Executing = true;
-            Task<OperationResult> mainTask = ExecutePlanAsync(
-                BuildExecutionPlan(operationParameters)
-                    ?? throw new InvalidOperationException($"Operation '{OperationName}' did not produce an execution plan."),
-                eventLogger,
-                token);
-            Executing = false;
-
-            OperationResult result = await mainTask.ConfigureAwait(false);
-
-            if (result.Outcome == RunOutcome.Cancelled || Cancelled)
-            {
-                Logger.LogWarning($"Operation '{OperationName}' terminated by user");
-            }
-            else if (result.Outcome == RunOutcome.Succeeded)
-            {
-                Logger.LogInformation($"Operation '{OperationName}' completed successfully - {errors} error(s), {warnings} warning(s)");
-            }
-            else
-            {
-                Logger.LogWarning($"Operation '{OperationName}' finished with failure - {errors} error(s), {warnings} warning(s)");
-            }
-
-            if (result.Outcome == RunOutcome.Succeeded)
-            {
-                if (errors > 0)
-                {
-                    Logger.LogError($"{errors} error(s) encountered");
-                    result.Outcome = RunOutcome.Failed;
-                }
-
-                if (warnings > 0)
-                {
-                    Logger.LogWarning($"{warnings} warning(s) encountered");
-                    if (FailOnWarning())
-                    {
-                        Logger.LogError("Operation fails on warnings");
-                        result.Outcome = RunOutcome.Failed;
-                    }
-                }
-            }
-
-            return result;
-        }
-        catch (OperationCanceledException)
-        {
-            Executing = false;
-            ExecutionTaskId? effectiveTaskId = TryGetInheritedTaskId(logger);
-            if (effectiveTaskId != null)
-            {
-                IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
-                taskStateSink?.SetTaskStatus(effectiveTaskId.Value, ExecutionTaskStatus.Cancelled, "Cancelled.");
-            }
-
-            throw;
-        }
-        catch (Exception e)
-        {
-            Executing = false;
-            ExecutionTaskId? effectiveTaskId = TryGetInheritedTaskId(logger);
-            if (effectiveTaskId != null)
-            {
-                IExecutionTaskStateSink? taskStateSink = logger as IExecutionTaskStateSink;
-                taskStateSink?.SetTaskStatus(effectiveTaskId.Value, ExecutionTaskStatus.Failed, e.Message);
-            }
-
-            throw new Exception($"Exception encountered running operation '{OperationName}'", e);
-        }
-    }
-
-    /// <summary>
     /// Returns the formatted command previews for the provided parameter state.
     /// </summary>
     public IEnumerable<Command> GetCommands(OperationParameters operationParameters)
@@ -276,72 +102,6 @@ public abstract class Operation
     public virtual IReadOnlyList<string> GetCommandTexts(OperationParameters operationParameters)
     {
         return GetCommands(operationParameters).Select(command => command.ToString()).ToList();
-    }
-
-    /// <summary>
-    /// Builds the previewable execution plan for the provided parameter state so hosts can render the task graph before
-    /// execution begins.
-    /// </summary>
-    public virtual ExecutionPlan? BuildExecutionPlan(OperationParameters operationParameters)
-    {
-        if (operationParameters == null)
-        {
-            throw new ArgumentNullException(nameof(operationParameters));
-        }
-
-        if (operationParameters.Target == null)
-        {
-            return null;
-        }
-
-        ExecutionPlanId planId = GetDefaultExecutionPlanId();
-        ExecutionPlanBuilder builder = new(OperationName, planId);
-        ExecutionTaskBuilder root = builder.Task(OperationName, operationParameters.Target.DisplayName, default);
-        DescribeExecutionPlan(operationParameters, root);
-        return builder.BuildPlan();
-    }
-
-    /// <summary>
-    /// Lets the runtime evaluate this operation's authored plan against explicit parameters without running the full
-    /// execution pipeline. Used internally for child-operation plan expansion.
-    /// </summary>
-    internal ExecutionPlan? BuildExecutionPlanForExpansion(OperationParameters operationParameters)
-    {
-        if (operationParameters == null)
-        {
-            throw new ArgumentNullException(nameof(operationParameters));
-        }
-
-        PrepareRegisteredOptions(operationParameters);
-        OperationParameters = operationParameters;
-        return BuildExecutionPlan(operationParameters);
-    }
-
-    /// <summary>
-    /// Executes an authored execution plan through the shared scheduler so composite operations do not own their own
-    /// scheduling lifecycle.
-    /// </summary>
-    private Task<OperationResult> ExecutePlanAsync(ExecutionPlan plan, ILogger logger, CancellationToken token)
-    {
-        return new ExecutionPlanScheduler(logger, maxParallelism: 1).ExecuteAsync(plan, token);
-    }
-
-    /// <summary>
-    /// Gets the default execution-plan identifier used by operations that rely on the shared single-task preview and
-    /// runtime behavior.
-    /// </summary>
-    protected virtual ExecutionPlanId GetDefaultExecutionPlanId()
-    {
-        return ExecutionIdentifierFactory.CreatePlanId(GetType().Name);
-    }
-
-    /// <summary>
-     /// Extracts the currently scoped task identifier from a logger created by the execution runtime so nested
-     /// operations inherit the caller's task stream instead of escaping back into the session-wide log.
-    /// </summary>
-    private static ExecutionTaskId? TryGetInheritedTaskId(ILogger logger)
-    {
-        return (logger as IExecutionTaskScope)?.CurrentTaskId;
     }
 
     /// <summary>
@@ -394,6 +154,33 @@ public abstract class Operation
     protected virtual bool FailOnWarning()
     {
         return false;
+    }
+
+    /// <summary>
+    /// Exposes the warning-failure policy to the framework-owned execution pipeline without making callers subclass this
+    /// type just to inspect the configured behavior.
+    /// </summary>
+    internal bool ShouldFailOnWarning()
+    {
+        return FailOnWarning();
+    }
+
+    /// <summary>
+     /// Gives the framework access to the task-graph description hook without making operation instances responsible for
+     /// creating builders or building plans directly.
+    /// </summary>
+    internal void AuthorExecutionPlan(OperationParameters operationParameters, ExecutionTaskBuilder root)
+    {
+        DescribeExecutionPlan(operationParameters, root);
+    }
+
+    /// <summary>
+    /// Executes one nested child operation through the framework-owned plan pipeline while preserving the caller's logger
+    /// and cancellation token.
+    /// </summary>
+    protected Task<OperationResult> RunChildOperationAsync(Operation childOperation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken)
+    {
+        return Runner.RunChildOperation(childOperation, operationParameters, logger, cancellationToken);
     }
 
     /// <summary>
@@ -465,38 +252,6 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Returns a logger scoped to one execution-plan task when the active logging pipeline supports task attribution.
-    /// </summary>
-    protected ILogger GetTaskLogger(ExecutionTaskId taskId)
-    {
-        if (Logger is IExecutionTaskLoggerFactory loggerFactory)
-        {
-            return loggerFactory.CreateTaskLogger(taskId);
-        }
-
-        return Logger;
-    }
-
-    /// <summary>
-    /// Publishes a task-status transition when the active logger supports task-state routing.
-    /// </summary>
-    protected void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null)
-    {
-        if (Logger is IExecutionTaskStateSink taskStateSink)
-        {
-            taskStateSink.SetTaskStatus(taskId, status, statusReason);
-        }
-    }
-
-    /// <summary>
-    /// Signals that the operation has been cancelled.
-    /// </summary>
-    protected void SetCancelled()
-    {
-        Cancelled = true;
-    }
-
-    /// <summary>
     /// Creates a parameter object suitable for option discovery for this operation runtime.
     /// </summary>
     protected virtual OperationParameters CreateOperationParameters()
@@ -505,18 +260,18 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Lets derived operations describe child tasks beneath the framework-owned root task. The default implementation
-    /// turns the root into a single leaf task that executes the legacy imperative hook.
-    /// </summary>
+     /// Lets derived operations describe child tasks beneath the framework-owned root task. The default implementation
+     /// turns the root into a single leaf task that executes the legacy imperative hook.
+     /// </summary>
     protected virtual void DescribeExecutionPlan(OperationParameters operationParameters, ExecutionTaskBuilder root)
     {
-        root.Then(context => ExecuteLeafAsync(context.CancellationToken));
+        root.Then(ExecuteLeafAsync);
     }
 
     /// <summary>
-    /// Runs the legacy imperative leaf execution body for operations that do not override plan description.
-    /// </summary>
-    protected virtual Task<OperationResult> ExecuteLeafAsync(CancellationToken token)
+     /// Runs the leaf execution body for operations that do not override plan description.
+     /// </summary>
+    protected virtual Task<OperationResult> ExecuteLeafAsync(ExecutionTaskContext context)
     {
         throw new NotSupportedException($"Operation '{OperationName}' must override either {nameof(DescribeExecutionPlan)} or {nameof(ExecuteLeafAsync)}.");
     }
@@ -538,7 +293,11 @@ public abstract class Operation
     /// Recomputes the registered option-set list for the current target before validation, preview, or execution touch
     /// option values directly.
     /// </summary>
-    private void PrepareRegisteredOptions(OperationParameters operationParameters)
+    /// <summary>
+    /// Recomputes the registered option-set list before command preview, validation, plan authoring, or execution so
+    /// the current target always drives the live option shape.
+    /// </summary>
+    internal void PrepareRegisteredOptions(OperationParameters operationParameters)
     {
         if (operationParameters == null)
         {

@@ -1,4 +1,3 @@
-﻿using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
@@ -19,13 +18,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
         {
             Arguments args = UATArguments.MakeBuildArguments(operationParameters);
-            if (args.GetArgument("ubtargs") != null)
-            {
-                if (Executing)
-                {
-                    Logger.LogWarning("BuildCookRun editor targets do not respect UbtArgs argument - consider direct UBT usage instead");
-                }
-            }
             return new global::LocalAutomation.Runtime.Command(GetRequiredTargetEngineInstall(operationParameters).GetRunUATPath(), args.ToString());
         }
 
