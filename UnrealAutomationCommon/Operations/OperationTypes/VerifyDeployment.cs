@@ -155,15 +155,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             AutomationOptions automationOptions = GetUnrealOperationParameters(context).GetOptions<AutomationOptions>();
 
             context.Logger.LogInformation("Launching and testing example project editor");
-
-            UnrealOperationParameters launchEditorParams = new()
-            {
-                Target = state.ExampleProject,
-                EngineOverride = state.Engine
-            };
-            launchEditorParams.SetOptions(automationOptions);
-
-            await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to launch example project");
+            await RunExampleProjectOperationAsync<LaunchProjectEditor>(state, automationOptions, context, "Failed to launch example project");
         }
 
         private async Task TestStandaloneAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -172,29 +164,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             AutomationOptions automationOptions = GetUnrealOperationParameters(context).GetOptions<AutomationOptions>();
 
             context.Logger.LogInformation("Launching and testing standalone");
-
-            UnrealOperationParameters launchStandaloneParams = new()
-            {
-                Target = state.ExampleProject,
-                EngineOverride = state.Engine
-            };
-            launchStandaloneParams.SetOptions(automationOptions);
-
-            await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to launch standalone");
+            await RunExampleProjectOperationAsync<LaunchStandalone>(state, automationOptions, context, "Failed to launch standalone");
         }
 
         private async Task PackageProjectAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             VerificationState state = context.GetRequiredSharedData<VerificationState>();
-            PackageProject packageExampleProject = new();
-            UnrealOperationParameters packageExampleProjectParams = new()
-            {
-                Target = state.ExampleProject,
-                EngineOverride = state.Engine,
-                OutputPathOverride = state.PackageOutputPath
-            };
-
-            await RunChildOperationAsync(packageExampleProject, packageExampleProjectParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to package example project");
+            await RunChildOperationAsync(new PackageProject(), CreateExampleProjectParams(state, outputPathOverride: state.PackageOutputPath), context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to package example project");
         }
 
         private async Task TestPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -202,16 +178,31 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             VerificationState state = context.GetRequiredSharedData<VerificationState>();
             AutomationOptions automationOptions = GetUnrealOperationParameters(context).GetOptions<AutomationOptions>();
 
-            UnrealOperationParameters testPackageParams = new()
-            {
-                Target = state.ExampleProject,
-                EngineOverride = state.Engine
-            };
-            testPackageParams.SetOptions(automationOptions);
-
-            await RunChildOperationAsync<LaunchStagedPackage>(testPackageParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Launch and test package failed");
+            await RunExampleProjectOperationAsync<LaunchStagedPackage>(state, automationOptions, context, "Launch and test package failed");
 
             context.Logger.LogInformation($"Finished verifying plugin {state.SourcePlugin.Name} for {state.Engine.Version.MajorMinorString}");
+        }
+
+        private UnrealOperationParameters CreateExampleProjectParams(VerificationState state, AutomationOptions? automationOptions = null, string? outputPathOverride = null)
+        {
+            UnrealOperationParameters parameters = new()
+            {
+                Target = state.ExampleProject,
+                EngineOverride = state.Engine,
+                OutputPathOverride = outputPathOverride
+            };
+            if (automationOptions != null)
+            {
+                parameters.SetOptions(automationOptions);
+            }
+
+            return parameters;
+        }
+
+        private Task RunExampleProjectOperationAsync<TOperation>(VerificationState state, AutomationOptions automationOptions, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
+            where TOperation : global::LocalAutomation.Runtime.Operation, new()
+        {
+            return RunChildOperationAsync<TOperation>(CreateExampleProjectParams(state, automationOptions), context.Logger, context.CancellationToken, required: true, failureMessage: failureMessage);
         }
 
         public readonly struct ExampleProjectZipInfo

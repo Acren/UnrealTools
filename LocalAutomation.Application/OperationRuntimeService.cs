@@ -14,19 +14,6 @@ namespace LocalAutomation.Application;
 public sealed class OperationRuntimeService
 {
     /// <summary>
-    /// Creates a runtime operation instance for the provided operation type.
-    /// </summary>
-    public Operation? CreateOperation(Type? operationType)
-    {
-        if (operationType == null)
-        {
-            return null;
-        }
-
-        return Operation.CreateOperation(operationType);
-    }
-
-    /// <summary>
     /// Creates a host-facing parameter session around the shared runtime parameter model.
     /// </summary>
     public OperationParameterSession CreateParameterSession()
@@ -151,19 +138,6 @@ public sealed class OperationRuntimeService
             LogOperationRuntimeFailure(operation.GetType(), "build execution plan", ex);
             return null;
         }
-    }
-
-    /// <summary>
-    /// Returns the display name for the provided runtime option-set instance.
-    /// </summary>
-    public string GetOptionSetName(OperationOptions optionSet)
-    {
-        if (optionSet == null)
-        {
-            throw new ArgumentNullException(nameof(optionSet));
-        }
-
-        return optionSet.Name;
     }
 
     /// <summary>

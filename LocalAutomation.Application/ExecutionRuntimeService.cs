@@ -35,7 +35,8 @@ public sealed class ExecutionRuntimeService
 
         Runner runner = new(operation, parameters);
         BufferedLogStream logStream = new();
-        LocalAutomation.Runtime.ExecutionPlan? plan = runner.BuildPlan();
+        LocalAutomation.Runtime.ExecutionPlan plan = runner.BuildPlan()
+            ?? throw new InvalidOperationException($"Operation '{operation.OperationName}' did not produce an execution plan.");
         ILogger previousLogger = TryGetCurrentLogger();
         LocalAutomation.Runtime.ExecutionSession? session = null;
         ForwardingLogger forwardingLogger = new(() => session!, previousLogger);
@@ -71,18 +72,18 @@ public sealed class ExecutionRuntimeService
             throw;
         }
 
-        _ = RunAsync(runner, session, previousLogger);
+        _ = RunAsync(runner, session, plan, previousLogger);
         return session;
     }
 
     /// <summary>
     /// Runs the current runtime runner asynchronously and updates the shared execution session as it completes.
     /// </summary>
-    private static async Task RunAsync(Runner runner, LocalAutomation.Runtime.ExecutionSession session, ILogger previousLogger)
+    private static async Task RunAsync(Runner runner, LocalAutomation.Runtime.ExecutionSession session, LocalAutomation.Runtime.ExecutionPlan plan, ILogger previousLogger)
     {
         try
         {
-            OperationResult result = await runner.Run();
+            OperationResult result = await runner.Run(plan);
             session.Outcome = result.Outcome;
         }
         catch (OperationCanceledException)

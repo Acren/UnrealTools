@@ -34,7 +34,12 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return new List<global::LocalAutomation.Runtime.Command> { BuildCommand((UnrealAutomationCommon.Operations.UnrealOperationParameters)operationParameters) };
         }
 
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
+        {
+            root.Run(ExecuteProcessAsync);
+        }
+
+        protected async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteProcessAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             _wasCancelled = false;
             ILogger logger = context.Logger;

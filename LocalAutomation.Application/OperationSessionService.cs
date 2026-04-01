@@ -30,7 +30,23 @@ public sealed class OperationSessionService
     /// </summary>
     public Type? CoerceSelectedOperationType(object? target, Type? selectedOperationType)
     {
-        return _runtime.CoerceSelectedOperationType(_catalog, target, selectedOperationType);
+        if (target == null)
+        {
+            return null;
+        }
+
+        IReadOnlyList<Type> availableOperationTypes = _catalog.GetAvailableOperationTypes(target);
+        if (availableOperationTypes.Count == 0)
+        {
+            return null;
+        }
+
+        if (selectedOperationType != null && availableOperationTypes.Contains(selectedOperationType))
+        {
+            return selectedOperationType;
+        }
+
+        return availableOperationTypes[0];
     }
 
     /// <summary>
@@ -38,7 +54,7 @@ public sealed class OperationSessionService
     /// </summary>
     public Operation? CreateOperation(Type? operationType)
     {
-        return _runtime.CreateOperation(operationType);
+        return operationType == null ? null : Operation.CreateOperation(operationType);
     }
 
     /// <summary>
@@ -73,7 +89,12 @@ public sealed class OperationSessionService
     /// </summary>
     public IReadOnlyList<Type> GetEnabledOptionSetTypes(Operation? operation, IOperationTarget? target)
     {
-        return _runtime.GetRequiredOptionSetTypes(operation, target);
+        if (operation == null || target == null)
+        {
+            return Array.Empty<Type>();
+        }
+
+        return operation.GetRequiredOptionSetTypes(target).ToList();
     }
 
     /// <summary>

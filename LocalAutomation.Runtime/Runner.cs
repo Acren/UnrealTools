@@ -81,7 +81,7 @@ public sealed class Runner
     /// Executes the current operation by building its plan, wrapping task callbacks with framework-owned execution
     /// context, and then running that plan through the shared scheduler.
     /// </summary>
-    public async Task<OperationResult> Run()
+    public async Task<OperationResult> Run(ExecutionPlan plan)
     {
         if (_currentTask != null)
         {
@@ -103,9 +103,6 @@ public sealed class Runner
             _logger.LogError(requirementsError);
             return OperationResult.Failed();
         }
-
-        ExecutionPlan plan = BuildWrappedPlan(Operation, _operationParameters, eventLogger)
-            ?? throw new InvalidOperationException($"Operation '{Operation.OperationName}' did not produce an execution plan.");
 
         using IDisposable operationTimingScope = eventLogger.BeginSection(Operation.OperationName);
         _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, maxParallelism: 1).ExecuteAsync(plan, _cancellationTokenSource.Token));
@@ -200,7 +197,7 @@ public sealed class Runner
         ExecutionPlanBuilder builder = new(operation.OperationName, planId, (childOperation, childParameters) => BuildWrappedPlan(childOperation, childParameters, logger));
         builder.SetBuilderOperationParameters(operationParameters);
         ExecutionTaskBuilder root = builder.Task(operation.OperationName, operationParameters.Target.DisplayName, default);
-        operation.AuthorExecutionPlan(operationParameters, root);
+        operation.DescribeExecutionPlan(operationParameters, root);
         return builder.BuildPlan();
     }
 

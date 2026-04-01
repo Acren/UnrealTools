@@ -91,27 +91,11 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
 public abstract class UnrealOperation<T> : UnrealOperation where T : global::LocalAutomation.Runtime.IOperationTarget
 {
     /// <summary>
-    /// Creates a typed Unreal operation instance for the provided runtime type.
-    /// </summary>
-    public new static UnrealOperation<T> CreateOperation(System.Type operationType)
-    {
-        return (UnrealOperation<T>)System.Activator.CreateInstance(operationType)!;
-    }
-
-    /// <summary>
     /// Returns whether the provided target matches the required target type.
     /// </summary>
     public override bool SupportsTarget(global::LocalAutomation.Runtime.IOperationTarget target)
     {
         return target is T;
-    }
-
-    /// <summary>
-    /// Returns the current target cast to the required Unreal target type.
-    /// </summary>
-    public new T? GetTarget(global::LocalAutomation.Runtime.OperationParameters operationParameters)
-    {
-        return (T?)operationParameters.Target;
     }
 
     /// <summary>
@@ -127,7 +111,7 @@ public abstract class UnrealOperation<T> : UnrealOperation where T : global::Loc
     /// </summary>
     protected T GetRequiredTarget(global::LocalAutomation.Runtime.OperationParameters operationParameters)
     {
-        return GetTarget(operationParameters)
+        return (T?)operationParameters.Target
             ?? throw new InvalidOperationException($"Operation {GetType().Name} requires a target of type {typeof(T).Name}.");
     }
 

@@ -168,15 +168,6 @@ public abstract class Operation
     }
 
     /// <summary>
-     /// Gives the framework access to the task-graph description hook without making operation instances responsible for
-     /// creating builders or building plans directly.
-    /// </summary>
-    internal void AuthorExecutionPlan(OperationParameters operationParameters, ExecutionTaskBuilder root)
-    {
-        DescribeExecutionPlan(operationParameters, root);
-    }
-
-    /// <summary>
     /// Executes one nested child operation through the framework-owned plan pipeline while preserving the caller's logger
     /// and cancellation token.
     /// </summary>
@@ -267,20 +258,11 @@ public abstract class Operation
     }
 
     /// <summary>
-     /// Lets derived operations describe child tasks beneath the framework-owned root task. The default implementation
-     /// turns the root into a single leaf task that executes the legacy imperative hook.
+     /// Lets derived operations describe child tasks beneath the framework-owned root task.
      /// </summary>
-    protected virtual void DescribeExecutionPlan(OperationParameters operationParameters, ExecutionTaskBuilder root)
+    protected internal virtual void DescribeExecutionPlan(OperationParameters operationParameters, ExecutionTaskBuilder root)
     {
-        root.Run(ExecuteLeafAsync);
-    }
-
-    /// <summary>
-     /// Runs the leaf execution body for operations that do not override plan description.
-     /// </summary>
-    protected virtual Task<OperationResult> ExecuteLeafAsync(ExecutionTaskContext context)
-    {
-        throw new NotSupportedException($"Operation '{OperationName}' must override either {nameof(DescribeExecutionPlan)} or {nameof(ExecuteLeafAsync)}.");
+        throw new NotSupportedException($"Operation '{OperationName}' must override {nameof(DescribeExecutionPlan)}.");
     }
 
     /// <summary>

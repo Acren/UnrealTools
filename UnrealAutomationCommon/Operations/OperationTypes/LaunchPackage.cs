@@ -53,7 +53,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new global::LocalAutomation.Runtime.Command(package.ExecutablePath, args.ToString());
         }
 
-        protected override async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
+        {
+            root.Run(RunLaunchPackageAsync);
+        }
+
+        private async Task<global::LocalAutomation.Runtime.OperationResult> RunLaunchPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
             AutomationOptions automationOptions = unrealOperationParameters.GetOptions<AutomationOptions>();
@@ -85,7 +90,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
             }
 
-            return await base.ExecuteLeafAsync(context);
+            return await ExecuteProcessAsync(context);
         }
 
         protected override string GetOperationName()

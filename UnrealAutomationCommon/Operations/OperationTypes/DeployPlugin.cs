@@ -503,6 +503,28 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
         }
 
+        private UnrealOperationParameters CreatePackageLaunchParams(Package package, Engine engine, AutomationOptions automationOptions)
+        {
+            UnrealOperationParameters parameters = new()
+            {
+                Target = package,
+                EngineOverride = engine
+            };
+            parameters.SetOptions(automationOptions);
+            return parameters;
+        }
+
+        private Task RunPackageProjectAsync(DeploymentState state, string outputPath, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
+        {
+            FileUtils.DeleteDirectoryIfExists(outputPath);
+            return RunChildOperationAsync<PackageProject>(CreateExampleProjectPackageParams(state, outputPath), context.Logger, context.CancellationToken, required: true, failureMessage: failureMessage);
+        }
+
+        private Task RunLaunchPackageAsync(Package package, Engine engine, AutomationOptions automationOptions, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
+        {
+            return RunChildOperationAsync<LaunchPackage>(CreatePackageLaunchParams(package, engine, automationOptions), context.Logger, context.CancellationToken, required: true, failureMessage: failureMessage);
+        }
+
         // Rebuild the packaged plugin in-place with Clang so validation matches the project-plugin flow Fab uses.
         private async Task RunClangCompileCheck(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
@@ -542,9 +564,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging code example project with plugin inside project");
             DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             string projectPluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"ProjectPluginPackage");
-            FileUtils.DeleteDirectoryIfExists(projectPluginPackagePath);
-            UnrealOperationParameters packageWithPluginParams = CreateExampleProjectPackageParams(state, projectPluginPackagePath);
-            await RunChildOperationAsync<PackageProject>(packageWithPluginParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Package project with included plugin failed");
+            await RunPackageProjectAsync(state, projectPluginPackagePath, context, "Package project with included plugin failed");
         }
 
         /// <summary>
@@ -556,13 +576,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             string projectPluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"ProjectPluginPackage");
             Package projectPluginPackage = new(Path.Combine(projectPluginPackagePath, state.Engine.GetWindowsPlatformName()));
-            UnrealOperationParameters testParams = new()
-            {
-                Target = projectPluginPackage,
-                EngineOverride = state.Engine
-            };
-            testParams.SetOptions(automationOptions);
-            await RunChildOperationAsync<LaunchPackage>(testParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Launch and test with project plugin failed");
+            await RunLaunchPackageAsync(projectPluginPackage, state.Engine, automationOptions, context, "Launch and test with project plugin failed");
         }
 
         /// <summary>
@@ -589,9 +603,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             state.GetRequiredExampleProject().RemovePlugin(state.SourcePlugin.Name);
             string enginePluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"EnginePluginPackage");
-            FileUtils.DeleteDirectoryIfExists(enginePluginPackagePath);
-            UnrealOperationParameters packageParams = CreateExampleProjectPackageParams(state, enginePluginPackagePath);
-            await RunChildOperationAsync<PackageProject>(packageParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Package project with engine plugin failed");
+            await RunPackageProjectAsync(state, enginePluginPackagePath, context, "Package project with engine plugin failed");
         }
 
         /// <summary>
@@ -603,13 +615,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             string enginePluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"EnginePluginPackage");
             Package enginePluginPackage = new(Path.Combine(enginePluginPackagePath, state.Engine.GetWindowsPlatformName()));
-            UnrealOperationParameters testParams = new()
-            {
-                Target = enginePluginPackage,
-                EngineOverride = state.Engine
-            };
-            testParams.SetOptions(automationOptions);
-            await RunChildOperationAsync<LaunchPackage>(testParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Launch and test with installed plugin failed");
+            await RunLaunchPackageAsync(enginePluginPackage, state.Engine, automationOptions, context, "Launch and test with installed plugin failed");
         }
 
         /// <summary>
@@ -623,9 +629,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             state.GetRequiredExampleProject().ConvertToBlueprintOnly();
             PreparePluginsForProject(state, state.GetRequiredExampleProject(), unrealOperationParameters.GetOptions<PluginDeployOptions>());
             string blueprintOnlyPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"BlueprintOnlyPackage");
-            FileUtils.DeleteDirectoryIfExists(blueprintOnlyPackagePath);
-            UnrealOperationParameters packageParams = CreateExampleProjectPackageParams(state, blueprintOnlyPackagePath);
-            await RunChildOperationAsync<PackageProject>(packageParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Package blueprint-only project failed");
+            await RunPackageProjectAsync(state, blueprintOnlyPackagePath, context, "Package blueprint-only project failed");
         }
 
         /// <summary>
@@ -637,13 +641,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             string blueprintOnlyPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"BlueprintOnlyPackage");
             Package package = new(Path.Combine(blueprintOnlyPackagePath, state.Engine.GetWindowsPlatformName()));
-            UnrealOperationParameters testParams = new()
-            {
-                Target = package,
-                EngineOverride = state.Engine
-            };
-            testParams.SetOptions(automationOptions);
-            await RunChildOperationAsync<LaunchPackage>(testParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Launch and test blueprint project with installed plugin failed");
+            await RunLaunchPackageAsync(package, state.Engine, automationOptions, context, "Launch and test blueprint project with installed plugin failed");
         }
 
         private async Task PackageDemoExecutable(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -678,13 +676,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             FileUtils.DeleteDirectoryIfExists(demoPackagePath);
 
-            PackageProject demoPackageOperation = new();
-            UnrealOperationParameters demoPackageParams = (UnrealOperationParameters)demoPackageOperation.CreateParameters(CreateExampleProjectPackageParams(state, demoPackagePath));
+            UnrealOperationParameters demoPackageParams = CreateExampleProjectPackageParams(state, demoPackagePath);
 
             demoPackageParams.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
             demoPackageParams.GetOptions<PackageOptions>().NoDebugInfo = true;
 
-            global::LocalAutomation.Runtime.OperationResult demoExePackageOperationResult = await RunChildOperationAsync(demoPackageOperation, demoPackageParams, context.Logger, context.CancellationToken);
+            global::LocalAutomation.Runtime.OperationResult demoExePackageOperationResult = await RunChildOperationAsync<PackageProject>(demoPackageParams, context.Logger, context.CancellationToken);
 
             if (!demoExePackageOperationResult.Success)
             {

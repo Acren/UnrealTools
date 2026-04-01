@@ -22,7 +22,7 @@ public class OptionSetViewModel : ViewModelBase
         }
 
         Options = options ?? throw new ArgumentNullException(nameof(options));
-        _name = services.OperationRuntime.GetOptionSetName(options);
+        _name = options.Name;
         PropertyGridTarget = propertyGridTarget ?? options;
     }
 
