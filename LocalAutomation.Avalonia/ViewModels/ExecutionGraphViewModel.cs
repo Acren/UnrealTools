@@ -538,7 +538,9 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Builds the visible dependency edges between runnable leaf nodes after layout has produced their coordinates.
+    /// Builds the visible dependency edges between laid out graph nodes after layout has produced their coordinates.
+    /// Group containers participate just like leaf task cards so dependencies remain visible even when tasks own child
+    /// subtrees.
     /// </summary>
     private void BuildDependencyEdges()
     {
@@ -547,9 +549,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         {
             foreach (RuntimeExecutionTaskId dependencyId in target.Task.Task.DependsOn)
             {
-                if (_nodesById.TryGetValue(dependencyId, out ExecutionNodeViewModel? source) &&
-                    !HasChildren(source.Id) &&
-                    !HasChildren(target.Id))
+                if (_nodesById.TryGetValue(dependencyId, out ExecutionNodeViewModel? source))
                 {
                     edges.Add(new ExecutionEdgeViewModel(source, target));
                 }
