@@ -377,6 +377,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestEditor(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing host project editor");
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestEditor")
+                .SetTag("trigger", "StepTransition");
             DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             UnrealOperationParameters launchEditorParams = new()
             {
@@ -386,11 +388,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             launchEditorParams.SetOptions(automationOptions);
 
             await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to launch host project");
+            activity.SetTag("result", "Completed");
         }
 
         private async Task TestStandalone(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing standalone");
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestStandalone")
+                .SetTag("trigger", "StepTransition");
             DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
             UnrealOperationParameters launchStandaloneParams = new()
             {
@@ -400,6 +405,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             launchStandaloneParams.SetOptions(automationOptions);
 
             await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to launch standalone");
+            activity.SetTag("result", "Completed");
         }
 
         // Package the staged plugin into a distributable output before deployment verification continues.
@@ -414,7 +420,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin")
                 .SetTag("plugin.name", state.SourcePlugin.Name)
                 .SetTag("engine.version", state.Engine.Version.ToString())
-                .SetTag("output.path", pluginBuildPath);
+                .SetTag("output.path", pluginBuildPath)
+                .SetTag("trigger", "StepTransition");
 
             UnrealOperationParameters buildPluginParams = new()
             {

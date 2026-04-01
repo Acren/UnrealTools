@@ -12,6 +12,7 @@ namespace LocalAutomation.Application;
 public sealed class ApplicationSettings : INotifyPropertyChanged
 {
     private bool _enablePerformanceTelemetry;
+    private double _minimumPerformanceTelemetryMilliseconds;
     private string _outputRootPath = OutputPaths.DefaultRootPath;
 
     /// <summary>
@@ -62,6 +63,30 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
             }
 
             _enablePerformanceTelemetry = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the minimum duration in milliseconds required before a completed root telemetry activity is logged.
+    /// </summary>
+    [DisplayName("Minimum telemetry time (ms)")]
+    [Description("Suppresses completed performance telemetry roots shorter than this duration so the log focuses on meaningful delays. Set to 0 to log every captured trace.")]
+    [PersistedValue(PersistenceScope.Global)]
+    public double MinimumPerformanceTelemetryMilliseconds
+    {
+        get => _minimumPerformanceTelemetryMilliseconds;
+        set
+        {
+            double normalizedValue = double.IsNaN(value) || double.IsInfinity(value)
+                ? 0
+                : Math.Max(0, value);
+            if (Math.Abs(_minimumPerformanceTelemetryMilliseconds - normalizedValue) < 0.001)
+            {
+                return;
+            }
+
+            _minimumPerformanceTelemetryMilliseconds = normalizedValue;
             OnPropertyChanged();
         }
     }

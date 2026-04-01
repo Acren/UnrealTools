@@ -20,6 +20,8 @@ public sealed class ExecutionPlanScheduler
     private readonly ILogger _logger;
     private readonly IExecutionTaskStateSink? _taskStateSink;
     private readonly int _maxParallelism;
+    private DateTime _lastCompletionHandledAtUtc = DateTime.MinValue;
+    private ExecutionTaskId? _lastCompletedTaskId;
 
     /// <summary>
     /// Creates a scheduler that reports state transitions through the provided logger when it supports task-state
@@ -161,6 +163,8 @@ public sealed class ExecutionPlanScheduler
             }
 
             UpdateReadiness(itemsById, statuses, statusReasons);
+            _lastCompletedTaskId = completedTaskId;
+            _lastCompletionHandledAtUtc = DateTime.UtcNow;
         }
 
         bool anyFailures = encounteredFailure || statuses.Values.Any(status => status is ExecutionTaskStatus.Failed);
@@ -224,7 +228,22 @@ public sealed class ExecutionPlanScheduler
         CancellationToken cancellationToken)
     {
         bool startedAny = false;
-        foreach (ExecutionPlanTask item in itemsById.Values.Where(item => item.ExecuteAsync != null && statuses[item.Id] == ExecutionTaskStatus.Pending && GetTaskDependencies(item.Id, itemsById).All(dependencyId => IsDependencySatisfied(dependencyId, itemsById, statuses, new HashSet<ExecutionTaskId>()))).OrderBy(item => item.Id.Value, StringComparer.Ordinal))
+        List<ExecutionPlanTask> readyItems = itemsById.Values
+            .Where(item => item.ExecuteAsync != null && statuses[item.Id] == ExecutionTaskStatus.Pending && GetTaskDependencies(item.Id, itemsById).All(dependencyId => IsDependencySatisfied(dependencyId, itemsById, statuses, new HashSet<ExecutionTaskId>())))
+            .OrderBy(item => item.Id.Value, StringComparer.Ordinal)
+            .ToList();
+        using PerformanceActivityScope readyActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartReadyItems")
+            .SetTag("ready.count", readyItems.Count)
+            .SetTag("running.count", runningTasks.Count)
+            .SetTag("pending.count", statuses.Count(pair => pair.Value == ExecutionTaskStatus.Pending));
+        if (_lastCompletedTaskId != null)
+        {
+            readyActivity.SetTag("completed.task.id", _lastCompletedTaskId.Value.Value)
+                .SetTag("completion_to_ready_ms", _lastCompletionHandledAtUtc == DateTime.MinValue ? "0" : (DateTime.UtcNow - _lastCompletionHandledAtUtc).TotalMilliseconds.ToString("0"));
+        }
+
+        int startedCount = 0;
+        foreach (ExecutionPlanTask item in readyItems)
         {
             if (runningTasks.Count >= _maxParallelism)
             {
@@ -234,13 +253,22 @@ public sealed class ExecutionPlanScheduler
             using PerformanceActivityScope startActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartTask")
                 .SetTag("task.id", item.Id.Value)
                 .SetTag("task.title", item.Title);
+            if (_lastCompletedTaskId != null)
+            {
+                startActivity.SetTag("previous.task.id", _lastCompletedTaskId.Value.Value)
+                    .SetTag("completion_to_start_ms", _lastCompletionHandledAtUtc == DateTime.MinValue ? "0" : (DateTime.UtcNow - _lastCompletionHandledAtUtc).TotalMilliseconds.ToString("0"));
+                    
+            }
             SetStatus(statuses, statusReasons, item.Id, ExecutionTaskStatus.Running);
             ExecutionTaskContext context = new(item.Id, item.Title, CreateTaskLogger(item.Id), cancellationToken, item.OperationParameters, sharedData);
             Task<OperationResult> task = ExecuteTaskBodyAsync(item, context);
             runningTasks[item.Id] = task;
             taskOwners[task] = item.Id;
             startedAny = true;
+            startedCount += 1;
         }
+
+        readyActivity.SetTag("started.count", startedCount);
 
         return startedAny;
     }

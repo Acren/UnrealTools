@@ -273,10 +273,16 @@ public sealed class ExecutionSession
 
     private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)
     {
-        RecordTaskTiming(taskId, status);
         ExecutionTaskRuntimeState runtimeState = EnsureTaskRuntimeState(taskId);
+        string normalizedReason = statusReason ?? string.Empty;
+        if (runtimeState.Status == status && string.Equals(runtimeState.StatusReason, normalizedReason, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        RecordTaskTiming(taskId, status);
         runtimeState.Status = status;
-        runtimeState.StatusReason = statusReason ?? string.Empty;
+        runtimeState.StatusReason = normalizedReason;
         TaskStatusChanged?.Invoke(taskId, status, statusReason);
     }
 

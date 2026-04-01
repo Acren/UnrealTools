@@ -20,15 +20,17 @@ public static class PerformanceTelemetryListener
     private static ActivityListener? _listener;
     private static bool _enabled;
     private static bool _isStarted;
+    private static TimeSpan _minimumDuration = TimeSpan.Zero;
 
     /// <summary>
     /// Starts the shared listener once when performance telemetry is enabled.
     /// </summary>
-    public static void Start(bool enabled)
+    public static void Start(bool enabled, TimeSpan? minimumDuration = null)
     {
         lock (Sync)
         {
             _enabled = enabled;
+            _minimumDuration = minimumDuration ?? TimeSpan.Zero;
 
             if (_isStarted)
             {
@@ -75,6 +77,11 @@ public static class PerformanceTelemetryListener
 
         if (Summaries.TryRemove(traceId, out ActivitySummary? completedSummary))
         {
+            if (activity.Duration < _minimumDuration)
+            {
+                return;
+            }
+
             LogSummary(activity, completedSummary);
         }
     }

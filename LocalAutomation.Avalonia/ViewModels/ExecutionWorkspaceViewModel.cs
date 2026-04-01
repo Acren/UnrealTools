@@ -299,26 +299,30 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         AttachSessionLogs(runtimeTab, session);
-        session.TaskStatusChanged += (taskId, status, statusReason) => Dispatcher.UIThread.Post(() =>
+        session.TaskStatusChanged += (taskId, status, statusReason) =>
         {
-            int postSequence = Interlocked.Increment(ref _taskStatusDispatcherPostCount);
-            using PerformanceActivityScope uiActivity = CreateDispatcherPostedActivity(
-                "ExecutionWorkspace.TaskStatusChanged.Dispatch",
-                runtimeTab,
-                postedAtUtc: DateTime.UtcNow,
-                postSequence,
-                extraTags: activity => activity
-                    .SetTag("task.id", taskId.Value)
-                    .SetTag("task.status", status.ToString())
-                    .SetTag("task.status_reason", statusReason ?? string.Empty));
-
-            runtimeTab.Graph.NotifyTaskStateChanged(taskId);
-            runtimeTab.RefreshAllTaskMetrics();
-            if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+            DateTime postedAtUtc = DateTime.UtcNow;
+            Dispatcher.UIThread.Post(() =>
             {
-                RaiseSelectionStateChanged();
-            }
-        });
+                int postSequence = Interlocked.Increment(ref _taskStatusDispatcherPostCount);
+                using PerformanceActivityScope uiActivity = CreateDispatcherPostedActivity(
+                    "ExecutionWorkspace.TaskStatusChanged.Dispatch",
+                    runtimeTab,
+                    postedAtUtc,
+                    postSequence,
+                    extraTags: activity => activity
+                        .SetTag("task.id", taskId.Value)
+                        .SetTag("task.status", status.ToString())
+                        .SetTag("task.status_reason", statusReason ?? string.Empty));
+
+                runtimeTab.Graph.NotifyTaskStateChanged(taskId);
+                runtimeTab.RefreshAllTaskMetrics();
+                if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+                {
+                    RaiseSelectionStateChanged();
+                }
+            });
+        };
 
         _attachedSessions[runtimeTab] = session;
         _ = WatchExecutionCompletionAsync(runtimeTab);
