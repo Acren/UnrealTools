@@ -11,11 +11,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class CleanProject : UnrealOperation<Project>
     {
-        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
-        {
-            return new List<LocalAutomation.Runtime.Command>();
-        }
-
         protected override Task<global::LocalAutomation.Runtime.OperationResult> ExecuteLeafAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             context.Logger.LogInformation("Cleaning binaries");

@@ -14,12 +14,15 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         /// Unreal process launches always expose tracing, flag, and automation option groups because shared argument
         /// construction reads all three when building the command line.
         /// </summary>
-        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
-            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-            optionSetTypes.Add(typeof(InsightsOptions));
-            optionSetTypes.Add(typeof(FlagOptions));
-            optionSetTypes.Add(typeof(AutomationOptions));
+            return base.GetDeclaredOptionSetTypes(target)
+                .Concat(new[]
+                {
+                    typeof(InsightsOptions),
+                    typeof(FlagOptions),
+                    typeof(AutomationOptions)
+                });
         }
 
         protected override void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)

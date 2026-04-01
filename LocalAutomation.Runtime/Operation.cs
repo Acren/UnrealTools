@@ -136,16 +136,18 @@ public abstract class Operation
             return Array.Empty<Type>();
         }
 
-        HashSet<Type> result = new();
-        CollectRequiredOptionSetTypes(target, result);
-        return result;
+        return GetDeclaredOptionSetTypes(target)
+            .Where(type => type != null)
+            .Distinct()
+            .ToArray();
     }
 
     /// <summary>
-    /// Adds the option-set types this operation exposes for the provided target.
+    /// Declares the option-set types this operation exposes for the provided target.
     /// </summary>
-    protected virtual void CollectRequiredOptionSetTypes(IOperationTarget target, ISet<Type> optionSetTypes)
+    protected virtual IEnumerable<Type> GetDeclaredOptionSetTypes(IOperationTarget target)
     {
+        return Array.Empty<Type>();
     }
 
     /// <summary>
@@ -178,9 +180,29 @@ public abstract class Operation
     /// Executes one nested child operation through the framework-owned plan pipeline while preserving the caller's logger
     /// and cancellation token.
     /// </summary>
-    protected Task<OperationResult> RunChildOperationAsync(Operation childOperation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken)
+    protected async Task<OperationResult> RunChildOperationAsync(Operation childOperation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken, bool required = false, string? failureMessage = null)
     {
-        return Runner.RunChildOperation(childOperation, operationParameters, logger, cancellationToken);
+        OperationResult result = await Runner.RunChildOperation(childOperation, operationParameters, logger, cancellationToken);
+        if (!required || result.Success)
+        {
+            return result;
+        }
+
+        if (result.Outcome == RunOutcome.Cancelled)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+
+        throw new Exception(failureMessage ?? $"Child operation '{childOperation.OperationName}' failed.");
+    }
+
+    /// <summary>
+    /// Executes one nested child operation by type when the caller does not need to reuse a specific instance.
+    /// </summary>
+    protected Task<OperationResult> RunChildOperationAsync<TOperation>(OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken, bool required = false, string? failureMessage = null)
+        where TOperation : Operation, new()
+    {
+        return RunChildOperationAsync(new TOperation(), operationParameters, logger, cancellationToken, required, failureMessage);
     }
 
     /// <summary>
@@ -216,14 +238,6 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Returns whether execution output should be tailed from a generated log file.
-    /// </summary>
-    public virtual bool ShouldReadOutputFromLogFile()
-    {
-        return false;
-    }
-
-    /// <summary>
     /// Returns whether the operation supports the provided target instance.
     /// </summary>
     public abstract bool SupportsTarget(IOperationTarget target);
@@ -242,13 +256,6 @@ public abstract class Operation
     public virtual string? GetLogsPath(OperationParameters operationParameters)
     {
         return null;
-    }
-
-    /// <summary>
-    /// Gives derived runtimes a chance to prepare output folders or emit pre-run notices before execution starts.
-    /// </summary>
-    public virtual void PrepareForExecution(OperationParameters operationParameters, ILogger logger)
-    {
     }
 
     /// <summary>
@@ -279,7 +286,10 @@ public abstract class Operation
     /// <summary>
     /// Builds the command list for the provided operation parameters.
     /// </summary>
-    protected abstract IEnumerable<Command> BuildCommands(OperationParameters operationParameters);
+    protected virtual IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
+    {
+        return Enumerable.Empty<Command>();
+    }
 
     /// <summary>
     /// Returns the user-facing operation name.

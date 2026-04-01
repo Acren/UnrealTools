@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UnrealAutomationCommon.Operations;
@@ -14,10 +15,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// <summary>
         /// Package launch flows expose automation settings because tests can optionally run against the launched build.
         /// </summary>
-        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
-            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-            optionSetTypes.Add(typeof(OperationOptionTypes.BuildConfigurationOptions));
+            return base.GetDeclaredOptionSetTypes(target)
+                .Concat(new[] { typeof(OperationOptionTypes.BuildConfigurationOptions) });
         }
 
         public override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)

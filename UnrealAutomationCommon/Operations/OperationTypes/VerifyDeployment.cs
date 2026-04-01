@@ -83,12 +83,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Deployment verification always needs engine-version selection, automation toggles, and example-project
         /// settings to know which builds to verify and how deeply to test them.
         /// </summary>
-        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
-            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-            optionSetTypes.Add(typeof(EngineVersionOptions));
-            optionSetTypes.Add(typeof(AutomationOptions));
-            optionSetTypes.Add(typeof(VerifyDeploymentOptions));
+            return base.GetDeclaredOptionSetTypes(target)
+                .Concat(new[]
+                {
+                    typeof(EngineVersionOptions),
+                    typeof(AutomationOptions),
+                    typeof(VerifyDeploymentOptions)
+                });
         }
 
         private async Task PrepareVerificationState(global::LocalAutomation.Runtime.ExecutionTaskContext context, EngineVersion engineVersion)
@@ -160,10 +163,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
             launchEditorParams.SetOptions(automationOptions);
 
-            if (!(await RunChildOperationAsync(new LaunchProjectEditor(), launchEditorParams, context.Logger, context.CancellationToken)).Success)
-            {
-                throw new Exception("Failed to launch example project");
-            }
+            await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to launch example project");
         }
 
         private async Task TestStandaloneAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -180,10 +180,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
             launchStandaloneParams.SetOptions(automationOptions);
 
-            if (!(await RunChildOperationAsync(new LaunchStandalone(), launchStandaloneParams, context.Logger, context.CancellationToken)).Success)
-            {
-                throw new Exception("Failed to launch standalone");
-            }
+            await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to launch standalone");
         }
 
         private async Task PackageProjectAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -197,12 +194,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 OutputPathOverride = state.PackageOutputPath
             };
 
-            global::LocalAutomation.Runtime.OperationResult packageExampleProjectResult = await RunChildOperationAsync(packageExampleProject, packageExampleProjectParams, context.Logger, context.CancellationToken);
-
-            if (!packageExampleProjectResult.Success)
-            {
-                throw new Exception("Failed to package example project");
-            }
+            await RunChildOperationAsync(packageExampleProject, packageExampleProjectParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to package example project");
         }
 
         private async Task TestPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -217,21 +209,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
             testPackageParams.SetOptions(automationOptions);
 
-            global::LocalAutomation.Runtime.OperationResult testPackageResult = await RunChildOperationAsync(new LaunchStagedPackage(), testPackageParams, context.Logger, context.CancellationToken);
-
-            if (!testPackageResult.Success)
-            {
-                throw new Exception("Launch and test package failed");
-            }
+            await RunChildOperationAsync<LaunchStagedPackage>(testPackageParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Launch and test package failed");
 
             context.Logger.LogInformation($"Finished verifying plugin {state.SourcePlugin.Name} for {state.Engine.Version.MajorMinorString}");
         }
-
-        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
-        {
-            return new List<LocalAutomation.Runtime.Command>();
-        }
-
 
         public readonly struct ExampleProjectZipInfo
         {

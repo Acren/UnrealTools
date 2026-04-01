@@ -46,11 +46,14 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
     /// Keeps freeform additional arguments available through the Unreal option pipeline without requiring app-level
     /// adapter glue.
     /// </summary>
-    protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+    protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
     {
-        base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-        optionSetTypes.Add(typeof(EngineVersionOptions));
-        optionSetTypes.Add(typeof(AdditionalArgumentsOptions));
+        return base.GetDeclaredOptionSetTypes(target)
+            .Concat(new[]
+            {
+                typeof(EngineVersionOptions),
+                typeof(AdditionalArgumentsOptions)
+            });
     }
 
     /// <summary>

@@ -210,17 +210,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Per-engine deployment reuses the same option groups as the outer deployment flow because it reads the shared
         /// deployment settings directly while orchestrating child operations.
         /// </summary>
-        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
-            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-            optionSetTypes.Add(typeof(AutomationOptions));
-            optionSetTypes.Add(typeof(PluginBuildOptions));
-            optionSetTypes.Add(typeof(PluginDeployOptions));
-        }
-
-        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
-        {
-            return new List<LocalAutomation.Runtime.Command>();
+            return base.GetDeclaredOptionSetTypes(target)
+                .Concat(new[]
+                {
+                    typeof(AutomationOptions),
+                    typeof(PluginBuildOptions),
+                    typeof(PluginDeployOptions)
+                });
         }
 
         private async Task BuildEditor(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -233,35 +231,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 EngineOverride = state.Engine
             };
 
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new BuildEditor(), buildEditorParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Failed to build host project editor");
-        }
-
-        /// <summary>
-        /// Executes one nested child operation and translates its outcome into either success, cancellation, or a
-        /// domain-specific failure exception for the current deployment step.
-        /// </summary>
-        private static async Task EnsureChildOperationOutcome(Func<Task<global::LocalAutomation.Runtime.OperationResult>> operation, CancellationToken cancellationToken, string failureMessage)
-        {
-            if (operation == null)
-            {
-                throw new ArgumentNullException(nameof(operation));
-            }
-
-            global::LocalAutomation.Runtime.OperationResult result = await operation();
-            if (result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Succeeded)
-            {
-                return;
-            }
-
-            if (result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Cancelled)
-            {
-                throw new OperationCanceledException(cancellationToken);
-            }
-
-            throw new Exception(failureMessage);
+            await RunChildOperationAsync<BuildEditor>(buildEditorParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to build host project editor");
         }
 
         /// <summary>
@@ -414,10 +384,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
             launchEditorParams.SetOptions(automationOptions);
 
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new LaunchProjectEditor(), launchEditorParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Failed to launch host project");
+            await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to launch host project");
         }
 
         private async Task TestStandalone(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
@@ -431,10 +398,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
             launchStandaloneParams.SetOptions(automationOptions);
 
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new LaunchStandalone(), launchStandaloneParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Failed to launch standalone");
+            await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to launch standalone");
         }
 
         // Package the staged plugin into a distributable output before deployment verification continues.
@@ -455,10 +419,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
             buildPluginParams.SetOptions(unrealOperationParameters.GetOptions<PluginBuildOptions>());
 
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new PackagePlugin(), buildPluginParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Plugin build failed");
+            await RunChildOperationAsync<PackagePlugin>(buildPluginParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Plugin build failed");
             
             Plugin builtPlugin = new(pluginBuildPath);
             context.SetSharedData(state.WithBuiltPlugin(builtPlugin));
@@ -526,10 +487,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Target = state.GetRequiredExampleProject(),
                 EngineOverride = state.Engine
             };
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new BuildEditor(), buildExampleProjectParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Failed to build example project with modules");
+            await RunChildOperationAsync<BuildEditor>(buildExampleProjectParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Failed to build example project with modules");
         }
 
         // Reuse the example project's prebuilt editor binaries so the packaging validation passes do not spend time
@@ -573,10 +531,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Compiler = UbtCompiler.Clang
             });
 
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new BuildPlugin(), clangBuildParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Clang compile check failed");
+            await RunChildOperationAsync<BuildPlugin>(clangBuildParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Clang compile check failed");
         }
 
         /// <summary>
@@ -589,10 +544,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string projectPluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"ProjectPluginPackage");
             FileUtils.DeleteDirectoryIfExists(projectPluginPackagePath);
             UnrealOperationParameters packageWithPluginParams = CreateExampleProjectPackageParams(state, projectPluginPackagePath);
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new PackageProject(), packageWithPluginParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Package project with included plugin failed");
+            await RunChildOperationAsync<PackageProject>(packageWithPluginParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Package project with included plugin failed");
         }
 
         /// <summary>
@@ -610,10 +562,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 EngineOverride = state.Engine
             };
             testParams.SetOptions(automationOptions);
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new LaunchPackage(), testParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Launch and test with project plugin failed");
+            await RunChildOperationAsync<LaunchPackage>(testParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Launch and test with project plugin failed");
         }
 
         /// <summary>
@@ -642,11 +591,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string enginePluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"EnginePluginPackage");
             FileUtils.DeleteDirectoryIfExists(enginePluginPackagePath);
             UnrealOperationParameters packageParams = CreateExampleProjectPackageParams(state, enginePluginPackagePath);
-            global::LocalAutomation.Runtime.OperationResult result = await RunChildOperationAsync(new PackageProject(), packageParams, context.Logger, context.CancellationToken);
-            if (result.Outcome != global::LocalAutomation.Runtime.RunOutcome.Succeeded)
-            {
-                throw new Exception("Package project with engine plugin failed");
-            }
+            await RunChildOperationAsync<PackageProject>(packageParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Package project with engine plugin failed");
         }
 
         /// <summary>
@@ -664,10 +609,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 EngineOverride = state.Engine
             };
             testParams.SetOptions(automationOptions);
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new LaunchPackage(), testParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Launch and test with installed plugin failed");
+            await RunChildOperationAsync<LaunchPackage>(testParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Launch and test with installed plugin failed");
         }
 
         /// <summary>
@@ -683,10 +625,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string blueprintOnlyPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"BlueprintOnlyPackage");
             FileUtils.DeleteDirectoryIfExists(blueprintOnlyPackagePath);
             UnrealOperationParameters packageParams = CreateExampleProjectPackageParams(state, blueprintOnlyPackagePath);
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new PackageProject(), packageParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Package blueprint-only project failed");
+            await RunChildOperationAsync<PackageProject>(packageParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Package blueprint-only project failed");
         }
 
         /// <summary>
@@ -704,10 +643,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 EngineOverride = state.Engine
             };
             testParams.SetOptions(automationOptions);
-            await EnsureChildOperationOutcome(
-                () => RunChildOperationAsync(new LaunchPackage(), testParams, context.Logger, context.CancellationToken),
-                context.CancellationToken,
-                "Launch and test blueprint project with installed plugin failed");
+            await RunChildOperationAsync<LaunchPackage>(testParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Launch and test blueprint project with installed plugin failed");
         }
 
         private async Task PackageDemoExecutable(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -965,18 +901,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Plugin deployment exposes engine selection, automation toggles, plugin build settings, and deployment
         /// packaging controls so the user can configure the full archive/test flow up front.
         /// </summary>
-        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
-            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-            optionSetTypes.Add(typeof(EngineVersionOptions));
-            optionSetTypes.Add(typeof(AutomationOptions));
-            optionSetTypes.Add(typeof(PluginBuildOptions));
-            optionSetTypes.Add(typeof(PluginDeployOptions));
-        }
-
-        protected override IEnumerable<LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
-        {
-            return new List<LocalAutomation.Runtime.Command>();
+            return base.GetDeclaredOptionSetTypes(target)
+                .Concat(new[]
+                {
+                    typeof(EngineVersionOptions),
+                    typeof(AutomationOptions),
+                    typeof(PluginBuildOptions),
+                    typeof(PluginDeployOptions)
+                });
         }
 
         protected override bool FailOnWarning()

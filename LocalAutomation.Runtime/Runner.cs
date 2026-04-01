@@ -96,7 +96,6 @@ public sealed class Runner
             Directory.Delete(outputPath, recursive: true);
         }
 
-        Operation.PrepareForExecution(_operationParameters, _logger);
         EventStreamLogger eventLogger = CreateAggregatingLogger();
         string? requirementsError = Operation.CheckRequirementsSatisfied(_operationParameters);
         if (requirementsError != null)

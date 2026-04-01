@@ -1,4 +1,5 @@
-﻿using UnrealAutomationCommon.Operations.BaseOperations;
+using System.Linq;
+using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
@@ -8,10 +9,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// <summary>
         /// Standalone launches reuse the selected editor build configuration when resolving the game executable path.
         /// </summary>
-        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
-            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-            optionSetTypes.Add(typeof(OperationOptionTypes.BuildConfigurationOptions));
+            return base.GetDeclaredOptionSetTypes(target)
+                .Concat(new[] { typeof(OperationOptionTypes.BuildConfigurationOptions) });
         }
 
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)

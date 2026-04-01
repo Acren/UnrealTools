@@ -1,4 +1,5 @@
-﻿using UnrealAutomationCommon.Operations.OperationOptionTypes;
+using System.Linq;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 using RuntimeTarget = LocalAutomation.Runtime.OperationTarget;
 
@@ -10,11 +11,14 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         /// <summary>
         /// Direct Build.bat-backed operations always expose configuration and direct-UBT compiler override options.
         /// </summary>
-        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
-            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-            optionSetTypes.Add(typeof(BuildConfigurationOptions));
-            optionSetTypes.Add(typeof(UbtCompilerOptions));
+            return base.GetDeclaredOptionSetTypes(target)
+                .Concat(new[]
+                {
+                    typeof(BuildConfigurationOptions),
+                    typeof(UbtCompilerOptions)
+                });
         }
 
         // Validate shared direct-UBT overrides once so every Build.bat-backed operation enforces the same limits.

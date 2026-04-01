@@ -1,3 +1,4 @@
+using System.Linq;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
@@ -8,11 +9,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// <summary>
         /// BuildCookRun editor builds always expose build configuration selection.
         /// </summary>
-        protected override void CollectRequiredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target, System.Collections.Generic.ISet<System.Type> optionSetTypes)
+        protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
-            base.CollectRequiredOptionSetTypes(target, optionSetTypes);
-            optionSetTypes.Add(typeof(OperationOptionTypes.BuildConfigurationOptions));
-            optionSetTypes.Add(typeof(OperationOptionTypes.PackageOptions));
+            return base.GetDeclaredOptionSetTypes(target)
+                .Concat(new[]
+                {
+                    typeof(OperationOptionTypes.BuildConfigurationOptions),
+                    typeof(OperationOptionTypes.PackageOptions)
+                });
         }
 
         protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
