@@ -87,7 +87,7 @@ public sealed class ExecutionRuntimeService
             .SetTag("plan.task.count", plan.Tasks.Count);
         try
         {
-            OperationResult result = await runner.Run(plan);
+            OperationResult result = await runner.Run(plan, session);
             activity.SetTag("runner.result", result.Outcome.ToString());
             session.Outcome = result.Outcome;
             activity.SetTag("session.outcome", session.Outcome.ToString());

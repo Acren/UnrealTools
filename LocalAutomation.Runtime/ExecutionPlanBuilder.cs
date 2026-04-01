@@ -61,8 +61,8 @@ public sealed class ExecutionPlanBuilder
     public ExecutionPlan BuildPlan()
     {
         ExpandChildOperations();
-        List<ExecutionPlanTask> tasks = _items
-            .Select(item => new ExecutionPlanTask(
+        List<ExecutionTask> tasks = _items
+            .Select(item => new ExecutionTask(
                 id: item.Id,
                 title: item.Title,
                 description: item.Description,
@@ -182,49 +182,20 @@ public sealed class ExecutionPlanBuilder
             OperationParameters childParameters = definition.CreateChildParameters!();
             ExecutionPlan childPlan = _buildChildPlan(childOperation, childParameters)
                 ?? throw new InvalidOperationException($"Child operation '{definition.ChildOperationType!.Name}' returned no execution plan during expansion.");
-            ExecutionPlanTask childRoot = childPlan.Tasks.Single(task => task.ParentId == null);
+            InsertedExecutionTasks insertedTasks = ExecutionTaskInsertion.InsertUnderParent(childPlan, definition.Id, GenerateTaskId);
 
-            definition.Enabled = childRoot.Enabled;
-            definition.DisabledReason = childRoot.DisabledReason;
-            definition.ExecuteAsync = childRoot.ExecuteAsync;
             definition.ChildOperationType = null;
             definition.CreateChildParameters = null;
 
-            Dictionary<ExecutionTaskId, ExecutionTaskId> remappedIds = new()
+            foreach (ExecutionTask childTask in insertedTasks.Tasks)
             {
-                [childRoot.Id] = definition.Id
-            };
-            Dictionary<ExecutionTaskId, PlanItemDefinition> importedDefinitions = new();
-
-            foreach (ExecutionPlanTask childTask in childPlan.Tasks.Where(task => task.Id != childRoot.Id))
-            {
-                ExecutionTaskId parentId = childTask.ParentId == childRoot.Id
-                    ? definition.Id
-                    : remappedIds[childTask.ParentId!.Value];
-                PlanItemDefinition importedDefinition = CreateItem(GenerateTaskId(), childTask.Title, childTask.Description, parentId);
+                PlanItemDefinition importedDefinition = CreateItem(childTask.Id, childTask.Title, childTask.Description, childTask.ParentId);
                 importedDefinition.Enabled = childTask.Enabled;
                 importedDefinition.DisabledReason = childTask.DisabledReason;
                 importedDefinition.OperationParameters = childTask.OperationParameters;
                 importedDefinition.ExecuteAsync = childTask.ExecuteAsync;
+                importedDefinition.DependencyIds.AddRange(childTask.DependsOn);
                 _items.Add(importedDefinition);
-                remappedIds[childTask.Id] = importedDefinition.Id;
-                importedDefinitions[childTask.Id] = importedDefinition;
-            }
-
-            definition.DependencyIds.Clear();
-            foreach (ExecutionTaskId dependencyId in childRoot.DependsOn)
-            {
-                definition.DependencyIds.Add(remappedIds[dependencyId]);
-            }
-
-            foreach (ExecutionPlanTask childTask in childPlan.Tasks.Where(task => task.Id != childRoot.Id))
-            {
-                PlanItemDefinition importedDefinition = importedDefinitions[childTask.Id];
-                importedDefinition.DependencyIds.Clear();
-                foreach (ExecutionTaskId dependencyId in childTask.DependsOn)
-                {
-                    importedDefinition.DependencyIds.Add(remappedIds[dependencyId]);
-                }
             }
         }
     }
@@ -261,4 +232,73 @@ public sealed class ExecutionPlanBuilder
 
         public Func<OperationParameters>? CreateChildParameters { get; set; }
     }
+}
+
+/// <summary>
+/// Inserts one execution plan beneath an existing parent task by remapping every task id, preserving authored order, and
+/// rewriting parent/dependency links to the newly inserted ids. Both build-time expansion and runtime child insertion use
+/// this same graph-insertion path so child operations always materialize as normal nested tasks.
+/// </summary>
+internal static class ExecutionTaskInsertion
+{
+    public static InsertedExecutionTasks InsertUnderParent(ExecutionPlan childPlan, ExecutionTaskId parentTaskId, Func<ExecutionTaskId> generateTaskId)
+    {
+        if (childPlan == null)
+        {
+            throw new ArgumentNullException(nameof(childPlan));
+        }
+
+        if (generateTaskId == null)
+        {
+            throw new ArgumentNullException(nameof(generateTaskId));
+        }
+
+        IReadOnlyList<ExecutionTask> orderedTasks = childPlan.Tasks.ToList();
+        ExecutionTask childRoot = orderedTasks.Single(task => task.ParentId == null);
+        Dictionary<ExecutionTaskId, ExecutionTaskId> remappedIds = new();
+
+        /* Generate every inserted id up front so parent and dependency references can be rewritten while
+           preserving the authored task order from the child plan. */
+        foreach (ExecutionTask childTask in orderedTasks)
+        {
+            remappedIds[childTask.Id] = generateTaskId();
+        }
+
+        List<ExecutionTask> insertedTasks = new(orderedTasks.Count);
+        foreach (ExecutionTask childTask in orderedTasks)
+        {
+            ExecutionTaskId remappedTaskId = remappedIds[childTask.Id];
+            ExecutionTaskId? remappedParentId = childTask.ParentId == null
+                ? parentTaskId
+                : remappedIds[childTask.ParentId.Value];
+            insertedTasks.Add(new ExecutionTask(
+                remappedTaskId,
+                childTask.Title,
+                childTask.Description,
+                remappedParentId,
+                childTask.DependsOn.Select(dependencyId => remappedIds[dependencyId]).ToList(),
+                childTask.Enabled,
+                childTask.DisabledReason,
+                childTask.OperationParameters,
+                childTask.ExecuteAsync));
+        }
+
+        return new InsertedExecutionTasks(insertedTasks, remappedIds[childRoot.Id]);
+    }
+}
+
+/// <summary>
+/// Carries the task definitions produced by inserting a child plan beneath an existing parent task.
+/// </summary>
+internal sealed class InsertedExecutionTasks
+{
+    public InsertedExecutionTasks(IReadOnlyList<ExecutionTask> tasks, ExecutionTaskId rootTaskId)
+    {
+        Tasks = tasks ?? throw new ArgumentNullException(nameof(tasks));
+        RootTaskId = rootTaskId;
+    }
+
+    public IReadOnlyList<ExecutionTask> Tasks { get; }
+
+    public ExecutionTaskId RootTaskId { get; }
 }

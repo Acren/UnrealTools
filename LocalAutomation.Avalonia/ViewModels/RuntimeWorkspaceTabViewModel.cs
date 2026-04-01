@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using LocalAutomation.Core;
 using RuntimeExecutionRunOutcome = LocalAutomation.Runtime.RunOutcome;
-using RuntimeExecutionPlanTask = LocalAutomation.Runtime.ExecutionPlanTask;
+using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
@@ -231,7 +231,7 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// <summary>
     /// Replaces the shared task view-model registry for this execution tab from the current plan snapshot.
     /// </summary>
-    public void SetTasks(IEnumerable<RuntimeExecutionPlanTask> tasks)
+    public void SetTasks(IEnumerable<RuntimeExecutionTask> tasks)
     {
         foreach (ExecutionTaskViewModel existingTask in _tasksById.Values)
         {
@@ -239,10 +239,10 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
         }
 
         _tasksById.Clear();
-        List<RuntimeExecutionPlanTask> materializedTasks = tasks?.ToList() ?? new List<RuntimeExecutionPlanTask>();
-        foreach (RuntimeExecutionPlanTask task in materializedTasks)
+        List<RuntimeExecutionTask> materializedTasks = tasks?.ToList() ?? new List<RuntimeExecutionTask>();
+        foreach (RuntimeExecutionTask task in materializedTasks)
         {
-            _tasksById[task.Id] = new ExecutionTaskViewModel(task, Session, Session?.GetTaskRuntimeState(task.Id));
+            _tasksById[task.Id] = new ExecutionTaskViewModel(task, Session);
         }
     }
 

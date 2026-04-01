@@ -81,7 +81,7 @@ public sealed class Runner
     /// Executes the current operation by building its plan, wrapping task callbacks with framework-owned execution
     /// context, and then running that plan through the shared scheduler.
     /// </summary>
-    public async Task<OperationResult> Run(ExecutionPlan plan)
+    public async Task<OperationResult> Run(ExecutionPlan plan, ExecutionSession? session = null)
     {
         if (_currentTask != null)
         {
@@ -109,7 +109,7 @@ public sealed class Runner
             .SetTag("plan.id", plan.Id.Value)
             .SetTag("plan.task.count", plan.Tasks.Count);
         using IDisposable operationTimingScope = eventLogger.BeginSection(Operation.OperationName);
-        _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, maxParallelism: 1).ExecuteAsync(plan, _cancellationTokenSource.Token));
+        _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, maxParallelism: 1, session).ExecuteAsync(plan, _cancellationTokenSource.Token));
         try
         {
             OperationResult result = await _currentTask.ConfigureAwait(false);
@@ -127,10 +127,10 @@ public sealed class Runner
     }
 
     /// <summary>
-    /// Executes one nested child operation through the same plan-first runtime path while reusing the caller's logger
-    /// and cancellation token.
+    /// Executes one nested child operation by merging its descendant tasks into the current live session graph beneath
+    /// the current task and then re-entering the same root scheduler until that inserted child work finishes.
     /// </summary>
-    public static Task<OperationResult> RunChildOperation(Operation operation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken)
+    public static async Task<OperationResult> RunChildOperation(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext)
     {
         if (operation == null)
         {
@@ -142,12 +142,25 @@ public sealed class Runner
             throw new ArgumentNullException(nameof(operationParameters));
         }
 
-        if (logger == null)
+        if (parentContext == null)
         {
-            throw new ArgumentNullException(nameof(logger));
+            throw new ArgumentNullException(nameof(parentContext));
         }
 
-        return ExecuteWithLogger(operation, operationParameters, logger, cancellationToken);
+        if (parentContext.Session == null)
+        {
+            throw new InvalidOperationException($"Cannot run child operation '{operation.OperationName}' without a live execution session.");
+        }
+
+        if (parentContext.Scheduler == null)
+        {
+            throw new InvalidOperationException($"Cannot run child operation '{operation.OperationName}' without an active execution scheduler.");
+        }
+
+        ExecutionPlan childPlan = BuildWrappedPlan(operation, operationParameters, parentContext.Logger)
+            ?? throw new InvalidOperationException($"Operation '{operation.OperationName}' did not produce an execution plan.");
+        ChildTaskMergeResult mergeResult = parentContext.Session.MergeChildTasks(parentContext.TaskId, childPlan);
+        return await parentContext.Scheduler.WaitForInsertedChildTasksAsync(operation, parentContext, mergeResult).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -164,48 +177,6 @@ public sealed class Runner
         _logger.LogWarning("Cancelling operation '{OperationName}'", Operation.OperationName);
         _cancellationTokenSource.Cancel();
         await currentTask.ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Executes one operation with an externally supplied logger instead of the ambient application logger.
-    /// </summary>
-    private static async Task<OperationResult> ExecuteWithLogger(Operation operation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken)
-    {
-        ILogger opaqueLogger = CreateOpaqueChildLogger(logger);
-        List<string> warnings = new();
-        List<string> errors = new();
-        EventStreamLogger eventLogger = CreateAggregatingLogger(
-            opaqueLogger,
-            null,
-            null,
-            (level, output) =>
-            {
-                if (level >= LogLevel.Error)
-                {
-                    errors.Add(output);
-                }
-                else if (level == LogLevel.Warning)
-                {
-                    warnings.Add(output);
-                }
-
-                opaqueLogger.Log(level, output);
-            });
-        string? requirementsError = operation.CheckRequirementsSatisfied(operationParameters);
-        if (requirementsError != null)
-        {
-            opaqueLogger.LogError(requirementsError);
-            return OperationResult.Failed();
-        }
-
-        ExecutionPlan plan = BuildWrappedPlan(operation, operationParameters, eventLogger)
-            ?? throw new InvalidOperationException($"Operation '{operation.OperationName}' did not produce an execution plan.");
-
-        using IDisposable operationTimingScope = eventLogger.BeginSection(operation.OperationName);
-        OperationResult result = await new ExecutionPlanScheduler(eventLogger, maxParallelism: 1)
-            .ExecuteAsync(plan, cancellationToken)
-            .ConfigureAwait(false);
-        return FinalizeOutcome(operation, result, eventLogger, opaqueLogger, warnings.Count, errors.Count);
     }
 
     /// <summary>
@@ -226,28 +197,6 @@ public sealed class Runner
         ExecutionTaskBuilder root = builder.Task(operation.OperationName, operationParameters.Target.DisplayName, default);
         operation.DescribeExecutionPlan(operationParameters, root);
         return builder.BuildPlan();
-    }
-
-    /// <summary>
-    /// Executes one authored task callback and preserves task-state error/cancellation propagation at the scheduler
-    /// boundary.
-    /// </summary>
-    private static async Task<OperationResult> ExecuteTaskCallback(Operation operation, ILogger logger, ExecutionPlanTask task, ExecutionTaskContext context)
-    {
-        try
-        {
-            return await task.ExecuteAsync!(context).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            (logger as IExecutionTaskStateSink)?.SetTaskStatus(context.TaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
-            throw;
-        }
-        catch (Exception ex)
-        {
-            (logger as IExecutionTaskStateSink)?.SetTaskStatus(context.TaskId, ExecutionTaskStatus.Failed, ex.Message);
-            throw new Exception($"Exception encountered running operation '{operation.OperationName}' task '{task.Title}'", ex);
-        }
     }
 
     /// <summary>
@@ -322,60 +271,6 @@ public sealed class Runner
         }
 
         return eventLogger;
-    }
-
-    /// <summary>
-    /// Creates a logger for opaque child-operation execution that preserves the current visible task scope for output
-    /// attribution while preventing nested child plans from projecting their own internal task identities into the outer
-    /// session tree.
-    /// </summary>
-    private static ILogger CreateOpaqueChildLogger(ILogger logger)
-    {
-        return logger is IExecutionTaskScope taskScope && taskScope.CurrentTaskId != null
-            ? new OpaqueChildLogger(logger, taskScope.CurrentTaskId.Value)
-            : logger;
-    }
-
-    /// <summary>
-    /// Forwards all logging to the parent task-scoped logger while withholding task-logger-factory and task-state-sink
-    /// capabilities so opaque child plans execute under the current visible task instead of creating a detached task
-    /// tree in the outer session.
-    /// </summary>
-    private sealed class OpaqueChildLogger : ILogger, IExecutionTaskScope
-    {
-        private readonly ILogger _inner;
-
-        public OpaqueChildLogger(ILogger inner, ExecutionTaskId currentTaskId)
-        {
-            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-            CurrentTaskId = currentTaskId;
-        }
-
-        public ExecutionTaskId? CurrentTaskId { get; }
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            _inner.Log(logLevel, eventId, state, exception, formatter);
-        }
-
-        public bool IsEnabled(LogLevel logLevel)
-        {
-            return _inner.IsEnabled(logLevel);
-        }
-
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull
-        {
-            return _inner.BeginScope(state) ?? NullScope.Instance;
-        }
-
-        private sealed class NullScope : IDisposable
-        {
-            public static NullScope Instance { get; } = new();
-
-            public void Dispose()
-            {
-            }
-        }
     }
 
     /// <summary>

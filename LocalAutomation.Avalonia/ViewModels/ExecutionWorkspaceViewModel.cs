@@ -10,7 +10,7 @@ using LocalAutomation.Core;
 using LocalAutomation.Runtime;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 using RuntimeExecutionPlan = LocalAutomation.Runtime.ExecutionPlan;
-using RuntimeExecutionPlanTask = LocalAutomation.Runtime.ExecutionPlanTask;
+using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 using RuntimeExecutionRunOutcome = LocalAutomation.Runtime.RunOutcome;
 using RuntimeExecutionSessionId = LocalAutomation.Runtime.ExecutionSessionId;
@@ -256,8 +256,8 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             .SetTag("plan.task.count", plan?.Tasks.Count ?? 0);
 
         RuntimeWorkspaceTabViewModel planTab = RuntimeTabs.First(tab => tab.Kind == RuntimeWorkspaceTabKind.PlanPreview);
-        planTab.SetTasks(plan?.Tasks ?? Array.Empty<RuntimeExecutionPlanTask>());
-        planTab.Graph.SetPlan(plan);
+        planTab.SetTasks(plan?.Tasks ?? Array.Empty<RuntimeExecutionTask>());
+        planTab.Graph.SetGraph(plan?.Tasks);
         RebuildTabSelectedLogEntries(planTab);
 
         if (ReferenceEquals(SelectedRuntimeTab, planTab))
@@ -285,10 +285,10 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             presentation: new RuntimeWorkspaceTabPresentation(showGraph: true, showLog: true, showSubtitle: true, showStatusMarker: true, showRuntimeMetrics: true),
             graph: graph,
             session: session);
-        runtimeTab.SetTasks(session.Plan?.Tasks ?? Array.Empty<RuntimeExecutionPlanTask>());
+        runtimeTab.SetTasks(session.Tasks);
 
         graph.AttachTasks(runtimeTab.TasksById);
-        graph.SetPlan(session.Plan);
+        graph.SetGraph(session.Tasks);
 
         HookGraphSelection(runtimeTab);
         RuntimeTabs.Add(runtimeTab);
@@ -323,10 +323,34 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 }
             });
         };
+        session.TaskGraphChanged += () => Dispatcher.UIThread.Post(() => RefreshRuntimeSessionGraph(runtimeTab));
 
         _attachedSessions[runtimeTab] = session;
         _ = WatchExecutionCompletionAsync(runtimeTab);
         RaiseSelectionStateChanged();
+    }
+
+    /// <summary>
+    /// Rebuilds one execution-session tab from the current live session task graph after runtime child attachment adds
+    /// new descendants beneath an existing task.
+    /// </summary>
+    private void RefreshRuntimeSessionGraph(RuntimeWorkspaceTabViewModel runtimeTab)
+    {
+        RuntimeExecutionSession? session = runtimeTab.Session;
+        if (session == null)
+        {
+            return;
+        }
+
+        runtimeTab.SetTasks(session.Tasks);
+        runtimeTab.Graph.AttachTasks(runtimeTab.TasksById);
+        runtimeTab.Graph.SetGraph(session.Tasks);
+        RebuildTabSelectedLogEntries(runtimeTab);
+        runtimeTab.RefreshAllTaskMetrics();
+        if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+        {
+            RaiseSelectionStateChanged();
+        }
     }
 
     /// <summary>

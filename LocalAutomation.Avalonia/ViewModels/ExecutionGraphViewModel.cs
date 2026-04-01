@@ -4,9 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using LocalAutomation.Avalonia.Collections;
 using LocalAutomation.Core;
-using RuntimeExecutionDependency = LocalAutomation.Runtime.ExecutionDependency;
-using RuntimeExecutionPlan = LocalAutomation.Runtime.ExecutionPlan;
-using RuntimeExecutionPlanTask = LocalAutomation.Runtime.ExecutionPlanTask;
+using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 
 namespace LocalAutomation.Avalonia.ViewModels;
@@ -49,7 +47,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _leafDescendantsByGroupId = new();
     private readonly Dictionary<RuntimeExecutionTaskId, double> _measuredNodeWidths = new();
     private IReadOnlyDictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel> _tasksById = new Dictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel>();
-    private RuntimeExecutionPlan? _plan;
     private ExecutionNodeViewModel? _selectedNode;
     private double _canvasWidth;
     private double _canvasHeight;
@@ -74,15 +71,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         return resolvedDuration.TotalHours >= 1
             ? resolvedDuration.ToString(@"h\:mm\:ss")
             : resolvedDuration.ToString(@"mm\:ss");
-    }
-
-    /// <summary>
-    /// Gets the current execution plan rendered by the graph.
-    /// </summary>
-    public RuntimeExecutionPlan? Plan
-    {
-        get => _plan;
-        private set => SetProperty(ref _plan, value);
     }
 
     /// <summary>
@@ -177,20 +165,19 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Replaces the rendered graph with the provided plan and recomputes the nested comment-container layout.
+    /// Replaces the rendered graph with the provided task set and recomputes the nested comment-container layout.
     /// </summary>
-    public void SetPlan(RuntimeExecutionPlan? plan)
+    public void SetGraph(IReadOnlyList<RuntimeExecutionTask>? tasks)
     {
         /* Trace plan-graph rebuild phases separately so option-edit latency can be attributed to lookup creation, layout,
            metrics, edge construction, or selection restoration rather than treating graph refresh as one opaque cost. */
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraph.SetPlan")
-            .SetTag("plan.has_result", plan != null)
-            .SetTag("plan.task.count", plan?.Tasks.Count ?? 0);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraph.SetGraph")
+            .SetTag("plan.has_result", tasks != null)
+            .SetTag("plan.task.count", tasks?.Count ?? 0);
 
         IsUpdatingGraph = true;
         try
         {
-            Plan = plan;
             _nodes.Clear();
             _edges.Clear();
             _nodesById.Clear();
@@ -199,7 +186,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             _leafDescendantsByGroupId.Clear();
             _measuredNodeWidths.Clear();
 
-            if (plan == null)
+            if (tasks == null)
             {
                 CanvasWidth = NodeMinWidth;
                 CanvasHeight = NodeHeight;
@@ -209,13 +196,13 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
             using (PerformanceActivityScope buildNodesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildNodeLookup"))
             {
-                buildNodesActivity.SetTag("plan.task.count", plan.Tasks.Count);
-                BuildNodeLookup(plan);
+                buildNodesActivity.SetTag("plan.task.count", tasks.Count);
+                BuildNodeLookup(tasks);
             }
 
             using (PerformanceActivityScope buildHierarchyActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildHierarchyLookups"))
             {
-                BuildHierarchyLookups(plan.Tasks);
+                BuildHierarchyLookups(tasks);
             }
 
             RecalculateLayout(buildEdges: true);
@@ -253,7 +240,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     public void Relayout()
     {
-        if (Plan == null)
+        if (_nodes.Count == 0)
         {
             return;
         }
@@ -316,10 +303,10 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Materializes one graph node view model for every task in the source plan.
     /// </summary>
-    private void BuildNodeLookup(RuntimeExecutionPlan plan)
+    private void BuildNodeLookup(IReadOnlyList<RuntimeExecutionTask> tasks)
     {
-        List<ExecutionNodeViewModel> nodes = new(plan.Tasks.Count);
-        foreach (RuntimeExecutionPlanTask task in plan.Tasks)
+        List<ExecutionNodeViewModel> nodes = new(tasks.Count);
+        foreach (RuntimeExecutionTask task in tasks)
         {
             if (!_tasksById.TryGetValue(task.Id, out ExecutionTaskViewModel? taskViewModel))
             {
@@ -337,9 +324,9 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Builds the parent and child lookup tables that drive nested group-container layout.
     /// </summary>
-    private void BuildHierarchyLookups(IEnumerable<RuntimeExecutionPlanTask> tasks)
+    private void BuildHierarchyLookups(IEnumerable<RuntimeExecutionTask> tasks)
     {
-        foreach (RuntimeExecutionPlanTask task in tasks)
+        foreach (RuntimeExecutionTask task in tasks)
         {
             _parentByTaskId[task.Id] = task.ParentId;
             if (task.ParentId is not RuntimeExecutionTaskId parentId)
@@ -470,11 +457,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private Dictionary<RuntimeExecutionTaskId, int> ComputeSiblingDepths(IReadOnlyList<ExecutionNodeViewModel> siblings)
     {
-        if (Plan == null)
-        {
-            return new Dictionary<RuntimeExecutionTaskId, int>();
-        }
-
         HashSet<RuntimeExecutionTaskId> siblingIds = new(siblings.Select(sibling => sibling.Id));
         Dictionary<RuntimeExecutionTaskId, int> depths = new();
 
@@ -485,8 +467,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
                 return existingDepth;
             }
 
-            IReadOnlyList<RuntimeExecutionTaskId> dependencies = Plan
-                .GetTaskDependencies(taskId)
+            IReadOnlyList<RuntimeExecutionTaskId> dependencies = _tasksById[taskId].Task.DependsOn
                 .Where(siblingIds.Contains)
                 .ToList();
             int depth = dependencies.Count == 0 ? 0 : dependencies.Max(ComputeDepth) + 1;
@@ -559,17 +540,19 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Builds the visible dependency edges between runnable leaf nodes after layout has produced their coordinates.
     /// </summary>
-    private void BuildDependencyEdges(RuntimeExecutionPlan plan)
+    private void BuildDependencyEdges()
     {
         List<ExecutionEdgeViewModel> edges = new();
-        foreach (RuntimeExecutionDependency dependency in plan.Dependencies)
+        foreach (ExecutionNodeViewModel target in _nodes)
         {
-            if (_nodesById.TryGetValue(dependency.SourceTaskId, out ExecutionNodeViewModel? source) &&
-                _nodesById.TryGetValue(dependency.TargetTaskId, out ExecutionNodeViewModel? target) &&
-                !HasChildren(source.Id) &&
-                !HasChildren(target.Id))
+            foreach (RuntimeExecutionTaskId dependencyId in target.Task.Task.DependsOn)
             {
-                edges.Add(new ExecutionEdgeViewModel(source, target));
+                if (_nodesById.TryGetValue(dependencyId, out ExecutionNodeViewModel? source) &&
+                    !HasChildren(source.Id) &&
+                    !HasChildren(target.Id))
+                {
+                    edges.Add(new ExecutionEdgeViewModel(source, target));
+                }
             }
         }
 
@@ -598,7 +581,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private void RestoreSelection()
     {
-        if (Plan == null)
+        if (_nodes.Count == 0)
         {
             SelectNode(null);
             return;
@@ -611,7 +594,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return;
         }
 
-        RuntimeExecutionPlanTask rootTask = Plan.Tasks.Single(task => task.ParentId == null);
+        RuntimeExecutionTask rootTask = _tasksById.Values.Select(task => task.Task).Single(task => task.ParentId == null);
         SelectNode(_nodesById[rootTask.Id]);
     }
 
@@ -683,7 +666,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     {
         using (PerformanceActivityScope layoutActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.Layout"))
         {
-            RuntimeExecutionPlanTask rootTask = Plan!.Tasks.Single(task => task.ParentId == null);
+            RuntimeExecutionTask rootTask = _tasksById.Values.Select(task => task.Task).Single(task => task.ParentId == null);
             ExecutionNodeViewModel rootNode = _nodesById[rootTask.Id];
             if (HasChildren(rootTask.Id))
             {
@@ -701,11 +684,11 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             ApplyGroupRollupStatuses();
         }
 
-        if (buildEdges && Plan != null)
+        if (buildEdges)
         {
             using (PerformanceActivityScope edgesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildDependencyEdges"))
             {
-                BuildDependencyEdges(Plan);
+                BuildDependencyEdges();
                 edgesActivity.SetTag("edge.count", _edges.Count);
             }
         }

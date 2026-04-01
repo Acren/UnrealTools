@@ -14,7 +14,7 @@ public sealed class ExecutionTaskContext
     /// <summary>
     /// Creates one execution context for a scheduled task invocation.
     /// </summary>
-    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, OperationParameters operationParameters, IDictionary<Type, object> sharedData)
+    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, OperationParameters operationParameters, IDictionary<Type, object> sharedData, ExecutionSession? session = null, ExecutionPlanScheduler? scheduler = null)
     {
         TaskId = taskId;
         Title = string.IsNullOrWhiteSpace(title)
@@ -24,6 +24,8 @@ public sealed class ExecutionTaskContext
         CancellationToken = cancellationToken;
         OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
         SharedData = sharedData ?? throw new ArgumentNullException(nameof(sharedData));
+        Session = session;
+        Scheduler = scheduler;
     }
 
     /// <summary>
@@ -53,9 +55,37 @@ public sealed class ExecutionTaskContext
     public OperationParameters OperationParameters { get; }
 
     /// <summary>
-    /// Gets the shared plan-scoped data bag used by cooperating tasks to exchange strongly typed execution state.
+    /// Gets the live execution session when the current task is running inside a session-backed execution. Runtime child
+    /// operation attachment flows through this session rather than through the immutable plan that originally seeded it.
     /// </summary>
+    public ExecutionSession? Session { get; }
+
+    /// <summary>
+    /// Gets the active root scheduler when this task is running inside a scheduler-owned execution session. Nested child
+    /// operations re-enter this same scheduler so the run continues on one live session graph instead of creating a
+    /// detached child execution path.
+    /// </summary>
+    internal ExecutionPlanScheduler? Scheduler { get; }
+
+    /// <summary>
+     /// Gets the shared plan-scoped data bag used by cooperating tasks to exchange strongly typed execution state.
+     /// </summary>
     private IDictionary<Type, object> SharedData { get; }
+
+    /// <summary>
+    /// Gets the mutable execution-scoped shared data bag so nested runtime child schedulers can continue the same
+    /// logical execution flow instead of forking isolated state.
+    /// </summary>
+    internal IDictionary<Type, object> SharedDataStore => SharedData;
+
+    /// <summary>
+    /// Creates a sibling execution context for another task within the same logical execution flow while preserving the
+    /// current cancellation token, live session, and shared execution-scoped data.
+    /// </summary>
+    internal ExecutionTaskContext CreateForTask(ExecutionTaskId taskId, string title, ILogger logger, OperationParameters operationParameters)
+    {
+        return new ExecutionTaskContext(taskId, title, logger, CancellationToken, operationParameters, SharedData, Session, Scheduler);
+    }
 
     /// <summary>
     /// Stores or replaces one plan-scoped value by its CLR type so later tasks can consume the state produced by an

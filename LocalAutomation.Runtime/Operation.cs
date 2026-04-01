@@ -168,11 +168,10 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Executes one nested child operation opaquely beneath the current visible task while preserving the caller's logger
-    /// and cancellation token. Use authored child-plan expansion when the child work must appear as visible descendant
-    /// tasks in the session tree.
+    /// Executes one nested child operation by attaching the same descendant subtree shape that static expansion would
+    /// produce beneath the current task, then waiting for that attached subtree to finish.
     /// </summary>
-    protected async Task<OperationResult> RunChildOperationAsync(Operation childOperation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken, bool required = false, string? failureMessage = null)
+    protected async Task<OperationResult> RunChildOperationAsync(Operation childOperation, OperationParameters operationParameters, ExecutionTaskContext context, bool required = false, string? failureMessage = null)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Operation.RunChildOperationAsync")
             .SetTag("parent.operation", OperationName)
@@ -180,7 +179,7 @@ public abstract class Operation
             .SetTag("required", required)
             .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
 
-        OperationResult result = await Runner.RunChildOperation(childOperation, operationParameters, logger, cancellationToken);
+        OperationResult result = await Runner.RunChildOperation(childOperation, operationParameters, context).ConfigureAwait(false);
         activity.SetTag("result.outcome", result.Outcome.ToString())
             .SetTag("result.success", result.Success);
         if (!required || result.Success)
@@ -191,7 +190,7 @@ public abstract class Operation
         if (result.Outcome == RunOutcome.Cancelled)
         {
             activity.SetTag("result.transition", "ThrowCancelled");
-            throw new OperationCanceledException(cancellationToken);
+            throw new OperationCanceledException(context.CancellationToken);
         }
 
         activity.SetTag("result.transition", "ThrowFailure")
@@ -202,10 +201,10 @@ public abstract class Operation
     /// <summary>
     /// Executes one nested child operation by type when the caller does not need to reuse a specific instance.
     /// </summary>
-    protected Task<OperationResult> RunChildOperationAsync<TOperation>(OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken, bool required = false, string? failureMessage = null)
+    protected Task<OperationResult> RunChildOperationAsync<TOperation>(OperationParameters operationParameters, ExecutionTaskContext context, bool required = false, string? failureMessage = null)
         where TOperation : Operation, new()
     {
-        return RunChildOperationAsync(new TOperation(), operationParameters, logger, cancellationToken, required, failureMessage);
+        return RunChildOperationAsync(new TOperation(), operationParameters, context, required, failureMessage);
     }
 
     /// <summary>
