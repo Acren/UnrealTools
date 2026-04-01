@@ -231,16 +231,16 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void HandleGraphCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CollectionChanged");
-        PerformanceTelemetry.SetTag(activity, "source", ReferenceEquals(sender, _observedGraph?.Nodes) ? "Nodes" : ReferenceEquals(sender, _observedGraph?.Edges) ? "Edges" : string.Empty);
-        PerformanceTelemetry.SetTag(activity, "action", e.Action.ToString());
-        PerformanceTelemetry.SetTag(activity, "new_item.count", e.NewItems?.Count ?? 0);
-        PerformanceTelemetry.SetTag(activity, "old_item.count", e.OldItems?.Count ?? 0);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CollectionChanged")
+            .SetTag("source", ReferenceEquals(sender, _observedGraph?.Nodes) ? "Nodes" : ReferenceEquals(sender, _observedGraph?.Edges) ? "Edges" : string.Empty)
+            .SetTag("action", e.Action.ToString())
+            .SetTag("new_item.count", e.NewItems?.Count ?? 0)
+            .SetTag("old_item.count", e.OldItems?.Count ?? 0);
 
         string trigger = $"CollectionChanged:{e.Action}";
         if (TryQueueRenderWhileUpdating(trigger))
         {
-            PerformanceTelemetry.SetTag(activity, "render.deferred", true);
+            activity.SetTag("render.deferred", true);
             return;
         }
 
@@ -269,13 +269,13 @@ public partial class ExecutionGraphCanvas : UserControl
             string.Equals(e.PropertyName, nameof(ExecutionGraphViewModel.CanvasWidth), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionGraphViewModel.CanvasHeight), StringComparison.Ordinal))
         {
-            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.PropertyChanged");
-            PerformanceTelemetry.SetTag(activity, "property.name", e.PropertyName ?? string.Empty);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.PropertyChanged")
+                .SetTag("property.name", e.PropertyName ?? string.Empty);
 
             string trigger = $"PropertyChanged:{e.PropertyName}";
             if (TryQueueRenderWhileUpdating(trigger))
             {
-                PerformanceTelemetry.SetTag(activity, "render.deferred", true);
+                activity.SetTag("render.deferred", true);
                 return;
             }
 
@@ -305,12 +305,12 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void RenderGraph(string trigger)
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RenderGraph");
-        PerformanceTelemetry.SetTag(activity, "trigger", trigger);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RenderGraph")
+            .SetTag("trigger", trigger);
 
         if (_graphCanvas == null)
         {
-            PerformanceTelemetry.SetTag(activity, "render.skipped", "MissingCanvas");
+            activity.SetTag("render.skipped", "MissingCanvas");
             return;
         }
 
@@ -318,15 +318,15 @@ public partial class ExecutionGraphCanvas : UserControl
         _renderedNodeControls.Clear();
         if (_observedGraph == null)
         {
-            PerformanceTelemetry.SetTag(activity, "render.skipped", "MissingGraph");
+            activity.SetTag("render.skipped", "MissingGraph");
             return;
         }
 
         int groupCount = _observedGraph.Nodes.Count(node => node.IsContainer);
         int leafCount = _observedGraph.Nodes.Count - groupCount;
-        PerformanceTelemetry.SetTag(activity, "group.count", groupCount);
-        PerformanceTelemetry.SetTag(activity, "leaf.count", leafCount);
-        PerformanceTelemetry.SetTag(activity, "edge.count", _observedGraph.Edges.Count);
+        activity.SetTag("group.count", groupCount)
+            .SetTag("leaf.count", leafCount)
+            .SetTag("edge.count", _observedGraph.Edges.Count);
 
         foreach (ExecutionNodeViewModel group in _observedGraph.Nodes.Where(node => node.IsContainer).OrderByDescending(node => node.Width * node.Height))
         {
@@ -361,7 +361,7 @@ public partial class ExecutionGraphCanvas : UserControl
         }
 
         ApplyViewportTransform();
-        PerformanceTelemetry.SetTag(activity, "render.child.count", _graphCanvas.Children.Count);
+        activity.SetTag("render.child.count", _graphCanvas.Children.Count);
 
         if (!_measurementRenderPending)
         {

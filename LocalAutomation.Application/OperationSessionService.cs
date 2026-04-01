@@ -136,15 +136,15 @@ public sealed class OperationSessionService
     {
         /* Trace plan-preview construction at the application-service boundary so shells can distinguish the end-to-end
            refresh cost from the runtime cost of building the underlying execution plan. */
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("GetExecutionPlan");
-        PerformanceTelemetry.SetTag(activity, "operation.present", operation != null);
-        PerformanceTelemetry.SetTag(activity, "operation.type", operation?.GetType().Name ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "operation.name", operation?.OperationName ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "target.type", parameters.Target?.GetType().Name ?? string.Empty);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("GetExecutionPlan")
+            .SetTag("operation.present", operation != null)
+            .SetTag("operation.type", operation?.GetType().Name ?? string.Empty)
+            .SetTag("operation.name", operation?.OperationName ?? string.Empty)
+            .SetTag("target.type", parameters.Target?.GetType().Name ?? string.Empty);
 
         LocalAutomation.Runtime.ExecutionPlan? plan = _runtime.BuildExecutionPlan(operation, parameters);
-        PerformanceTelemetry.SetTag(activity, "plan.has_result", plan != null);
-        PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
+        activity.SetTag("plan.has_result", plan != null)
+            .SetTag("plan.task.count", plan?.Tasks.Count ?? 0);
         return plan;
     }
 }

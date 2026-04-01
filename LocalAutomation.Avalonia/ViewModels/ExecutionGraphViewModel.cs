@@ -183,9 +183,9 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     {
         /* Trace plan-graph rebuild phases separately so option-edit latency can be attributed to lookup creation, layout,
            metrics, edge construction, or selection restoration rather than treating graph refresh as one opaque cost. */
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraph.SetPlan");
-        PerformanceTelemetry.SetTag(activity, "plan.has_result", plan != null);
-        PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraph.SetPlan")
+            .SetTag("plan.has_result", plan != null)
+            .SetTag("plan.task.count", plan?.Tasks.Count ?? 0);
 
         IsUpdatingGraph = true;
         try
@@ -209,7 +209,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
             using (PerformanceActivityScope buildNodesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildNodeLookup"))
             {
-                PerformanceTelemetry.SetTag(buildNodesActivity, "plan.task.count", plan.Tasks.Count);
+                buildNodesActivity.SetTag("plan.task.count", plan.Tasks.Count);
                 BuildNodeLookup(plan);
             }
 
@@ -507,7 +507,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
             string summaryText = directChildren.Count == 0
                 ? "No child tasks"
-                : $"{directChildren.Count} child item{(directChildren.Count == 1 ? string.Empty : "s")} · {leafDescendants.Count} runnable task{(leafDescendants.Count == 1 ? string.Empty : "s")}";
+                : $"{directChildren.Count} child item{(directChildren.Count == 1 ? string.Empty : "s")} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {leafDescendants.Count} runnable task{(leafDescendants.Count == 1 ? string.Empty : "s")}";
 
             node.SetHierarchyMetrics(directChildren.Count, leafDescendants.Count, summaryText);
         }
@@ -694,15 +694,15 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             using (PerformanceActivityScope edgesActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.BuildDependencyEdges"))
             {
                 BuildDependencyEdges(Plan);
-                PerformanceTelemetry.SetTag(edgesActivity, "edge.count", _edges.Count);
+                edgesActivity.SetTag("edge.count", _edges.Count);
             }
         }
 
         using (PerformanceActivityScope canvasActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.UpdateCanvasSize"))
         {
             UpdateCanvasSize();
-            PerformanceTelemetry.SetTag(canvasActivity, "canvas.width", CanvasWidth);
-            PerformanceTelemetry.SetTag(canvasActivity, "canvas.height", CanvasHeight);
+            canvasActivity.SetTag("canvas.width", CanvasWidth)
+                .SetTag("canvas.height", CanvasHeight);
         }
     }
 

@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LocalAutomation.Core;
 using Polly;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
@@ -410,6 +411,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Plugin stagingPlugin = state.GetRequiredStagingPlugin();
             string pluginBuildPath = Path.Combine(GetEngineTempPath(state.Engine), @"PluginBuild", state.SourcePlugin.Name);
             FileUtils.DeleteDirectoryIfExists(pluginBuildPath);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin")
+                .SetTag("plugin.name", state.SourcePlugin.Name)
+                .SetTag("engine.version", state.Engine.Version.ToString())
+                .SetTag("output.path", pluginBuildPath);
 
             UnrealOperationParameters buildPluginParams = new()
             {
@@ -419,10 +424,23 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             };
             buildPluginParams.SetOptions(unrealOperationParameters.GetOptions<PluginBuildOptions>());
 
-            await RunChildOperationAsync<PackagePlugin>(buildPluginParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Plugin build failed");
+            using (PerformanceActivityScope childRunActivity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin.RunChild"))
+            {
+                await RunChildOperationAsync<PackagePlugin>(buildPluginParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Plugin build failed");
+                childRunActivity.SetTag("child.operation", nameof(PackagePlugin));
+            }
             
-            Plugin builtPlugin = new(pluginBuildPath);
-            context.SetSharedData(state.WithBuiltPlugin(builtPlugin));
+            Plugin builtPlugin;
+            using (PerformanceActivityScope materializeActivity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin.MaterializeBuiltPlugin"))
+            {
+                materializeActivity.SetTag("plugin.path", pluginBuildPath);
+                builtPlugin = new(pluginBuildPath);
+            }
+
+            using (PerformanceActivityScope sharedStateActivity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin.StoreSharedState"))
+            {
+                context.SetSharedData(state.WithBuiltPlugin(builtPlugin));
+            }
 
             context.Logger.LogInformation("Plugin build complete");
         }

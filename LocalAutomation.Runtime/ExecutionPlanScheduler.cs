@@ -114,6 +114,8 @@ public sealed class ExecutionPlanScheduler
             ExecutionTaskId completedTaskId = taskOwners[completedTask];
             runningTasks.Remove(completedTaskId);
             taskOwners.Remove(completedTask);
+            using PerformanceActivityScope completionActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.HandleCompletedTask")
+                .SetTag("task.id", completedTaskId.Value);
 
             OperationResult result;
             try
@@ -137,6 +139,10 @@ public sealed class ExecutionPlanScheduler
                 continue;
             }
 
+            completionActivity.SetTag("task.outcome", result.Outcome.ToString());
+
+            using PerformanceActivityScope readinessActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.UpdateReadinessAfterCompletion")
+                .SetTag("task.id", completedTaskId.Value);
             if (result.Outcome == RunOutcome.Succeeded)
             {
                 SetStatus(statuses, statusReasons, completedTaskId, ExecutionTaskStatus.Completed);
@@ -225,6 +231,9 @@ public sealed class ExecutionPlanScheduler
                 break;
             }
 
+            using PerformanceActivityScope startActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartTask")
+                .SetTag("task.id", item.Id.Value)
+                .SetTag("task.title", item.Title);
             SetStatus(statuses, statusReasons, item.Id, ExecutionTaskStatus.Running);
             ExecutionTaskContext context = new(item.Id, item.Title, CreateTaskLogger(item.Id), cancellationToken, item.OperationParameters, sharedData);
             Task<OperationResult> task = item.ExecuteAsync!(context);

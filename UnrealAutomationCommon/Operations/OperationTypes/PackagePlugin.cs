@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
@@ -83,16 +84,24 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         // Compare Unreal's reported target platform list with what the user requested so silent skips become failures.
         protected override void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
         {
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("PackagePlugin.OnProcessEnded")
+                .SetTag("result.outcome", result.Outcome.ToString())
+                .SetTag("result.was_cancelled", result.WasCancelled)
+                .SetTag("requested_platform.count", _requestedTargetPlatforms.Count);
+
             base.OnProcessEnded(context, operationParameters, result);
 
             if (result.Outcome != global::LocalAutomation.Runtime.RunOutcome.Succeeded || result.WasCancelled || _requestedTargetPlatforms.Count == 0)
             {
+                activity.SetTag("validation.skipped", true);
                 return;
             }
 
             List<string> skippedPlatforms = _requestedTargetPlatforms
                 .Where(requestedPlatform => !_builtTargetPlatforms.Contains(requestedPlatform, StringComparer.InvariantCultureIgnoreCase))
                 .ToList();
+            activity.SetTag("built_platform.count", _builtTargetPlatforms.Count)
+                .SetTag("skipped_platform.count", skippedPlatforms.Count);
 
             if (skippedPlatforms.Count == 0)
             {

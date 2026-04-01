@@ -97,9 +97,9 @@ public sealed class LayeredSettingsPersistenceService
         }
 
         List<object> optionSetList = optionSets.ToList();
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ApplyOptionValues");
-        PerformanceTelemetry.SetTag(activity, "target.type", context.TargetTypeId.Value);
-        PerformanceTelemetry.SetTag(activity, "count", optionSetList.Count);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ApplyOptionValues")
+            .SetTag("target.type", context.TargetTypeId.Value)
+            .SetTag("count", optionSetList.Count);
 
         IReadOnlyDictionary<string, JToken> resolvedValues = ResolveEffectiveValues(context);
         int descriptorCount = 0;
@@ -110,8 +110,8 @@ public sealed class LayeredSettingsPersistenceService
             ApplyResolvedValues(optionSet, descriptors, resolvedValues);
         }
 
-        PerformanceTelemetry.SetTag(activity, "resolved_value.count", resolvedValues.Count);
-        PerformanceTelemetry.SetTag(activity, "descriptor.count", descriptorCount);
+        activity.SetTag("resolved_value.count", resolvedValues.Count)
+            .SetTag("descriptor.count", descriptorCount);
     }
 
     /// <summary>
@@ -296,8 +296,8 @@ public sealed class LayeredSettingsPersistenceService
     /// </summary>
     private IReadOnlyDictionary<string, JToken> ResolveEffectiveValues(TargetSettingsContext context)
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ResolveEffectiveValues");
-        PerformanceTelemetry.SetTag(activity, "target.type", context.TargetTypeId.Value);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ResolveEffectiveValues")
+            .SetTag("target.type", context.TargetTypeId.Value);
 
         PersistedSettingValueCollection globalValues = LoadCollection(_globalSettingsFilePath, "Global");
         PersistedSettingValueCollection targetLocalValues = LoadCollection(GetTargetLocalSettingsFilePath(context), "TargetLocal");
@@ -308,10 +308,10 @@ public sealed class LayeredSettingsPersistenceService
         OverlayValues(values, targetLocalValues);
         OverlayValues(values, userOverrideValues);
 
-        PerformanceTelemetry.SetTag(activity, "global_value.count", globalValues.Values.Count);
-        PerformanceTelemetry.SetTag(activity, "target_local_value.count", targetLocalValues.Values.Count);
-        PerformanceTelemetry.SetTag(activity, "user_override_value.count", userOverrideValues.Values.Count);
-        PerformanceTelemetry.SetTag(activity, "resolved_value.count", values.Count);
+        activity.SetTag("global_value.count", globalValues.Values.Count)
+            .SetTag("target_local_value.count", targetLocalValues.Values.Count)
+            .SetTag("user_override_value.count", userOverrideValues.Values.Count)
+            .SetTag("resolved_value.count", values.Count);
         return values;
     }
 
@@ -395,14 +395,14 @@ public sealed class LayeredSettingsPersistenceService
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("LoadSettingsFile");
         bool fileExists = File.Exists(filePath);
-        PerformanceTelemetry.SetTag(activity, "layer.name", layerName);
-        PerformanceTelemetry.SetTag(activity, "file.exists", fileExists);
+        activity.SetTag("layer.name", layerName)
+            .SetTag("file.exists", fileExists);
 
         if (fileExists)
         {
             try
             {
-                PerformanceTelemetry.SetTag(activity, "file.length", new FileInfo(filePath).Length);
+                activity.SetTag("file.length", new FileInfo(filePath).Length);
             }
             catch (IOException)
             {
@@ -418,7 +418,7 @@ public sealed class LayeredSettingsPersistenceService
             createSerializer: static () => new JsonSerializer());
 
         PersistedSettingValueCollection state = store.Load().State;
-        PerformanceTelemetry.SetTag(activity, "value.count", state.Values.Count);
+        activity.SetTag("value.count", state.Values.Count);
         return state;
     }
 
@@ -467,21 +467,21 @@ public sealed class LayeredSettingsPersistenceService
     /// </summary>
     private IReadOnlyList<PersistedSettingDescriptor> GetOrCreateDescriptors(Type ownerType, string ownerPrefix, Func<IReadOnlyList<PersistedSettingDescriptor>> createDescriptors)
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ResolveDescriptors");
-        PerformanceTelemetry.SetTag(activity, "owner.type", ownerType.FullName ?? ownerType.Name);
-        PerformanceTelemetry.SetTag(activity, "owner.prefix", ownerPrefix);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ResolveDescriptors")
+            .SetTag("owner.type", ownerType.FullName ?? ownerType.Name)
+            .SetTag("owner.prefix", ownerPrefix);
 
         if (_descriptorCache.TryGetValue((ownerType, ownerPrefix), out IReadOnlyList<PersistedSettingDescriptor>? cachedDescriptors))
         {
-            PerformanceTelemetry.SetTag(activity, "cache.hit", true);
-            PerformanceTelemetry.SetTag(activity, "descriptor.count", cachedDescriptors.Count);
+            activity.SetTag("cache.hit", true)
+                .SetTag("descriptor.count", cachedDescriptors.Count);
             return cachedDescriptors;
         }
 
         IReadOnlyList<PersistedSettingDescriptor> descriptors = createDescriptors();
         _descriptorCache[(ownerType, ownerPrefix)] = descriptors;
-        PerformanceTelemetry.SetTag(activity, "cache.hit", false);
-        PerformanceTelemetry.SetTag(activity, "descriptor.count", descriptors.Count);
+        activity.SetTag("cache.hit", false)
+            .SetTag("descriptor.count", descriptors.Count);
         return descriptors;
     }
 

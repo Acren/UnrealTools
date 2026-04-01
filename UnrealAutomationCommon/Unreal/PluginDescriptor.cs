@@ -22,8 +22,8 @@ namespace UnrealAutomationCommon.Unreal
 
         public static PluginDescriptor Load(string uPluginPath)
         {
-            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("PluginDescriptor.Load");
-            PerformanceTelemetry.SetTag(activity, "descriptor.path", uPluginPath);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("PluginDescriptor.Load")
+                .SetTag("descriptor.path", uPluginPath);
             FileUtils.WaitForFileReadable(uPluginPath);
             try
             {

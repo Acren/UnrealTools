@@ -14,46 +14,46 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("BuildPlugin.CheckRequirements");
             UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
             string? requirementsError = base.CheckRequirementsSatisfied(operationParameters);
-            PerformanceTelemetry.SetTag(activity, "target.type", typedParameters.Target?.GetType().Name ?? string.Empty);
+            activity.SetTag("target.type", typedParameters.Target?.GetType().Name ?? string.Empty);
             if (requirementsError != null)
             {
-                PerformanceTelemetry.SetTag(activity, "result", requirementsError);
+                activity.SetTag("result", requirementsError);
                 return requirementsError;
             }
 
             string? engineSelectionError = typedParameters.GetSingleEngineSelectionValidationMessage();
             if (engineSelectionError != null)
             {
-                PerformanceTelemetry.SetTag(activity, "result", engineSelectionError);
+                activity.SetTag("result", engineSelectionError);
                 return engineSelectionError;
             }
 
             Plugin plugin = GetRequiredTarget(typedParameters);
-            PerformanceTelemetry.SetTag(activity, "plugin.path", plugin.PluginPath);
-            PerformanceTelemetry.SetTag(activity, "descriptor.path", plugin.UPluginPath);
+            activity.SetTag("plugin.path", plugin.PluginPath)
+                .SetTag("descriptor.path", plugin.UPluginPath);
             if (plugin.IsBlueprintOnly)
             {
-                PerformanceTelemetry.SetTag(activity, "result", "Build Plugin only supports code plugins");
+                activity.SetTag("result", "Build Plugin only supports code plugins");
                 return "Build Plugin only supports code plugins";
             }
 
             Project hostProject = plugin.GetHostProjectForDiagnostics();
-            PerformanceTelemetry.SetTag(activity, "host_project.path", hostProject.ProjectPath);
+            activity.SetTag("host_project.path", hostProject.ProjectPath);
             if (!hostProject.IsValid)
             {
-                PerformanceTelemetry.SetTag(activity, "result", "Build Plugin requires the plugin to live inside a valid host project");
+                activity.SetTag("result", "Build Plugin requires the plugin to live inside a valid host project");
                 return "Build Plugin requires the plugin to live inside a valid host project";
             }
 
             Engine? engine = hostProject.GetEngineInstanceForDiagnostics();
-            PerformanceTelemetry.SetTag(activity, "engine.name", engine?.DisplayName ?? string.Empty);
+            activity.SetTag("engine.name", engine?.DisplayName ?? string.Empty);
             if (engine == null)
             {
-                PerformanceTelemetry.SetTag(activity, "result", "Build Plugin could not resolve a host project engine install");
+                activity.SetTag("result", "Build Plugin could not resolve a host project engine install");
                 return "Build Plugin could not resolve a host project engine install";
             }
 
-            PerformanceTelemetry.SetTag(activity, "result", "Success");
+            activity.SetTag("result", "Success");
             return null;
         }
 

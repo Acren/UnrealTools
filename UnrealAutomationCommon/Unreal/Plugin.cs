@@ -133,13 +133,13 @@ namespace UnrealAutomationCommon.Unreal
         /// </summary>
         public Project GetHostProjectForDiagnostics()
         {
-            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Plugin.GetHostProject");
-            PerformanceTelemetry.SetTag(activity, "host_project.path", HostProjectPath);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Plugin.GetHostProject")
+                .SetTag("host_project.path", HostProjectPath);
             bool cacheHit = _hostProject != null;
             Project hostProject = ResolveHostProject();
-            PerformanceTelemetry.SetTag(activity, "cache.hit", cacheHit);
-            PerformanceTelemetry.SetTag(activity, "target.type", hostProject.GetType().Name);
-            PerformanceTelemetry.SetTag(activity, "is_valid", hostProject.IsValid);
+            activity.SetTag("cache.hit", cacheHit)
+                .SetTag("target.type", hostProject.GetType().Name)
+                .SetTag("is_valid", hostProject.IsValid);
             return hostProject;
         }
 

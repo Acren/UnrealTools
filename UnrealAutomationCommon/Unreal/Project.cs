@@ -129,10 +129,10 @@ namespace UnrealAutomationCommon.Unreal
         /// </summary>
         public Engine GetEngineInstanceForDiagnostics()
         {
-            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Project.GetEngineInstance");
-            PerformanceTelemetry.SetTag(activity, "descriptor.path", UProjectPath);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Project.GetEngineInstance")
+                .SetTag("descriptor.path", UProjectPath);
             Engine engine = EngineInstance;
-            PerformanceTelemetry.SetTag(activity, "engine.name", engine.DisplayName);
+            activity.SetTag("engine.name", engine.DisplayName);
             return engine;
         }
 

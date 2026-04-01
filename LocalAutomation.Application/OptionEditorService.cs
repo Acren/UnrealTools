@@ -32,14 +32,14 @@ public sealed class OptionEditorService
             throw new ArgumentNullException(nameof(optionSet));
         }
 
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("GetEditorTarget");
-        PerformanceTelemetry.SetTag(activity, "option_set.type", optionSet.GetType().Name);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("GetEditorTarget")
+            .SetTag("option_set.type", optionSet.GetType().Name);
 
         if (_bindings.TryGetValue(optionSet, out EditorBinding? binding))
         {
-            PerformanceTelemetry.SetTag(activity, "cache.hit", true);
-            PerformanceTelemetry.SetTag(activity, "adapter.type", binding.Adapter.GetType().Name);
-            PerformanceTelemetry.SetTag(activity, "editor_target.type", binding.EditorTarget.GetType().Name);
+            activity.SetTag("cache.hit", true)
+                .SetTag("adapter.type", binding.Adapter.GetType().Name)
+                .SetTag("editor_target.type", binding.EditorTarget.GetType().Name);
             binding.Adapter.RefreshEditorTarget(optionSet, binding.EditorTarget);
             return binding.EditorTarget;
         }
@@ -50,15 +50,15 @@ public sealed class OptionEditorService
             {
                 object editorTarget = adapter.CreateEditorTarget(optionSet);
                 _bindings[optionSet] = new EditorBinding(adapter, editorTarget);
-                PerformanceTelemetry.SetTag(activity, "cache.hit", false);
-                PerformanceTelemetry.SetTag(activity, "adapter.type", adapter.GetType().Name);
-                PerformanceTelemetry.SetTag(activity, "editor_target.type", editorTarget.GetType().Name);
+                activity.SetTag("cache.hit", false)
+                    .SetTag("adapter.type", adapter.GetType().Name)
+                    .SetTag("editor_target.type", editorTarget.GetType().Name);
                 return editorTarget;
             }
         }
 
-        PerformanceTelemetry.SetTag(activity, "cache.hit", false);
-        PerformanceTelemetry.SetTag(activity, "editor_target.type", optionSet.GetType().Name);
+        activity.SetTag("cache.hit", false)
+            .SetTag("editor_target.type", optionSet.GetType().Name);
         return optionSet;
     }
 

@@ -143,12 +143,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("OperationSwitch");
-        PerformanceTelemetry.SetTag(activity, "operation.id", selectedOperationId?.Value ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "operation.name", selectedOperation?.DisplayName ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "previous_operation.id", previousSelectedOperationId?.Value ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "target.type", GetSelectedTargetTypeId()?.Value ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "available_operation.count", AvailableOperations.Count);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("OperationSwitch")
+            .SetTag("operation.id", selectedOperationId?.Value ?? string.Empty)
+            .SetTag("operation.name", selectedOperation?.DisplayName ?? string.Empty)
+            .SetTag("previous_operation.id", previousSelectedOperationId?.Value ?? string.Empty)
+            .SetTag("target.type", GetSelectedTargetTypeId()?.Value ?? string.Empty)
+            .SetTag("available_operation.count", AvailableOperations.Count);
 
         // Capture the current target-scoped option values before changing the selected operation because operation
         // switches can temporarily remove option sets like compiler settings from the live parameter model.
@@ -566,23 +566,23 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OperationParameters previousParameters,
         OperationId? previousSelectedOperationId)
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ActivateOperation");
-        PerformanceTelemetry.SetTag(activity, "operation.id", selectedOperation?.Id.Value ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "operation.name", selectedOperation?.DisplayName ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "previous_option_set.count", previousParameters.OptionsInstances.Count);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ActivateOperation")
+            .SetTag("operation.id", selectedOperation?.Id.Value ?? string.Empty)
+            .SetTag("operation.name", selectedOperation?.DisplayName ?? string.Empty)
+            .SetTag("target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty)
+            .SetTag("previous_option_set.count", previousParameters.OptionsInstances.Count);
 
         try
         {
             _currentOperation = selectedOperation != null ? _services.OperationSession.CreateOperation(selectedOperation.OperationType) : null;
             OperationParameters replacementParameters = _currentOperation?.CreateParameters(previousParameters) ?? new OperationParameters();
             _parameterSession.Replace(replacementParameters, SelectedTarget?.Target as IOperationTarget);
-            PerformanceTelemetry.SetTag(activity, "new_option_set.count", replacementParameters.OptionsInstances.Count);
+            activity.SetTag("new_option_set.count", replacementParameters.OptionsInstances.Count);
             return true;
         }
         catch (Exception ex)
         {
-            PerformanceTelemetry.SetTag(activity, "error.type", ex.GetType().FullName ?? ex.GetType().Name);
+            activity.SetTag("error.type", ex.GetType().FullName ?? ex.GetType().Name);
             HandleOperationActivationFailure(selectedOperation, previousOperation, previousParameters, previousSelectedOperationId, ex);
             return false;
         }
@@ -679,15 +679,15 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     {
         /* Trace the shell-level preview refresh separately from the application-service/runtime plan build so the
            telemetry tree can show whether option-edit sluggishness is in UI orchestration or plan construction. */
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("RefreshVisibleExecutionPlan");
-        PerformanceTelemetry.SetTag(activity, "operation.id", _selectedOperationId?.Value ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "operation.name", _currentOperation?.OperationName ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "target.present", SelectedTarget?.Target != null);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("RefreshVisibleExecutionPlan")
+            .SetTag("operation.id", _selectedOperationId?.Value ?? string.Empty)
+            .SetTag("operation.name", _currentOperation?.OperationName ?? string.Empty)
+            .SetTag("target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty)
+            .SetTag("target.present", SelectedTarget?.Target != null);
 
         RuntimeExecutionPlan? plan = VisibleExecutionPlan;
-        PerformanceTelemetry.SetTag(activity, "plan.has_result", plan != null);
-        PerformanceTelemetry.SetTag(activity, "plan.task.count", plan?.Tasks.Count ?? 0);
+        activity.SetTag("plan.has_result", plan != null)
+            .SetTag("plan.task.count", plan?.Tasks.Count ?? 0);
         ExecutionWorkspace.UpdatePlanPreview(plan);
     }
 
@@ -817,13 +817,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             }
         }
 
-        PerformanceTelemetry.SetTag(activity, "operation.id", _selectedOperationId?.Value ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty);
-        PerformanceTelemetry.SetTag(activity, "existing_option_set.count", existingOptionSets.Count);
-        PerformanceTelemetry.SetTag(activity, "enabled_option_type.count", enabledOptionTypes.Count);
-        PerformanceTelemetry.SetTag(activity, "added_option_set.count", addedOptionSetCount);
-        PerformanceTelemetry.SetTag(activity, "removed_option_set.count", removedOptionSetCount);
-        PerformanceTelemetry.SetTag(activity, "final_option_set.count", _parameterSession.OptionSets.Count);
+        activity.SetTag("operation.id", _selectedOperationId?.Value ?? string.Empty)
+            .SetTag("target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty)
+            .SetTag("existing_option_set.count", existingOptionSets.Count)
+            .SetTag("enabled_option_type.count", enabledOptionTypes.Count)
+            .SetTag("added_option_set.count", addedOptionSetCount)
+            .SetTag("removed_option_set.count", removedOptionSetCount)
+            .SetTag("final_option_set.count", _parameterSession.OptionSets.Count);
         RebuildOptionCards();
     }
 
@@ -833,8 +833,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void RebuildOptionCards()
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("RebuildOptionCards");
-        PerformanceTelemetry.SetTag(activity, "count", _parameterSession.OptionSets.Count);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("RebuildOptionCards")
+            .SetTag("count", _parameterSession.OptionSets.Count);
         EnabledOptionSets.Clear();
 
         foreach (OperationOptions options in _parameterSession.OptionSets)
@@ -842,7 +842,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             EnabledOptionSets.Add(new OptionSetViewModel(_services, options, _services.OptionEditors.GetEditorTarget(options)));
         }
 
-        PerformanceTelemetry.SetTag(activity, "option_card.count", EnabledOptionSets.Count);
+        activity.SetTag("option_card.count", EnabledOptionSets.Count);
     }
 
     /// <summary>
@@ -859,8 +859,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ApplyPersistedSettings");
 
         TargetSettingsContext context = _services.OptionValues.CreateTargetContext(_services.Targets, SelectedTarget.Target);
-        PerformanceTelemetry.SetTag(activity, "target.type", context.TargetTypeId.Value);
-        PerformanceTelemetry.SetTag(activity, "count", _parameterSession.OptionSets.Count);
+        activity.SetTag("target.type", context.TargetTypeId.Value)
+            .SetTag("count", _parameterSession.OptionSets.Count);
         _services.OptionValues.ApplyOptionValues(_parameterSession.OptionSets, context);
 
         // Recreate property-grid card targets after applying restored values so adapter-backed editors reflect the

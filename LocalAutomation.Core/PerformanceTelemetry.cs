@@ -22,9 +22,10 @@ public readonly struct PerformanceActivityScope : IDisposable
     /// <summary>
     /// Adds one tag to the underlying activity when tracing is enabled.
     /// </summary>
-    public void SetTag(string key, object? value)
+    public PerformanceActivityScope SetTag(string key, object? value)
     {
         _activity?.SetTag(key, value);
+        return this;
     }
 
     /// <summary>
@@ -60,11 +61,4 @@ public static class PerformanceTelemetry
         return new PerformanceActivityScope(Source.StartActivity(activityName, ActivityKind.Internal));
     }
 
-    /// <summary>
-    /// Adds one tag value when the activity exists, avoiding repetitive null checks at instrumentation sites.
-    /// </summary>
-    public static void SetTag(PerformanceActivityScope activity, string key, object? value)
-    {
-        activity.SetTag(key, value);
-    }
 }

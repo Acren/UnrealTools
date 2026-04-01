@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
@@ -79,8 +79,8 @@ namespace UnrealAutomationCommon.Unreal
 
         public static ProjectDescriptor Load(string uProjectPath)
         {
-            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ProjectDescriptor.Load");
-            PerformanceTelemetry.SetTag(activity, "descriptor.path", uProjectPath);
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ProjectDescriptor.Load")
+                .SetTag("descriptor.path", uProjectPath);
             return JsonConvert.DeserializeObject<ProjectDescriptor>(File.ReadAllText(uProjectPath))
                 ?? throw new InvalidOperationException($"Could not deserialize project descriptor '{uProjectPath}'.");
         }
