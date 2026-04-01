@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
@@ -85,18 +86,19 @@ public static class PerformanceTelemetryListener
     {
         try
         {
-            string rootOperationName = rootActivity.GetTagItem("operation.name")?.ToString()
-                ?? rootActivity.GetTagItem("operation.id")?.ToString()
-                ?? "<unknown>";
+            RecordedActivity recordedRoot = summary.Activities.Single(activity => activity.SpanId == rootActivity.SpanId);
+            Dictionary<ActivitySpanId, List<RecordedActivity>> childrenByParent = summary.Activities
+                .OrderBy(activity => activity.StartTimeUtc)
+                .ThenBy(activity => activity.OperationName, StringComparer.Ordinal)
+                .GroupBy(activity => activity.ParentSpanId)
+                .ToDictionary(group => group.Key, group => group.ToList());
 
             List<string> lines = new();
-            // Prefix the summary with a generic telemetry label so the setting and log wording stay decoupled from
-            // whichever workflow currently emits the trace.
-            lines.Add($"PerformanceTelemetry {rootActivity.OperationName} {rootOperationName} {rootActivity.Duration.TotalMilliseconds:0} ms");
+            lines.Add(BuildRootLine(recordedRoot));
 
-            foreach (RecordedActivity child in summary.Activities.OrderBy(item => item.StartTimeUtc).Where(item => item.ParentSpanId == rootActivity.SpanId))
+            foreach (RecordedActivity child in GetChildren(childrenByParent, rootActivity.SpanId))
             {
-                AppendActivity(lines, summary, child, depth: 1);
+                AppendActivity(lines, childrenByParent, child, recordedRoot.StartTimeUtc, depth: 1);
             }
 
             ApplicationLogger.Logger.LogInformation(string.Join(Environment.NewLine, lines));
@@ -109,16 +111,209 @@ public static class PerformanceTelemetryListener
     /// <summary>
     /// Appends one activity and its nested children using an indented, readable tree format.
     /// </summary>
-    private static void AppendActivity(List<string> lines, ActivitySummary summary, RecordedActivity activity, int depth)
+    private static void AppendActivity(List<string> lines, IReadOnlyDictionary<ActivitySpanId, List<RecordedActivity>> childrenByParent, RecordedActivity activity, DateTime rootStartTimeUtc, int depth)
     {
         string indent = new(' ', depth * 2);
-        string description = activity.Description;
-        lines.Add($"{indent}{activity.OperationName} {description} {activity.Duration.TotalMilliseconds:0} ms".TrimEnd());
-
-        foreach (RecordedActivity child in summary.Activities.OrderBy(item => item.StartTimeUtc).Where(item => item.ParentSpanId == activity.SpanId))
+        IReadOnlyList<RecordedActivity> children = GetChildren(childrenByParent, activity.SpanId);
+        TimeSpan startOffset = activity.StartTimeUtc - rootStartTimeUtc;
+        if (startOffset < TimeSpan.Zero)
         {
-            AppendActivity(lines, summary, child, depth + 1);
+            startOffset = TimeSpan.Zero;
         }
+
+        TimeSpan exclusiveDuration = CalculateExclusiveDuration(activity, children);
+        string tags = FormatTags(activity);
+        string line = $"{indent}+{FormatMilliseconds(startOffset)} ms total={FormatMilliseconds(activity.Duration)} ms self={FormatMilliseconds(exclusiveDuration)} ms {activity.OperationName}";
+        if (!string.IsNullOrEmpty(tags))
+        {
+            line += " " + tags;
+        }
+
+        lines.Add(line);
+
+        foreach (RecordedActivity child in children)
+        {
+            AppendActivity(lines, childrenByParent, child, rootStartTimeUtc, depth + 1);
+        }
+    }
+
+    /// <summary>
+    /// Builds the one-line root summary that identifies the traced workflow before the nested timing tree.
+    /// </summary>
+    private static string BuildRootLine(RecordedActivity rootActivity)
+    {
+        List<string> parts =
+        [
+            "PerformanceTelemetry",
+            rootActivity.OperationName
+        ];
+
+        string tags = FormatTags(rootActivity);
+        if (!string.IsNullOrEmpty(tags))
+        {
+            parts.Add(tags);
+        }
+
+        parts.Add($"{FormatMilliseconds(rootActivity.Duration)} ms");
+        return string.Join(" ", parts);
+    }
+
+    /// <summary>
+    /// Returns the already-ordered child activities for one parent span id.
+    /// </summary>
+    private static IReadOnlyList<RecordedActivity> GetChildren(IReadOnlyDictionary<ActivitySpanId, List<RecordedActivity>> childrenByParent, ActivitySpanId parentSpanId)
+    {
+        return childrenByParent.TryGetValue(parentSpanId, out List<RecordedActivity>? children)
+            ? children
+            : Array.Empty<RecordedActivity>();
+    }
+
+    /// <summary>
+    /// Computes true exclusive time for one activity by subtracting the merged coverage of its direct child spans.
+    /// </summary>
+    private static TimeSpan CalculateExclusiveDuration(RecordedActivity activity, IReadOnlyList<RecordedActivity> children)
+    {
+        if (children.Count == 0)
+        {
+            return activity.Duration;
+        }
+
+        long activityStartTicks = activity.StartTimeUtc.Ticks;
+        long activityEndTicks = activityStartTicks + activity.Duration.Ticks;
+        List<(long StartTicks, long EndTicks)> childIntervals = new(children.Count);
+        foreach (RecordedActivity child in children)
+        {
+            long childStartTicks = Math.Max(activityStartTicks, child.StartTimeUtc.Ticks);
+            long childEndTicks = Math.Min(activityEndTicks, child.StartTimeUtc.Ticks + child.Duration.Ticks);
+            if (childEndTicks > childStartTicks)
+            {
+                childIntervals.Add((childStartTicks, childEndTicks));
+            }
+        }
+
+        if (childIntervals.Count == 0)
+        {
+            return activity.Duration;
+        }
+
+        childIntervals.Sort((left, right) => left.StartTicks.CompareTo(right.StartTicks));
+        long coveredTicks = 0;
+        long currentStartTicks = childIntervals[0].StartTicks;
+        long currentEndTicks = childIntervals[0].EndTicks;
+        for (int i = 1; i < childIntervals.Count; i++)
+        {
+            (long nextStartTicks, long nextEndTicks) = childIntervals[i];
+            if (nextStartTicks <= currentEndTicks)
+            {
+                currentEndTicks = Math.Max(currentEndTicks, nextEndTicks);
+                continue;
+            }
+
+            coveredTicks += currentEndTicks - currentStartTicks;
+            currentStartTicks = nextStartTicks;
+            currentEndTicks = nextEndTicks;
+        }
+
+        coveredTicks += currentEndTicks - currentStartTicks;
+        long exclusiveTicks = Math.Max(0, activity.Duration.Ticks - coveredTicks);
+        return TimeSpan.FromTicks(exclusiveTicks);
+    }
+
+    /// <summary>
+    /// Formats the stored tag snapshot into a stable, readable key-value sequence.
+    /// </summary>
+    private static string FormatTags(RecordedActivity activity, params string[] excludedKeys)
+    {
+        HashSet<string> excluded = excludedKeys.Length == 0
+            ? []
+            : new HashSet<string>(excludedKeys, StringComparer.Ordinal);
+
+        List<string> parts = new();
+        foreach (KeyValuePair<string, object?> tag in activity.Tags)
+        {
+            if (excluded.Contains(tag.Key))
+            {
+                continue;
+            }
+
+            string formattedValue = FormatTagValue(tag.Key, tag.Value);
+            if (string.IsNullOrWhiteSpace(formattedValue))
+            {
+                continue;
+            }
+
+            parts.Add($"{tag.Key}={formattedValue}");
+        }
+
+        return string.Join(" ", parts);
+    }
+
+    /// <summary>
+    /// Formats one tag value for display, shortening path-like values and quoting values that contain whitespace.
+    /// </summary>
+    private static string FormatTagValue(string key, object? value)
+    {
+        string formattedValue = FormatRawTagValue(value);
+        if (formattedValue.Length == 0)
+        {
+            return formattedValue;
+        }
+
+        if (key.EndsWith(".path", StringComparison.Ordinal))
+        {
+            formattedValue = ShortenPath(formattedValue);
+        }
+
+        return RequiresQuotes(formattedValue)
+            ? $"\"{formattedValue.Replace("\"", "'")}\""
+            : formattedValue;
+    }
+
+    /// <summary>
+    /// Converts one raw tag value into a trimmed invariant string.
+    /// </summary>
+    private static string FormatRawTagValue(object? value)
+    {
+        return value switch
+        {
+            null => string.Empty,
+            string text => text.Replace(Environment.NewLine, " ").Trim(),
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture)?.Replace(Environment.NewLine, " ").Trim() ?? string.Empty,
+            _ => value.ToString()?.Replace(Environment.NewLine, " ").Trim() ?? string.Empty
+        };
+    }
+
+    /// <summary>
+    /// Shortens a filesystem path to the last two segments so logs stay readable while preserving useful identity.
+    /// </summary>
+    private static string ShortenPath(string path)
+    {
+        string[] segments = path
+            .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(segment => !string.IsNullOrWhiteSpace(segment))
+            .ToArray();
+        if (segments.Length <= 2)
+        {
+            return path;
+        }
+
+        return $"...\\{string.Join('\\', segments.Skip(segments.Length - 2))}";
+    }
+
+    /// <summary>
+    /// Returns whether a formatted value should be quoted to keep multi-word content readable in the summary line.
+    /// </summary>
+    private static bool RequiresQuotes(string value)
+    {
+        return value.Any(ch => char.IsWhiteSpace(ch) || ch == '=' || ch == '"');
+    }
+
+    /// <summary>
+    /// Formats one duration as rounded milliseconds for compact tree output.
+    /// </summary>
+    private static string FormatMilliseconds(TimeSpan duration)
+    {
+        return duration.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -147,8 +342,8 @@ public static class PerformanceTelemetryListener
     private sealed class RecordedActivity
     {
         /// <summary>
-        /// Captures the completed activity's identifying and timing information.
-        /// </summary>
+         /// Captures the completed activity's identifying and timing information.
+         /// </summary>
         public RecordedActivity(Activity activity)
         {
             OperationName = activity.OperationName;
@@ -156,7 +351,7 @@ public static class PerformanceTelemetryListener
             Duration = activity.Duration;
             SpanId = activity.SpanId;
             ParentSpanId = activity.ParentSpanId;
-            Description = BuildDescription(activity);
+            Tags = activity.TagObjects.ToArray();
         }
 
         /// <summary>
@@ -185,72 +380,9 @@ public static class PerformanceTelemetryListener
         public ActivitySpanId ParentSpanId { get; }
 
         /// <summary>
-        /// Gets the concise, formatted tag summary shown next to this activity in the shell log output.
-        /// </summary>
-        public string Description { get; }
+         /// Gets the raw tag snapshot captured from the stopped activity.
+         /// </summary>
+        public IReadOnlyList<KeyValuePair<string, object?>> Tags { get; }
 
-        /// <summary>
-        /// Builds one compact description from the tags most useful for debugging the current telemetry path.
-        /// </summary>
-        private static string BuildDescription(Activity activity)
-        {
-            List<string> parts = new();
-
-            string? operationName = activity.GetTagItem("operation.name")?.ToString();
-            string? operationId = activity.GetTagItem("operation.id")?.ToString();
-            string? targetType = activity.GetTagItem("target.type")?.ToString();
-            string? optionSetType = activity.GetTagItem("option_set.type")?.ToString();
-            string? count = activity.GetTagItem("count")?.ToString();
-            string? cacheHit = activity.GetTagItem("cache.hit")?.ToString();
-            string? hostProjectPath = activity.GetTagItem("host_project.path")?.ToString();
-            string? engineDisplayName = activity.GetTagItem("engine.name")?.ToString();
-            string? descriptorPath = activity.GetTagItem("descriptor.path")?.ToString();
-
-            if (!string.IsNullOrWhiteSpace(operationName))
-            {
-                parts.Add(operationName);
-            }
-            else if (!string.IsNullOrWhiteSpace(operationId))
-            {
-                parts.Add(operationId);
-            }
-
-            if (!string.IsNullOrWhiteSpace(targetType))
-            {
-                parts.Add($"target={targetType}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(optionSetType))
-            {
-                parts.Add($"option={optionSetType}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(count))
-            {
-                parts.Add($"count={count}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(cacheHit))
-            {
-                parts.Add($"cache={cacheHit}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(hostProjectPath))
-            {
-                parts.Add($"host={hostProjectPath}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(engineDisplayName))
-            {
-                parts.Add($"engine={engineDisplayName}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(descriptorPath))
-            {
-                parts.Add($"path={descriptorPath}");
-            }
-
-            return parts.Count == 0 ? string.Empty : string.Join(" ", parts);
-        }
     }
 }
