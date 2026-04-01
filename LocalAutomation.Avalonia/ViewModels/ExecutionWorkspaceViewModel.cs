@@ -395,13 +395,21 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private async Task WatchExecutionCompletionAsync(RuntimeWorkspaceTabViewModel runtimeTab)
     {
         RuntimeExecutionSession session = runtimeTab.Session!;
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionWorkspace.WatchExecutionCompletion")
+            .SetTag("operation.name", session.OperationName)
+            .SetTag("target.name", session.TargetName);
         while (session.IsRunning)
         {
             await Task.Delay(100);
         }
 
+        activity.SetTag("session.outcome", session.Outcome.ToString());
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            using PerformanceActivityScope uiActivity = PerformanceTelemetry.StartActivity("ExecutionWorkspace.ApplyCompletionState")
+                .SetTag("operation.name", session.OperationName)
+                .SetTag("target.name", session.TargetName)
+                .SetTag("session.outcome", session.Outcome.ToString());
             session.FinishedAt = DateTimeOffset.Now;
             runtimeTab.NotifyStateChanged();
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))

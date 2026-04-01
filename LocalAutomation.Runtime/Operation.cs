@@ -173,7 +173,15 @@ public abstract class Operation
     /// </summary>
     protected async Task<OperationResult> RunChildOperationAsync(Operation childOperation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken, bool required = false, string? failureMessage = null)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Operation.RunChildOperationAsync")
+            .SetTag("parent.operation", OperationName)
+            .SetTag("child.operation", childOperation.OperationName)
+            .SetTag("required", required)
+            .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
+
         OperationResult result = await Runner.RunChildOperation(childOperation, operationParameters, logger, cancellationToken);
+        activity.SetTag("result.outcome", result.Outcome.ToString())
+            .SetTag("result.success", result.Success);
         if (!required || result.Success)
         {
             return result;
@@ -181,9 +189,12 @@ public abstract class Operation
 
         if (result.Outcome == RunOutcome.Cancelled)
         {
+            activity.SetTag("result.transition", "ThrowCancelled");
             throw new OperationCanceledException(cancellationToken);
         }
 
+        activity.SetTag("result.transition", "ThrowFailure")
+            .SetTag("failure.message", failureMessage ?? $"Child operation '{childOperation.OperationName}' failed.");
         throw new Exception(failureMessage ?? $"Child operation '{childOperation.OperationName}' failed.");
     }
 

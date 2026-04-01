@@ -548,13 +548,20 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Running Clang compile check");
             DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.RunClangCompileCheck")
+                .SetTag("plugin.name", state.SourcePlugin.Name)
+                .SetTag("engine.version", state.Engine.Version.ToString());
             Project exampleProject = state.GetRequiredExampleProject();
             Plugin builtPlugin = state.GetRequiredBuiltPlugin();
             Plugin exampleProjectPlugin = exampleProject.Plugins.SingleOrDefault(plugin => plugin.Name == builtPlugin.Name);
             if (exampleProjectPlugin == null)
             {
+                activity.SetTag("plugin.present_in_example", false);
                 throw new Exception("Could not find packaged plugin inside example project for Clang validation");
             }
+
+            activity.SetTag("plugin.present_in_example", true)
+                .SetTag("example.plugin.path", exampleProjectPlugin.PluginPath);
 
             UnrealOperationParameters clangBuildParams = new()
             {
@@ -572,6 +579,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             });
 
             await RunChildOperationAsync<BuildPlugin>(clangBuildParams, context.Logger, context.CancellationToken, required: true, failureMessage: "Clang compile check failed");
+            activity.SetTag("child.result", "Succeeded");
         }
 
         /// <summary>

@@ -81,14 +81,23 @@ public sealed class ExecutionRuntimeService
     /// </summary>
     private static async Task RunAsync(Runner runner, LocalAutomation.Runtime.ExecutionSession session, LocalAutomation.Runtime.ExecutionPlan plan, ILogger previousLogger)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionRuntimeService.RunAsync")
+            .SetTag("operation.name", session.OperationName)
+            .SetTag("target.name", session.TargetName)
+            .SetTag("plan.id", plan.Id.Value)
+            .SetTag("plan.task.count", plan.Tasks.Count);
         try
         {
             OperationResult result = await runner.Run(plan);
+            activity.SetTag("runner.result", result.Outcome.ToString());
             session.Outcome = result.Outcome;
+            activity.SetTag("session.outcome", session.Outcome.ToString());
         }
         catch (OperationCanceledException)
         {
             session.Outcome = RuntimeExecutionRunOutcome.Cancelled;
+            activity.SetTag("runner.result", RuntimeExecutionRunOutcome.Cancelled.ToString())
+                .SetTag("session.outcome", session.Outcome.ToString());
         }
         catch (Exception ex)
         {
@@ -100,10 +109,14 @@ public sealed class ExecutionRuntimeService
             });
 
             session.Outcome = RuntimeExecutionRunOutcome.Failed;
+            activity.SetTag("runner.result", "Exception")
+                .SetTag("session.outcome", session.Outcome.ToString())
+                .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name);
         }
         finally
         {
             session.IsRunning = false;
+            activity.SetTag("session.is_running", session.IsRunning);
             ApplicationLogger.Logger = previousLogger;
         }
     }

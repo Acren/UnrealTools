@@ -104,11 +104,19 @@ public sealed class Runner
             return OperationResult.Failed();
         }
 
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Runner.Run")
+            .SetTag("operation.name", Operation.OperationName)
+            .SetTag("plan.id", plan.Id.Value)
+            .SetTag("plan.task.count", plan.Tasks.Count);
         using IDisposable operationTimingScope = eventLogger.BeginSection(Operation.OperationName);
         _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, maxParallelism: 1).ExecuteAsync(plan, _cancellationTokenSource.Token));
         try
         {
             OperationResult result = await _currentTask.ConfigureAwait(false);
+            activity.SetTag("scheduler.result", result.Outcome.ToString());
+            using PerformanceActivityScope finalizeActivity = PerformanceTelemetry.StartActivity("Runner.Run.FinalizeOutcome")
+                .SetTag("operation.name", Operation.OperationName)
+                .SetTag("incoming.result", result.Outcome.ToString());
             return FinalizeOutcome(result, eventLogger);
         }
         finally
