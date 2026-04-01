@@ -59,22 +59,22 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Children(steps => steps
                             .Task("Prepare")
                                 .Describe("Resolve the installed plugin and extract the matching example project archive")
-                                .Then(context => PrepareVerificationState(context, currentEngineVersion))
+                                .Run(context => PrepareVerificationState(context, currentEngineVersion))
                             .Task("Test Editor")
                                 .Describe("Run the editor verification pass")
                                 .When(automationOptions.RunTests, "Run Tests is off.")
-                                .Then(TestEditorAsync)
+                                .Run(TestEditorAsync)
                             .Task("Test Standalone")
                                 .Describe("Run the standalone verification pass")
                                 .When(automationOptions.RunTests, "Run Tests is off.")
-                                .Then(TestStandaloneAsync)
+                                .Run(TestStandaloneAsync)
                             .Task("Package Project")
                                 .Describe("Package the example project with the installed plugin")
-                                .Then(PackageProjectAsync)
+                                .Run(PackageProjectAsync)
                             .Task("Test Package")
                                 .Describe("Run the packaged project verification pass")
                                 .When(automationOptions.RunTests, "Run Tests is off.")
-                                .Then(TestPackageAsync));
+                                .Run(TestPackageAsync));
                 }
             });
         }

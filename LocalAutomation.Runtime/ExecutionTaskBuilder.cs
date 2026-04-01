@@ -67,9 +67,9 @@ public sealed class ExecutionTaskBuilder
     }
 
     /// <summary>
-    /// Attaches an async callback to the task.
+    /// Attaches the async execution body for this task.
     /// </summary>
-    public ExecutionTaskBuilder Then(Func<ExecutionTaskContext, Task> executeAsync)
+    public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task> executeAsync)
     {
         if (executeAsync == null)
         {
@@ -85,9 +85,9 @@ public sealed class ExecutionTaskBuilder
     }
 
     /// <summary>
-    /// Attaches an async callback that returns an explicit operation result.
+    /// Attaches the async execution body for this task when the callback needs to return an explicit operation result.
     /// </summary>
-    public ExecutionTaskBuilder Then(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
+    public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
         _owner.AttachCallback(_definition, executeAsync);
         return this;
@@ -104,9 +104,9 @@ public sealed class ExecutionTaskBuilder
     }
 
     /// <summary>
-    /// Attaches a parameterless async callback to the task.
+    /// Attaches the async execution body for this task when no execution context is needed.
     /// </summary>
-    public ExecutionTaskBuilder Then(Func<Task> executeAsync)
+    public ExecutionTaskBuilder Run(Func<Task> executeAsync)
     {
         if (executeAsync == null)
         {

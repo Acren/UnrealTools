@@ -265,7 +265,7 @@ public abstract class Operation
      /// </summary>
     protected virtual void DescribeExecutionPlan(OperationParameters operationParameters, ExecutionTaskBuilder root)
     {
-        root.Then(ExecuteLeafAsync);
+        root.Run(ExecuteLeafAsync);
     }
 
     /// <summary>
