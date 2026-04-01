@@ -171,11 +171,30 @@ public sealed class Runner
     /// </summary>
     private static async Task<OperationResult> ExecuteWithLogger(Operation operation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken)
     {
-        EventStreamLogger eventLogger = CreateAggregatingLogger(logger, null, null, null);
+        ILogger opaqueLogger = CreateOpaqueChildLogger(logger);
+        List<string> warnings = new();
+        List<string> errors = new();
+        EventStreamLogger eventLogger = CreateAggregatingLogger(
+            opaqueLogger,
+            null,
+            null,
+            (level, output) =>
+            {
+                if (level >= LogLevel.Error)
+                {
+                    errors.Add(output);
+                }
+                else if (level == LogLevel.Warning)
+                {
+                    warnings.Add(output);
+                }
+
+                opaqueLogger.Log(level, output);
+            });
         string? requirementsError = operation.CheckRequirementsSatisfied(operationParameters);
         if (requirementsError != null)
         {
-            logger.LogError(requirementsError);
+            opaqueLogger.LogError(requirementsError);
             return OperationResult.Failed();
         }
 
@@ -186,7 +205,7 @@ public sealed class Runner
         OperationResult result = await new ExecutionPlanScheduler(eventLogger, maxParallelism: 1)
             .ExecuteAsync(plan, cancellationToken)
             .ConfigureAwait(false);
-        return FinalizeOutcome(operation, result, eventLogger, logger, 0, 0);
+        return FinalizeOutcome(operation, result, eventLogger, opaqueLogger, warnings.Count, errors.Count);
     }
 
     /// <summary>
@@ -303,6 +322,60 @@ public sealed class Runner
         }
 
         return eventLogger;
+    }
+
+    /// <summary>
+    /// Creates a logger for opaque child-operation execution that preserves the current visible task scope for output
+    /// attribution while preventing nested child plans from projecting their own internal task identities into the outer
+    /// session tree.
+    /// </summary>
+    private static ILogger CreateOpaqueChildLogger(ILogger logger)
+    {
+        return logger is IExecutionTaskScope taskScope && taskScope.CurrentTaskId != null
+            ? new OpaqueChildLogger(logger, taskScope.CurrentTaskId.Value)
+            : logger;
+    }
+
+    /// <summary>
+    /// Forwards all logging to the parent task-scoped logger while withholding task-logger-factory and task-state-sink
+    /// capabilities so opaque child plans execute under the current visible task instead of creating a detached task
+    /// tree in the outer session.
+    /// </summary>
+    private sealed class OpaqueChildLogger : ILogger, IExecutionTaskScope
+    {
+        private readonly ILogger _inner;
+
+        public OpaqueChildLogger(ILogger inner, ExecutionTaskId currentTaskId)
+        {
+            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+            CurrentTaskId = currentTaskId;
+        }
+
+        public ExecutionTaskId? CurrentTaskId { get; }
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            _inner.Log(logLevel, eventId, state, exception, formatter);
+        }
+
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return _inner.IsEnabled(logLevel);
+        }
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull
+        {
+            return _inner.BeginScope(state) ?? NullScope.Instance;
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static NullScope Instance { get; } = new();
+
+            public void Dispose()
+            {
+            }
+        }
     }
 
     /// <summary>

@@ -107,6 +107,9 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             if (value != null)
             {
                 RebuildTabSelectedLogEntries(value);
+                // The buffered log streams remain the source of truth even while a tab is hidden. We can discard any
+                // queued UI rows for non-selected tabs because selecting a tab always rebuilds the visible pane from the
+                // full buffered stream instead of relying on incremental rows that happened to stay queued.
                 foreach (RuntimeWorkspaceTabViewModel tab in RuntimeTabs.Where(tab => !ReferenceEquals(tab, value) && _attachedLogStreams.ContainsKey(tab)).ToList())
                 {
                     RemovePendingLogEntries(tab);
@@ -509,15 +512,9 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     {
         _attachedLogStreams[runtimeTab] = logStream;
         RebuildTabSelectedLogEntries(runtimeTab);
-        logStream.EntryAdded += entry =>
-        {
-            if (!ReferenceEquals(SelectedRuntimeTab, runtimeTab))
-            {
-                return;
-            }
-
-            EnqueuePendingLogEntry(runtimeTab, CreateLogEntryViewModel(entry));
-        };
+        // Always capture log entries regardless of tab visibility. Visibility only controls when we rebuild a tab's
+        // visible pane, never whether entries are collected into that tab's buffered source stream.
+        logStream.EntryAdded += entry => EnqueuePendingLogEntry(runtimeTab, CreateLogEntryViewModel(entry));
     }
 
     /// <summary>
@@ -654,6 +651,9 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         bool selectedTabChanged = false;
         foreach (RuntimeWorkspaceTabViewModel runtimeTab in tabsToRefresh)
         {
+            // Hidden tabs still collect entries, but only the selected tab pays the cost of rebuilding its visible
+            // pane during live streaming. When a hidden tab becomes selected, the pane is rebuilt from the buffered
+            // stream so no captured output depends on prior visibility.
             if (!ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
                 continue;

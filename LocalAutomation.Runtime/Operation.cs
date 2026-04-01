@@ -168,8 +168,9 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Executes one nested child operation through the framework-owned plan pipeline while preserving the caller's logger
-    /// and cancellation token.
+    /// Executes one nested child operation opaquely beneath the current visible task while preserving the caller's logger
+    /// and cancellation token. Use authored child-plan expansion when the child work must appear as visible descendant
+    /// tasks in the session tree.
     /// </summary>
     protected async Task<OperationResult> RunChildOperationAsync(Operation childOperation, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken, bool required = false, string? failureMessage = null)
     {

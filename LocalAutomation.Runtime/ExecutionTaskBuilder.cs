@@ -145,12 +145,4 @@ public sealed class ExecutionTaskBuilder
         return this;
     }
 
-    /// <summary>
-    /// Imports the tasks from one authored sub-plan beneath this task.
-    /// </summary>
-    public ExecutionTaskBuilder Import(ExecutionPlan plan)
-    {
-        _owner.ImportPlan(plan, Handle);
-        return this;
-    }
 }

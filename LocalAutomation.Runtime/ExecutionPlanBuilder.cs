@@ -139,40 +139,6 @@ public sealed class ExecutionPlanBuilder
         definition.OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
     }
 
-    internal void ImportPlan(ExecutionPlan plan, ExecutionTaskHandle parent)
-    {
-        if (plan == null)
-        {
-            throw new ArgumentNullException(nameof(plan));
-        }
-
-        Dictionary<ExecutionTaskId, ExecutionTaskId> remappedIds = new();
-        Dictionary<ExecutionTaskId, PlanItemDefinition> importedDefinitions = new();
-        foreach (ExecutionPlanTask task in plan.Tasks)
-        {
-            ExecutionTaskHandle targetParent = task.ParentId is ExecutionTaskId parentId
-                ? new ExecutionTaskHandle(remappedIds[parentId])
-                : parent;
-            PlanItemDefinition importedDefinition = CreateItem(GenerateTaskId(), task.Title, task.Description, targetParent.IsValid ? targetParent.Id : null);
-            importedDefinition.Enabled = task.Enabled;
-            importedDefinition.DisabledReason = task.DisabledReason;
-            importedDefinition.OperationParameters = task.OperationParameters;
-            importedDefinition.ExecuteAsync = task.ExecuteAsync;
-            _items.Add(importedDefinition);
-            remappedIds[task.Id] = importedDefinition.Id;
-            importedDefinitions[task.Id] = importedDefinition;
-        }
-
-        foreach (ExecutionPlanTask task in plan.Tasks)
-        {
-            PlanItemDefinition importedDefinition = importedDefinitions[task.Id];
-            foreach (ExecutionTaskId dependencyId in task.DependsOn)
-            {
-                importedDefinition.DependencyIds.Add(remappedIds[dependencyId]);
-            }
-        }
-    }
-
     internal ExecutionTaskHandle FinalizeTask(PlanItemDefinition definition)
     {
         return new ExecutionTaskHandle(definition.Id);
