@@ -33,15 +33,19 @@ public partial class ExecutionGraphCanvas : UserControl
     private const double ViewportRecoveryMargin = 40;
 
     private Canvas? _graphCanvas;
+    private Canvas? _measurementCanvas;
     private Border? _viewportHost;
     private Border? _graphContentRoot;
     private ExecutionGraphViewModel? _observedGraph;
     private readonly Dictionary<RuntimeExecutionTaskId, Control> _renderedNodeControls = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, Control> _measurementNodeControls = new();
     private bool _isPanning;
     private bool _pendingRender;
     private string _pendingRenderTrigger = "Deferred";
+    private bool _measurementRefreshPending;
+    private string _pendingMeasurementTrigger = "Deferred";
     private bool _pendingViewportAdjustment;
-    private bool _measurementRenderPending;
+    private bool _suppressGraphNotifications;
     private Point _lastPanPoint;
     private double _zoom = DefaultZoom;
     private double _panX;
@@ -171,6 +175,7 @@ public partial class ExecutionGraphCanvas : UserControl
         _viewportHost = this.FindControl<Border>("ViewportHost");
         _graphContentRoot = this.FindControl<Border>("GraphContentRoot");
         _graphCanvas = this.FindControl<Canvas>("GraphCanvas");
+        _measurementCanvas = this.FindControl<Canvas>("MeasurementCanvas");
         if (_viewportHost != null)
         {
             _viewportHost.SizeChanged += HandleViewportHostSizeChanged;
@@ -231,6 +236,14 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void HandleGraphCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        /* Graph layout can internally relayout once after detached control measurement. That path already culminates in a
+           final explicit render, so the observer should ignore intermediate collection notifications raised inside the
+           same render transaction. */
+        if (_suppressGraphNotifications)
+        {
+            return;
+        }
+
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CollectionChanged")
             .SetTag("source", ReferenceEquals(sender, _observedGraph?.Nodes) ? "Nodes" : ReferenceEquals(sender, _observedGraph?.Edges) ? "Edges" : string.Empty)
             .SetTag("action", e.Action.ToString())
@@ -252,6 +265,14 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void HandleGraphPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        /* The pre-measure path mutates graph layout state before the visible render occurs. Ignore those intermediate
+           notifications so the canvas renders once from the final measured layout instead of recursively re-entering.
+        */
+        if (_suppressGraphNotifications)
+        {
+            return;
+        }
+
         if (string.Equals(e.PropertyName, nameof(ExecutionGraphViewModel.IsUpdatingGraph), StringComparison.Ordinal))
         {
             if (_observedGraph?.IsUpdatingGraph == false && _pendingRender)
@@ -308,19 +329,70 @@ public partial class ExecutionGraphCanvas : UserControl
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RenderGraph")
             .SetTag("trigger", trigger);
 
-        if (_graphCanvas == null)
+        if (_graphCanvas == null || _measurementCanvas == null)
         {
             activity.SetTag("render.skipped", "MissingCanvas");
             return;
         }
 
-        _graphCanvas.Children.Clear();
-        _renderedNodeControls.Clear();
         if (_observedGraph == null)
         {
             activity.SetTag("render.skipped", "MissingGraph");
             return;
         }
+
+        if (_measurementRefreshPending)
+        {
+            activity.SetTag("render.deferred", "MeasurementPending");
+            return;
+        }
+
+        BeginMeasuredRefresh(trigger);
+    }
+
+    /// <summary>
+    /// Populates the hidden attached measurement host and posts one completion callback after Avalonia has had a render
+    /// turn to realize natural control sizes.
+    /// </summary>
+    private void BeginMeasuredRefresh(string trigger)
+    {
+        if (_observedGraph == null || _measurementCanvas == null)
+        {
+            return;
+        }
+
+        _measurementRefreshPending = true;
+        _pendingMeasurementTrigger = trigger;
+        PopulateMeasurementHost(_observedGraph, _measurementCanvas);
+        Dispatcher.UIThread.Post(CompleteMeasuredRefresh, DispatcherPriority.Render);
+    }
+
+    /// <summary>
+    /// Finalizes one graph refresh by reading widths from the attached hidden controls, relaying out the graph, clearing
+    /// the measurement host, and then rebuilding the visible canvas once from the settled bounds.
+    /// </summary>
+    private void CompleteMeasuredRefresh()
+    {
+        if (!_measurementRefreshPending)
+        {
+            return;
+        }
+
+        _measurementRefreshPending = false;
+        if (_observedGraph == null || _graphCanvas == null || _measurementCanvas == null)
+        {
+            return;
+        }
+
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CompleteMeasuredRefresh")
+            .SetTag("trigger", _pendingMeasurementTrigger);
+
+        bool widthsChanged = ApplyMeasuredNodeWidths(_observedGraph);
+        activity.SetTag("widths.changed", widthsChanged);
+        ClearMeasurementHost(_measurementCanvas);
+
+        _graphCanvas.Children.Clear();
+        _renderedNodeControls.Clear();
 
         int groupCount = _observedGraph.Nodes.Count(node => node.IsContainer);
         int leafCount = _observedGraph.Nodes.Count - groupCount;
@@ -362,69 +434,99 @@ public partial class ExecutionGraphCanvas : UserControl
 
         ApplyViewportTransform();
         activity.SetTag("render.child.count", _graphCanvas.Children.Count);
-
-        if (!_measurementRenderPending)
-        {
-            _measurementRenderPending = true;
-            Dispatcher.UIThread.Post(() => ApplyMeasuredNodeLayout(trigger), DispatcherPriority.Render);
-        }
+        ApplyPendingViewportAdjustment();
     }
 
     /// <summary>
-    /// Re-measures the actual rendered controls after Avalonia layout so graph bounds can follow real on-screen widths
-    /// instead of detached control guesses.
-     /// </summary>
-    private void ApplyMeasuredNodeLayout(string trigger)
-    {
-        _measurementRenderPending = false;
-        if (_observedGraph == null || _renderedNodeControls.Count == 0)
-        {
-            return;
-        }
-
-        bool anyWidthChanged = UpdateMeasuredNodeWidths(_observedGraph);
-        if (!anyWidthChanged)
-        {
-            return;
-        }
-
-        _observedGraph.Relayout();
-        RenderGraph(trigger: $"MeasuredActual:{trigger}");
-    }
-
-    /// <summary>
-    /// Reads the actual rendered widths from the graph controls and updates the graph VM cache when those widths change.
+    /// Populates the hidden attached host with the current node controls so Avalonia can compute natural widths using the
+    /// same visual tree and bindings as the final visible graph.
     /// </summary>
-    private bool UpdateMeasuredNodeWidths(ExecutionGraphViewModel graph)
+    private void PopulateMeasurementHost(ExecutionGraphViewModel graph, Canvas measurementCanvas)
+    {
+        measurementCanvas.Children.Clear();
+        _measurementNodeControls.Clear();
+
+        foreach (ExecutionNodeViewModel node in graph.Nodes)
+        {
+            Control control = node.IsContainer
+                ? CreateGroupControl(node, useMeasuredWidth: true)
+                : CreateTaskControl(node);
+            _measurementNodeControls[node.Id] = control;
+            measurementCanvas.Children.Add(control);
+        }
+    }
+
+    /// <summary>
+    /// Applies measured widths from the attached hidden controls and relays out the graph before the visible canvas is
+    /// rebuilt.
+    /// </summary>
+    private bool ApplyMeasuredNodeWidths(ExecutionGraphViewModel graph)
     {
         bool anyWidthChanged = false;
         foreach (ExecutionNodeViewModel node in graph.Nodes)
         {
-            if (!_renderedNodeControls.TryGetValue(node.Id, out Control? control))
+            if (!_measurementNodeControls.TryGetValue(node.Id, out Control? control))
             {
                 continue;
             }
 
-            double measuredWidth = control is ExecutionGroupContainer groupControl
-                ? groupControl.GetHeaderContentWidth()
-                : Math.Max(1, control.Bounds.Width);
+            double measuredWidth = MeasureNodeWidth(control);
             if (graph.SetMeasuredNodeWidth(node.Id, measuredWidth))
             {
                 anyWidthChanged = true;
             }
         }
 
-        return anyWidthChanged;
+        if (!anyWidthChanged)
+        {
+            return false;
+        }
+
+        _suppressGraphNotifications = true;
+        try
+        {
+            graph.Relayout();
+        }
+        finally
+        {
+            _suppressGraphNotifications = false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Clears the hidden measurement host once all widths have been captured so detached controls do not linger in the
+    /// visual tree between graph refreshes.
+    /// </summary>
+    private void ClearMeasurementHost(Canvas measurementCanvas)
+    {
+        measurementCanvas.Children.Clear();
+        _measurementNodeControls.Clear();
+    }
+
+    /// <summary>
+    /// Reads the natural width of one attached control from the hidden measurement host so final graph layout matches the
+    /// actual visual width of the corresponding visible node.
+    /// </summary>
+    private static double MeasureNodeWidth(Control control)
+    {
+        if (control is ExecutionGroupContainer groupControl)
+        {
+            return groupControl.GetHeaderContentWidth();
+        }
+
+        return Math.Max(1, control.Bounds.Width);
     }
 
     /// <summary>
      /// Creates one XAML-backed group control and positions it on the graph canvas.
-     /// </summary>
-    private Control CreateGroupControl(ExecutionNodeViewModel group)
+      /// </summary>
+    private Control CreateGroupControl(ExecutionNodeViewModel group, bool useMeasuredWidth = false)
     {
         ExecutionGroupContainer container = new()
         {
-            GroupWidth = group.Width,
+            GroupWidth = useMeasuredWidth ? double.NaN : group.Width,
             GroupHeight = group.Height,
             HeaderHeight = ExecutionGraphViewModel.GroupHeaderHeight,
             DataContext = group,
