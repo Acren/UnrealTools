@@ -7,8 +7,9 @@ using LocalAutomation.Core;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Builds a previewable execution plan and, when callbacks are attached, the scheduled work items that execute it.
-/// Operations use typed task handles from this builder instead of handwritten string identifiers.
+/// Builds a previewable execution plan and lowers authored tasks into container nodes plus explicit child work items.
+/// Authored declaration order is preserved, while serial ordering is expressed through dependencies instead of special
+/// scheduler modes.
 /// </summary>
 public sealed class ExecutionPlanBuilder
 {
@@ -16,7 +17,6 @@ public sealed class ExecutionPlanBuilder
     private readonly string _title;
     private readonly List<PlanItemDefinition> _items = new();
     private readonly Func<Operation, OperationParameters, ExecutionPlan?> _buildChildPlan;
-    // The builder increments this monotonically so auto-generated ids stay deterministic within one plan build.
     private int _nextSequence = 0;
 
     internal OperationParameters OperationParameters { get; private set; } = null!;
@@ -34,8 +34,8 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Declares one task in the plan and returns its fluent builder. Exactly one root task is allowed; additional tasks
-    /// must be declared beneath that root.
+    /// Declares one authored task container in the plan and returns its fluent builder. Exactly one root task is allowed;
+    /// additional tasks must be declared beneath that root.
     /// </summary>
     public ExecutionTaskBuilder Task(string title, string? description = null, ExecutionTaskHandle parent = default)
     {
@@ -46,8 +46,7 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Opening a root-level sibling scope is no longer supported because execution plans now require exactly one real
-    /// root task. Declare the root with Task(...), then call root.Children(...).
+    /// Root-level sibling scopes are not supported because plans still require one real root container task.
     /// </summary>
     public void Children(Action<ExecutionTaskScopeBuilder> build)
     {
@@ -61,6 +60,7 @@ public sealed class ExecutionPlanBuilder
     public ExecutionPlan BuildPlan()
     {
         ExpandChildOperations();
+        LowerImplicitCallbackTasks();
         List<ExecutionTask> tasks = _items
             .Select(item => new ExecutionTask(
                 id: item.Id,
@@ -71,7 +71,10 @@ public sealed class ExecutionPlanBuilder
                 enabled: item.Enabled,
                 disabledReason: item.DisabledReason,
                 operationParameters: item.OperationParameters,
-                executeAsync: item.ExecuteAsync))
+                executeAsync: item.ExecuteAsync,
+                result: null,
+                isCallbackTask: item.IsCallbackTask,
+                callbackOwnerTaskId: item.CallbackOwnerTaskId))
             .ToList();
         List<ExecutionDependency> dependencies = _items
             .SelectMany(item => item.DependencyIds.Select(dependencyId => new ExecutionDependency(dependencyId, item.Id)))
@@ -118,14 +121,23 @@ public sealed class ExecutionPlanBuilder
         return handle.Id;
     }
 
+    /// <summary>
+    /// Records one authored callback declaration at its exact call-site order so lowering can materialize a visible
+    /// `.Callback` child task without losing authored ordering relative to other child content.
+    /// </summary>
     internal void AttachCallback(PlanItemDefinition definition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
-        definition.ExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
+        if (definition.CallbackEntry != null)
+        {
+            throw new InvalidOperationException("Execution tasks cannot declare more than one direct callback.");
+        }
+
+        definition.CallbackEntry = new CallbackPlanEntry(executeAsync ?? throw new ArgumentNullException(nameof(executeAsync)), NextOrderIndex());
     }
 
     internal void AttachChildOperation(PlanItemDefinition definition, Type operationType, Func<OperationParameters> createParameters)
     {
-        if (definition.ExecuteAsync != null)
+        if (definition.CallbackEntry != null)
         {
             throw new InvalidOperationException("Execution tasks cannot define both a direct callback and a child operation expansion.");
         }
@@ -142,6 +154,19 @@ public sealed class ExecutionPlanBuilder
     internal ExecutionTaskHandle FinalizeTask(PlanItemDefinition definition)
     {
         return new ExecutionTaskHandle(definition.Id);
+    }
+
+    /// <summary>
+    /// Registers the declaration order of one child scope beneath the provided parent task so later callback lowering can
+    /// preserve the authored order between callbacks and child groups.
+    /// </summary>
+    internal ChildScopePlanEntry RegisterChildScopeEntry(ExecutionTaskHandle parent)
+    {
+        ExecutionTaskId parentId = GetTaskId(parent);
+        PlanItemDefinition definition = _items.Single(item => item.Id == parentId);
+        ChildScopePlanEntry entry = new(NextOrderIndex());
+        definition.ChildScopeEntries.Add(entry);
+        return entry;
     }
 
     private void ValidateParent(ExecutionTaskHandle parent)
@@ -194,9 +219,60 @@ public sealed class ExecutionPlanBuilder
                 importedDefinition.DisabledReason = childTask.DisabledReason;
                 importedDefinition.OperationParameters = childTask.OperationParameters;
                 importedDefinition.ExecuteAsync = childTask.ExecuteAsync;
+                importedDefinition.IsCallbackTask = childTask.IsCallbackTask;
+                importedDefinition.CallbackOwnerTaskId = childTask.CallbackOwnerTaskId;
                 importedDefinition.DependencyIds.AddRange(childTask.DependsOn);
                 _items.Add(importedDefinition);
             }
+        }
+    }
+
+    /// <summary>
+    /// Lowers direct authored callbacks into visible `.Callback` child tasks that participate in the same normal child
+    /// graph as every other child task. Declaration order is preserved by inserting dependencies from earlier child-scope
+    /// groups to later callback children when needed.
+    /// </summary>
+    private void LowerImplicitCallbackTasks()
+    {
+        List<PlanItemDefinition> definitionsWithCallbacks = _items
+            .Where(item => item.CallbackEntry != null)
+            .ToList();
+
+        foreach (PlanItemDefinition definition in definitionsWithCallbacks)
+        {
+            CallbackPlanEntry callbackEntry = definition.CallbackEntry!;
+            ExecutionTaskId callbackTaskId = GenerateTaskId();
+            PlanItemDefinition callbackDefinition = CreateItem(callbackTaskId, definition.Title + ".Callback", definition.Description, definition.Id);
+            callbackDefinition.Enabled = definition.Enabled;
+            callbackDefinition.DisabledReason = definition.DisabledReason;
+            callbackDefinition.OperationParameters = definition.OperationParameters;
+            callbackDefinition.ExecuteAsync = callbackEntry.ExecuteAsync;
+            callbackDefinition.IsCallbackTask = true;
+            callbackDefinition.CallbackOwnerTaskId = definition.Id;
+            callbackDefinition.DependencyIds.AddRange(definition.DependencyIds);
+
+            /* Child scope declarations remain independent by default, so the callback only depends on the trailing task
+               from child scopes that were authored earlier than the callback declaration point. */
+            foreach (ChildScopePlanEntry childScopeEntry in definition.ChildScopeEntries.Where(entry => entry.Order < callbackEntry.Order))
+            {
+                if (childScopeEntry.LastTaskId != null && !callbackDefinition.DependencyIds.Contains(childScopeEntry.LastTaskId.Value))
+                {
+                    callbackDefinition.DependencyIds.Add(childScopeEntry.LastTaskId.Value);
+                }
+            }
+
+            foreach (ChildScopePlanEntry childScopeEntry in definition.ChildScopeEntries.Where(entry => entry.Order > callbackEntry.Order))
+            {
+                if (childScopeEntry.FirstTaskId != null && !childScopeEntry.FirstDefinition!.DependencyIds.Contains(callbackTaskId))
+                {
+                    childScopeEntry.FirstDefinition!.DependencyIds.Add(callbackTaskId);
+                }
+            }
+
+            _items.Add(callbackDefinition);
+            definition.ExecuteAsync = null;
+            definition.CallbackEntry = null;
+            definition.DependencyIds.Clear();
         }
     }
 
@@ -208,6 +284,13 @@ public sealed class ExecutionPlanBuilder
         _nextSequence += 1;
         return ExecutionIdentifierFactory.CreateTaskId(_planId, "task", _nextSequence.ToString("D6"));
     }
+
+    private int NextOrderIndex()
+    {
+        _nextSequence += 1;
+        return _nextSequence;
+    }
+
     internal sealed class PlanItemDefinition
     {
         public ExecutionTaskId Id { get; set; }
@@ -228,9 +311,46 @@ public sealed class ExecutionPlanBuilder
 
         public Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync { get; set; }
 
+        public CallbackPlanEntry? CallbackEntry { get; set; }
+
+        public List<ChildScopePlanEntry> ChildScopeEntries { get; } = new();
+
         public Type? ChildOperationType { get; set; }
 
         public Func<OperationParameters>? CreateChildParameters { get; set; }
+
+        public bool IsCallbackTask { get; set; }
+
+        public ExecutionTaskId? CallbackOwnerTaskId { get; set; }
+    }
+
+    internal sealed class CallbackPlanEntry
+    {
+        public CallbackPlanEntry(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync, int order)
+        {
+            ExecuteAsync = executeAsync;
+            Order = order;
+        }
+
+        public Func<ExecutionTaskContext, Task<OperationResult>> ExecuteAsync { get; }
+
+        public int Order { get; }
+    }
+
+    internal sealed class ChildScopePlanEntry
+    {
+        public ChildScopePlanEntry(int order)
+        {
+            Order = order;
+        }
+
+        public int Order { get; }
+
+        public ExecutionTaskId? FirstTaskId { get; set; }
+
+        public PlanItemDefinition? FirstDefinition { get; set; }
+
+        public ExecutionTaskId? LastTaskId { get; set; }
     }
 }
 
@@ -257,8 +377,6 @@ internal static class ExecutionTaskInsertion
         ExecutionTask childRoot = orderedTasks.Single(task => task.ParentId == null);
         Dictionary<ExecutionTaskId, ExecutionTaskId> remappedIds = new();
 
-        /* Generate every inserted id up front so parent and dependency references can be rewritten while
-           preserving the authored task order from the child plan. */
         foreach (ExecutionTask childTask in orderedTasks)
         {
             remappedIds[childTask.Id] = generateTaskId();
@@ -271,6 +389,9 @@ internal static class ExecutionTaskInsertion
             ExecutionTaskId? remappedParentId = childTask.ParentId == null
                 ? parentTaskId
                 : remappedIds[childTask.ParentId.Value];
+            ExecutionTaskId? remappedCallbackOwnerTaskId = childTask.CallbackOwnerTaskId == null
+                ? null
+                : remappedIds[childTask.CallbackOwnerTaskId.Value];
             insertedTasks.Add(new ExecutionTask(
                 remappedTaskId,
                 childTask.Title,
@@ -280,7 +401,10 @@ internal static class ExecutionTaskInsertion
                 childTask.Enabled,
                 childTask.DisabledReason,
                 childTask.OperationParameters,
-                childTask.ExecuteAsync));
+                childTask.ExecuteAsync,
+                result: null,
+                isCallbackTask: childTask.IsCallbackTask,
+                callbackOwnerTaskId: remappedCallbackOwnerTaskId));
         }
 
         return new InsertedExecutionTasks(insertedTasks, remappedIds[childRoot.Id]);

@@ -26,6 +26,8 @@ public sealed class ExecutionTaskBuilder
     /// </summary>
     public ExecutionTaskHandle Handle { get; }
 
+    internal ExecutionPlanBuilder.PlanItemDefinition Definition => _definition;
+
     /// <summary>
     /// Declares that this task depends on the provided earlier task.
     /// </summary>

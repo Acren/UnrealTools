@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
@@ -21,6 +20,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     private string _statusReason;
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _finishedAt;
+    private ExecutionTaskStatus? _result;
 
     /// <summary>
     /// Creates one execution task from authored metadata. Sessions later clone these tasks into live nodes and initialize
@@ -35,7 +35,10 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         bool enabled = true,
         string? disabledReason = null,
         OperationParameters? operationParameters = null,
-        Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync = null)
+        Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync = null,
+        ExecutionTaskStatus? result = null,
+        bool isCallbackTask = false,
+        ExecutionTaskId? callbackOwnerTaskId = null)
     {
         Id = id;
         Title = string.IsNullOrWhiteSpace(title)
@@ -43,7 +46,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
             : title;
         Description = description ?? string.Empty;
         _parentId = parentId;
-        _dependsOn = new List<ExecutionTaskId>((dependsOn ?? Array.Empty<ExecutionTaskId>()).Distinct());
+        _dependsOn = new List<ExecutionTaskId>((dependsOn ?? Array.Empty<ExecutionTaskId>()));
         DependsOn = new ReadOnlyCollection<ExecutionTaskId>(_dependsOn);
         _childTaskIds = new List<ExecutionTaskId>();
         ChildTaskIds = new ReadOnlyCollection<ExecutionTaskId>(_childTaskIds);
@@ -51,9 +54,16 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         DisabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
         OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
         ExecuteAsync = executeAsync;
+        Result = result;
+        IsCallbackTask = isCallbackTask;
+        CallbackOwnerTaskId = callbackOwnerTaskId;
         LogStream = new BufferedLogStream();
-        _status = enabled ? ExecutionTaskStatus.Planned : ExecutionTaskStatus.Disabled;
+
+        /* Runtime lifecycle and semantic outcome are tracked separately. Disabled tasks start in a completed lifecycle
+           state because no scheduler work remains for them, while their semantic outcome still reports Disabled. */
+        _status = enabled ? ExecutionTaskStatus.Planned : ExecutionTaskStatus.Completed;
         _statusReason = enabled ? string.Empty : DisabledReason;
+        _result = enabled ? result : ExecutionTaskStatus.Disabled;
     }
 
     private readonly List<ExecutionTaskId> _dependsOn;
@@ -61,62 +71,32 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    /// <summary>
-    /// Gets the stable task identifier used by authored plans, live sessions, logs, and graph views.
-    /// </summary>
     public ExecutionTaskId Id { get; }
 
-    /// <summary>
-    /// Gets the short title rendered on the graph canvas.
-    /// </summary>
     public string Title { get; }
 
-    /// <summary>
-    /// Gets the longer descriptive text shown in details panels when one exists.
-    /// </summary>
     public string Description { get; }
 
-    /// <summary>
-    /// Gets the current parent task identifier for this live graph node.
-    /// </summary>
     public ExecutionTaskId? ParentId
     {
         get => _parentId;
         internal set => SetProperty(ref _parentId, value);
     }
 
-    /// <summary>
-    /// Gets the explicit dependency ids that must complete before this task may run.
-    /// </summary>
     public IReadOnlyList<ExecutionTaskId> DependsOn { get; }
 
-    /// <summary>
-    /// Gets the direct child task ids currently nested under this task in the live graph.
-    /// </summary>
     public IReadOnlyList<ExecutionTaskId> ChildTaskIds { get; }
 
-    /// <summary>
-    /// Gets whether the task is configured to participate in execution.
-    /// </summary>
     public bool Enabled { get; }
 
-    /// <summary>
-    /// Gets the explanation for why this task is disabled.
-    /// </summary>
     public string DisabledReason { get; }
 
-    /// <summary>
-    /// Gets the parameter state captured for this task so execution callbacks receive the same explicit runtime input.
-    /// </summary>
     public OperationParameters OperationParameters { get; }
 
-    /// <summary>
-    /// Gets the optional runtime callback that executes this task when the scheduler reaches it.
-    /// </summary>
     public Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync { get; }
 
     /// <summary>
-    /// Gets the current runtime status for this task in a live execution session.
+    /// Gets the current execution lifecycle status for this task scope.
     /// </summary>
     public ExecutionTaskStatus Status
     {
@@ -124,27 +104,18 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         internal set => SetProperty(ref _status, value);
     }
 
-    /// <summary>
-    /// Gets the explanatory text associated with the current status when one exists.
-    /// </summary>
     public string StatusReason
     {
         get => _statusReason;
         internal set => SetProperty(ref _statusReason, value ?? string.Empty);
     }
 
-    /// <summary>
-    /// Gets the timestamp when this task first started running.
-    /// </summary>
     public DateTimeOffset? StartedAt
     {
         get => _startedAt;
         internal set => SetProperty(ref _startedAt, value);
     }
 
-    /// <summary>
-    /// Gets the timestamp when this task reached its current terminal state.
-    /// </summary>
     public DateTimeOffset? FinishedAt
     {
         get => _finishedAt;
@@ -152,35 +123,46 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Gets the task-scoped buffered log stream used by selected-task views.
+    /// Gets the semantic outcome for this task scope once known. A task may still be running while this result is already
+    /// determined, such as when a child failure has doomed the scope but cleanup is still unwinding.
     /// </summary>
-    public BufferedLogStream LogStream { get; }
-
-    /// <summary>
-    /// Creates a live session-owned clone of this task so runtime state mutations do not modify preview plan objects.
-    /// </summary>
-    internal ExecutionTask CloneForSession()
+    public ExecutionTaskStatus? Result
     {
-        return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, ExecuteAsync);
+        get => _result;
+        internal set => SetProperty(ref _result, value);
     }
 
     /// <summary>
-    /// Initializes the task runtime state when it first enters a session.
+    /// Gets whether this task is an implicit visible callback node lowered from an authored `.Run(...)` declaration.
     /// </summary>
+    public bool IsCallbackTask { get; }
+
+    /// <summary>
+    /// Gets the authored/container task that owns this callback task when one exists.
+    /// </summary>
+    public ExecutionTaskId? CallbackOwnerTaskId { get; }
+
+    public BufferedLogStream LogStream { get; }
+
+    internal ExecutionTask CloneForSession()
+    {
+        return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, ExecuteAsync, Result, IsCallbackTask, CallbackOwnerTaskId);
+    }
+
     internal void InitializeRuntimeState(bool hasBegunExecution)
     {
+        /* Sessions reset only lifecycle state here. Semantic outcome stays separate so disabled tasks can still render as
+           Disabled while the scheduler treats them as already finished. */
         ExecutionTaskStatus initialStatus = Enabled
             ? (hasBegunExecution ? ExecutionTaskStatus.Pending : ExecutionTaskStatus.Planned)
-            : ExecutionTaskStatus.Disabled;
+            : ExecutionTaskStatus.Completed;
         Status = initialStatus;
         StatusReason = Enabled ? string.Empty : DisabledReason;
+        Result = Enabled ? null : ExecutionTaskStatus.Disabled;
         StartedAt = null;
         FinishedAt = null;
     }
 
-    /// <summary>
-    /// Adds one direct child id to this task if it is not already present.
-    /// </summary>
     internal void AddChild(ExecutionTaskId childTaskId)
     {
         if (_childTaskIds.Contains(childTaskId))
@@ -192,9 +174,6 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         RaisePropertyChanged(nameof(ChildTaskIds));
     }
 
-    /// <summary>
-    /// Adds one dependency id to this task if it is not already present.
-    /// </summary>
     internal void AddDependency(ExecutionTaskId dependencyTaskId)
     {
         if (_dependsOn.Contains(dependencyTaskId))
@@ -206,17 +185,11 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         RaisePropertyChanged(nameof(DependsOn));
     }
 
-    /// <summary>
-    /// Raises a property-changed notification for one task field.
-    /// </summary>
     private void RaisePropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
-    /// <summary>
-    /// Updates one mutable property and raises change notifications only when the value actually changed.
-    /// </summary>
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (Equals(field, value))

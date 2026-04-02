@@ -20,13 +20,13 @@ public sealed class ExecutionPlanScheduler
 
     private readonly ILogger _logger;
     private readonly IExecutionTaskStateSink? _taskStateSink;
-    private readonly int _maxParallelism;
     private readonly ExecutionSession _session;
     private readonly object _syncRoot = new();
+    private readonly object _workSignalSyncRoot = new();
     private readonly Dictionary<ExecutionTaskId, Task<OperationResult>> _runningTasks = new();
     private readonly Dictionary<Task<OperationResult>, ExecutionTaskId> _taskOwners = new(TaskComparer.Instance);
-    private readonly Dictionary<ExecutionTaskId, ChildPumpRegistration> _childPumpRegistrationsByParent = new();
     private IDictionary<Type, object> _sharedData = null!;
+    private TaskCompletionSource<bool> _workAvailableSignal = CreateWorkAvailableSignal();
     private bool _encounteredFailure;
     private bool _encounteredCancellation;
     private DateTime _lastCompletionHandledAtUtc = DateTime.MinValue;
@@ -39,7 +39,6 @@ public sealed class ExecutionPlanScheduler
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _taskStateSink = logger as IExecutionTaskStateSink;
-        _maxParallelism = Math.Max(1, maxParallelism ?? Environment.ProcessorCount);
         _session = session ?? throw new ArgumentNullException(nameof(session));
     }
 
@@ -54,48 +53,67 @@ public sealed class ExecutionPlanScheduler
         }
 
         _sharedData = sharedData ?? new Dictionary<Type, object>();
+        _session.TaskGraphChanged += HandleSessionWorkChanged;
+        _session.TaskStatusChanged += HandleSessionTaskStatusChanged;
         InitializeSessionStates();
-
-        while (true)
+        try
         {
-            if (cancellationToken.IsCancellationRequested)
+            while (true)
             {
-                _encounteredCancellation = true;
-                CancelOutstandingTasks();
-                break;
-            }
+                ResetWorkAvailableSignalIfCompleted();
 
-            bool startedAny = StartReadyItems(cancellationToken);
-            IReadOnlyList<ExecutionTaskId> incompleteTaskIds = GetIncompleteExecutableTaskIds();
-            if (incompleteTaskIds.Count == 0)
-            {
-                break;
-            }
-
-            Task<OperationResult>[] runningTasksSnapshot = GetActiveRunningTasksSnapshot();
-
-            if (runningTasksSnapshot.Length == 0)
-            {
-                if (!startedAny)
+                if (cancellationToken.IsCancellationRequested)
                 {
-                    MarkUnsatisfiedTasks(incompleteTaskIds);
-                    _encounteredFailure = true;
+                    _encounteredCancellation = true;
+                    CancelOutstandingTasks();
                     break;
                 }
 
-                continue;
-            }
+                bool startedAny = StartReadyItems(cancellationToken);
+                IReadOnlyList<ExecutionTaskId> incompleteTaskIds = GetIncompleteExecutableTaskIds();
+                if (incompleteTaskIds.Count == 0)
+                {
+                    break;
+                }
 
-            Task<OperationResult> finishedTask = await Task.WhenAny(runningTasksSnapshot).ConfigureAwait(false);
-            await HandleCompletedTaskAsync(finishedTask).ConfigureAwait(false);
+                Task<OperationResult>[] runningTasksSnapshot = GetActiveRunningTasksSnapshot();
+
+                if (runningTasksSnapshot.Length == 0)
+                {
+                    if (!startedAny)
+                    {
+                        MarkUnsatisfiedTasks(incompleteTaskIds);
+                        _encounteredFailure = true;
+                        break;
+                    }
+
+                    continue;
+                }
+
+                Task workAvailableTask = GetWorkAvailableSignalTask();
+                Task completedTrigger = await Task.WhenAny(runningTasksSnapshot.Cast<Task>().Append(workAvailableTask)).ConfigureAwait(false);
+                if (ReferenceEquals(completedTrigger, workAvailableTask))
+                {
+                    continue;
+                }
+
+                await HandleCompletedTaskAsync((Task<OperationResult>)completedTrigger).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _session.TaskGraphChanged -= HandleSessionWorkChanged;
+            _session.TaskStatusChanged -= HandleSessionTaskStatusChanged;
         }
 
-        if (_encounteredFailure || _session.Tasks.Any(task => task.Status == ExecutionTaskStatus.Failed))
+        /* Run outcome is synthesized from semantic results. Lifecycle state alone only answers whether work is still
+           active, so failure/cancellation detection must read Result instead of Status. */
+        if (_encounteredFailure || _session.Tasks.Any(task => task.Result == ExecutionTaskStatus.Failed))
         {
             return OperationResult.Failed();
         }
 
-        if (_encounteredCancellation || _session.Tasks.Any(task => task.Status == ExecutionTaskStatus.Cancelled))
+        if (_encounteredCancellation || _session.Tasks.Any(task => task.Result == ExecutionTaskStatus.Cancelled))
         {
             return OperationResult.Cancelled();
         }
@@ -104,8 +122,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Waits for one set of newly inserted child tasks while temporarily yielding the parent's scheduler slot so the
-    /// same root scheduler can keep pumping the live session graph.
+    /// Waits for one set of newly inserted child tasks. The scheduler itself stays purely dependency-driven; the wait is
+    /// satisfied by ordinary task completion in the live session graph rather than by a special child-pump scheduler mode.
     /// </summary>
     internal async Task<OperationResult> WaitForInsertedChildTasksAsync(Operation operation, ExecutionTaskContext parentContext, ChildTaskMergeResult mergeResult)
     {
@@ -124,22 +142,30 @@ public sealed class ExecutionPlanScheduler
             throw new ArgumentNullException(nameof(mergeResult));
         }
 
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.WaitForInsertedChildTasks")
+            .SetTag("parent.task.id", parentContext.TaskId.Value)
+            .SetTag("child.operation", operation.OperationName)
+            .SetTag("inserted.task.count", mergeResult.InsertedTaskIds.Count)
+            .SetTag("inserted.root.id", mergeResult.RootTask.Id.Value)
+            .SetTag("inserted.root.title", mergeResult.RootTask.Title);
+
         if (mergeResult.InsertedTaskIds.Count == 0)
         {
             return OperationResult.Succeeded();
         }
 
-        RegisterChildPump(parentContext.TaskId, mergeResult.InsertedTaskIds);
-        try
+        using (PerformanceActivityScope waitActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.WaitForInsertedChildTasks.Wait"))
         {
+            waitActivity.SetTag("parent.task.id", parentContext.TaskId.Value)
+                .SetTag("inserted.root.id", mergeResult.RootTask.Id.Value)
+                .SetTag("inserted.task.count", mergeResult.InsertedTaskIds.Count);
             await _session.WaitForTaskCompletionAsync(mergeResult.InsertedTaskIds, parentContext.CancellationToken).ConfigureAwait(false);
         }
-        finally
-        {
-            CompleteChildPump(parentContext.TaskId);
-        }
 
-        return BuildChildOperationResult(operation, mergeResult.InsertedTaskIds);
+        OperationResult result = BuildChildOperationResult(operation, mergeResult.InsertedTaskIds);
+        activity.SetTag("result.outcome", result.Outcome.ToString())
+            .SetTag("result.success", result.Success);
+        return result;
     }
 
     /// <summary>
@@ -156,7 +182,7 @@ public sealed class ExecutionPlanScheduler
 
             if (!task.Enabled)
             {
-                SetStatus(task.Id, ExecutionTaskStatus.Disabled, task.DisabledReason);
+                _session.CompleteTaskWithResult(task.Id, ExecutionTaskStatus.Disabled, task.DisabledReason);
                 continue;
             }
 
@@ -168,22 +194,38 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Starts every ready session task while capacity remains available and the parent is not currently yielding its slot
-    /// to newly inserted child tasks.
+    /// Signals the scheduler whenever the live graph changes in a way that may have created newly startable work.
+    /// </summary>
+    private void HandleSessionWorkChanged()
+    {
+        SignalWorkAvailable();
+    }
+
+    /// <summary>
+    /// Signals the scheduler when task-state changes may unblock downstream work without requiring a task completion to be
+    /// the only wake-up source.
+    /// </summary>
+    private void HandleSessionTaskStatusChanged(ExecutionTaskId _, ExecutionTaskStatus __, string? ___)
+    {
+        SignalWorkAvailable();
+    }
+
+    /// <summary>
+    /// Starts every ready session task. Ordering is entirely dependency-driven, so the scheduler no longer needs a
+    /// separate parent-pump mode or semantic worker-capacity gate.
     /// </summary>
     private bool StartReadyItems(CancellationToken cancellationToken)
     {
         bool startedAny = false;
         List<ExecutionTask> readyTasks = _session.Tasks
             .Where(task => task.ExecuteAsync != null)
-            .Where(task => !IsTaskPausedForChildPumping(task.Id))
             .Where(task => task.Status == ExecutionTaskStatus.Pending)
             .Where(task => task.DependsOn.All(IsDependencySatisfied))
             .OrderBy(task => task.Id.Value, StringComparer.Ordinal)
             .ToList();
         using PerformanceActivityScope readyActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartReadyItems")
             .SetTag("ready.count", readyTasks.Count)
-            .SetTag("running.count", GetActiveRunningTaskCount())
+            .SetTag("running.count", _runningTasks.Count)
             .SetTag("pending.count", _session.Tasks.Count(task => task.Status == ExecutionTaskStatus.Pending));
         if (_lastCompletedTaskId != null)
         {
@@ -196,9 +238,9 @@ public sealed class ExecutionPlanScheduler
         {
             lock (_syncRoot)
             {
-                if (GetActiveRunningTaskCountUnsafe() >= _maxParallelism || _runningTasks.ContainsKey(task.Id))
+                if (_runningTasks.ContainsKey(task.Id))
                 {
-                    break;
+                    continue;
                 }
             }
 
@@ -251,15 +293,12 @@ public sealed class ExecutionPlanScheduler
 
             if (result.Outcome == RunOutcome.Succeeded)
             {
-                if (!IsTaskPausedForChildPumping(completedTaskId))
-                {
-                    SetStatus(completedTaskId, ExecutionTaskStatus.Completed);
-                }
+                _session.CompleteTaskWithResult(completedTaskId, ExecutionTaskStatus.Completed);
             }
             else if (result.Outcome == RunOutcome.Cancelled)
             {
                 _encounteredCancellation = true;
-                SetStatus(completedTaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
+                _session.CompleteTaskWithResult(completedTaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
                 CancelOutstandingTasks();
             }
             else
@@ -271,7 +310,7 @@ public sealed class ExecutionPlanScheduler
         catch (OperationCanceledException)
         {
             _encounteredCancellation = true;
-            SetStatus(completedTaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
+            _session.CompleteTaskWithResult(completedTaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
             CancelOutstandingTasks();
         }
         catch (Exception ex)
@@ -293,7 +332,7 @@ public sealed class ExecutionPlanScheduler
         foreach (ExecutionTask task in _session.Tasks.Where(task => task.ExecuteAsync != null))
         {
             ExecutionTaskStatus currentStatus = task.Status;
-            if (currentStatus is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Running or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Disabled)
+            if (currentStatus is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Running)
             {
                 continue;
             }
@@ -311,7 +350,7 @@ public sealed class ExecutionPlanScheduler
         return _session.Tasks
             .Where(task => task.ExecuteAsync != null)
             .Select(task => task.Id)
-            .Where(taskId => !_session.IsTaskTerminal(taskId) && !IsTaskPausedForChildPumping(taskId))
+            .Where(taskId => !_session.IsTaskTerminal(taskId))
             .ToList();
     }
 
@@ -323,12 +362,12 @@ public sealed class ExecutionPlanScheduler
         foreach (ExecutionTaskId taskId in taskIds)
         {
             ExecutionTaskStatus currentStatus = _session.GetTask(taskId).Status;
-            if (currentStatus is ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled)
+            if (currentStatus == ExecutionTaskStatus.Completed)
             {
                 continue;
             }
 
-            SetStatus(taskId, ExecutionTaskStatus.Skipped, UnsatisfiedDependenciesReason);
+            _session.CompleteTaskWithResult(taskId, ExecutionTaskStatus.Skipped, UnsatisfiedDependenciesReason);
         }
     }
 
@@ -338,13 +377,14 @@ public sealed class ExecutionPlanScheduler
     private bool IsDependencySatisfied(ExecutionTaskId dependencyId)
     {
         ExecutionTask dependencyTask = _session.GetTask(dependencyId);
-        ExecutionTaskStatus status = dependencyTask.Status;
-        if (status == ExecutionTaskStatus.Completed)
+        /* Dependencies are satisfied only by successful or disabled semantic outcomes. A completed lifecycle with failed,
+           cancelled, or skipped result still blocks downstream work. */
+        if (dependencyTask.Result == ExecutionTaskStatus.Completed)
         {
             return true;
         }
 
-        if (status != ExecutionTaskStatus.Disabled)
+        if (dependencyTask.Result != ExecutionTaskStatus.Disabled)
         {
             return false;
         }
@@ -360,92 +400,77 @@ public sealed class ExecutionPlanScheduler
         foreach (ExecutionTask task in _session.Tasks.Where(task => task.ExecuteAsync != null))
         {
             ExecutionTaskStatus currentStatus = task.Status;
-            if (currentStatus is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Failed or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Disabled)
+            if (currentStatus == ExecutionTaskStatus.Completed)
             {
                 continue;
             }
 
-            ExecutionTaskStatus nextStatus = currentStatus == ExecutionTaskStatus.Running
+            ExecutionTaskStatus nextResult = currentStatus == ExecutionTaskStatus.Running
                 ? ExecutionTaskStatus.Cancelled
                 : ExecutionTaskStatus.Skipped;
-            string reason = nextStatus == ExecutionTaskStatus.Cancelled
+            string reason = nextResult == ExecutionTaskStatus.Cancelled
                 ? "Cancelled."
                 : "Skipped because execution was cancelled.";
-            SetStatus(task.Id, nextStatus, reason);
+            _session.CompleteTaskWithResult(task.Id, nextResult, reason);
         }
     }
 
     /// <summary>
-    /// Registers that the current parent task is waiting on newly inserted child tasks so its scheduler slot can be
-    /// yielded temporarily while the same scheduler continues pumping the live graph.
-    /// </summary>
-    private void RegisterChildPump(ExecutionTaskId parentTaskId, IReadOnlyCollection<ExecutionTaskId> childTaskIds)
-    {
-        ChildPumpRegistration registration = new(parentTaskId, childTaskIds);
-        lock (_syncRoot)
-        {
-            _childPumpRegistrationsByParent[parentTaskId] = registration;
-        }
-
-        UpdateReadiness();
-    }
-
-    /// <summary>
-    /// Restores the parent task to the running set after its inserted child work finishes so outer scheduler bookkeeping
-    /// can complete the parent task normally when its callback returns.
-    /// </summary>
-    private void CompleteChildPump(ExecutionTaskId parentTaskId)
-    {
-        lock (_syncRoot)
-        {
-            _childPumpRegistrationsByParent.Remove(parentTaskId);
-        }
-    }
-
-    /// <summary>
-    /// Returns whether one task is currently yielding its slot while it awaits nested child work.
-    /// </summary>
-    private bool IsTaskPausedForChildPumping(ExecutionTaskId taskId)
-    {
-        lock (_syncRoot)
-        {
-            return _childPumpRegistrationsByParent.ContainsKey(taskId);
-        }
-    }
-
-    /// <summary>
-    /// Returns the currently running tasks that still consume scheduler capacity. Parent tasks paused while awaiting
-    /// nested child work remain tracked in the running map so their eventual completion is still observed, but they do
-    /// not count as active capacity or completion sources while the child work is being pumped.
+    /// Returns the currently running task callbacks. Scheduler progress now follows only dependency readiness, so there is
+    /// no separate subset of capacity-consuming tasks.
     /// </summary>
     private Task<OperationResult>[] GetActiveRunningTasksSnapshot()
     {
         lock (_syncRoot)
         {
-            return _runningTasks
-                .Where(pair => !_childPumpRegistrationsByParent.ContainsKey(pair.Key))
-                .Select(pair => pair.Value)
-                .ToArray();
+            return _runningTasks.Values.ToArray();
         }
     }
 
     /// <summary>
-    /// Returns the number of capacity-consuming running tasks.
+    /// Returns the current scheduler wake task so the main loop can wait for new runnable work without polling.
     /// </summary>
-    private int GetActiveRunningTaskCount()
+    private Task GetWorkAvailableSignalTask()
     {
-        lock (_syncRoot)
+        lock (_workSignalSyncRoot)
         {
-            return GetActiveRunningTaskCountUnsafe();
+            return _workAvailableSignal.Task;
         }
     }
 
     /// <summary>
-    /// Counts capacity-consuming running tasks while the caller already holds the scheduler lock.
+    /// Completes the current wake signal so the main loop can immediately reevaluate readiness after live graph changes.
     /// </summary>
-    private int GetActiveRunningTaskCountUnsafe()
+    private void SignalWorkAvailable()
     {
-        return _runningTasks.Keys.Count(taskId => !_childPumpRegistrationsByParent.ContainsKey(taskId));
+        lock (_workSignalSyncRoot)
+        {
+            _workAvailableSignal.TrySetResult(true);
+        }
+    }
+
+    /// <summary>
+    /// Resets the shared wake signal after the scheduler has observed it so future graph/status changes can trigger the
+    /// next scheduling pass without losing notifications that arrive around the wait boundary.
+    /// </summary>
+    private void ResetWorkAvailableSignalIfCompleted()
+    {
+        lock (_workSignalSyncRoot)
+        {
+            if (_workAvailableSignal.Task.IsCompleted)
+            {
+                _workAvailableSignal = CreateWorkAvailableSignal();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Creates the reusable scheduler wake signal with asynchronous continuations so task callbacks do not resume the
+    /// scheduler inline while still holding graph-mutation call stacks.
+    /// </summary>
+    private static TaskCompletionSource<bool> CreateWorkAvailableSignal()
+    {
+        return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     /// <summary>
@@ -470,12 +495,12 @@ public sealed class ExecutionPlanScheduler
         IReadOnlyList<ExecutionTask> childStates = childTaskIds
             .Select(taskId => _session.GetTask(taskId))
             .ToList();
-        if (childStates.Any(state => state.Status == ExecutionTaskStatus.Cancelled))
+        if (childStates.Any(state => state.Result == ExecutionTaskStatus.Cancelled))
         {
             return OperationResult.Cancelled();
         }
 
-        if (childStates.Any(state => state.Status == ExecutionTaskStatus.Failed || state.Status == ExecutionTaskStatus.Skipped))
+        if (childStates.Any(state => state.Result is ExecutionTaskStatus.Failed or ExecutionTaskStatus.Skipped))
         {
             return OperationResult.Failed();
         }
@@ -518,14 +543,12 @@ public sealed class ExecutionPlanScheduler
         catch (OperationCanceledException)
         {
             activity.SetTag("task.outcome", RunOutcome.Cancelled.ToString());
-            _taskStateSink?.SetTaskStatus(context.TaskId, ExecutionTaskStatus.Cancelled, "Cancelled.");
             throw;
         }
         catch (Exception ex)
         {
             activity.SetTag("task.outcome", "Exception")
                 .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name);
-            _taskStateSink?.SetTaskStatus(context.TaskId, ExecutionTaskStatus.Failed, ex.Message);
             throw new Exception($"Exception encountered running execution task '{task.Title}'", ex);
         }
     }
@@ -538,22 +561,6 @@ public sealed class ExecutionPlanScheduler
         _session.SetTaskStatus(taskId, status, reason);
         _taskStateSink?.SetTaskStatus(taskId, status, reason);
         _logger.LogDebug("Execution task '{TaskId}' -> {Status}. {Reason}", taskId, status, reason ?? string.Empty);
-    }
-
-    /// <summary>
-    /// Carries the current parent task id and inserted child ids while one task is temporarily yielding its scheduler slot.
-    /// </summary>
-    private sealed class ChildPumpRegistration
-    {
-        public ChildPumpRegistration(ExecutionTaskId parentTaskId, IReadOnlyCollection<ExecutionTaskId> childTaskIds)
-        {
-            ParentTaskId = parentTaskId;
-            ChildTaskIds = childTaskIds ?? throw new ArgumentNullException(nameof(childTaskIds));
-        }
-
-        public ExecutionTaskId ParentTaskId { get; }
-
-        public IReadOnlyCollection<ExecutionTaskId> ChildTaskIds { get; }
     }
 
     /// <summary>
