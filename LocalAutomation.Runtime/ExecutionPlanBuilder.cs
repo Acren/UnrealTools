@@ -272,7 +272,11 @@ public sealed class ExecutionPlanBuilder
             _items.Add(callbackDefinition);
             definition.ExecuteAsync = null;
             definition.CallbackEntry = null;
-            definition.DependencyIds.Clear();
+
+            /* Authored/container tasks must retain their original dependencies so downstream steps that depend on the
+               container can still recurse backward through disabled predecessors and see the real upstream chain. The
+               lowered callback task inherits the same dependencies, but the container remains the dependency anchor for
+               later authored siblings. */
         }
     }
 
