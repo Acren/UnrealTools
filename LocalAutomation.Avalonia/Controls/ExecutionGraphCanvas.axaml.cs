@@ -507,15 +507,10 @@ public partial class ExecutionGraphCanvas : UserControl
 
     /// <summary>
     /// Reads the natural width of one attached control from the hidden measurement host so final graph layout matches the
-    /// actual visual width of the corresponding visible node.
+    /// actual control width that Avalonia produced from the XAML-owned node layout.
     /// </summary>
     private static double MeasureNodeWidth(Control control)
     {
-        if (control is ExecutionGroupContainer groupControl)
-        {
-            return groupControl.GetHeaderContentWidth();
-        }
-
         return Math.Max(1, control.Bounds.Width);
     }
 

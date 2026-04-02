@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
-using Avalonia.Layout;
 using System.ComponentModel;
 using LocalAutomation.Core;
 using LocalAutomation.Avalonia.ViewModels;
@@ -82,20 +81,6 @@ public partial class ExecutionGroupContainer : UserControl
     {
         get => GetValue(HeaderHeightProperty);
         set => SetValue(HeaderHeightProperty, value);
-    }
-
-    /// <summary>
-    /// Returns the actual rendered header-content width, including the header grid margin, so graph layout can size the
-    /// outer group frame from the same XAML measurement that the user sees on screen.
-    /// </summary>
-    public double GetHeaderContentWidth()
-    {
-        Grid headerContentGrid = this.FindControl<Grid>("HeaderContentGrid")
-            ?? throw new InvalidOperationException("ExecutionGroupContainer header content grid was not initialized.");
-        Thickness margin = headerContentGrid.Margin;
-        headerContentGrid.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        double contentWidth = headerContentGrid.DesiredSize.Width + margin.Left + margin.Right;
-        return Math.Max(1, contentWidth);
     }
 
     /// <summary>
