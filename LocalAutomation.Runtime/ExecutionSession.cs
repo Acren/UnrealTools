@@ -215,14 +215,15 @@ public sealed class ExecutionSession
         _hasBegunExecution = true;
         foreach (ExecutionTask task in _tasks.Where(task => task.Status == ExecutionTaskStatus.Planned))
         {
+            if (!task.Enabled)
+            {
+                task.Status = ExecutionTaskStatus.Completed;
+                task.StatusReason = task.DisabledReason;
+                continue;
+            }
+
             task.Status = ExecutionTaskStatus.Pending;
             task.StatusReason = string.Empty;
-        }
-
-        foreach (ExecutionTask task in _tasks.Where(task => task.Result == ExecutionTaskStatus.Disabled))
-        {
-            task.Status = ExecutionTaskStatus.Completed;
-            task.StatusReason = task.DisabledReason;
         }
     }
 
@@ -518,19 +519,36 @@ public sealed class ExecutionSession
                 .Select(GetTask)
                 .ToList();
 
-            bool anyRunning = childTasks.Any(task => task.Status == ExecutionTaskStatus.Running);
+            bool anyChildRunning = childTasks.Any(task => task.Status == ExecutionTaskStatus.Running);
             bool anyPending = childTasks.Any(task => task.Status is ExecutionTaskStatus.Pending or ExecutionTaskStatus.Planned);
             ExecutionTask? failedTask = childTasks.FirstOrDefault(task => task.Result == ExecutionTaskStatus.Failed);
             ExecutionTask? cancelledTask = childTasks.FirstOrDefault(task => task.Result == ExecutionTaskStatus.Cancelled);
             ExecutionTask? skippedTask = childTasks.FirstOrDefault(task => task.Result == ExecutionTaskStatus.Skipped);
             bool allDisabled = childTasks.All(task => task.Result == ExecutionTaskStatus.Disabled);
 
-            ExecutionTaskStatus parentLifecycle = anyRunning
-                ? ExecutionTaskStatus.Running
-                : anyPending
-                    ? ExecutionTaskStatus.Pending
-                    : ExecutionTaskStatus.Completed;
-            ExecutionTaskStatus? parentResult = anyPending || anyRunning
+            ExecutionTaskStatus parentLifecycle;
+            if (parentTask.Result is ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Skipped)
+            {
+                parentLifecycle = ExecutionTaskStatus.Completed;
+            }
+            else if (anyChildRunning)
+            {
+                parentLifecycle = ExecutionTaskStatus.Running;
+            }
+            else if (anyPending)
+            {
+                /* Parent scope activation is scheduler-owned. Pending children should not make a parent appear Running on
+                   their own, but an already-activated scope remains Running while it waits for those children to start. */
+                parentLifecycle = parentTask.Status == ExecutionTaskStatus.Running
+                    ? ExecutionTaskStatus.Running
+                    : ExecutionTaskStatus.Pending;
+            }
+            else
+            {
+                parentLifecycle = ExecutionTaskStatus.Completed;
+            }
+
+            ExecutionTaskStatus? parentResult = anyPending || anyChildRunning
                 ? failedTask != null
                     ? ExecutionTaskStatus.Failed
                     : cancelledTask != null

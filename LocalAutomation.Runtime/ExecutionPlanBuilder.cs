@@ -259,7 +259,6 @@ public sealed class ExecutionPlanBuilder
             callbackDefinition.ExecuteAsync = callbackEntry.ExecuteAsync;
             callbackDefinition.IsCallbackTask = true;
             callbackDefinition.CallbackOwnerTaskId = definition.Id;
-            callbackDefinition.DependencyIds.AddRange(definition.DependencyIds);
 
             /* Child scope declarations remain independent by default, so the callback only depends on the trailing task
                from child scopes that were authored earlier than the callback declaration point. */
@@ -283,10 +282,9 @@ public sealed class ExecutionPlanBuilder
             definition.ExecuteAsync = null;
             definition.CallbackEntry = null;
 
-            /* Authored/container tasks must retain their original dependencies so downstream steps that depend on the
-               container can still recurse backward through disabled predecessors and see the real upstream chain. The
-               lowered callback task inherits the same dependencies, but the container remains the dependency anchor for
-               later authored siblings. */
+            /* Authored/container tasks retain their original dependencies because the scope itself is the dependency
+               anchor. Lowered callback tasks rely on parent-scope activation plus callback-local ordering dependencies
+               instead of duplicating the container's upstream dependency edges. */
         }
     }
 

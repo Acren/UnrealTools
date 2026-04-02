@@ -178,14 +178,14 @@ public sealed class ExecutionPlanScheduler
     {
         foreach (ExecutionTask task in _session.Tasks)
         {
-            if (task.ExecuteAsync == null)
-            {
-                continue;
-            }
-
             if (!task.Enabled)
             {
                 _session.CompleteTaskWithResult(task.Id, ExecutionTaskStatus.Disabled, task.DisabledReason);
+                continue;
+            }
+
+            if (task.ExecuteAsync == null)
+            {
                 continue;
             }
 
@@ -220,9 +220,11 @@ public sealed class ExecutionPlanScheduler
     private bool StartReadyItems(CancellationToken cancellationToken)
     {
         bool startedAny = false;
+        startedAny |= ActivateReadyScopes();
         List<ExecutionTask> readyTasks = _session.Tasks
             .Where(task => task.ExecuteAsync != null)
             .Where(task => task.Status == ExecutionTaskStatus.Pending)
+            .Where(IsParentScopeRunning)
             .Where(task => task.DependsOn.All(IsDependencySatisfied))
             .OrderBy(task => task.Id.Value, StringComparer.Ordinal)
             .ToList();
@@ -354,8 +356,54 @@ public sealed class ExecutionPlanScheduler
             }
 
             bool waitingForDependencies = task.DependsOn.Any(dependencyId => !IsDependencySatisfied(dependencyId));
-            SetStatus(task.Id, ExecutionTaskStatus.Pending, waitingForDependencies ? WaitingForDependenciesReason : null);
+            bool waitingForParent = !IsParentScopeRunning(task);
+            string? waitingReason = waitingForDependencies
+                ? WaitingForDependenciesReason
+                : waitingForParent
+                    ? "Waiting for parent scope."
+                    : null;
+            SetStatus(task.Id, ExecutionTaskStatus.Pending, waitingReason);
         }
+    }
+
+    /// <summary>
+    /// Activates non-executable container scopes once their own dependencies are satisfied so child tasks can use parent
+    /// running state as the structural gate instead of duplicating container dependency edges.
+    /// </summary>
+    private bool ActivateReadyScopes()
+    {
+        bool activatedAny = false;
+        List<ExecutionTask> readyScopes = _session.Tasks
+            .Where(task => task.ExecuteAsync == null)
+            .Where(task => task.Enabled)
+            .Where(task => task.Result == null)
+            .Where(task => task.Status == ExecutionTaskStatus.Pending)
+            .Where(task => task.DependsOn.All(IsDependencySatisfied))
+            .Where(IsParentScopeRunning)
+            .OrderBy(task => task.Id.Value, StringComparer.Ordinal)
+            .ToList();
+        foreach (ExecutionTask scope in readyScopes)
+        {
+            SetStatus(scope.Id, ExecutionTaskStatus.Running);
+            activatedAny = true;
+        }
+
+        return activatedAny;
+    }
+
+    /// <summary>
+    /// Returns whether the parent scope for the provided task has already been activated. Root tasks have no parent
+    /// gate and may start as soon as their explicit dependencies are satisfied.
+    /// </summary>
+    private bool IsParentScopeRunning(ExecutionTask task)
+    {
+        if (task.ParentId is not ExecutionTaskId parentId)
+        {
+            return true;
+        }
+
+        ExecutionTask parentTask = _session.GetTask(parentId);
+        return parentTask.Status == ExecutionTaskStatus.Running;
     }
 
     /// <summary>
