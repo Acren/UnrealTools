@@ -1,5 +1,5 @@
 ﻿using System.IO;
-using UnrealAutomationCommon.Operations;
+using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal
@@ -74,7 +74,7 @@ namespace UnrealAutomationCommon.Unreal
             return GetEditorExe(engine, configuration, true);
         }
 
-        public static string GetEditorExe(this Engine engine, UnrealOperationParameters operationParameters)
+        public static string GetEditorExe(this Engine engine, ValidatedOperationParameters operationParameters)
         {
             BuildConfigurationOptions buildOptions = operationParameters.GetOptions<BuildConfigurationOptions>();
 

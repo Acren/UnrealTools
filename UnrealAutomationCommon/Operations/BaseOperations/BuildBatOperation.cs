@@ -16,30 +16,24 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return base.GetDeclaredOptionSetTypes(target)
                 .Concat(new[]
                 {
+                    typeof(AdditionalArgumentsOptions),
                     typeof(BuildConfigurationOptions),
                     typeof(UbtCompilerOptions)
                 });
         }
 
         // Validate shared direct-UBT overrides once so every Build.bat-backed operation enforces the same limits.
-        public override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        protected override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
-            UnrealAutomationCommon.Operations.UnrealOperationParameters typedParameters = (UnrealAutomationCommon.Operations.UnrealOperationParameters)operationParameters;
-            string? requirementsError = base.CheckRequirementsSatisfied(operationParameters);
-            if (requirementsError != null)
-            {
-                return requirementsError;
-            }
-
-            string? engineSelectionError = typedParameters.GetSingleEngineSelectionValidationMessage();
+            string? engineSelectionError = GetSingleEngineSelectionValidationMessage(operationParameters);
             if (engineSelectionError != null)
             {
                 return engineSelectionError;
             }
 
-            UbtCompilerOptions buildBatOptions = typedParameters.GetOptions<UbtCompilerOptions>();
+            UbtCompilerOptions buildBatOptions = operationParameters.GetOptions<UbtCompilerOptions>();
 
-            Engine? engine = GetTargetEngineInstall(typedParameters);
+            Engine? engine = GetTargetEngineInstall(operationParameters);
             if (engine?.Version == null)
             {
                 return null;
@@ -55,7 +49,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return null;
         }
 
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             Arguments args = new();
 
@@ -66,10 +60,10 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         }
 
         // Derived operations provide the target name, platform/config, project path, and any target-specific flags.
-        protected abstract void ConfigureBuildArguments(UnrealOperationParameters operationParameters, Arguments args);
+        protected abstract void ConfigureBuildArguments(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, Arguments args);
 
         // Apply the shared direct-UBT overrides only for Build.bat flows that are known to respect them.
-        protected void ApplySharedBuildArguments(UnrealOperationParameters operationParameters, Arguments args)
+        protected void ApplySharedBuildArguments(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, Arguments args)
         {
             UbtCompilerOptions buildBatOptions = operationParameters.GetOptions<UbtCompilerOptions>();
             UbtCompiler compiler = buildBatOptions.Compiler;

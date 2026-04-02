@@ -69,7 +69,6 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
 
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RawValue)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Target)));
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AdditionalArguments)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OptionSets)));
 
         activity.SetTag("final_option_set.count", _parameters.OptionsInstances.Count);
@@ -82,15 +81,6 @@ public sealed class OperationParameterSession : INotifyPropertyChanged
     {
         get => _parameters.Target;
         set => _parameters.Target = value;
-    }
-
-    /// <summary>
-    /// Gets or sets the freeform additional-arguments value.
-    /// </summary>
-    public string AdditionalArguments
-    {
-        get => _parameters.AdditionalArguments;
-        set => _parameters.AdditionalArguments = value;
     }
 
     /// <summary>

@@ -21,17 +21,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 .Concat(new[] { typeof(OperationOptionTypes.BuildConfigurationOptions) });
         }
 
-        public override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        protected override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
-            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            string? baseError = base.CheckRequirementsSatisfied(operationParameters);
-            if (baseError != null)
-            {
-                return baseError;
-            }
-
-            T target = GetRequiredTarget(typedParameters);
-            Engine? engine = typedParameters.Engine;
+            T target = GetRequiredTarget(operationParameters);
+            Engine? engine = GetTargetEngineInstall(operationParameters);
             if (engine == null || target.GetProvidedPackage(engine) == null)
             {
                 return "Provided package is null";
@@ -40,7 +33,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return null;
         }
 
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             T target = GetRequiredTarget(operationParameters);
             Engine engine = GetRequiredTargetEngineInstall(operationParameters);
@@ -53,19 +46,19 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return new global::LocalAutomation.Runtime.Command(package.ExecutablePath, args.ToString());
         }
 
-        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
+        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
         {
             root.Run(RunLaunchPackageAsync);
         }
 
         private async Task<global::LocalAutomation.Runtime.OperationResult> RunLaunchPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
-            AutomationOptions automationOptions = unrealOperationParameters.GetOptions<AutomationOptions>();
+            global::LocalAutomation.Runtime.ValidatedOperationParameters validatedParameters = context.ValidatedOperationParameters;
+            AutomationOptions automationOptions = validatedParameters.GetOptions<AutomationOptions>();
             if (automationOptions.RunTests)
             {
-                T target = GetRequiredTarget(unrealOperationParameters);
-                Engine engine = GetRequiredTargetEngineInstall(unrealOperationParameters);
+                T target = GetRequiredTarget(validatedParameters);
+                Engine engine = GetRequiredTargetEngineInstall(validatedParameters);
                 Package package = target.GetProvidedPackage(engine)
                     ?? throw new InvalidOperationException("Launch Package requires a packaged build before execution.");
 
@@ -100,9 +93,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         public override string GetLogsPath(global::LocalAutomation.Runtime.OperationParameters operationParameters)
         {
-            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            T target = GetRequiredTarget(typedParameters);
-            Engine engine = GetRequiredTargetEngineInstall(typedParameters);
+            global::LocalAutomation.Runtime.ValidatedOperationParameters validatedParameters = ValidateParameters(operationParameters);
+            T target = GetRequiredTarget(validatedParameters);
+            Engine engine = GetRequiredTargetEngineInstall(validatedParameters);
             Package package = target.GetProvidedPackage(engine)
                 ?? throw new InvalidOperationException("Launch Package requires a packaged build before log discovery.");
             return package.LogsPath;

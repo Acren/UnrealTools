@@ -15,14 +15,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 .Concat(new[] { typeof(OperationOptionTypes.BuildConfigurationOptions) });
         }
 
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             Arguments args = UnrealArguments.MakeArguments(operationParameters, GetOutputPath(operationParameters), true);
             args.SetFlag("game");
             args.SetFlag("windowed");
             args.SetKeyValue("resx", "1920", false);
             args.SetKeyValue("resy", "1080", false);
-            return new global::LocalAutomation.Runtime.Command(GetRequiredTargetEngineInstall(operationParameters).GetEditorExe(operationParameters), args.ToString());
+            Engine engine = GetRequiredTargetEngineInstall(operationParameters);
+            return new global::LocalAutomation.Runtime.Command(engine.GetEditorExe(operationParameters), args.ToString());
         }
     }
 }

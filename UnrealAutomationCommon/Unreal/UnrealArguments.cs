@@ -1,12 +1,12 @@
 ﻿using System.Collections.Generic;
-using UnrealAutomationCommon.Operations;
+using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal
 {
     public class UnrealArguments
     {
-        public static Arguments MakeArguments(UnrealOperationParameters operationParameters, string outputhPath, bool uProjectPath = false)
+        public static Arguments MakeArguments(ValidatedOperationParameters operationParameters, string outputhPath, bool uProjectPath = false)
         {
             Arguments arguments = new();
 

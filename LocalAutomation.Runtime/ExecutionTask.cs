@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
@@ -35,6 +36,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         bool enabled = true,
         string? disabledReason = null,
         OperationParameters? operationParameters = null,
+        IEnumerable<Type>? declaredOptionTypes = null,
         Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync = null,
         ExecutionTaskStatus? result = null,
         bool isCallbackTask = false,
@@ -53,6 +55,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         Enabled = enabled;
         DisabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
         OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
+        DeclaredOptionTypes = (declaredOptionTypes ?? Array.Empty<Type>()).ToList().AsReadOnly();
         ExecuteAsync = executeAsync;
         Result = result;
         IsCallbackTask = isCallbackTask;
@@ -92,6 +95,8 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     public string DisabledReason { get; }
 
     public OperationParameters OperationParameters { get; }
+
+    public IReadOnlyList<Type> DeclaredOptionTypes { get; }
 
     public Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync { get; }
 
@@ -146,7 +151,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
     internal ExecutionTask CloneForSession()
     {
-        return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, ExecuteAsync, Result, IsCallbackTask, CallbackOwnerTaskId);
+        return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Result, IsCallbackTask, CallbackOwnerTaskId);
     }
 
     internal void InitializeRuntimeState(bool hasBegunExecution)

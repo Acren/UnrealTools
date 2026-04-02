@@ -53,25 +53,17 @@ public abstract class Operation
     public virtual OperationParameters CreateParameters(OperationParameters? existing = null)
     {
         OperationParameters parameters = CreateOperationParameters();
-        // Option discovery can run before a target has been selected, so only ask the operation for target-specific
-        // option sets once a concrete target exists.
-        IOperationTarget? optionTarget = existing?.Target ?? parameters.Target;
-        parameters.SetRegisteredOptions(optionTarget != null ? GetRequiredOptionSetTypes(optionTarget) : Array.Empty<Type>());
         if (existing != null)
         {
             parameters.Target = existing.Target;
             parameters.OutputPathOverride = existing.OutputPathOverride;
-            parameters.AdditionalArguments = existing.AdditionalArguments;
 
-            // Clone from a stable snapshot because some option setters update sibling option state or target-derived
-            // values as they are copied, which can mutate the live binding list during enumeration.
+            /* Clone from a stable snapshot because some option setters update sibling option state or target-derived
+               values as they are copied, which can mutate the live binding list during enumeration. Parameters act as a
+               bag of values, so child operations inherit the full option state and enforce declarations through the
+               operation-owned accessor instead of parameter-owned whitelists. */
             foreach (OperationOptions options in existing.OptionsInstances.ToList())
             {
-                if (!parameters.IsOptionRegistered(options.GetType()))
-                {
-                    continue;
-                }
-
                 if (parameters.GetOptionsInstance(options.GetType()) == null)
                 {
                     parameters.SetOptions((OperationOptions)options.Clone());
@@ -87,13 +79,12 @@ public abstract class Operation
     /// </summary>
     public IEnumerable<Command> GetCommands(OperationParameters operationParameters)
     {
-        PrepareRegisteredOptions(operationParameters);
         if (!RequirementsSatisfied(operationParameters))
         {
             return new List<Command>();
         }
 
-        return BuildCommands(operationParameters);
+        return BuildCommands(ValidateParameters(operationParameters));
     }
 
     /// <summary>
@@ -123,6 +114,19 @@ public abstract class Operation
         }
 
         return Path.Combine(operationParameters.Target!.OutputDirectory, OperationName.Replace(" ", string.Empty));
+    }
+
+    /// <summary>
+    /// Returns the default output path for the provided validated operation parameters.
+    /// </summary>
+    public string GetOutputPath(ValidatedOperationParameters operationParameters)
+    {
+        if (operationParameters.OutputPathOverride != null)
+        {
+            return operationParameters.OutputPathOverride;
+        }
+
+        return Path.Combine(operationParameters.Target.OutputDirectory, OperationName.Replace(" ", string.Empty));
     }
 
     /// <summary>
@@ -222,7 +226,6 @@ public abstract class Operation
     /// </summary>
     public virtual string? CheckRequirementsSatisfied(OperationParameters operationParameters)
     {
-        PrepareRegisteredOptions(operationParameters);
         if (operationParameters.Target == null)
         {
             return "Target not specified";
@@ -238,6 +241,14 @@ public abstract class Operation
             return $"Target {operationParameters.Target.Name} of type {operationParameters.Target.GetType()} is not valid";
         }
 
+        return CheckRequirementsSatisfied(ValidateParameters(operationParameters));
+    }
+
+    /// <summary>
+    /// Validates operation-specific option usage after the shared target checks have passed.
+    /// </summary>
+    protected virtual string? CheckRequirementsSatisfied(ValidatedOperationParameters operationParameters)
+    {
         return null;
     }
 
@@ -263,6 +274,14 @@ public abstract class Operation
     }
 
     /// <summary>
+    /// Returns the current target from the validated parameter view.
+    /// </summary>
+    public IOperationTarget GetTarget(ValidatedOperationParameters operationParameters)
+    {
+        return operationParameters.Target;
+    }
+
+    /// <summary>
     /// Returns the log directory used by the operation when one exists.
     /// </summary>
     public virtual string? GetLogsPath(OperationParameters operationParameters)
@@ -281,7 +300,7 @@ public abstract class Operation
     /// <summary>
      /// Lets derived operations describe child tasks beneath the framework-owned root task.
      /// </summary>
-    protected internal virtual void DescribeExecutionPlan(OperationParameters operationParameters, ExecutionTaskBuilder root)
+    protected internal virtual void DescribeExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
     {
         throw new NotSupportedException($"Operation '{OperationName}' must override {nameof(DescribeExecutionPlan)}.");
     }
@@ -289,9 +308,17 @@ public abstract class Operation
     /// <summary>
     /// Builds the command list for the provided operation parameters.
     /// </summary>
-    protected virtual IEnumerable<Command> BuildCommands(OperationParameters operationParameters)
+    protected virtual IEnumerable<Command> BuildCommands(ValidatedOperationParameters operationParameters)
     {
         return Enumerable.Empty<Command>();
+    }
+
+    /// <summary>
+    /// Creates the operation-scoped validated view over one raw parameter bag.
+    /// </summary>
+    protected internal ValidatedOperationParameters ValidateParameters(OperationParameters operationParameters)
+    {
+        return new ValidatedOperationParameters(this, operationParameters);
     }
 
     /// <summary>
@@ -300,24 +327,6 @@ public abstract class Operation
     protected virtual string GetOperationName()
     {
         return SplitWordsByUppercase(GetType().Name);
-    }
-
-    /// <summary>
-    /// Recomputes the registered option-set list for the current target before validation, preview, or execution touch
-    /// option values directly.
-    /// </summary>
-    /// <summary>
-    /// Recomputes the registered option-set list before command preview, validation, plan authoring, or execution so
-    /// the current target always drives the live option shape.
-    /// </summary>
-    internal void PrepareRegisteredOptions(OperationParameters operationParameters)
-    {
-        if (operationParameters == null)
-        {
-            throw new ArgumentNullException(nameof(operationParameters));
-        }
-
-        operationParameters.SetRegisteredOptions(GetRequiredOptionSetTypes(operationParameters.Target!));
     }
 
     /// <summary>
@@ -373,5 +382,22 @@ public abstract class Operation<T> : Operation where T : IOperationTarget
     public new T? GetTarget(OperationParameters operationParameters)
     {
         return (T?)operationParameters.Target;
+    }
+
+    /// <summary>
+    /// Returns the current target cast to the required target type from the validated parameter view.
+    /// </summary>
+    public new T GetTarget(ValidatedOperationParameters operationParameters)
+    {
+        return operationParameters.GetTarget<T>();
+    }
+
+    /// <summary>
+    /// Returns the current target or throws when execution reaches a path that depends on prior validation.
+    /// </summary>
+    protected T GetRequiredTarget(ValidatedOperationParameters operationParameters)
+    {
+        T? target = GetTarget(operationParameters);
+        return target ?? throw new InvalidOperationException($"Operation {GetType().Name} requires a target of type {typeof(T).Name}.");
     }
 }

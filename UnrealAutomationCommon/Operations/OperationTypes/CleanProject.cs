@@ -11,7 +11,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     public class CleanProject : UnrealOperation<Project>
     {
-        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
+        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
         {
             root.Run(RunCleanProjectAsync);
         }
@@ -20,8 +20,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             context.Logger.LogInformation("Cleaning binaries");
 
-            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
-            Project project = GetRequiredTarget(unrealOperationParameters);
+            global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters = context.ValidatedOperationParameters;
+            Project project = GetRequiredTarget(operationParameters);
             Engine engine = project.EngineInstance ?? throw new InvalidOperationException("Clean Project requires a resolved engine install.");
 
             // Clean targets

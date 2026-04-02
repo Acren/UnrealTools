@@ -25,7 +25,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 });
         }
 
-        protected override void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
+        protected override void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
         {
             // Report test results
             AutomationOptions automationOptions = operationParameters.GetOptions<AutomationOptions>();

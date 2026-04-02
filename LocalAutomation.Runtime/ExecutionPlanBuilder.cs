@@ -17,6 +17,7 @@ public sealed class ExecutionPlanBuilder
     private readonly string _title;
     private readonly List<PlanItemDefinition> _items = new();
     private readonly Func<Operation, OperationParameters, ExecutionPlan?> _buildChildPlan;
+    private IReadOnlyCollection<Type> _declaredOptionTypes = Array.Empty<Type>();
     private int _nextSequence = 0;
 
     internal OperationParameters OperationParameters { get; private set; } = null!;
@@ -71,6 +72,7 @@ public sealed class ExecutionPlanBuilder
                 enabled: item.Enabled,
                 disabledReason: item.DisabledReason,
                 operationParameters: item.OperationParameters,
+                declaredOptionTypes: item.DeclaredOptionTypes,
                 executeAsync: item.ExecuteAsync,
                 result: null,
                 isCallbackTask: item.IsCallbackTask,
@@ -85,6 +87,11 @@ public sealed class ExecutionPlanBuilder
     internal void SetBuilderOperationParameters(OperationParameters operationParameters)
     {
         OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
+    }
+
+    internal void SetDeclaredOptionTypes(IEnumerable<Type> declaredOptionTypes)
+    {
+        _declaredOptionTypes = (declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))).ToList();
     }
 
     internal void AddDependency(PlanItemDefinition definition, ExecutionTaskHandle dependency)
@@ -149,6 +156,7 @@ public sealed class ExecutionPlanBuilder
     internal void SetOperationParameters(PlanItemDefinition definition, OperationParameters operationParameters)
     {
         definition.OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
+        definition.DeclaredOptionTypes = _declaredOptionTypes.ToList();
     }
 
     internal ExecutionTaskHandle FinalizeTask(PlanItemDefinition definition)
@@ -218,6 +226,7 @@ public sealed class ExecutionPlanBuilder
                 importedDefinition.Enabled = childTask.Enabled;
                 importedDefinition.DisabledReason = childTask.DisabledReason;
                 importedDefinition.OperationParameters = childTask.OperationParameters;
+                importedDefinition.DeclaredOptionTypes = childTask.DeclaredOptionTypes.ToList();
                 importedDefinition.ExecuteAsync = childTask.ExecuteAsync;
                 importedDefinition.IsCallbackTask = childTask.IsCallbackTask;
                 importedDefinition.CallbackOwnerTaskId = childTask.CallbackOwnerTaskId;
@@ -246,6 +255,7 @@ public sealed class ExecutionPlanBuilder
             callbackDefinition.Enabled = definition.Enabled;
             callbackDefinition.DisabledReason = definition.DisabledReason;
             callbackDefinition.OperationParameters = definition.OperationParameters;
+            callbackDefinition.DeclaredOptionTypes = definition.DeclaredOptionTypes.ToList();
             callbackDefinition.ExecuteAsync = callbackEntry.ExecuteAsync;
             callbackDefinition.IsCallbackTask = true;
             callbackDefinition.CallbackOwnerTaskId = definition.Id;
@@ -312,6 +322,8 @@ public sealed class ExecutionPlanBuilder
         public string DisabledReason { get; set; } = string.Empty;
 
         public OperationParameters OperationParameters { get; set; } = null!;
+
+        public List<Type> DeclaredOptionTypes { get; set; } = new();
 
         public Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync { get; set; }
 
@@ -405,6 +417,7 @@ internal static class ExecutionTaskInsertion
                 childTask.Enabled,
                 childTask.DisabledReason,
                 childTask.OperationParameters,
+                childTask.DeclaredOptionTypes,
                 childTask.ExecuteAsync,
                 result: null,
                 isCallbackTask: childTask.IsCallbackTask,

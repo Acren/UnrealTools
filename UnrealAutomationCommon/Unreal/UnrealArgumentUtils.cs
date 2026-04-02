@@ -1,14 +1,26 @@
-﻿using UnrealAutomationCommon.Operations;
+﻿using LocalAutomation.Runtime;
+using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal
 {
     public static class UnrealArgumentUtils
     {
-        public static void AddAdditionalArguments(this Arguments arguments, UnrealOperationParameters operationParameters)
+        public static void AddAdditionalArguments(this Arguments arguments, ValidatedOperationParameters operationParameters)
         {
-            if (!string.IsNullOrWhiteSpace(operationParameters.AdditionalArguments))
+            if (!operationParameters.TryGetOptions<AdditionalArgumentsOptions>(out AdditionalArgumentsOptions? additionalArgumentsOptions))
             {
-                arguments.AddRawArgsString(operationParameters.AdditionalArguments);
+                return;
+            }
+
+            if (additionalArgumentsOptions == null)
+            {
+                return;
+            }
+
+            string additionalArguments = additionalArgumentsOptions.Arguments;
+            if (!string.IsNullOrWhiteSpace(additionalArguments))
+            {
+                arguments.AddRawArgsString(additionalArguments);
             }
         }
     }

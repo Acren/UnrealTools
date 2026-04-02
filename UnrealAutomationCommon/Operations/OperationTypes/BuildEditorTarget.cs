@@ -8,7 +8,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     public class BuildEditorTarget : BuildBatOperation<Project>
     {
         // Build the project's editor target directly through Build.bat so direct UBT overrides are honored.
-        protected override void ConfigureBuildArguments(UnrealOperationParameters operationParameters, Arguments args)
+        protected override void ConfigureBuildArguments(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, Arguments args)
         {
             Project project = GetRequiredTarget(operationParameters);
             string editorModuleName = project.ProjectDescriptor?.EditorTargetName

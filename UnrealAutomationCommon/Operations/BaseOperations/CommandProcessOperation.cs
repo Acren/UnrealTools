@@ -22,19 +22,19 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         // teardown paths that run before every field has been assigned.
         private string FileAndProcess => $"{_fileName ?? "unknown-file"}:{_processName ?? "unknown-process"}";
 
-        protected abstract global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters);
+        protected abstract global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters);
 
         // Derived operations can inspect output as it streams without retaining the full process log in memory.
         protected virtual void OnOutputLine(string line)
         {
         }
 
-        protected override IEnumerable<global::LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        protected override IEnumerable<global::LocalAutomation.Runtime.Command> BuildCommands(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
-            return new List<global::LocalAutomation.Runtime.Command> { BuildCommand((UnrealAutomationCommon.Operations.UnrealOperationParameters)operationParameters) };
+            return new List<global::LocalAutomation.Runtime.Command> { BuildCommand(operationParameters) };
         }
 
-        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
+        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
         {
             root.Run(ExecuteProcessAsync);
         }
@@ -48,11 +48,11 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
             _wasCancelled = false;
             ILogger logger = context.Logger;
-            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
+            global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters = context.ValidatedOperationParameters;
             global::LocalAutomation.Runtime.Command command;
             using (global::LocalAutomation.Core.PerformanceActivityScope buildCommandActivity = global::LocalAutomation.Core.PerformanceTelemetry.StartActivity("CommandProcessOperation.BuildCommand"))
             {
-                command = BuildCommand(unrealOperationParameters);
+                command = BuildCommand(operationParameters);
                 buildCommandActivity.SetTag("command.file", command.File)
                     .SetTag("command.has_arguments", !string.IsNullOrWhiteSpace(command.Arguments));
             }
@@ -115,7 +115,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             // Dispose registration, otherwise GC is prevented through above lambda
             await registration.DisposeAsync();
 
-            return HandleProcessEnded(logger, context, unrealOperationParameters);
+            return HandleProcessEnded(logger, context, operationParameters);
         }
 
         private void HandleLogLine(ILogger logger, string line)
@@ -165,7 +165,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             logger.Log(level, line);
         }
 
-        private global::LocalAutomation.Runtime.OperationResult HandleProcessEnded(ILogger logger, global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters)
+        private global::LocalAutomation.Runtime.OperationResult HandleProcessEnded(ILogger logger, global::LocalAutomation.Runtime.ExecutionTaskContext context, global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             if (_process == null)
             {
@@ -195,7 +195,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return result;
         }
 
-        protected virtual void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
+        protected virtual void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
         {
         }
 

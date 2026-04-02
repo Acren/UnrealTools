@@ -40,15 +40,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// <summary>
          /// Describes the deployment-verification subtree beneath the framework-owned root task.
          /// </summary>
-        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.OperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
+        protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
         {
-            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            Plugin plugin = GetRequiredTarget(typedParameters);
-            IReadOnlyList<EngineVersion> enabledVersions = typedParameters.GetOptions<EngineVersionOptions>().EnabledVersions;
+            Plugin plugin = GetRequiredTarget(operationParameters);
+            IReadOnlyList<EngineVersion> enabledVersions = operationParameters.GetOptions<EngineVersionOptions>().EnabledVersions;
             List<EngineVersion> targetVersions = enabledVersions.Count > 0
                 ? enabledVersions.ToList()
                 : new List<EngineVersion> { plugin.EngineInstance.Version };
-            AutomationOptions automationOptions = typedParameters.GetOptions<AutomationOptions>();
+            AutomationOptions automationOptions = operationParameters.GetOptions<AutomationOptions>();
             root.Children(branches =>
             {
                 foreach (EngineVersion engineVersion in targetVersions)
@@ -96,8 +95,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task PrepareVerificationState(global::LocalAutomation.Runtime.ExecutionTaskContext context, EngineVersion engineVersion)
         {
-            UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
-            Plugin plugin = GetRequiredTarget(unrealOperationParameters);
+            global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters = context.ValidatedOperationParameters;
+            Plugin plugin = GetRequiredTarget(operationParameters);
             Engine engine = EngineFinder.GetEngineInstall(engineVersion)
                 ?? throw new Exception($"Engine {engineVersion.MajorMinorString} not found");
             EngineVersion resolvedEngineVersion = engine.Version ?? throw new Exception("Engine version is not available");
@@ -120,7 +119,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception($"Installed plugin version {installedPluginVersionName} does not include reference version {pluginVersionName}");
             }
 
-            string exampleProjects = unrealOperationParameters.GetOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
+            string exampleProjects = operationParameters.GetOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
             string exampleProjectZip = FindExampleProjectZip(plugin, exampleProjects, engine);
             if (exampleProjectZip == null)
             {
@@ -152,7 +151,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestEditorAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             VerificationState state = context.GetRequiredSharedData<VerificationState>();
-            AutomationOptions automationOptions = GetUnrealOperationParameters(context).GetOptions<AutomationOptions>();
+            AutomationOptions automationOptions = context.ValidatedOperationParameters.GetOptions<AutomationOptions>();
 
             context.Logger.LogInformation("Launching and testing example project editor");
             await RunExampleProjectOperationAsync<LaunchProjectEditor>(state, automationOptions, context, "Failed to launch example project");
@@ -161,7 +160,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestStandaloneAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             VerificationState state = context.GetRequiredSharedData<VerificationState>();
-            AutomationOptions automationOptions = GetUnrealOperationParameters(context).GetOptions<AutomationOptions>();
+            AutomationOptions automationOptions = context.ValidatedOperationParameters.GetOptions<AutomationOptions>();
 
             context.Logger.LogInformation("Launching and testing standalone");
             await RunExampleProjectOperationAsync<LaunchStandalone>(state, automationOptions, context, "Failed to launch standalone");
@@ -176,21 +175,19 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             VerificationState state = context.GetRequiredSharedData<VerificationState>();
-            AutomationOptions automationOptions = GetUnrealOperationParameters(context).GetOptions<AutomationOptions>();
+            AutomationOptions automationOptions = context.ValidatedOperationParameters.GetOptions<AutomationOptions>();
 
             await RunExampleProjectOperationAsync<LaunchStagedPackage>(state, automationOptions, context, "Launch and test package failed");
 
             context.Logger.LogInformation($"Finished verifying plugin {state.SourcePlugin.Name} for {state.Engine.Version.MajorMinorString}");
         }
 
-        private UnrealOperationParameters CreateExampleProjectParams(VerificationState state, AutomationOptions? automationOptions = null, string? outputPathOverride = null)
+        private global::LocalAutomation.Runtime.OperationParameters CreateExampleProjectParams(VerificationState state, AutomationOptions? automationOptions = null, string? outputPathOverride = null)
         {
-            UnrealOperationParameters parameters = new()
-            {
-                Target = state.ExampleProject,
-                EngineOverride = state.Engine,
-                OutputPathOverride = outputPathOverride
-            };
+            global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
+            parameters.Target = state.ExampleProject;
+            parameters.OutputPathOverride = outputPathOverride;
+            parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             if (automationOptions != null)
             {
                 parameters.SetOptions(automationOptions);

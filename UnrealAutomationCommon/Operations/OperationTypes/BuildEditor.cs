@@ -19,10 +19,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 });
         }
 
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
-            Arguments args = UATArguments.MakeBuildArguments(operationParameters);
-            return new global::LocalAutomation.Runtime.Command(GetRequiredTargetEngineInstall(operationParameters).GetRunUATPath(), args.ToString());
+            Engine engine = GetRequiredTargetEngineInstall(operationParameters);
+            Arguments args = UATArguments.MakeBuildArguments(operationParameters, engine);
+            return new global::LocalAutomation.Runtime.Command(engine.GetRunUATPath(), args.ToString());
         }
 
         protected override string GetOperationName()
@@ -43,16 +44,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Rejects unsupported build configurations before command generation so the user sees a clear validation
         /// message instead of a misleading UAT invocation.
         /// </summary>
-        public override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        protected override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
-            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            string? baseError = base.CheckRequirementsSatisfied(operationParameters);
-            if (baseError != null)
-            {
-                return baseError;
-            }
-
-            BuildConfiguration configuration = typedParameters.GetOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration;
+            BuildConfiguration configuration = operationParameters.GetOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration;
             if (!SupportsRequestedConfiguration(configuration))
             {
                 return "Configuration is not supported";

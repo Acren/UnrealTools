@@ -257,7 +257,7 @@ public sealed class ExecutionPlanScheduler
             }
 
             SetStatus(task.Id, ExecutionTaskStatus.Running);
-            ExecutionTaskContext context = new(task.Id, task.Title, CreateTaskLogger(task.Id), cancellationToken, task.OperationParameters, _sharedData, _session, this);
+            ExecutionTaskContext context = new(task.Id, task.Title, CreateTaskLogger(task.Id), cancellationToken, new ValidatedOperationParameters(task.Title, task.OperationParameters, task.DeclaredOptionTypes), _sharedData, _session, this);
             Task<OperationResult> runningTask = ExecuteTaskBodyAsync(task, context);
             lock (_syncRoot)
             {

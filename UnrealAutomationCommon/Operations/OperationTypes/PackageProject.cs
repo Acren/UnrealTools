@@ -20,16 +20,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return base.GetDeclaredOptionSetTypes(target)
                 .Concat(new[]
                 {
+                    typeof(AdditionalArgumentsOptions),
                     typeof(BuildConfigurationOptions),
                     typeof(PackageOptions),
                     typeof(CookOptions)
                 });
         }
 
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             Engine engine = GetRequiredTargetEngineInstall(operationParameters);
-            Arguments arguments = UATArguments.MakeBuildArguments(operationParameters);
+            Arguments arguments = UATArguments.MakeBuildArguments(operationParameters, engine);
             arguments.SetFlag("cook");
             arguments.SetFlag("stage");
             arguments.SetFlag("pak");

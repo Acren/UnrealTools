@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
@@ -10,10 +11,8 @@ namespace UnrealAutomationCommon.Operations
     public static class PluginBuildPlatformValidation
     {
         // Validate the effective requested plugin target platforms against the selected engine.
-        public static string? CheckRequirementsSatisfied(UnrealOperationParameters operationParameters, Engine engine)
+        public static string? CheckRequirementsSatisfied(ValidatedOperationParameters operationParameters, Engine engine)
         {
-            // Package-plugin validation now relies on preregistered option metadata, so the option set can always be
-            // resolved directly here.
             PluginBuildOptions pluginBuildOptions = operationParameters.GetOptions<PluginBuildOptions>();
 
             List<string> requestedPlatforms = GetRequestedTargetPlatforms(operationParameters, pluginBuildOptions);
@@ -38,7 +37,7 @@ namespace UnrealAutomationCommon.Operations
         }
 
         // Resolve the final TargetPlatforms value after AdditionalArguments overrides so validation matches execution.
-        public static List<string> GetRequestedTargetPlatforms(UnrealOperationParameters operationParameters, PluginBuildOptions pluginBuildOptions)
+        public static List<string> GetRequestedTargetPlatforms(ValidatedOperationParameters operationParameters, PluginBuildOptions pluginBuildOptions)
         {
             Arguments arguments = new();
             arguments.SetKeyValue("TargetPlatforms", string.Join('+', GetSelectedTargetPlatforms(pluginBuildOptions)));

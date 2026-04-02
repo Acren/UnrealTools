@@ -9,26 +9,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     public class BuildPlugin : BuildBatOperation<Plugin>
     {
         // Direct Build.bat plugin compilation needs a host project and only applies to code plugins.
-        public override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        protected override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("BuildPlugin.CheckRequirements");
-            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            string? requirementsError = base.CheckRequirementsSatisfied(operationParameters);
-            activity.SetTag("target.type", typedParameters.Target?.GetType().Name ?? string.Empty);
-            if (requirementsError != null)
-            {
-                activity.SetTag("result", requirementsError);
-                return requirementsError;
-            }
-
-            string? engineSelectionError = typedParameters.GetSingleEngineSelectionValidationMessage();
+            activity.SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
+            string? engineSelectionError = GetSingleEngineSelectionValidationMessage(operationParameters);
             if (engineSelectionError != null)
             {
                 activity.SetTag("result", engineSelectionError);
                 return engineSelectionError;
             }
 
-            Plugin plugin = GetRequiredTarget(typedParameters);
+            Plugin plugin = GetRequiredTarget(operationParameters);
             activity.SetTag("plugin.path", plugin.PluginPath)
                 .SetTag("descriptor.path", plugin.UPluginPath);
             if (plugin.IsBlueprintOnly)
@@ -58,7 +50,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         // Build the plugin against its host project through Build.bat so plugin compilation stays in place.
-        protected override void ConfigureBuildArguments(UnrealOperationParameters operationParameters, Arguments args)
+        protected override void ConfigureBuildArguments(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, Arguments args)
         {
             Plugin plugin = GetRequiredTarget(operationParameters);
             Project hostProject = plugin.GetHostProjectForDiagnostics();

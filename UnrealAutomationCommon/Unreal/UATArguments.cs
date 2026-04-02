@@ -1,11 +1,11 @@
-﻿using UnrealAutomationCommon.Operations;
+﻿using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal
 {
     public static class UATArguments
     {
-        public static Arguments MakeBuildArguments(UnrealOperationParameters operationParameters)
+        public static Arguments MakeBuildArguments(ValidatedOperationParameters operationParameters, Engine engine)
         {
             Arguments arguments = new();
             arguments.SetArgument("BuildCookRun");
@@ -24,17 +24,16 @@ namespace UnrealAutomationCommon.Unreal
                 arguments.SetFlag("NoDebugInfo");
             }
 
-            arguments.ApplyCommonUATArguments(operationParameters);
+            arguments.ApplyCommonUATArguments(engine);
 
             arguments.AddAdditionalArguments(operationParameters);
 
             return arguments;
         }
 
-        public static void ApplyCommonUATArguments(this Arguments arguments, UnrealOperationParameters operationParameters)
+        public static void ApplyCommonUATArguments(this Arguments arguments, Engine engine)
         {
-            Engine? engine = operationParameters.Engine;
-            if (engine?.Version != null && engine.Version >= new EngineVersion(5, 0))
+            if (engine.Version != null && engine.Version >= new EngineVersion(5, 0))
             {
                 // Prevent turnkey errors in UE5
                 arguments.SetFlag("noturnkeyvariables");

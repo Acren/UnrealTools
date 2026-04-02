@@ -14,7 +14,7 @@ public sealed class ExecutionTaskContext
     /// <summary>
     /// Creates one execution context for a scheduled task invocation.
     /// </summary>
-    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, OperationParameters operationParameters, IDictionary<Type, object> sharedData, ExecutionSession? session = null, ExecutionPlanScheduler? scheduler = null)
+    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, ValidatedOperationParameters validatedOperationParameters, IDictionary<Type, object> sharedData, ExecutionSession? session = null, ExecutionPlanScheduler? scheduler = null)
     {
         TaskId = taskId;
         Title = string.IsNullOrWhiteSpace(title)
@@ -22,7 +22,7 @@ public sealed class ExecutionTaskContext
             : title;
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
         CancellationToken = cancellationToken;
-        OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
+        ValidatedOperationParameters = validatedOperationParameters ?? throw new ArgumentNullException(nameof(validatedOperationParameters));
         SharedData = sharedData ?? throw new ArgumentNullException(nameof(sharedData));
         Session = session;
         Scheduler = scheduler;
@@ -49,10 +49,10 @@ public sealed class ExecutionTaskContext
     public CancellationToken CancellationToken { get; }
 
     /// <summary>
-    /// Gets the parameter state that authored the current execution plan so task callbacks do not have to read it from
-    /// mutable operation instance state.
+    /// Gets the operation-scoped validated parameter view so task callbacks can read declared option sets without
+    /// falling back to the raw parameter bag.
     /// </summary>
-    public OperationParameters OperationParameters { get; }
+    public ValidatedOperationParameters ValidatedOperationParameters { get; }
 
     /// <summary>
     /// Gets the live execution session when the current task is running inside a session-backed execution. Runtime child
@@ -82,9 +82,9 @@ public sealed class ExecutionTaskContext
     /// Creates a sibling execution context for another task within the same logical execution flow while preserving the
     /// current cancellation token, live session, and shared execution-scoped data.
     /// </summary>
-    internal ExecutionTaskContext CreateForTask(ExecutionTaskId taskId, string title, ILogger logger, OperationParameters operationParameters)
+    internal ExecutionTaskContext CreateForTask(ExecutionTaskId taskId, string title, ILogger logger, ValidatedOperationParameters validatedOperationParameters)
     {
-        return new ExecutionTaskContext(taskId, title, logger, CancellationToken, operationParameters, SharedData, Session, Scheduler);
+        return new ExecutionTaskContext(taskId, title, logger, CancellationToken, validatedOperationParameters, SharedData, Session, Scheduler);
     }
 
     /// <summary>

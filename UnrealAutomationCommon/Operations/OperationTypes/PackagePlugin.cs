@@ -20,35 +20,28 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
             return base.GetDeclaredOptionSetTypes(target)
-                .Concat(new[] { typeof(PluginBuildOptions) });
+                .Concat(new[] { typeof(AdditionalArgumentsOptions), typeof(PluginBuildOptions) });
         }
 
         // Fail early when the selected engine cannot even advertise the requested code platforms.
-        public override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.OperationParameters operationParameters)
+        protected override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
-            UnrealOperationParameters typedParameters = (UnrealOperationParameters)operationParameters;
-            string? requirementsError = base.CheckRequirementsSatisfied(operationParameters);
-            if (requirementsError != null)
-            {
-                return requirementsError;
-            }
-
-            string? engineSelectionError = typedParameters.GetSingleEngineSelectionValidationMessage();
+            string? engineSelectionError = GetSingleEngineSelectionValidationMessage(operationParameters);
             if (engineSelectionError != null)
             {
                 return engineSelectionError;
             }
 
-            Engine? engine = GetTargetEngineInstall(typedParameters);
+            Engine? engine = GetTargetEngineInstall(operationParameters);
             if (engine == null)
             {
                 return null;
             }
 
-            return PluginBuildPlatformValidation.CheckRequirementsSatisfied(typedParameters, engine);
+            return PluginBuildPlatformValidation.CheckRequirementsSatisfied(operationParameters, engine);
         }
 
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(UnrealOperationParameters operationParameters)
+        protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             // Package the plugin into a distributable output folder through UAT's BuildPlugin flow.
             PluginBuildOptions pluginBuildOptions = operationParameters.GetOptions<PluginBuildOptions>();
@@ -82,7 +75,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         // Compare Unreal's reported target platform list with what the user requested so silent skips become failures.
-        protected override void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, UnrealOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
+        protected override void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
         {
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("PackagePlugin.OnProcessEnded")
                 .SetTag("result.outcome", result.Outcome.ToString())
@@ -122,7 +115,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         // Build the final UAT argument list once so validation and execution inspect the same effective request.
-        private Arguments BuildPluginArguments(UnrealOperationParameters operationParameters, PluginBuildOptions pluginBuildOptions)
+        private Arguments BuildPluginArguments(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, PluginBuildOptions pluginBuildOptions)
         {
             Plugin plugin = GetRequiredTarget(operationParameters);
             Arguments buildPluginArguments = new();
@@ -139,7 +132,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 buildPluginArguments.SetFlag("StrictIncludes");
             }
 
-            buildPluginArguments.ApplyCommonUATArguments(operationParameters);
+            buildPluginArguments.ApplyCommonUATArguments(GetRequiredTargetEngineInstall(operationParameters));
             buildPluginArguments.AddAdditionalArguments(operationParameters);
             return buildPluginArguments;
         }

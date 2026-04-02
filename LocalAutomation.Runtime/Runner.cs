@@ -68,7 +68,6 @@ public sealed class Runner
             throw new ArgumentNullException(nameof(operationParameters));
         }
 
-        operation.PrepareRegisteredOptions(operationParameters);
         if (operationParameters.Target == null)
         {
             return null;
@@ -211,7 +210,6 @@ public sealed class Runner
     /// </summary>
     private static ExecutionPlan? BuildWrappedPlan(Operation operation, OperationParameters operationParameters, ILogger logger)
     {
-        operation.PrepareRegisteredOptions(operationParameters);
         if (operationParameters.Target == null)
         {
             return null;
@@ -220,8 +218,9 @@ public sealed class Runner
         ExecutionPlanId planId = ExecutionIdentifierFactory.CreatePlanId(operation.GetType().Name);
         ExecutionPlanBuilder builder = new(operation.OperationName, planId, (childOperation, childParameters) => BuildWrappedPlan(childOperation, childParameters, logger));
         builder.SetBuilderOperationParameters(operationParameters);
+        builder.SetDeclaredOptionTypes(operation.GetRequiredOptionSetTypes(operationParameters.Target));
         ExecutionTaskBuilder root = builder.Task(operation.OperationName, operationParameters.Target.DisplayName, default);
-        operation.DescribeExecutionPlan(operationParameters, root);
+        operation.DescribeExecutionPlan(operation.ValidateParameters(operationParameters), root);
         return builder.BuildPlan();
     }
 
