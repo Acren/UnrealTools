@@ -41,10 +41,21 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         protected async Task<global::LocalAutomation.Runtime.OperationResult> ExecuteProcessAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
+            using global::LocalAutomation.Core.PerformanceActivityScope activity = global::LocalAutomation.Core.PerformanceTelemetry.StartActivity("CommandProcessOperation.ExecuteProcess")
+                .SetTag("task.id", context.TaskId.Value)
+                .SetTag("task.title", context.Title)
+                .SetTag("operation.type", GetType().Name);
+
             _wasCancelled = false;
             ILogger logger = context.Logger;
             UnrealOperationParameters unrealOperationParameters = GetUnrealOperationParameters(context);
-            global::LocalAutomation.Runtime.Command command = BuildCommand(unrealOperationParameters);
+            global::LocalAutomation.Runtime.Command command;
+            using (global::LocalAutomation.Core.PerformanceActivityScope buildCommandActivity = global::LocalAutomation.Core.PerformanceTelemetry.StartActivity("CommandProcessOperation.BuildCommand"))
+            {
+                command = BuildCommand(unrealOperationParameters);
+                buildCommandActivity.SetTag("command.file", command.File)
+                    .SetTag("command.has_arguments", !string.IsNullOrWhiteSpace(command.Arguments));
+            }
 
             _fileName = Path.GetFileName(command.File);
 
@@ -65,21 +76,27 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 CreateNoWindow = true
             };
 
-            _process = new Process { StartInfo = startInfo };
-            _process.EnableRaisingEvents = true;
-            _process.OutputDataReceived += (sender, args) => { HandleLogLine(logger, args.Data); };
-            _process.ErrorDataReceived += (sender, args) =>
+            using (global::LocalAutomation.Core.PerformanceActivityScope startProcessActivity = global::LocalAutomation.Core.PerformanceTelemetry.StartActivity("CommandProcessOperation.StartProcess"))
             {
-                if (args.Data != null)
+                _process = new Process { StartInfo = startInfo };
+                _process.EnableRaisingEvents = true;
+                _process.OutputDataReceived += (sender, args) => { HandleLogLine(logger, args.Data); };
+                _process.ErrorDataReceived += (sender, args) =>
                 {
-                    logger.LogError(args.Data);
-                }
-            };
-            _process.Start();
-            _process.BeginOutputReadLine();
-            _process.BeginErrorReadLine();
+                    if (args.Data != null)
+                    {
+                        logger.LogError(args.Data);
+                    }
+                };
+                _process.Start();
+                _process.BeginOutputReadLine();
+                _process.BeginErrorReadLine();
+                startProcessActivity.SetTag("process.id", _process.Id);
+            }
 
             _processName = _process.ProcessName;
+            activity.SetTag("process.name", _processName)
+                .SetTag("process.file", _fileName ?? string.Empty);
 
             logger.LogInformation("Launched process '" + FileAndProcess + "'");
 

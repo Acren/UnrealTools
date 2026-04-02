@@ -127,8 +127,8 @@ public sealed class Runner
     }
 
     /// <summary>
-    /// Executes one nested child operation by merging its descendant tasks into the current live session graph beneath
-    /// the current task and then re-entering the same root scheduler until that inserted child work finishes.
+    /// Executes one nested child operation by merging its tasks beneath the currently executing callback task and then
+    /// waiting for the inserted tasks to finish through ordinary dependency-driven scheduling.
     /// </summary>
     public static async Task<OperationResult> RunChildOperation(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext)
     {
@@ -157,10 +157,34 @@ public sealed class Runner
             throw new InvalidOperationException($"Cannot run child operation '{operation.OperationName}' without an active execution scheduler.");
         }
 
-        ExecutionPlan childPlan = BuildWrappedPlan(operation, operationParameters, parentContext.Logger)
-            ?? throw new InvalidOperationException($"Operation '{operation.OperationName}' did not produce an execution plan.");
-        ChildTaskMergeResult mergeResult = parentContext.Session.MergeChildTasks(parentContext.TaskId, childPlan);
-        return await parentContext.Scheduler.WaitForInsertedChildTasksAsync(operation, parentContext, mergeResult).ConfigureAwait(false);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Runner.RunChildOperation")
+            .SetTag("parent.task.id", parentContext.TaskId.Value)
+            .SetTag("parent.task.title", parentContext.Title)
+            .SetTag("child.operation", operation.OperationName)
+            .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
+
+        ExecutionPlan childPlan;
+        using (PerformanceActivityScope buildPlanActivity = PerformanceTelemetry.StartActivity("Runner.RunChildOperation.BuildPlan"))
+        {
+            childPlan = BuildWrappedPlan(operation, operationParameters, parentContext.Logger)
+                ?? throw new InvalidOperationException($"Operation '{operation.OperationName}' did not produce an execution plan.");
+            buildPlanActivity.SetTag("child.task.count", childPlan.Tasks.Count)
+                .SetTag("child.title", childPlan.Title);
+        }
+
+        ChildTaskMergeResult mergeResult;
+        using (PerformanceActivityScope mergeActivity = PerformanceTelemetry.StartActivity("Runner.RunChildOperation.MergeTasks"))
+        {
+            mergeResult = parentContext.Session.MergeChildTasks(parentContext.TaskId, childPlan);
+            mergeActivity.SetTag("inserted.task.count", mergeResult.InsertedTaskIds.Count)
+                .SetTag("inserted.root.id", mergeResult.RootTask.Id.Value)
+                .SetTag("inserted.root.title", mergeResult.RootTask.Title);
+        }
+
+        OperationResult result = await parentContext.Scheduler.WaitForInsertedChildTasksAsync(operation, parentContext, mergeResult).ConfigureAwait(false);
+        activity.SetTag("result.outcome", result.Outcome.ToString())
+            .SetTag("result.success", result.Success);
+        return result;
     }
 
     /// <summary>
