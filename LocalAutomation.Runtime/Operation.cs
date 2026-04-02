@@ -193,9 +193,19 @@ public abstract class Operation
             throw new OperationCanceledException(context.CancellationToken);
         }
 
+        string childFailureReason = string.IsNullOrWhiteSpace(result.FailureReason)
+            ? $"Child operation '{childOperation.OperationName}' failed."
+            : result.FailureReason;
+        string effectiveFailureMessage = string.IsNullOrWhiteSpace(failureMessage)
+            ? childFailureReason
+            : $"{failureMessage}{Environment.NewLine}Cause: {childFailureReason}";
+
+        /* Required child operations should keep the caller's framing while still preserving the concrete child failure
+           reason that explains why the nested operation returned Failed. */
         activity.SetTag("result.transition", "ThrowFailure")
-            .SetTag("failure.message", failureMessage ?? $"Child operation '{childOperation.OperationName}' failed.");
-        throw new Exception(failureMessage ?? $"Child operation '{childOperation.OperationName}' failed.");
+            .SetTag("failure.message", effectiveFailureMessage)
+            .SetTag("child.failure.reason", childFailureReason);
+        throw new Exception(effectiveFailureMessage);
     }
 
     /// <summary>

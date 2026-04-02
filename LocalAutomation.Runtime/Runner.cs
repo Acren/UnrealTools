@@ -100,8 +100,10 @@ public sealed class Runner
         string? requirementsError = Operation.CheckRequirementsSatisfied(_operationParameters);
         if (requirementsError != null)
         {
-            _logger.LogError(requirementsError);
-            return OperationResult.Failed();
+            /* Requirement failures are normal failed results, not exceptions. Log the concrete validation message here so
+               parent callbacks and the UI can surface the actual reason even when no task body ever starts. */
+            eventLogger.LogError("Operation '{OperationName}' requirements failed: {RequirementsError}", Operation.OperationName, requirementsError);
+            return OperationResult.Failed(failureReason: requirementsError);
         }
 
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("Runner.Run")
@@ -329,6 +331,7 @@ public sealed class Runner
             {
                 aggregateLogger.LogError("{ErrorCount} error(s) encountered", errorCount);
                 result.Outcome = RunOutcome.Failed;
+                result.FailureReason ??= $"{errorCount} error(s) encountered";
             }
 
             if (warningCount > 0)
@@ -338,6 +341,7 @@ public sealed class Runner
                 {
                     aggregateLogger.LogError("Operation fails on warnings");
                     result.Outcome = RunOutcome.Failed;
+                    result.FailureReason ??= "Operation fails on warnings";
                 }
             }
         }

@@ -176,7 +176,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 ? global::LocalAutomation.Runtime.OperationResult.Cancelled(_process.ExitCode)
                 : _process.ExitCode == 0
                     ? global::LocalAutomation.Runtime.OperationResult.Succeeded(_process.ExitCode)
-                    : global::LocalAutomation.Runtime.OperationResult.Failed(_process.ExitCode);
+                    : global::LocalAutomation.Runtime.OperationResult.Failed(_process.ExitCode, $"Process '{FileAndProcess}' failed with code {_process.ExitCode}");
 
             LogLevel exitLevel = result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Cancelled
                 ? LogLevel.Warning

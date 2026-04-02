@@ -110,7 +110,10 @@ public sealed class ExecutionPlanScheduler
            active, so failure/cancellation detection must read Result instead of Status. */
         if (_encounteredFailure || _session.Tasks.Any(task => task.Result == ExecutionTaskStatus.Failed))
         {
-            return OperationResult.Failed();
+            string? failureReason = _session.Tasks
+                .Select(task => task.StatusReason)
+                .FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason));
+            return OperationResult.Failed(failureReason: failureReason);
         }
 
         if (_encounteredCancellation || _session.Tasks.Any(task => task.Result == ExecutionTaskStatus.Cancelled))
@@ -304,7 +307,9 @@ public sealed class ExecutionPlanScheduler
             else
             {
                 _encounteredFailure = true;
-                _session.FailScopeFromTask(completedTaskId, "The task execution callback returned failure.");
+                _session.FailScopeFromTask(completedTaskId, string.IsNullOrWhiteSpace(result.FailureReason)
+                    ? "The task execution callback returned failure."
+                    : result.FailureReason);
             }
         }
         catch (OperationCanceledException)
@@ -315,8 +320,19 @@ public sealed class ExecutionPlanScheduler
         }
         catch (Exception ex)
         {
+            ExecutionTask failedTask = _session.GetTask(completedTaskId);
+            ILogger taskLogger = CreateTaskLogger(completedTaskId);
+            Exception rootException = ex.GetBaseException();
+
+            /* Callback exceptions need to land in the task log with the full exception payload so the UI can surface the
+               actual failure instead of only the scheduler's generic failure summary. */
+            completionActivity.SetTag("task.outcome", "Exception")
+                .SetTag("exception.type", rootException.GetType().FullName ?? rootException.GetType().Name)
+                .SetTag("exception.message", rootException.Message);
+            taskLogger.LogError(ex, "Execution task '{TaskTitle}' failed.", failedTask.Title);
+
             _encounteredFailure = true;
-            _session.FailScopeFromTask(completedTaskId, ex.Message);
+            _session.FailScopeFromTask(completedTaskId, GetFailureReason(ex));
         }
 
         UpdateReadiness();
@@ -497,17 +513,25 @@ public sealed class ExecutionPlanScheduler
             .ToList();
         if (childStates.Any(state => state.Result == ExecutionTaskStatus.Cancelled))
         {
-            return OperationResult.Cancelled();
+            string? cancellationReason = childStates
+                .Where(state => state.Result == ExecutionTaskStatus.Cancelled)
+                .Select(state => state.StatusReason)
+                .FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason));
+            return OperationResult.Cancelled(failureReason: cancellationReason);
         }
 
         if (childStates.Any(state => state.Result is ExecutionTaskStatus.Failed or ExecutionTaskStatus.Skipped))
         {
-            return OperationResult.Failed();
+            string? failureReason = childStates
+                .Where(state => state.Result is ExecutionTaskStatus.Failed or ExecutionTaskStatus.Skipped)
+                .Select(state => state.StatusReason)
+                .FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason));
+            return OperationResult.Failed(failureReason: failureReason);
         }
 
         if (warnings.Count > 0 && operation.ShouldFailOnWarning())
         {
-            return OperationResult.Failed();
+            return OperationResult.Failed(failureReason: "Operation fails on warnings");
         }
 
         return OperationResult.Succeeded();
@@ -548,9 +572,24 @@ public sealed class ExecutionPlanScheduler
         catch (Exception ex)
         {
             activity.SetTag("task.outcome", "Exception")
-                .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name);
-            throw new Exception($"Exception encountered running execution task '{task.Title}'", ex);
+                .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name)
+                .SetTag("exception.message", ex.Message);
+
+            /* Preserve the original exception so the scheduler can log the real root cause and expose the innermost
+               message in task status instead of a wrapper message. */
+            throw;
         }
+    }
+
+    /// <summary>
+    /// Returns the most useful failure reason for task status by preferring the root exception message when one exists.
+    /// </summary>
+    private static string GetFailureReason(Exception exception)
+    {
+        Exception rootException = exception.GetBaseException();
+        return string.IsNullOrWhiteSpace(rootException.Message)
+            ? exception.Message
+            : rootException.Message;
     }
 
     /// <summary>

@@ -24,6 +24,11 @@ public class OperationResult : RunResult
     }
 
     /// <summary>
+    /// Gets or sets the human-readable reason for a failed or cancelled result when one is known.
+    /// </summary>
+    public string? FailureReason { get; set; }
+
+    /// <summary>
     /// Creates a successful operation result.
     /// </summary>
     public static OperationResult Succeeded(int exitCode = 0)
@@ -37,22 +42,24 @@ public class OperationResult : RunResult
     /// <summary>
     /// Creates a failed operation result.
     /// </summary>
-    public static OperationResult Failed(int exitCode = 0)
+    public static OperationResult Failed(int exitCode = 0, string? failureReason = null)
     {
         return new OperationResult(RunOutcome.Failed)
         {
-            ExitCode = exitCode
+            ExitCode = exitCode,
+            FailureReason = failureReason
         };
     }
 
     /// <summary>
     /// Creates a cancelled operation result.
     /// </summary>
-    public static OperationResult Cancelled(int exitCode = 0)
+    public static OperationResult Cancelled(int exitCode = 0, string? failureReason = null)
     {
         return new OperationResult(RunOutcome.Cancelled)
         {
-            ExitCode = exitCode
+            ExitCode = exitCode,
+            FailureReason = failureReason
         };
     }
 }
