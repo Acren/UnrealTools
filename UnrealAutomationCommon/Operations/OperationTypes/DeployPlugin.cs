@@ -88,8 +88,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-         /// Gets the isolated per-engine temp root so multiple engine branches can execute without colliding in shared
-         /// staging or package folders.
+         /// Gets the isolated per-engine temp root so multiple engine-specific execution scopes can run without colliding
+         /// in shared staging or package folders.
          /// </summary>
         private string GetEngineTempPath(Engine engine)
         {
@@ -224,7 +224,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task BuildEditor(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Building host project editor");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             global::LocalAutomation.Runtime.OperationParameters buildEditorParams = CreateParameters();
             buildEditorParams.Target = state.HostProject;
             buildEditorParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
@@ -308,7 +308,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             hostProject.SetProjectVersion(plugin.PluginDescriptor.VersionName, context.Logger);
-            context.SetSharedData(state);
+            context.SetOperationState(state);
             await Task.CompletedTask;
         }
 
@@ -318,19 +318,23 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task StagingStepAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing plugin staging copy");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             string stagingPluginPath = Path.Combine(GetEngineTempPath(state.Engine), @"PluginStaging", state.SourcePlugin.Name);
+            context.Logger.LogInformation($"Engine version: {state.Engine.Version}");
+            context.Logger.LogInformation($"Source plugin: {state.SourcePlugin.PluginPath}");
+            context.Logger.LogInformation($"Staging destination: {stagingPluginPath}");
             FileUtils.DeleteDirectoryIfExists(stagingPluginPath);
             FileUtils.CopyDirectory(state.SourcePlugin.PluginPath, stagingPluginPath);
+            context.Logger.LogInformation($"Copied plugin to staging destination: {stagingPluginPath}");
             Plugin stagingPlugin = new(stagingPluginPath);
             UpdatePluginDescriptorForArchive(state, stagingPlugin);
-            context.SetSharedData(state.WithStagingPlugin(stagingPlugin));
+            context.SetOperationState(state.WithStagingPlugin(stagingPlugin));
             context.Logger.LogInformation($"Updated plugin descriptor for staging: {stagingPlugin.PluginDescriptor.VersionName}");
             await Task.CompletedTask;
         }
 
         /// <summary>
-        /// Builds the archive filename prefix for the active engine branch.
+        /// Builds the archive filename prefix for the active engine-specific execution scope.
         /// </summary>
         private string BuildArchivePrefix(DeploymentState state)
         {
@@ -376,7 +380,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing host project editor");
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestEditor")
                 .SetTag("trigger", "StepTransition");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             global::LocalAutomation.Runtime.OperationParameters launchEditorParams = CreateParameters();
             launchEditorParams.Target = state.HostProject;
             launchEditorParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
@@ -391,7 +395,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing standalone");
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestStandalone")
                 .SetTag("trigger", "StepTransition");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             global::LocalAutomation.Runtime.OperationParameters launchStandaloneParams = CreateParameters();
             launchStandaloneParams.Target = state.HostProject;
             launchStandaloneParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
@@ -405,7 +409,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task BuildPlugin(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Building plugin");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             Plugin stagingPlugin = state.GetRequiredStagingPlugin();
             string pluginBuildPath = Path.Combine(GetEngineTempPath(state.Engine), @"PluginBuild", state.SourcePlugin.Name);
             FileUtils.DeleteDirectoryIfExists(pluginBuildPath);
@@ -436,7 +440,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             using (PerformanceActivityScope sharedStateActivity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin.StoreSharedState"))
             {
-                context.SetSharedData(state.WithBuiltPlugin(builtPlugin));
+                context.SetOperationState(state.WithBuiltPlugin(builtPlugin));
             }
 
             context.Logger.LogInformation("Plugin build complete");
@@ -445,7 +449,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PrepareExampleProject(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing host project");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             Project hostProject = state.HostProject;
             Plugin plugin = state.SourcePlugin;
             Plugin builtPlugin = state.GetRequiredBuiltPlugin();
@@ -488,14 +492,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             exampleProject.AddPlugin(builtPlugin);
             string exampleProjectVersion = ProjectConfig.BuildVersionWithEnginePrefix(plugin.PluginDescriptor.VersionName, engine.Version);
             exampleProject.SetProjectVersion(exampleProjectVersion, context.Logger);
-            context.SetSharedData(state.WithExampleProject(exampleProject));
+            context.SetOperationState(state.WithExampleProject(exampleProject));
             await Task.CompletedTask;
         }
 
         private async Task BuildCodeExampleProject(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             context.Logger.LogInformation("Building example project with modules");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
 
             global::LocalAutomation.Runtime.OperationParameters buildExampleProjectParams = CreateParameters();
             buildExampleProjectParams.Target = state.GetRequiredExampleProject();
@@ -539,7 +543,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task RunClangCompileCheck(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Running Clang compile check");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.RunClangCompileCheck")
                 .SetTag("plugin.name", state.SourcePlugin.Name)
                 .SetTag("engine.version", state.Engine.Version.ToString());
@@ -578,7 +582,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PackageCodeExampleProjectWithProjectPluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging code example project with plugin inside project");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             string projectPluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"ProjectPluginPackage");
             await RunPackageProjectAsync(state, projectPluginPackagePath, context, "Package project with included plugin failed");
         }
@@ -589,7 +593,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestCodeExampleProjectPackageWithProjectPluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing code project package with project plugin");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             string projectPluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"ProjectPluginPackage");
             Package projectPluginPackage = new(Path.Combine(projectPluginPackagePath, state.Engine.GetWindowsPlatformName()));
             await RunLaunchPackageAsync(projectPluginPackage, state.Engine, automationOptions, context, "Launch and test with project plugin failed");
@@ -601,7 +605,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PrepareEnginePluginInstallAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing to package example project with installed plugin");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             string enginePluginsMarketplacePath = Path.Combine(state.Engine.TargetPath, @"Engine\Plugins\Marketplace");
             string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, state.SourcePlugin.Name);
             context.Logger.LogInformation($"Copying plugin to {enginePluginsMarketplacePluginPath}");
@@ -616,7 +620,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PackageCodeExampleProjectWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging code example project with installed plugin");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             state.GetRequiredExampleProject().RemovePlugin(state.SourcePlugin.Name);
             string enginePluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"EnginePluginPackage");
             await RunPackageProjectAsync(state, enginePluginPackagePath, context, "Package project with engine plugin failed");
@@ -628,7 +632,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestCodeExampleProjectPackageWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing code project package with installed plugin");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             string enginePluginPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"EnginePluginPackage");
             Package enginePluginPackage = new(Path.Combine(enginePluginPackagePath, state.Engine.GetWindowsPlatformName()));
             await RunLaunchPackageAsync(enginePluginPackage, state.Engine, automationOptions, context, "Launch and test with installed plugin failed");
@@ -640,7 +644,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PackageBlueprintExampleProjectWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging blueprint-only example project");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             state.GetRequiredExampleProject().ConvertToBlueprintOnly();
             PreparePluginsForProject(state, state.GetRequiredExampleProject(), context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>());
             string blueprintOnlyPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"BlueprintOnlyPackage");
@@ -653,7 +657,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestBlueprintExampleProjectPackageWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing blueprint project package with installed plugin");
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             string blueprintOnlyPackagePath = Path.Combine(GetEngineTempPath(state.Engine), @"BlueprintOnlyPackage");
             Package package = new(Path.Combine(blueprintOnlyPackagePath, state.Engine.GetWindowsPlatformName()));
             await RunLaunchPackageAsync(package, state.Engine, automationOptions, context, "Launch and test blueprint project with installed plugin failed");
@@ -661,7 +665,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task PackageDemoExecutable(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             Engine engine = state.Engine;
             Plugin plugin = state.SourcePlugin;
             Plugin builtPlugin = state.GetRequiredBuiltPlugin();
@@ -703,7 +707,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception("Example project build failed");
             }
 
-            context.SetSharedData(state.WithDemoPackage(new Package(Path.Combine(demoPackagePath, engine.GetWindowsPlatformName()))));
+            context.SetOperationState(state.WithDemoPackage(new Package(Path.Combine(demoPackagePath, engine.GetWindowsPlatformName()))));
         }
 
         private void PreparePluginsForProject(DeploymentState state, Project targetProject, PluginDeployOptions deployOptions)
@@ -732,7 +736,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Archiving");
             PluginDeployOptions deployOptions = context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>();
-            DeploymentState state = context.GetRequiredSharedData<DeploymentState>();
+            DeploymentState state = context.GetOperationState<DeploymentState>();
             Plugin plugin = state.SourcePlugin;
             Plugin builtPlugin = state.GetRequiredBuiltPlugin();
             Project exampleProject = state.GetRequiredExampleProject();
@@ -880,18 +884,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 ? enabledVersions.ToList()
                 : new List<EngineVersion> { plugin.EngineInstance.Version };
 
-            root.Children(branches =>
+            root.Children(global::LocalAutomation.Runtime.ExecutionChildMode.Parallel, engines =>
             {
                 foreach (EngineVersion engineVersion in targetVersions)
                 {
-                    branches
-                        .Task($"UE {engineVersion.MajorMinorString}", "Per-engine deployment branch")
-                        .ExpandChildOperation<DeployPluginForEngine>(() => CreateBranchParameters(operationParameters.CreateChild(), engineVersion));
+                    engines
+                        .Task($"UE {engineVersion.MajorMinorString}", "Per-engine deployment scope")
+                        .ExpandChildOperation<DeployPluginForEngine>(() => CreateEngineParameters(operationParameters.CreateChild(), engineVersion));
                 }
             });
         }
 
-        private global::LocalAutomation.Runtime.OperationParameters CreateBranchParameters(global::LocalAutomation.Runtime.OperationParameters parentParameters, EngineVersion engineVersion)
+        private global::LocalAutomation.Runtime.OperationParameters CreateEngineParameters(global::LocalAutomation.Runtime.OperationParameters parentParameters, EngineVersion engineVersion)
         {
             global::LocalAutomation.Runtime.OperationParameters childParameters = parentParameters.CreateChild();
             childParameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { engineVersion };

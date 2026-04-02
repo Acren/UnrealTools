@@ -12,5 +12,6 @@ public enum ExecutionTaskStatus
     Failed,
     Skipped,
     Disabled,
-    Cancelled
+    Cancelled,
+    Interrupted
 }

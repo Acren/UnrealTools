@@ -22,6 +22,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _finishedAt;
     private ExecutionTaskStatus? _result;
+    private readonly Dictionary<Type, object> _stateByType = new();
 
     /// <summary>
     /// Creates one execution task from authored metadata. Sessions later clone these tasks into live nodes and initialize
@@ -39,6 +40,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         IEnumerable<Type>? declaredOptionTypes = null,
         Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync = null,
         ExecutionTaskStatus? result = null,
+        bool isOperationRoot = false,
         bool isCallbackTask = false,
         ExecutionTaskId? callbackOwnerTaskId = null)
     {
@@ -58,6 +60,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         DeclaredOptionTypes = (declaredOptionTypes ?? Array.Empty<Type>()).ToList().AsReadOnly();
         ExecuteAsync = executeAsync;
         Result = result;
+        IsOperationRoot = isOperationRoot;
         IsCallbackTask = isCallbackTask;
         CallbackOwnerTaskId = callbackOwnerTaskId;
         LogStream = new BufferedLogStream();
@@ -138,8 +141,14 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Gets whether this task is an implicit visible callback node lowered from an authored `.Run(...)` declaration.
+    /// Gets whether this task is the root container for one operation subtree. Operation-scoped context walks upward to
+    /// the nearest task with this marker so nested child operations keep independent state scopes.
     /// </summary>
+    public bool IsOperationRoot { get; }
+
+    /// <summary>
+     /// Gets whether this task is an implicit visible callback node lowered from an authored `.Run(...)` declaration.
+     /// </summary>
     public bool IsCallbackTask { get; }
 
     /// <summary>
@@ -151,7 +160,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
     internal ExecutionTask CloneForSession()
     {
-        return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Result, IsCallbackTask, CallbackOwnerTaskId);
+        return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Result, IsOperationRoot, IsCallbackTask, CallbackOwnerTaskId);
     }
 
     internal void InitializeRuntimeState(bool hasBegunExecution)
@@ -188,6 +197,67 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
         _dependsOn.Add(dependencyTaskId);
         RaisePropertyChanged(nameof(DependsOn));
+    }
+
+    internal void SetState<T>(T value) where T : class
+    {
+        _stateByType[typeof(T)] = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    internal bool TryGetLocalState<T>(out T? value) where T : class
+    {
+        if (_stateByType.TryGetValue(typeof(T), out object? rawValue) && rawValue is T typedValue)
+        {
+            value = typedValue;
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Applies one complete runtime-state snapshot and raises property notifications only after the full state is
+    /// internally consistent. This prevents observers from seeing torn combinations such as Running plus Result=Completed.
+    /// </summary>
+    internal void ApplyRuntimeState(ExecutionTaskStatus status, string statusReason, ExecutionTaskStatus? result, DateTimeOffset? startedAt, DateTimeOffset? finishedAt)
+    {
+        bool statusChanged = !Equals(_status, status);
+        bool statusReasonChanged = !Equals(_statusReason, statusReason);
+        bool resultChanged = !Equals(_result, result);
+        bool startedAtChanged = !Equals(_startedAt, startedAt);
+        bool finishedAtChanged = !Equals(_finishedAt, finishedAt);
+
+        _status = status;
+        _statusReason = statusReason;
+        _result = result;
+        _startedAt = startedAt;
+        _finishedAt = finishedAt;
+
+        if (statusChanged)
+        {
+            RaisePropertyChanged(nameof(Status));
+        }
+
+        if (statusReasonChanged)
+        {
+            RaisePropertyChanged(nameof(StatusReason));
+        }
+
+        if (resultChanged)
+        {
+            RaisePropertyChanged(nameof(Result));
+        }
+
+        if (startedAtChanged)
+        {
+            RaisePropertyChanged(nameof(StartedAt));
+        }
+
+        if (finishedAtChanged)
+        {
+            RaisePropertyChanged(nameof(FinishedAt));
+        }
     }
 
     private void RaisePropertyChanged([CallerMemberName] string? propertyName = null)

@@ -28,6 +28,7 @@ public static class ExecutionTaskStatusDisplay
             ExecutionTaskStatus.Skipped => "Skipped",
             ExecutionTaskStatus.Disabled => "Disabled",
             ExecutionTaskStatus.Cancelled => "Cancelled",
+            ExecutionTaskStatus.Interrupted => "Interrupted",
             ExecutionTaskStatus.Planned => "Planned",
             _ => status.ToString()
         };

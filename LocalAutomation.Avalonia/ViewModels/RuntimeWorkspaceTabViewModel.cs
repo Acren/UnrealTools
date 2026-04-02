@@ -2,7 +2,6 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using LocalAutomation.Core;
-using RuntimeExecutionRunOutcome = LocalAutomation.Runtime.RunOutcome;
 using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
@@ -169,29 +168,31 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// <summary>
     /// Gets whether the status marker should show the success accent.
     /// </summary>
-    public bool IsSucceededStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionRunOutcome.Succeeded;
+    public bool IsSucceededStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskStatus.Completed;
 
     /// <summary>
     /// Gets whether the status marker should show the failure accent.
     /// </summary>
-    public bool IsFailedStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionRunOutcome.Failed;
+    public bool IsFailedStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskStatus.Failed;
 
     /// <summary>
      /// Gets whether the status marker should show the cancelled accent.
      /// </summary>
-    public bool IsCancelledStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionRunOutcome.Cancelled;
+    public bool IsCancelledStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskStatus.Cancelled;
 
     /// <summary>
     /// Gets the semantic status rendered by the shared status-indicator control.
     /// </summary>
     public RuntimeExecutionTaskStatus SessionStatusForIndicator => Session?.IsRunning == true
         ? RuntimeExecutionTaskStatus.Running
-        : Session?.Outcome == RuntimeExecutionRunOutcome.Succeeded
+        : Session?.Outcome == RuntimeExecutionTaskStatus.Completed
             ? RuntimeExecutionTaskStatus.Completed
-            : Session?.Outcome == RuntimeExecutionRunOutcome.Failed
+            : Session?.Outcome == RuntimeExecutionTaskStatus.Failed
                 ? RuntimeExecutionTaskStatus.Failed
-                : Session?.Outcome == RuntimeExecutionRunOutcome.Cancelled
+                : Session?.Outcome == RuntimeExecutionTaskStatus.Cancelled
                     ? RuntimeExecutionTaskStatus.Cancelled
+                    : Session?.Outcome == RuntimeExecutionTaskStatus.Interrupted
+                        ? RuntimeExecutionTaskStatus.Interrupted
                     : RuntimeExecutionTaskStatus.Pending;
 
     /// <summary>

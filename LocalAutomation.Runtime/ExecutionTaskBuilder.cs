@@ -138,12 +138,21 @@ public sealed class ExecutionTaskBuilder
     /// </summary>
     public ExecutionTaskBuilder Children(Action<ExecutionTaskScopeBuilder> build)
     {
+        return Children(ExecutionChildMode.Sequenced, build);
+    }
+
+    /// <summary>
+    /// Opens a child-task scope beneath this task and controls whether sibling tasks inside that scope are auto-sequenced
+    /// or left independent.
+    /// </summary>
+    public ExecutionTaskBuilder Children(ExecutionChildMode mode, Action<ExecutionTaskScopeBuilder> build)
+    {
         if (build == null)
         {
             throw new ArgumentNullException(nameof(build));
         }
 
-        build(new ExecutionTaskScopeBuilder(_owner, Handle));
+        build(new ExecutionTaskScopeBuilder(_owner, Handle, mode));
         return this;
     }
 

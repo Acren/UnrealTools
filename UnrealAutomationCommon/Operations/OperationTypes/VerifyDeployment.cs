@@ -48,13 +48,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 ? enabledVersions.ToList()
                 : new List<EngineVersion> { plugin.EngineInstance.Version };
             AutomationOptions automationOptions = operationParameters.GetOptions<AutomationOptions>();
-            root.Children(branches =>
+            root.Children(engines =>
             {
                 foreach (EngineVersion engineVersion in targetVersions)
                 {
                     EngineVersion currentEngineVersion = engineVersion;
-                    branches
-                        .Task($"UE {currentEngineVersion.MajorMinorString}", "Per-engine verification branch")
+                    engines
+                        .Task($"UE {currentEngineVersion.MajorMinorString}", "Per-engine verification scope")
                         .Children(steps => steps
                             .Task("Prepare")
                                 .Describe("Resolve the installed plugin and extract the matching example project archive")
@@ -144,13 +144,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string packageOutput = Path.Combine(temp, "Package");
             FileUtils.DeleteDirectoryIfExists(packageOutput);
 
-            context.SetSharedData(new VerificationState(plugin, engine, exampleProject, temp, packageOutput));
+            context.SetOperationState(new VerificationState(plugin, engine, exampleProject, temp, packageOutput));
             await Task.CompletedTask;
         }
 
         private async Task TestEditorAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            VerificationState state = context.GetRequiredSharedData<VerificationState>();
+            VerificationState state = context.GetOperationState<VerificationState>();
             AutomationOptions automationOptions = context.ValidatedOperationParameters.GetOptions<AutomationOptions>();
 
             context.Logger.LogInformation("Launching and testing example project editor");
@@ -159,7 +159,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task TestStandaloneAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            VerificationState state = context.GetRequiredSharedData<VerificationState>();
+            VerificationState state = context.GetOperationState<VerificationState>();
             AutomationOptions automationOptions = context.ValidatedOperationParameters.GetOptions<AutomationOptions>();
 
             context.Logger.LogInformation("Launching and testing standalone");
@@ -168,13 +168,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task PackageProjectAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            VerificationState state = context.GetRequiredSharedData<VerificationState>();
+            VerificationState state = context.GetOperationState<VerificationState>();
             await RunChildOperationAsync(new PackageProject(), CreateExampleProjectParams(state, outputPathOverride: state.PackageOutputPath), context, required: true, failureMessage: "Failed to package example project");
         }
 
         private async Task TestPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            VerificationState state = context.GetRequiredSharedData<VerificationState>();
+            VerificationState state = context.GetOperationState<VerificationState>();
             AutomationOptions automationOptions = context.ValidatedOperationParameters.GetOptions<AutomationOptions>();
 
             await RunExampleProjectOperationAsync<LaunchStagedPackage>(state, automationOptions, context, "Launch and test package failed");

@@ -110,14 +110,14 @@ public sealed class Runner
             .SetTag("plan.id", plan.Id.Value)
             .SetTag("plan.task.count", plan.Tasks.Count);
         using IDisposable operationTimingScope = eventLogger.BeginSection(Operation.OperationName);
-        _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, maxParallelism: 1, session).ExecuteAsync(plan, _cancellationTokenSource.Token));
+        _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, session).ExecuteAsync(plan, _cancellationTokenSource.Token));
         try
         {
             OperationResult result = await _currentTask.ConfigureAwait(false);
-            activity.SetTag("scheduler.result", result.Outcome.ToString());
+            activity.SetTag("scheduler.result", result.Result.ToString());
             using PerformanceActivityScope finalizeActivity = PerformanceTelemetry.StartActivity("Runner.Run.FinalizeOutcome")
                 .SetTag("operation.name", Operation.OperationName)
-                .SetTag("incoming.result", result.Outcome.ToString());
+                .SetTag("incoming.result", result.Result.ToString());
             return FinalizeOutcome(result, eventLogger);
         }
         finally
@@ -183,7 +183,7 @@ public sealed class Runner
         }
 
         OperationResult result = await parentContext.Scheduler.WaitForInsertedChildTasksAsync(operation, parentContext, mergeResult).ConfigureAwait(false);
-        activity.SetTag("result.outcome", result.Outcome.ToString())
+        activity.SetTag("result.outcome", result.Result.ToString())
             .SetTag("result.success", result.Success);
         return result;
     }
@@ -311,11 +311,15 @@ public sealed class Runner
     /// </summary>
     private static OperationResult FinalizeOutcome(Operation operation, OperationResult result, ILogger aggregateLogger, ILogger summaryLogger, int warningCount, int errorCount)
     {
-        if (result.Outcome == RunOutcome.Cancelled)
+        if (result.Result == ExecutionTaskStatus.Cancelled)
         {
             aggregateLogger.LogWarning("Operation '{OperationName}' terminated by user", operation.OperationName);
         }
-        else if (result.Outcome == RunOutcome.Succeeded)
+        else if (result.Result == ExecutionTaskStatus.Interrupted)
+        {
+            aggregateLogger.LogWarning("Operation '{OperationName}' was interrupted - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
+        }
+        else if (result.Result == ExecutionTaskStatus.Completed)
         {
             aggregateLogger.LogInformation("Operation '{OperationName}' completed successfully - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
         }
@@ -324,12 +328,12 @@ public sealed class Runner
             aggregateLogger.LogWarning("Operation '{OperationName}' finished with failure - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
         }
 
-        if (result.Outcome == RunOutcome.Succeeded)
+        if (result.Result == ExecutionTaskStatus.Completed)
         {
             if (errorCount > 0)
             {
                 aggregateLogger.LogError("{ErrorCount} error(s) encountered", errorCount);
-                result.Outcome = RunOutcome.Failed;
+                result.Result = ExecutionTaskStatus.Failed;
                 result.FailureReason ??= $"{errorCount} error(s) encountered";
             }
 
@@ -339,13 +343,13 @@ public sealed class Runner
                 if (operation.ShouldFailOnWarning())
                 {
                     aggregateLogger.LogError("Operation fails on warnings");
-                    result.Outcome = RunOutcome.Failed;
+                    result.Result = ExecutionTaskStatus.Failed;
                     result.FailureReason ??= "Operation fails on warnings";
                 }
             }
         }
 
-        if (result.Outcome == RunOutcome.Succeeded)
+        if (result.Result == ExecutionTaskStatus.Completed)
         {
             if (warningCount > 0)
             {
@@ -361,9 +365,13 @@ public sealed class Runner
 
             summaryLogger.LogInformation("'{OperationName}' finished with result: success", operation.OperationName);
         }
-        else if (result.Outcome == RunOutcome.Cancelled)
+        else if (result.Result == ExecutionTaskStatus.Cancelled)
         {
             summaryLogger.LogWarning("'{OperationName}' finished with result: cancelled", operation.OperationName);
+        }
+        else if (result.Result == ExecutionTaskStatus.Interrupted)
+        {
+            summaryLogger.LogWarning("'{OperationName}' finished with result: interrupted", operation.OperationName);
         }
         else
         {

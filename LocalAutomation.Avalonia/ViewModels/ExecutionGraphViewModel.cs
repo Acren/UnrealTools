@@ -345,8 +345,8 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Lays out one sibling set. The root task's direct children stack vertically so top-level branches read like tracks,
-    /// while every deeper level flows horizontally in authored order.
+    /// Lays out one sibling set. The root task's direct children stack vertically so the highest-level scopes read like
+    /// tracks, while every deeper level flows horizontally in authored order.
     /// </summary>
     private LayoutBounds LayoutDirectChildren(RuntimeExecutionTaskId? parentId, double originX, double originY)
     {
@@ -357,8 +357,8 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         }
 
         /* Only the root task's direct children stack vertically. Those nodes typically represent the highest-level tracks
-           in the run, such as one branch per engine version. Deeper levels return to the dependency-column layout so each
-           track reads left-to-right instead of collapsing into one tall tower of nested groups. */
+           in the run, such as one engine-specific scope per selected version. Deeper levels return to the dependency-column
+           layout so each track reads left-to-right instead of collapsing into one tall tower of nested groups. */
         bool isRootChildSet = parentId is RuntimeExecutionTaskId resolvedParentId &&
             _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? parentOfParentId) &&
             parentOfParentId == null;
@@ -378,7 +378,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         }
 
         /* Deeper levels intentionally ignore dependency columns for now. Rendering siblings left-to-right in authored
-           order keeps each branch readable even when the underlying task set has no explicit sibling dependencies yet. */
+           order keeps each subtree readable even when the underlying task set has no explicit sibling dependencies yet. */
         LayoutBounds bounds = LayoutBounds.Empty;
         double currentX = originX;
         List<(ExecutionNodeViewModel Node, LayoutBounds Bounds)> laidOutChildren = new(children.Count);
@@ -450,7 +450,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         }
 
         /* The group frame reserves one padded content rectangle beneath the header. Center the direct-child subtree
-           inside that rectangle so compact branches do not cling to the top-left corner when the group grows wider or
+           inside that rectangle so compact subtrees do not cling to the top-left corner when the group grows wider or
            taller than the child content requires. */
         double minChildX = children.Min(child => child.X);
         double minChildY = children.Min(child => child.Y);

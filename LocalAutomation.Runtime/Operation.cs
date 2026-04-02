@@ -184,17 +184,23 @@ public abstract class Operation
             .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
 
         OperationResult result = await Runner.RunChildOperation(childOperation, operationParameters, context).ConfigureAwait(false);
-        activity.SetTag("result.outcome", result.Outcome.ToString())
+        activity.SetTag("result.outcome", result.Result.ToString())
             .SetTag("result.success", result.Success);
         if (!required || result.Success)
         {
             return result;
         }
 
-        if (result.Outcome == RunOutcome.Cancelled)
+        if (result.Result == ExecutionTaskStatus.Cancelled)
         {
             activity.SetTag("result.transition", "ThrowCancelled");
             throw new OperationCanceledException(context.CancellationToken);
+        }
+
+        if (result.Result == ExecutionTaskStatus.Interrupted)
+        {
+            activity.SetTag("result.transition", "ReturnInterrupted");
+            return result;
         }
 
         string childFailureReason = string.IsNullOrWhiteSpace(result.FailureReason)

@@ -75,6 +75,7 @@ public sealed class ExecutionPlanBuilder
                 declaredOptionTypes: item.DeclaredOptionTypes,
                 executeAsync: item.ExecuteAsync,
                 result: null,
+                isOperationRoot: item.IsOperationRoot,
                 isCallbackTask: item.IsCallbackTask,
                 callbackOwnerTaskId: item.CallbackOwnerTaskId))
             .ToList();
@@ -198,6 +199,7 @@ public sealed class ExecutionPlanBuilder
             Title = string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Execution item title is required.", nameof(title)) : title,
             Description = description ?? string.Empty,
             ParentId = parentId,
+            IsOperationRoot = parentId == null,
             Enabled = true,
             DisabledReason = string.Empty
         };
@@ -228,6 +230,7 @@ public sealed class ExecutionPlanBuilder
                 importedDefinition.OperationParameters = childTask.OperationParameters;
                 importedDefinition.DeclaredOptionTypes = childTask.DeclaredOptionTypes.ToList();
                 importedDefinition.ExecuteAsync = childTask.ExecuteAsync;
+                importedDefinition.IsOperationRoot = childTask.IsOperationRoot;
                 importedDefinition.IsCallbackTask = childTask.IsCallbackTask;
                 importedDefinition.CallbackOwnerTaskId = childTask.CallbackOwnerTaskId;
                 importedDefinition.DependencyIds.AddRange(childTask.DependsOn);
@@ -257,6 +260,7 @@ public sealed class ExecutionPlanBuilder
             callbackDefinition.OperationParameters = definition.OperationParameters;
             callbackDefinition.DeclaredOptionTypes = definition.DeclaredOptionTypes.ToList();
             callbackDefinition.ExecuteAsync = callbackEntry.ExecuteAsync;
+            callbackDefinition.IsOperationRoot = false;
             callbackDefinition.IsCallbackTask = true;
             callbackDefinition.CallbackOwnerTaskId = definition.Id;
 
@@ -332,6 +336,8 @@ public sealed class ExecutionPlanBuilder
         public Type? ChildOperationType { get; set; }
 
         public Func<OperationParameters>? CreateChildParameters { get; set; }
+
+        public bool IsOperationRoot { get; set; }
 
         public bool IsCallbackTask { get; set; }
 
@@ -418,6 +424,7 @@ internal static class ExecutionTaskInsertion
                 childTask.DeclaredOptionTypes,
                 childTask.ExecuteAsync,
                 result: null,
+                isOperationRoot: childTask.IsOperationRoot,
                 isCallbackTask: childTask.IsCallbackTask,
                 callbackOwnerTaskId: remappedCallbackOwnerTaskId));
         }

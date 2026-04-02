@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
-using RuntimeExecutionRunOutcome = LocalAutomation.Runtime.RunOutcome;
 
 namespace LocalAutomation.Application;
 
@@ -88,14 +87,14 @@ public sealed class ExecutionRuntimeService
         try
         {
             OperationResult result = await runner.Run(plan, session);
-            activity.SetTag("runner.result", result.Outcome.ToString());
-            session.Outcome = result.Outcome;
+            activity.SetTag("runner.result", result.Result.ToString());
+            session.Outcome = result.Result;
             activity.SetTag("session.outcome", session.Outcome.ToString());
         }
         catch (OperationCanceledException)
         {
-            session.Outcome = RuntimeExecutionRunOutcome.Cancelled;
-            activity.SetTag("runner.result", RuntimeExecutionRunOutcome.Cancelled.ToString())
+            session.Outcome = RuntimeExecutionTaskStatus.Cancelled;
+            activity.SetTag("runner.result", RuntimeExecutionTaskStatus.Cancelled.ToString())
                 .SetTag("session.outcome", session.Outcome.ToString());
         }
         catch (Exception ex)
@@ -107,7 +106,7 @@ public sealed class ExecutionRuntimeService
                 Verbosity = LogLevel.Error
             });
 
-            session.Outcome = RuntimeExecutionRunOutcome.Failed;
+            session.Outcome = RuntimeExecutionTaskStatus.Failed;
             activity.SetTag("runner.result", "Exception")
                 .SetTag("session.outcome", session.Outcome.ToString())
                 .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name);

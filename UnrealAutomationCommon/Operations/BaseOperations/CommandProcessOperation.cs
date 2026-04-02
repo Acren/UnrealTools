@@ -178,14 +178,14 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                     ? global::LocalAutomation.Runtime.OperationResult.Succeeded(_process.ExitCode)
                     : global::LocalAutomation.Runtime.OperationResult.Failed(_process.ExitCode, $"Process '{FileAndProcess}' failed with code {_process.ExitCode}");
 
-            LogLevel exitLevel = result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Cancelled
+            LogLevel exitLevel = result.Result == global::LocalAutomation.Runtime.ExecutionTaskStatus.Cancelled
                 ? LogLevel.Warning
-                : result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Succeeded
+                : result.Result == global::LocalAutomation.Runtime.ExecutionTaskStatus.Completed
                     ? LogLevel.Information
                     : LogLevel.Error;
-            string exitLabel = result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Cancelled
+            string exitLabel = result.Result == global::LocalAutomation.Runtime.ExecutionTaskStatus.Cancelled
                 ? "cancelled"
-                : result.Outcome == global::LocalAutomation.Runtime.RunOutcome.Succeeded
+                : result.Result == global::LocalAutomation.Runtime.ExecutionTaskStatus.Completed
                     ? "succeeded"
                     : "failed";
             logger.Log(exitLevel, "Process '" + FileAndProcess + "' " + exitLabel + " with code " + result.ExitCode);

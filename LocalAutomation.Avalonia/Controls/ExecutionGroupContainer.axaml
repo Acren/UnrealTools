@@ -52,12 +52,13 @@
         <Style Selector="Border.group-container-border.pressed">
             <Setter Property="Opacity" Value="0.96" />
         </Style>
-        <!-- Planned and Pending share one neutral queued/preview treatment, while Cancelled, Disabled, and Skipped share
-             a more muted inactive treatment. -->
+        <!-- Planned and Pending share one neutral queued/preview treatment, while inactive terminal states keep a more
+             muted treatment. Interrupted intentionally reuses the same muted color as Cancelled while keeping its own
+             semantic class. -->
         <Style Selector="Border.group-container-border.pending, Border.group-container-border.planned">
             <Setter Property="BorderBrush" Value="#98A9B8" />
         </Style>
-        <Style Selector="Border.group-container-border.cancelled, Border.group-container-border.skipped, Border.group-container-border.disabled">
+        <Style Selector="Border.group-container-border.cancelled, Border.group-container-border.interrupted, Border.group-container-border.skipped, Border.group-container-border.disabled">
             <Setter Property="BorderBrush" Value="#69717A" />
         </Style>
         <Style Selector="Border.group-container-border.running">

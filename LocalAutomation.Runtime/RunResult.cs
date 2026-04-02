@@ -1,24 +1,24 @@
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Captures the terminal outcome of a completed command or operation run.
+/// Captures the semantic result of a completed command or operation run.
 /// </summary>
 public class RunResult
 {
-    public RunResult(RunOutcome outcome)
+    public RunResult(ExecutionTaskStatus result)
     {
-        Outcome = outcome;
+        Result = result;
     }
 
-    public RunOutcome Outcome { get; set; }
+    public ExecutionTaskStatus Result { get; set; }
 
     public bool Success
     {
-        get => Outcome == RunOutcome.Succeeded;
-        set => Outcome = value ? RunOutcome.Succeeded : RunOutcome.Failed;
+        get => Result == ExecutionTaskStatus.Completed;
+        set => Result = value ? ExecutionTaskStatus.Completed : ExecutionTaskStatus.Failed;
     }
 
-    public bool WasCancelled => Outcome == RunOutcome.Cancelled;
+    public bool WasCancelled => Result == ExecutionTaskStatus.Cancelled;
 
     public int ExitCode { get; set; }
 }

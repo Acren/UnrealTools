@@ -12,10 +12,10 @@ using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomati
 using RuntimeExecutionPlan = LocalAutomation.Runtime.ExecutionPlan;
 using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
-using RuntimeExecutionRunOutcome = LocalAutomation.Runtime.RunOutcome;
 using RuntimeExecutionSessionId = LocalAutomation.Runtime.ExecutionSessionId;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
+using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -152,14 +152,19 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 return $"Running {SelectedRuntimeTab.Session.OperationName} on {SelectedRuntimeTab.Session.TargetName}";
             }
 
-            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionRunOutcome.Succeeded)
+            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskStatus.Completed)
             {
                 return $"{SelectedRuntimeTab.Session.OperationName} succeeded for {SelectedRuntimeTab.Session.TargetName}";
             }
 
-            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionRunOutcome.Cancelled)
+            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskStatus.Cancelled)
             {
                 return $"{SelectedRuntimeTab.Session.OperationName} was cancelled for {SelectedRuntimeTab.Session.TargetName}";
+            }
+
+            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskStatus.Interrupted)
+            {
+                return $"{SelectedRuntimeTab.Session.OperationName} was interrupted for {SelectedRuntimeTab.Session.TargetName}";
             }
 
             if (SelectedRuntimeTab.Session != null)
@@ -472,13 +477,17 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 RaiseSelectionStateChanged();
             }
 
-            if (session.Outcome == RuntimeExecutionRunOutcome.Succeeded)
+            if (session.Outcome == RuntimeExecutionTaskStatus.Completed)
             {
                 _setStatus($"{session.OperationName} succeeded for {session.TargetName}.");
             }
-            else if (session.Outcome == RuntimeExecutionRunOutcome.Cancelled)
+            else if (session.Outcome == RuntimeExecutionTaskStatus.Cancelled)
             {
                 _setStatus($"{session.OperationName} was cancelled for {session.TargetName}.");
+            }
+            else if (session.Outcome == RuntimeExecutionTaskStatus.Interrupted)
+            {
+                _setStatus($"{session.OperationName} was interrupted for {session.TargetName}.");
             }
             else
             {

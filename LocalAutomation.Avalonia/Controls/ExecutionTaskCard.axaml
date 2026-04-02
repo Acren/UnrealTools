@@ -64,12 +64,13 @@
         <Style Selector="Border.task-card-border.pressed">
             <Setter Property="Opacity" Value="1" />
         </Style>
-        <!-- Planned and Pending share one neutral queued/preview treatment, while Cancelled, Disabled, and Skipped share
-             a more muted inactive treatment. -->
+        <!-- Planned and Pending share one neutral queued/preview treatment, while inactive terminal states keep a more
+             muted treatment. Interrupted intentionally reuses the same muted color as Cancelled while keeping its own
+             semantic class. -->
         <Style Selector="Border.task-card-border.pending, Border.task-card-border.planned">
             <Setter Property="BorderBrush" Value="#98A9B8" />
         </Style>
-        <Style Selector="Border.task-card-border.cancelled, Border.task-card-border.skipped, Border.task-card-border.disabled">
+        <Style Selector="Border.task-card-border.cancelled, Border.task-card-border.interrupted, Border.task-card-border.skipped, Border.task-card-border.disabled">
             <Setter Property="BorderBrush" Value="#69717A" />
         </Style>
         <Style Selector="Border.task-card-border.running">

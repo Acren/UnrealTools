@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
@@ -14,7 +13,7 @@ public sealed class ExecutionTaskContext
     /// <summary>
     /// Creates one execution context for a scheduled task invocation.
     /// </summary>
-    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, ValidatedOperationParameters validatedOperationParameters, IDictionary<Type, object> sharedData, ExecutionSession? session = null, ExecutionPlanScheduler? scheduler = null)
+    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, ValidatedOperationParameters validatedOperationParameters, ExecutionSession? session = null, ExecutionPlanScheduler? scheduler = null)
     {
         TaskId = taskId;
         Title = string.IsNullOrWhiteSpace(title)
@@ -23,7 +22,6 @@ public sealed class ExecutionTaskContext
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
         CancellationToken = cancellationToken;
         ValidatedOperationParameters = validatedOperationParameters ?? throw new ArgumentNullException(nameof(validatedOperationParameters));
-        SharedData = sharedData ?? throw new ArgumentNullException(nameof(sharedData));
         Session = session;
         Scheduler = scheduler;
     }
@@ -68,59 +66,125 @@ public sealed class ExecutionTaskContext
     internal ExecutionPlanScheduler? Scheduler { get; }
 
     /// <summary>
-     /// Gets the shared plan-scoped data bag used by cooperating tasks to exchange strongly typed execution state.
-     /// </summary>
-    private IDictionary<Type, object> SharedData { get; }
-
-    /// <summary>
-    /// Gets the mutable execution-scoped shared data bag so nested runtime child schedulers can continue the same
-    /// logical execution flow instead of forking isolated state.
-    /// </summary>
-    internal IDictionary<Type, object> SharedDataStore => SharedData;
-
-    /// <summary>
     /// Creates a sibling execution context for another task within the same logical execution flow while preserving the
-    /// current cancellation token, live session, and shared execution-scoped data.
-    /// </summary>
+    /// current cancellation token and live session.
+     /// </summary>
     internal ExecutionTaskContext CreateForTask(ExecutionTaskId taskId, string title, ILogger logger, ValidatedOperationParameters validatedOperationParameters)
     {
-        return new ExecutionTaskContext(taskId, title, logger, CancellationToken, validatedOperationParameters, SharedData, Session, Scheduler);
+        return new ExecutionTaskContext(taskId, title, logger, CancellationToken, validatedOperationParameters, Session, Scheduler);
     }
 
     /// <summary>
-    /// Stores or replaces one plan-scoped value by its CLR type so later tasks can consume the state produced by an
-    /// earlier task without routing it through mutable operation instance fields.
+    /// Stores one strongly typed state value on the nearest operation root so sibling callbacks in the same nested
+    /// operation can share state while logging and execution still stay attached to the currently running task.
     /// </summary>
-    public void SetSharedData<T>(T value) where T : class
+    public void SetOperationState<T>(T value) where T : class
     {
-        SharedData[typeof(T)] = value ?? throw new ArgumentNullException(nameof(value));
+        GetRequiredOperationRootTask().SetState(value);
     }
 
     /// <summary>
-    /// Reads a previously stored plan-scoped value by type and throws when no task has produced it yet.
+    /// Reads one previously stored state value from the nearest operation root.
     /// </summary>
-    public T GetRequiredSharedData<T>() where T : class
+    public T GetOperationState<T>() where T : class
     {
-        if (TryGetSharedData(out T? value))
+        if (TryGetOperationState(out T? value))
         {
-            return value ?? throw new InvalidOperationException($"Shared execution state '{typeof(T).FullName}' was resolved as null for task '{Title}'.");
+            return value ?? throw new InvalidOperationException($"Operation state '{typeof(T).FullName}' was resolved as null for task '{Title}'.");
         }
 
-        throw new InvalidOperationException($"No shared execution state of type '{typeof(T).FullName}' is available for task '{Title}'.");
+        throw new InvalidOperationException($"No operation state of type '{typeof(T).FullName}' is available for task '{Title}'.");
     }
 
     /// <summary>
-    /// Tries to read one previously stored plan-scoped value by type.
+    /// Tries to read one previously stored state value from the nearest operation root.
     /// </summary>
-    public bool TryGetSharedData<T>(out T? value) where T : class
+    public bool TryGetOperationState<T>(out T? value) where T : class
     {
-        if (SharedData.TryGetValue(typeof(T), out object? rawValue) && rawValue is T typedValue)
+        return GetRequiredOperationRootTask().TryGetLocalState(out value);
+    }
+
+    /// <summary>
+    /// Stores one strongly typed state value on the current task so descendant tasks can resolve it structurally through
+    /// the ancestor chain.
+     /// </summary>
+    public void SetState<T>(T value) where T : class
+    {
+        GetRequiredTask().SetState(value);
+    }
+
+    /// <summary>
+    /// Reads a previously stored state value from the current task or any ancestor task.
+     /// </summary>
+    public T GetState<T>() where T : class
+    {
+        if (TryGetState(out T? value))
         {
-            value = typedValue;
-            return true;
+            return value ?? throw new InvalidOperationException($"Execution state '{typeof(T).FullName}' was resolved as null for task '{Title}'.");
+        }
+
+        throw new InvalidOperationException($"No execution state of type '{typeof(T).FullName}' is available for task '{Title}' or its ancestors.");
+    }
+
+    /// <summary>
+    /// Tries to read one previously stored state value from the current task or any ancestor task.
+     /// </summary>
+    public bool TryGetState<T>(out T? value) where T : class
+    {
+        if (Session == null)
+        {
+            value = null;
+            return false;
+        }
+
+        ExecutionTask? currentTask = GetRequiredTask();
+        while (currentTask != null)
+        {
+            if (currentTask.TryGetLocalState(out value))
+            {
+                return true;
+            }
+
+            currentTask = currentTask.ParentId is ExecutionTaskId parentId
+                ? Session.GetTask(parentId)
+                : null;
         }
 
         value = null;
         return false;
+    }
+
+    /// <summary>
+    /// Returns the live task for this context and throws when task-scoped state APIs are used outside a session run.
+    /// </summary>
+    private ExecutionTask GetRequiredTask()
+    {
+        if (Session == null)
+        {
+            throw new InvalidOperationException($"Execution state is only available while task '{Title}' is running inside a live session.");
+        }
+
+        return Session.GetTask(TaskId);
+    }
+
+    /// <summary>
+    /// Returns the nearest ancestor task that represents the root of the current nested operation.
+    /// </summary>
+    private ExecutionTask GetRequiredOperationRootTask()
+    {
+        ExecutionTask? currentTask = GetRequiredTask();
+        while (currentTask != null)
+        {
+            if (currentTask.IsOperationRoot)
+            {
+                return currentTask;
+            }
+
+            currentTask = currentTask.ParentId is ExecutionTaskId parentId
+                ? Session!.GetTask(parentId)
+                : null;
+        }
+
+        throw new InvalidOperationException($"Task '{Title}' is not contained within any operation root.");
     }
 }

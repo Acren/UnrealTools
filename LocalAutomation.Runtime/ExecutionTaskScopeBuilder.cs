@@ -4,19 +4,21 @@ using LocalAutomation.Core;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Builds one sibling scope of tasks beneath a shared parent and automatically sequences repeated Task(...) calls.
+/// Builds one sibling scope of tasks beneath a shared parent and optionally auto-sequences repeated Task(...) calls.
 /// </summary>
 public sealed class ExecutionTaskScopeBuilder
 {
     private readonly ExecutionPlanBuilder _owner;
     private readonly ExecutionTaskHandle _parent;
     private readonly ExecutionPlanBuilder.ChildScopePlanEntry _scopeEntry;
+    private readonly ExecutionChildMode _mode;
     private ExecutionTaskBuilder? _lastTask;
 
-    internal ExecutionTaskScopeBuilder(ExecutionPlanBuilder owner, ExecutionTaskHandle parent)
+    internal ExecutionTaskScopeBuilder(ExecutionPlanBuilder owner, ExecutionTaskHandle parent, ExecutionChildMode mode)
     {
         _owner = owner;
         _parent = parent;
+        _mode = mode;
         _scopeEntry = _owner.RegisterChildScopeEntry(parent);
     }
 
@@ -32,7 +34,7 @@ public sealed class ExecutionTaskScopeBuilder
             _scopeEntry.FirstDefinition = task.Definition;
         }
 
-        if (_lastTask != null)
+        if (_mode == ExecutionChildMode.Sequenced && _lastTask != null)
         {
             task.After(_lastTask.Handle);
         }

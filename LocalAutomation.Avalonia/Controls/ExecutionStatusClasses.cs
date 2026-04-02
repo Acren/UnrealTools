@@ -33,5 +33,6 @@ internal static class ExecutionStatusClasses
         classes.Set("completed", status is RuntimeExecutionTaskStatus.Completed);
         classes.Set("failed", status is RuntimeExecutionTaskStatus.Failed);
         classes.Set("cancelled", status is RuntimeExecutionTaskStatus.Cancelled);
+        classes.Set("interrupted", status is RuntimeExecutionTaskStatus.Interrupted);
     }
 }
