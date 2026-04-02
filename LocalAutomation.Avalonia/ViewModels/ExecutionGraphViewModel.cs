@@ -381,15 +381,19 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
            order keeps each branch readable even when the underlying task set has no explicit sibling dependencies yet. */
         LayoutBounds bounds = LayoutBounds.Empty;
         double currentX = originX;
+        List<(ExecutionNodeViewModel Node, LayoutBounds Bounds)> laidOutChildren = new(children.Count);
         foreach (ExecutionNodeViewModel node in children)
         {
             LayoutBounds nodeBounds = HasChildren(node.Id)
                 ? LayoutGroupNode(node, currentX, originY)
                 : LayoutLeafNode(node, currentX, originY);
 
+            laidOutChildren.Add((node, nodeBounds));
             bounds = bounds.Include(nodeBounds);
             currentX = nodeBounds.Right + ColumnGap;
         }
+
+        bounds = CenterSiblingRowVertically(laidOutChildren, bounds);
 
         return bounds;
     }
@@ -429,8 +433,126 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             GetMeasuredNodeWidth(node.Id),
             Math.Max(NodeMinWidth, (maxChildRight - x) + GroupPadding));
         double height = Math.Max(NodeHeight, (maxChildBottom - y) + GroupPadding);
+        CenterDirectChildrenInGroup(node.Id, x, y, width, height, children);
         node.SetBounds(x, y, width, height);
         return new LayoutBounds(x, y, width, height);
+    }
+
+    /// <summary>
+    /// Centers one already-laid-out direct-child subtree inside the available content area of its parent group while
+    /// preserving the internal relative positions of all descendants.
+    /// </summary>
+    private void CenterDirectChildrenInGroup(RuntimeExecutionTaskId groupId, double groupX, double groupY, double groupWidth, double groupHeight, IReadOnlyList<ExecutionNodeViewModel> children)
+    {
+        if (children.Count == 0)
+        {
+            return;
+        }
+
+        /* The group frame reserves one padded content rectangle beneath the header. Center the direct-child subtree
+           inside that rectangle so compact branches do not cling to the top-left corner when the group grows wider or
+           taller than the child content requires. */
+        double minChildX = children.Min(child => child.X);
+        double minChildY = children.Min(child => child.Y);
+        double maxChildRight = children.Max(child => child.X + child.Width);
+        double maxChildBottom = children.Max(child => child.Y + child.Height);
+        double subtreeWidth = maxChildRight - minChildX;
+        double subtreeHeight = maxChildBottom - minChildY;
+
+        double contentX = groupX + GroupPadding;
+        double contentY = groupY + GroupHeaderHeight + GroupPadding;
+        double contentWidth = Math.Max(0, groupWidth - (GroupPadding * 2));
+        double contentHeight = Math.Max(0, groupHeight - GroupHeaderHeight - (GroupPadding * 2));
+        double desiredChildX = contentX + Math.Max(0, (contentWidth - subtreeWidth) / 2.0);
+        double desiredChildY = contentY + Math.Max(0, (contentHeight - subtreeHeight) / 2.0);
+        double deltaX = desiredChildX - minChildX;
+        double deltaY = desiredChildY - minChildY;
+        if (Math.Abs(deltaX) <= 0.5 && Math.Abs(deltaY) <= 0.5)
+        {
+            return;
+        }
+
+        foreach (ExecutionNodeViewModel child in children)
+        {
+            OffsetSubtree(child.Id, deltaX, deltaY);
+        }
+    }
+
+    /// <summary>
+    /// Centers each sibling subtree within the tallest item in one horizontal row so shorter nodes do not cling to the
+    /// top edge when a neighboring group or task grows taller.
+    /// </summary>
+    private LayoutBounds CenterSiblingRowVertically(IReadOnlyList<(ExecutionNodeViewModel Node, LayoutBounds Bounds)> siblings, LayoutBounds rowBounds)
+    {
+        if (siblings.Count <= 1 || rowBounds.IsEmpty)
+        {
+            return rowBounds;
+        }
+
+        double rowHeight = siblings.Max(sibling => sibling.Bounds.Height);
+        bool anyOffsetApplied = false;
+        foreach ((ExecutionNodeViewModel node, LayoutBounds bounds) in siblings)
+        {
+            double deltaY = (rowHeight - bounds.Height) / 2.0;
+            if (Math.Abs(deltaY) <= 0.5)
+            {
+                continue;
+            }
+
+            OffsetSubtree(node.Id, 0, deltaY);
+            anyOffsetApplied = true;
+        }
+
+        if (!anyOffsetApplied)
+        {
+            return rowBounds;
+        }
+
+        LayoutBounds centeredBounds = LayoutBounds.Empty;
+        foreach ((ExecutionNodeViewModel node, _) in siblings)
+        {
+            centeredBounds = centeredBounds.Include(GetSubtreeBounds(node.Id));
+        }
+
+        return centeredBounds;
+    }
+
+    /// <summary>
+    /// Offsets one node and all of its descendants by the same amount so centering a parent sibling set preserves the
+    /// subtree's internal layout.
+    /// </summary>
+    private void OffsetSubtree(RuntimeExecutionTaskId rootId, double deltaX, double deltaY)
+    {
+        if (!_nodesById.TryGetValue(rootId, out ExecutionNodeViewModel? node))
+        {
+            return;
+        }
+
+        node.SetBounds(node.X + deltaX, node.Y + deltaY, node.Width, node.Height);
+        foreach (ExecutionNodeViewModel child in GetDirectChildren(rootId))
+        {
+            OffsetSubtree(child.Id, deltaX, deltaY);
+        }
+    }
+
+    /// <summary>
+    /// Returns the bounds of one node subtree from the node and all descendants after any centering offsets have been
+    /// applied.
+    /// </summary>
+    private LayoutBounds GetSubtreeBounds(RuntimeExecutionTaskId rootId)
+    {
+        if (!_nodesById.TryGetValue(rootId, out ExecutionNodeViewModel? node))
+        {
+            return LayoutBounds.Empty;
+        }
+
+        LayoutBounds bounds = new(node.X, node.Y, node.Width, node.Height);
+        foreach (ExecutionNodeViewModel child in GetDirectChildren(rootId))
+        {
+            bounds = bounds.Include(GetSubtreeBounds(child.Id));
+        }
+
+        return bounds;
     }
 
     /// <summary>
