@@ -56,7 +56,7 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     public RuntimeExecutionTaskId? ParentId => Task.ParentId;
 
     /// <summary>
-    /// Gets the raw current task status.
+    /// Gets the raw execution lifecycle status.
     /// </summary>
     public RuntimeExecutionTaskStatus Status
     {
@@ -64,7 +64,18 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Gets the explanatory text associated with the current status when one exists.
+    /// Gets the semantic outcome once known.
+    /// </summary>
+    public RuntimeExecutionTaskStatus? Result => Task.Result;
+
+    /// <summary>
+    /// Gets the primary semantic status rendered by the UI, falling back to lifecycle state while no semantic outcome is
+    /// known yet.
+    /// </summary>
+    public RuntimeExecutionTaskStatus DisplayStatus => ExecutionTaskStatusDisplay.GetDisplayStatus(Status, Result);
+
+    /// <summary>
+    /// Gets the explanatory text associated with the current lifecycle/result state when one exists.
     /// </summary>
     public string StatusReason
     {
@@ -143,6 +154,8 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
         if (string.IsNullOrWhiteSpace(propertyName))
         {
             RaisePropertyChanged(nameof(Status));
+            RaisePropertyChanged(nameof(Result));
+            RaisePropertyChanged(nameof(DisplayStatus));
             RaisePropertyChanged(nameof(StatusReason));
             return;
         }
@@ -150,6 +163,14 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
         if (string.Equals(propertyName, nameof(RuntimeExecutionTask.Status), StringComparison.Ordinal))
         {
             RaisePropertyChanged(nameof(Status));
+            RaisePropertyChanged(nameof(DisplayStatus));
+            return;
+        }
+
+        if (string.Equals(propertyName, nameof(RuntimeExecutionTask.Result), StringComparison.Ordinal))
+        {
+            RaisePropertyChanged(nameof(Result));
+            RaisePropertyChanged(nameof(DisplayStatus));
             return;
         }
 

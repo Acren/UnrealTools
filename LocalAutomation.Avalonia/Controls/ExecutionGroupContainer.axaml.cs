@@ -193,6 +193,7 @@ public partial class ExecutionGroupContainer : UserControl
     private void HandleObservedNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
         {
             ApplySemanticClasses();
@@ -215,6 +216,6 @@ public partial class ExecutionGroupContainer : UserControl
         ExecutionStatusClasses.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
         ExecutionStatusClasses.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
         ExecutionStatusClasses.ApplyInteractionClasses(headerShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.Status);
+        ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.DisplayStatus);
     }
 }

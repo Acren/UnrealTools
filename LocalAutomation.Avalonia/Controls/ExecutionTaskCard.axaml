@@ -122,10 +122,10 @@
                                TextWrapping="Wrap"
                                VerticalAlignment="Center" />
                         <controls:StatusIndicator Grid.Row="1"
-                                                  Status="{Binding Status}"
+                                                  Status="{Binding DisplayStatus}"
                                                   ShowLabel="True"
                                                   DotSize="6"
-                                               LabelFontSize="11"
+                                                LabelFontSize="11"
                                                VerticalAlignment="Center" />
                         <controls:ExecutionMetricsStrip Grid.Row="2"
                                                         Metrics="{Binding Metrics}"

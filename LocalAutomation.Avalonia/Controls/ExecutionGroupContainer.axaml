@@ -114,7 +114,7 @@
                                VerticalAlignment="Center" />
                     <controls:StatusIndicator Grid.Column="1"
                                                Margin="12,0,0,0"
-                                               Status="{Binding Status}"
+                                               Status="{Binding DisplayStatus}"
                                                ShowLabel="True"
                                                DotSize="6"
                                                LabelFontSize="11"

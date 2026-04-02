@@ -23,6 +23,8 @@ internal static class ExecutionStatusClasses
     /// </summary>
     public static void ApplyStatusClasses(Classes classes, RuntimeExecutionTaskStatus status)
     {
+        /* Graph styling keys follow the user-facing semantic outcome. Callers pass lifecycle state separately when they
+           need active-running affordances such as animation. */
         classes.Set("pending", status is RuntimeExecutionTaskStatus.Pending);
         classes.Set("planned", status is RuntimeExecutionTaskStatus.Planned);
         classes.Set("skipped", status is RuntimeExecutionTaskStatus.Skipped);

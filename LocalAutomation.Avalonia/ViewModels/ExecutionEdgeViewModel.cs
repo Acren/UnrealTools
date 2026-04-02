@@ -11,8 +11,8 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionEdgeViewModel : ViewModelBase
 {
-    /* Keep dependency lines away from rounded corners so straight segments only appear when there is enough shared
-       vertical face between two nodes to read as an intentional edge rather than a corner collision. */
+    /* Keep dependency lines away from rounded corners so straight segments only appear when there is enough shared face
+       between two nodes to read as an intentional edge rather than a corner collision. */
     private const double CornerBuffer = 16.0;
 
     /* Preserve the existing elbow spacing so fallback routing still leaves enough room for the first horizontal segment
@@ -52,12 +52,33 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
     {
         get
         {
+            StreamGeometry geometry = new();
+            using StreamGeometryContext context = geometry.Open();
+
+            double sharedLeft = Math.Max(GetSafeLeft(Source), GetSafeLeft(Target));
+            double sharedRight = Math.Min(GetSafeRight(Source), GetSafeRight(Target));
+            bool nodesAreVerticallySeparated = Source.Y + Source.Height <= Target.Y || Target.Y + Target.Height <= Source.Y;
+            if (nodesAreVerticallySeparated && sharedLeft <= sharedRight)
+            {
+                /* When stacked nodes expose a shared buffered horizontal span, route through the midpoint of that span so
+                   the connection reads as one clean vertical segment instead of an elbow that can cross header chrome. */
+                double sharedX = sharedLeft + ((sharedRight - sharedLeft) / 2.0);
+                bool sourceIsAboveTarget = Source.Y + Source.Height <= Target.Y;
+                Point start = sourceIsAboveTarget
+                    ? new Point(sharedX, Source.Y + Source.Height)
+                    : new Point(sharedX, Source.Y);
+                Point end = sourceIsAboveTarget
+                    ? new Point(sharedX, Target.Y)
+                    : new Point(sharedX, Target.Y + Target.Height);
+                context.BeginFigure(start, false);
+                context.LineTo(end);
+                return geometry;
+            }
+
             double sourceY = ResolveSafePathY(Source);
             double targetY = ResolveSafePathY(Target);
             double sharedTop = Math.Max(sourceY, targetY);
             double sharedBottom = Math.Min(GetSafeBottom(Source), GetSafeBottom(Target));
-            StreamGeometry geometry = new();
-            using StreamGeometryContext context = geometry.Open();
 
             if (sharedTop <= sharedBottom)
             {
@@ -114,6 +135,24 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Returns the safe left edge for routing after applying the rounded-corner buffer.
+    /// </summary>
+    private static double GetSafeLeft(ExecutionNodeViewModel node)
+    {
+        double buffer = GetResolvedCornerBuffer(node);
+        return node.X + buffer;
+    }
+
+    /// <summary>
+    /// Returns the safe right edge for routing after applying the rounded-corner buffer.
+    /// </summary>
+    private static double GetSafeRight(ExecutionNodeViewModel node)
+    {
+        double buffer = GetResolvedCornerBuffer(node);
+        return node.X + node.Width - buffer;
+    }
+
+    /// <summary>
     /// Resolves the top safe boundary because the shared-span computation works in absolute graph-space Y values.
     /// </summary>
     private static double ResolveSafePathY(ExecutionNodeViewModel node)
@@ -139,7 +178,8 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Y), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Width), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Height), StringComparison.Ordinal) ||
-            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal))
+            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal))
         {
             RaisePropertyChanged(nameof(PathData));
         }

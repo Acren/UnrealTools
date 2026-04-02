@@ -345,8 +345,8 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Lays out one sibling set using a local dependency-depth arrangement so grouped tasks remain readable inside their
-    /// containers.
+    /// Lays out one sibling set. The root task's direct children stack vertically so top-level branches read like tracks,
+    /// while every deeper level flows horizontally in authored order.
     /// </summary>
     private LayoutBounds LayoutDirectChildren(RuntimeExecutionTaskId? parentId, double originX, double originY)
     {
@@ -356,10 +356,13 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return LayoutBounds.Empty;
         }
 
-        /* Parent groups read more clearly when their child groups stack in authored order rather than fanning out into
-           dependency columns. This keeps high-level branches like per-engine deploy groups easy to scan while leaf-task
-           siblings still use the compact DAG layout below. */
-        if (children.All(child => HasChildren(child.Id)))
+        /* Only the root task's direct children stack vertically. Those nodes typically represent the highest-level tracks
+           in the run, such as one branch per engine version. Deeper levels return to the dependency-column layout so each
+           track reads left-to-right instead of collapsing into one tall tower of nested groups. */
+        bool isRootChildSet = parentId is RuntimeExecutionTaskId resolvedParentId &&
+            _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? parentOfParentId) &&
+            parentOfParentId == null;
+        if (isRootChildSet)
         {
             LayoutBounds stackedBounds = LayoutBounds.Empty;
             double currentY = originY;
@@ -374,40 +377,18 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return stackedBounds;
         }
 
-        Dictionary<RuntimeExecutionTaskId, int> localDepths = ComputeSiblingDepths(children);
-        Dictionary<int, List<ExecutionNodeViewModel>> columns = children
-            .GroupBy(child => localDepths.TryGetValue(child.Id, out int depth) ? depth : 0)
-            .OrderBy(group => group.Key)
-            .ToDictionary(
-                group => group.Key,
-                group => group
-                    .OrderBy(child => HasChildren(child.Id) ? 0 : 1)
-                    .ThenBy(child => child.Title, StringComparer.Ordinal)
-                    .ToList());
-
+        /* Deeper levels intentionally ignore dependency columns for now. Rendering siblings left-to-right in authored
+           order keeps each branch readable even when the underlying task set has no explicit sibling dependencies yet. */
         LayoutBounds bounds = LayoutBounds.Empty;
-        double currentColumnX = originX;
-
-        foreach ((_, List<ExecutionNodeViewModel> columnNodes) in columns)
+        double currentX = originX;
+        foreach (ExecutionNodeViewModel node in children)
         {
-            /* Container columns cannot be sized from placeholder node widths because group bounds are only known after
-               laying out their descendants. Lay out each column in order, measure its real bounds, then place the next
-               column after that actual width. */
-            double currentY = originY;
-            LayoutBounds columnBounds = LayoutBounds.Empty;
+            LayoutBounds nodeBounds = HasChildren(node.Id)
+                ? LayoutGroupNode(node, currentX, originY)
+                : LayoutLeafNode(node, currentX, originY);
 
-            foreach (ExecutionNodeViewModel node in columnNodes)
-            {
-                LayoutBounds nodeBounds = HasChildren(node.Id)
-                    ? LayoutGroupNode(node, currentColumnX, currentY)
-                    : LayoutLeafNode(node, currentColumnX, currentY);
-
-                bounds = bounds.Include(nodeBounds);
-                columnBounds = columnBounds.Include(nodeBounds);
-                currentY = nodeBounds.Bottom + RowGap;
-            }
-
-            currentColumnX = columnBounds.Right + ColumnGap;
+            bounds = bounds.Include(nodeBounds);
+            currentX = nodeBounds.Right + ColumnGap;
         }
 
         return bounds;
@@ -450,37 +431,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         double height = Math.Max(NodeHeight, (maxChildBottom - y) + GroupPadding);
         node.SetBounds(x, y, width, height);
         return new LayoutBounds(x, y, width, height);
-    }
-
-    /// <summary>
-    /// Computes dependency depths only within one sibling set so local group contents can lay out like a compact DAG.
-    /// </summary>
-    private Dictionary<RuntimeExecutionTaskId, int> ComputeSiblingDepths(IReadOnlyList<ExecutionNodeViewModel> siblings)
-    {
-        HashSet<RuntimeExecutionTaskId> siblingIds = new(siblings.Select(sibling => sibling.Id));
-        Dictionary<RuntimeExecutionTaskId, int> depths = new();
-
-        int ComputeDepth(RuntimeExecutionTaskId taskId)
-        {
-            if (depths.TryGetValue(taskId, out int existingDepth))
-            {
-                return existingDepth;
-            }
-
-            IReadOnlyList<RuntimeExecutionTaskId> dependencies = _tasksById[taskId].Task.DependsOn
-                .Where(siblingIds.Contains)
-                .ToList();
-            int depth = dependencies.Count == 0 ? 0 : dependencies.Max(ComputeDepth) + 1;
-            depths[taskId] = depth;
-            return depth;
-        }
-
-        foreach (ExecutionNodeViewModel sibling in siblings)
-        {
-            ComputeDepth(sibling.Id);
-        }
-
-        return depths;
     }
 
     /// <summary>

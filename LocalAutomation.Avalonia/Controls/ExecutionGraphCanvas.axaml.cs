@@ -456,20 +456,21 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-    /// Applies the current target-node status classes to an edge path and keeps them synchronized while the target node
-    /// status changes, so edge tinting can stay fully style-driven in XAML.
+    /// Applies the current target-node semantic status classes to an edge path and keeps them synchronized while the node
+    /// updates, so edge tinting follows user-facing outcome while animation still reads lifecycle elsewhere.
     /// </summary>
     private static void ApplyEdgeStatusClasses(ShapePath path, ExecutionNodeViewModel target)
     {
-        ExecutionStatusClasses.ApplyStatusClasses(path.Classes, target.Status);
+        ExecutionStatusClasses.ApplyStatusClasses(path.Classes, target.DisplayStatus);
 
         PropertyChangedEventHandler? handler = null;
         handler = (_, e) =>
         {
             if (string.IsNullOrWhiteSpace(e.PropertyName) ||
-                string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal))
+                string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal) ||
+                string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal))
             {
-                ExecutionStatusClasses.ApplyStatusClasses(path.Classes, target.Status);
+                ExecutionStatusClasses.ApplyStatusClasses(path.Classes, target.DisplayStatus);
             }
         };
 

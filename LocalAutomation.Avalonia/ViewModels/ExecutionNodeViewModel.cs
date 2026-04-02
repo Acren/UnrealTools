@@ -121,9 +121,20 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Gets the current runtime or preview status shown on the graph.
+    /// Gets the raw execution lifecycle status.
     /// </summary>
     public RuntimeExecutionTaskStatus Status => Task.Status;
+
+    /// <summary>
+    /// Gets the semantic outcome once known.
+    /// </summary>
+    public RuntimeExecutionTaskStatus? Result => Task.Result;
+
+    /// <summary>
+    /// Gets the primary semantic status shown on the graph. Lifecycle remains available separately for animation and
+    /// active-work context.
+    /// </summary>
+    public RuntimeExecutionTaskStatus DisplayStatus => Task.DisplayStatus;
 
     /// <summary>
     /// Gets the number of direct child items rendered inside this group.
@@ -176,12 +187,12 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets a short uppercase status label rendered on the graph node card.
     /// </summary>
-    public string StatusText => ExecutionTaskStatusDisplay.GetUpperLabel(Status);
+    public string StatusText => ExecutionTaskStatusDisplay.GetUpperLabel(DisplayStatus);
 
     /// <summary>
     /// Gets the compact label used by the stacked dot-and-label status treatment.
     /// </summary>
-    public string StatusLabelText => ExecutionTaskStatusDisplay.GetLabel(Status);
+    public string StatusLabelText => ExecutionTaskStatusDisplay.GetLabel(DisplayStatus);
 
     /// <summary>
     /// Gets the shared execution metrics currently displayed for this node.
@@ -302,7 +313,9 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     private void HandleTaskPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Status), StringComparison.Ordinal))
+        if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Status), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Result), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.DisplayStatus), StringComparison.Ordinal))
         {
             RaiseStatusChanged();
             return;
@@ -334,10 +347,11 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     private void RaiseStatusChanged()
     {
-        /* Graph controls and edge styling still observe the node VM's raw Status property, even though the status now
-           lives on the shared task VM. Relay that notification here before the derived label updates so existing graph
-           listeners keep reacting to runtime status changes. */
+        /* Graph surfaces still listen for Status changes, so relay both lifecycle and semantic-display updates when either
+           source changes on the shared task view model. */
         RaisePropertyChanged(nameof(Status));
+        RaisePropertyChanged(nameof(Result));
+        RaisePropertyChanged(nameof(DisplayStatus));
         RaisePropertyChanged(nameof(StatusText));
         RaisePropertyChanged(nameof(StatusLabelText));
     }
