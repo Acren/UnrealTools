@@ -52,11 +52,12 @@ public abstract class OperationOptions : ObservableObject, IComparable<Operation
     }
 
     /// <summary>
-    /// Creates a shallow clone of the option set for legacy callers that still work with copies.
+    /// Creates a detached clone of the option set so preview/runtime child parameter copies do not inherit live UI
+    /// event subscriptions.
     /// </summary>
     public OperationOptions Clone()
     {
-        return (OperationOptions)MemberwiseClone();
+        return ObjectValueSnapshotService.CloneDetached(this);
     }
 
     /// <summary>
