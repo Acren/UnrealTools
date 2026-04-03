@@ -114,10 +114,10 @@ public sealed class Runner
         try
         {
             OperationResult result = await _currentTask.ConfigureAwait(false);
-            activity.SetTag("scheduler.result", result.Result.ToString());
+            activity.SetTag("scheduler.result", result.Outcome.ToString());
             using PerformanceActivityScope finalizeActivity = PerformanceTelemetry.StartActivity("Runner.Run.FinalizeOutcome")
                 .SetTag("operation.name", Operation.OperationName)
-                .SetTag("incoming.result", result.Result.ToString());
+                .SetTag("incoming.result", result.Outcome.ToString());
             return FinalizeOutcome(result, eventLogger);
         }
         finally
@@ -164,6 +164,15 @@ public sealed class Runner
             .SetTag("child.operation", operation.OperationName)
             .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
 
+        /* Child-operation orchestration can fail before any inserted task ever appears in the live graph, so log each
+           stage explicitly to show whether the child plan was built, merged, awaited, and completed. */
+        parentContext.Logger.LogDebug(
+            "Starting child operation '{ChildOperation}' beneath task '{ParentTaskTitle}' ({ParentTaskId}) for target '{TargetDisplayName}'.",
+            operation.OperationName,
+            parentContext.Title,
+            parentContext.TaskId,
+            operationParameters.Target?.DisplayName ?? string.Empty);
+
         ExecutionPlan childPlan;
         using (PerformanceActivityScope buildPlanActivity = PerformanceTelemetry.StartActivity("Runner.RunChildOperation.BuildPlan"))
         {
@@ -171,6 +180,12 @@ public sealed class Runner
                 ?? throw new InvalidOperationException($"Operation '{operation.OperationName}' did not produce an execution plan.");
             buildPlanActivity.SetTag("child.task.count", childPlan.Tasks.Count)
                 .SetTag("child.title", childPlan.Title);
+
+            parentContext.Logger.LogDebug(
+                "Built child plan '{ChildPlanTitle}' for operation '{ChildOperation}' with {ChildTaskCount} task(s).",
+                childPlan.Title,
+                operation.OperationName,
+                childPlan.Tasks.Count);
         }
 
         ChildTaskMergeResult mergeResult;
@@ -180,11 +195,29 @@ public sealed class Runner
             mergeActivity.SetTag("inserted.task.count", mergeResult.InsertedTaskIds.Count)
                 .SetTag("inserted.root.id", mergeResult.RootTask.Id.Value)
                 .SetTag("inserted.root.title", mergeResult.RootTask.Title);
+
+            parentContext.Logger.LogDebug(
+                "Merged child operation '{ChildOperation}' beneath task '{ParentTaskId}'. Root='{InsertedRootTitle}' ({InsertedRootId}), inserted task ids=[{InsertedTaskIds}]",
+                operation.OperationName,
+                parentContext.TaskId,
+                mergeResult.RootTask.Title,
+                mergeResult.RootTask.Id,
+                string.Join(", ", mergeResult.InsertedTaskIds.Select(taskId => taskId.Value)));
         }
 
+        parentContext.Logger.LogDebug(
+            "Waiting for child operation '{ChildOperation}' inserted tasks to complete beneath task '{ParentTaskId}'.",
+            operation.OperationName,
+            parentContext.TaskId);
         OperationResult result = await parentContext.Scheduler.WaitForInsertedChildTasksAsync(operation, parentContext, mergeResult).ConfigureAwait(false);
-        activity.SetTag("result.outcome", result.Result.ToString())
+        activity.SetTag("result.outcome", result.Outcome.ToString())
             .SetTag("result.success", result.Success);
+        parentContext.Logger.LogDebug(
+            "Child operation '{ChildOperation}' finished beneath task '{ParentTaskId}' with outcome '{Outcome}' and reason '{FailureReason}'.",
+            operation.OperationName,
+            parentContext.TaskId,
+            result.Outcome,
+            result.FailureReason ?? string.Empty);
         return result;
     }
 
@@ -311,15 +344,15 @@ public sealed class Runner
     /// </summary>
     private static OperationResult FinalizeOutcome(Operation operation, OperationResult result, ILogger aggregateLogger, ILogger summaryLogger, int warningCount, int errorCount)
     {
-        if (result.Result == ExecutionTaskStatus.Cancelled)
+        if (result.Outcome == ExecutionTaskOutcome.Cancelled)
         {
             aggregateLogger.LogWarning("Operation '{OperationName}' terminated by user", operation.OperationName);
         }
-        else if (result.Result == ExecutionTaskStatus.Interrupted)
+        else if (result.Outcome == ExecutionTaskOutcome.Interrupted)
         {
             aggregateLogger.LogWarning("Operation '{OperationName}' was interrupted - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
         }
-        else if (result.Result == ExecutionTaskStatus.Completed)
+        else if (result.Outcome == ExecutionTaskOutcome.Completed)
         {
             aggregateLogger.LogInformation("Operation '{OperationName}' completed successfully - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
         }
@@ -328,12 +361,12 @@ public sealed class Runner
             aggregateLogger.LogWarning("Operation '{OperationName}' finished with failure - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
         }
 
-        if (result.Result == ExecutionTaskStatus.Completed)
+        if (result.Outcome == ExecutionTaskOutcome.Completed)
         {
             if (errorCount > 0)
             {
                 aggregateLogger.LogError("{ErrorCount} error(s) encountered", errorCount);
-                result.Result = ExecutionTaskStatus.Failed;
+                result.Outcome = ExecutionTaskOutcome.Failed;
                 result.FailureReason ??= $"{errorCount} error(s) encountered";
             }
 
@@ -343,13 +376,13 @@ public sealed class Runner
                 if (operation.ShouldFailOnWarning())
                 {
                     aggregateLogger.LogError("Operation fails on warnings");
-                    result.Result = ExecutionTaskStatus.Failed;
+                    result.Outcome = ExecutionTaskOutcome.Failed;
                     result.FailureReason ??= "Operation fails on warnings";
                 }
             }
         }
 
-        if (result.Result == ExecutionTaskStatus.Completed)
+        if (result.Outcome == ExecutionTaskOutcome.Completed)
         {
             if (warningCount > 0)
             {
@@ -365,11 +398,11 @@ public sealed class Runner
 
             summaryLogger.LogInformation("'{OperationName}' finished with result: success", operation.OperationName);
         }
-        else if (result.Result == ExecutionTaskStatus.Cancelled)
+        else if (result.Outcome == ExecutionTaskOutcome.Cancelled)
         {
             summaryLogger.LogWarning("'{OperationName}' finished with result: cancelled", operation.OperationName);
         }
-        else if (result.Result == ExecutionTaskStatus.Interrupted)
+        else if (result.Outcome == ExecutionTaskOutcome.Interrupted)
         {
             summaryLogger.LogWarning("'{OperationName}' finished with result: interrupted", operation.OperationName);
         }

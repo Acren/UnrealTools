@@ -19,7 +19,7 @@ public sealed class TargetListItemViewModel : ViewModelBase
         _services = services ?? throw new ArgumentNullException(nameof(services));
         if (!_services.Targets.IsTarget(target))
         {
-            // Keep host-facing validation errors aligned with the active launcher branding so branded shells do not leak
+            // Keep host-facing validation errors aligned with the active launcher identity so shell-specific UIs do not leak
             // the generic LocalAutomation product name in user-visible diagnostics.
             throw new ArgumentException($"Target is not recognized by the registered {App.ShellIdentity.ApplicationName} target catalog.", nameof(target));
         }

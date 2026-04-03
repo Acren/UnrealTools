@@ -1,11 +1,13 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 using LocalAutomation.Runtime;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
-using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
+using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
+using RuntimeExecutionTaskState = LocalAutomation.Runtime.ExecutionTaskState;
 
 namespace LocalAutomation.Application;
 
@@ -87,14 +89,14 @@ public sealed class ExecutionRuntimeService
         try
         {
             OperationResult result = await runner.Run(plan, session);
-            activity.SetTag("runner.result", result.Result.ToString());
-            session.Outcome = result.Result;
+            activity.SetTag("runner.result", result.Outcome.ToString());
+            session.Outcome = result.Outcome;
             activity.SetTag("session.outcome", session.Outcome.ToString());
         }
         catch (OperationCanceledException)
         {
-            session.Outcome = RuntimeExecutionTaskStatus.Cancelled;
-            activity.SetTag("runner.result", RuntimeExecutionTaskStatus.Cancelled.ToString())
+            session.Outcome = RuntimeExecutionTaskOutcome.Cancelled;
+            activity.SetTag("runner.result", RuntimeExecutionTaskOutcome.Cancelled.ToString())
                 .SetTag("session.outcome", session.Outcome.ToString());
         }
         catch (Exception ex)
@@ -106,7 +108,7 @@ public sealed class ExecutionRuntimeService
                 Verbosity = LogLevel.Error
             });
 
-            session.Outcome = RuntimeExecutionTaskStatus.Failed;
+            session.Outcome = RuntimeExecutionTaskOutcome.Failed;
             activity.SetTag("runner.result", "Exception")
                 .SetTag("session.outcome", session.Outcome.ToString())
                 .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name);
@@ -116,7 +118,31 @@ public sealed class ExecutionRuntimeService
             session.IsRunning = false;
             activity.SetTag("session.is_running", session.IsRunning);
             ApplicationLogger.Logger = previousLogger;
+            CleanupSessionTempRoot(session, previousLogger);
             session.CompleteExecution();
+        }
+    }
+
+    /// <summary>
+    /// Deletes the temp workspace owned by the finished execution session so transient scratch data does not accumulate
+    /// across runs.
+    /// </summary>
+    private static void CleanupSessionTempRoot(LocalAutomation.Runtime.ExecutionSession session, ILogger logger)
+    {
+        string sessionTempRoot = OutputPaths.GetSessionTempRoot(session.Id);
+        if (!Directory.Exists(sessionTempRoot))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(sessionTempRoot, recursive: true);
+            logger.LogInformation("Deleted session temp root '{SessionTempRoot}'.", sessionTempRoot);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to delete session temp root '{SessionTempRoot}'.", sessionTempRoot);
         }
     }
 
@@ -210,9 +236,9 @@ public sealed class ExecutionRuntimeService
         /// Forwards explicit task-state transitions into the current execution session so graph views can react without
         /// parsing human-readable log lines.
         /// </summary>
-        public void SetTaskStatus(RuntimeExecutionTaskId taskId, RuntimeExecutionTaskStatus status, string? statusReason = null)
+        public void SetTaskState(RuntimeExecutionTaskId taskId, RuntimeExecutionTaskState state, string? statusReason = null)
         {
-            _getSession().SetTaskStatus(taskId, status, statusReason);
+            _getSession().SetTaskState(taskId, state, statusReason);
         }
 
         /// <summary>

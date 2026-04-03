@@ -5,7 +5,8 @@ using Avalonia.Threading;
 using LocalAutomation.Core;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
-using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
+using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
+using RuntimeExecutionTaskState = LocalAutomation.Runtime.ExecutionTaskState;
 using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 
@@ -56,23 +57,28 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     public RuntimeExecutionTaskId? ParentId => Task.ParentId;
 
     /// <summary>
-    /// Gets the raw execution lifecycle status.
+    /// Gets the raw execution state.
     /// </summary>
-    public RuntimeExecutionTaskStatus Status
+    public RuntimeExecutionTaskState State
     {
-        get => Task.Status;
+        get => Task.State;
     }
 
     /// <summary>
     /// Gets the semantic outcome once known.
     /// </summary>
-    public RuntimeExecutionTaskStatus? Result => Task.Result;
+    public RuntimeExecutionTaskOutcome? Outcome => Task.Outcome;
+
+    /// <summary>
+    /// Gets the combined display status rendered by Avalonia surfaces.
+    /// </summary>
+    public ExecutionTaskDisplayStatus Status => DisplayStatus;
 
     /// <summary>
     /// Gets the primary semantic status rendered by the UI, falling back to lifecycle state while no semantic outcome is
     /// known yet.
     /// </summary>
-    public RuntimeExecutionTaskStatus DisplayStatus => ExecutionTaskStatusDisplay.GetDisplayStatus(Status, Result);
+    public ExecutionTaskDisplayStatus DisplayStatus => ExecutionTaskStatusDisplay.GetDisplayStatus(State, Outcome);
 
     /// <summary>
     /// Gets the explanatory text associated with the current lifecycle/result state when one exists.
@@ -153,23 +159,26 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     {
         if (string.IsNullOrWhiteSpace(propertyName))
         {
+            RaisePropertyChanged(nameof(State));
+            RaisePropertyChanged(nameof(Outcome));
             RaisePropertyChanged(nameof(Status));
-            RaisePropertyChanged(nameof(Result));
             RaisePropertyChanged(nameof(DisplayStatus));
             RaisePropertyChanged(nameof(StatusReason));
             return;
         }
 
-        if (string.Equals(propertyName, nameof(RuntimeExecutionTask.Status), StringComparison.Ordinal))
+        if (string.Equals(propertyName, nameof(RuntimeExecutionTask.State), StringComparison.Ordinal))
         {
+            RaisePropertyChanged(nameof(State));
             RaisePropertyChanged(nameof(Status));
             RaisePropertyChanged(nameof(DisplayStatus));
             return;
         }
 
-        if (string.Equals(propertyName, nameof(RuntimeExecutionTask.Result), StringComparison.Ordinal))
+        if (string.Equals(propertyName, nameof(RuntimeExecutionTask.Outcome), StringComparison.Ordinal))
         {
-            RaisePropertyChanged(nameof(Result));
+            RaisePropertyChanged(nameof(Outcome));
+            RaisePropertyChanged(nameof(Status));
             RaisePropertyChanged(nameof(DisplayStatus));
             return;
         }

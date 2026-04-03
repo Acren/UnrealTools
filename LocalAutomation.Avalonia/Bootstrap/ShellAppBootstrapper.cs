@@ -23,7 +23,7 @@ public static class ShellAppBootstrapper
     }
 
     /// <summary>
-    /// Starts the desktop lifetime using the provided launcher branding and bundled extension discovery.
+    /// Starts the desktop lifetime using the provided launcher identity and bundled extension discovery.
     /// </summary>
     public static void Run(string[] args, ShellIdentity shellIdentity)
     {
@@ -84,7 +84,13 @@ public static class ShellAppBootstrapper
         string appDataRootPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             App.ShellIdentity.DataFolderName);
-        return new LocalAutomationApplicationHost(catalog, appDataRootPath, App.ShellIdentity.TargetSettingsFileName);
+        return new LocalAutomationApplicationHost(
+            catalog,
+            appDataRootPath,
+            App.ShellIdentity.TargetSettingsFileName,
+            App.ShellIdentity.DataFolderName,
+            App.ShellIdentity.DefaultOutputRootPath,
+            App.ShellIdentity.DefaultTempRootPath);
     }
 
     /// <summary>

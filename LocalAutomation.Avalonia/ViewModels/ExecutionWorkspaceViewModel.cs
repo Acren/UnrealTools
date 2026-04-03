@@ -15,7 +15,7 @@ using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 using RuntimeExecutionSessionId = LocalAutomation.Runtime.ExecutionSessionId;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
-using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
+using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -152,17 +152,17 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 return $"Running {SelectedRuntimeTab.Session.OperationName} on {SelectedRuntimeTab.Session.TargetName}";
             }
 
-            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskStatus.Completed)
+            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskOutcome.Completed)
             {
                 return $"{SelectedRuntimeTab.Session.OperationName} succeeded for {SelectedRuntimeTab.Session.TargetName}";
             }
 
-            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskStatus.Cancelled)
+            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskOutcome.Cancelled)
             {
                 return $"{SelectedRuntimeTab.Session.OperationName} was cancelled for {SelectedRuntimeTab.Session.TargetName}";
             }
 
-            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskStatus.Interrupted)
+            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskOutcome.Interrupted)
             {
                 return $"{SelectedRuntimeTab.Session.OperationName} was interrupted for {SelectedRuntimeTab.Session.TargetName}";
             }
@@ -290,10 +290,13 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             presentation: new RuntimeWorkspaceTabPresentation(showGraph: true, showLog: true, showSubtitle: true, showStatusMarker: true, showRuntimeMetrics: true),
             graph: graph,
             session: session);
-        runtimeTab.SetTasks(session.Tasks);
+        /* Runtime child-task insertion can mutate the live session graph between reads, so build the shared task-view
+           registry and the rendered graph from the same materialized snapshot each time. */
+        List<RuntimeExecutionTask> taskSnapshot = session.Tasks.ToList();
+        runtimeTab.SetTasks(taskSnapshot);
 
         graph.AttachTasks(runtimeTab.TasksById);
-        graph.SetGraph(session.Tasks);
+        graph.SetGraph(taskSnapshot);
 
         HookGraphSelection(runtimeTab);
         RuntimeTabs.Add(runtimeTab);
@@ -304,20 +307,21 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         AttachSessionLogs(runtimeTab, session);
-        session.TaskStatusChanged += (taskId, status, statusReason) =>
+        session.TaskStateChanged += (taskId, state, outcome, statusReason) =>
         {
             DateTime postedAtUtc = DateTime.UtcNow;
             Dispatcher.UIThread.Post(() =>
             {
                 int postSequence = Interlocked.Increment(ref _taskStatusDispatcherPostCount);
                 using PerformanceActivityScope uiActivity = CreateDispatcherPostedActivity(
-                    "ExecutionWorkspace.TaskStatusChanged.Dispatch",
+                    "ExecutionWorkspace.TaskStateChanged.Dispatch",
                     runtimeTab,
                     postedAtUtc,
                     postSequence,
                     extraTags: activity => activity
                         .SetTag("task.id", taskId.Value)
-                        .SetTag("task.status", status.ToString())
+                        .SetTag("task.state", state.ToString())
+                        .SetTag("task.outcome", outcome?.ToString() ?? string.Empty)
                         .SetTag("task.status_reason", statusReason ?? string.Empty));
 
                 runtimeTab.Graph.NotifyTaskStateChanged(taskId);
@@ -347,9 +351,12 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             return;
         }
 
-        runtimeTab.SetTasks(session.Tasks);
+        /* Graph refresh must reuse one consistent session snapshot so task view-model lookup and graph-node creation
+           cannot diverge while runtime child tasks are being merged into the live session. */
+        List<RuntimeExecutionTask> taskSnapshot = session.Tasks.ToList();
+        runtimeTab.SetTasks(taskSnapshot);
         runtimeTab.Graph.AttachTasks(runtimeTab.TasksById);
-        runtimeTab.Graph.SetGraph(session.Tasks);
+        runtimeTab.Graph.SetGraph(taskSnapshot);
         RebuildTabSelectedLogEntries(runtimeTab);
         runtimeTab.RefreshAllTaskMetrics();
         if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
@@ -477,15 +484,15 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 RaiseSelectionStateChanged();
             }
 
-            if (session.Outcome == RuntimeExecutionTaskStatus.Completed)
+            if (session.Outcome == RuntimeExecutionTaskOutcome.Completed)
             {
                 _setStatus($"{session.OperationName} succeeded for {session.TargetName}.");
             }
-            else if (session.Outcome == RuntimeExecutionTaskStatus.Cancelled)
+            else if (session.Outcome == RuntimeExecutionTaskOutcome.Cancelled)
             {
                 _setStatus($"{session.OperationName} was cancelled for {session.TargetName}.");
             }
-            else if (session.Outcome == RuntimeExecutionTaskStatus.Interrupted)
+            else if (session.Outcome == RuntimeExecutionTaskOutcome.Interrupted)
             {
                 _setStatus($"{session.OperationName} was interrupted for {session.TargetName}.");
             }

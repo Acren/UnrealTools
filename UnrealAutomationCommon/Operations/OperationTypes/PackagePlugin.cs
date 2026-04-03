@@ -78,13 +78,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override void OnProcessEnded(global::LocalAutomation.Runtime.ExecutionTaskContext context, global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.OperationResult result)
         {
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("PackagePlugin.OnProcessEnded")
-                .SetTag("result.outcome", result.Result.ToString())
+                .SetTag("result.outcome", result.Outcome.ToString())
                 .SetTag("result.was_cancelled", result.WasCancelled)
                 .SetTag("requested_platform.count", _requestedTargetPlatforms.Count);
 
             base.OnProcessEnded(context, operationParameters, result);
 
-            if (result.Result != global::LocalAutomation.Runtime.ExecutionTaskStatus.Completed || result.WasCancelled || _requestedTargetPlatforms.Count == 0)
+            if (result.Outcome != global::LocalAutomation.Runtime.ExecutionTaskOutcome.Completed || result.WasCancelled || _requestedTargetPlatforms.Count == 0)
             {
                 activity.SetTag("validation.skipped", true);
                 return;
@@ -106,7 +106,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 string.Join(", ", skippedPlatforms),
                 string.Join(", ", _requestedTargetPlatforms),
                 _builtTargetPlatforms.Count > 0 ? string.Join(", ", _builtTargetPlatforms) : "none");
-            result.Result = global::LocalAutomation.Runtime.ExecutionTaskStatus.Failed;
+            result.Outcome = global::LocalAutomation.Runtime.ExecutionTaskOutcome.Failed;
         }
 
         protected override string GetOperationName()

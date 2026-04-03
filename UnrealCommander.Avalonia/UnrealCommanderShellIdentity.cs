@@ -4,7 +4,7 @@ namespace UnrealCommander.Avalonia;
 
 /// <summary>
 /// Centralizes the Unreal Commander launcher identity so process metadata, window title, logs, and session files all
-/// use the same branded values.
+/// use the same shell values.
 /// </summary>
 internal static class UnrealCommanderShellIdentity
 {
@@ -18,5 +18,7 @@ internal static class UnrealCommanderShellIdentity
         targetSettingsFileName: ".ucmdr.json",
         sessionFileName: "session.json",
         launchLogFilePrefix: "UnrealCommander.Avalonia",
-        loggerCategoryName: "UnrealCommander.Avalonia");
+        loggerCategoryName: "UnrealCommander.Avalonia",
+        defaultOutputRootPath: @"C:\UC",
+        defaultTempRootPath: @"C:\UC\Temp");
 }

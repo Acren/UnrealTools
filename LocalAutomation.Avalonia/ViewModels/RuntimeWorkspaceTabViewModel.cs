@@ -5,7 +5,7 @@ using LocalAutomation.Core;
 using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
-using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
+using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -168,32 +168,32 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// <summary>
     /// Gets whether the status marker should show the success accent.
     /// </summary>
-    public bool IsSucceededStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskStatus.Completed;
+    public bool IsSucceededStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskOutcome.Completed;
 
     /// <summary>
     /// Gets whether the status marker should show the failure accent.
     /// </summary>
-    public bool IsFailedStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskStatus.Failed;
+    public bool IsFailedStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskOutcome.Failed;
 
     /// <summary>
      /// Gets whether the status marker should show the cancelled accent.
      /// </summary>
-    public bool IsCancelledStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskStatus.Cancelled;
+    public bool IsCancelledStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskOutcome.Cancelled;
 
     /// <summary>
     /// Gets the semantic status rendered by the shared status-indicator control.
     /// </summary>
-    public RuntimeExecutionTaskStatus SessionStatusForIndicator => Session?.IsRunning == true
-        ? RuntimeExecutionTaskStatus.Running
-        : Session?.Outcome == RuntimeExecutionTaskStatus.Completed
-            ? RuntimeExecutionTaskStatus.Completed
-            : Session?.Outcome == RuntimeExecutionTaskStatus.Failed
-                ? RuntimeExecutionTaskStatus.Failed
-                : Session?.Outcome == RuntimeExecutionTaskStatus.Cancelled
-                    ? RuntimeExecutionTaskStatus.Cancelled
-                    : Session?.Outcome == RuntimeExecutionTaskStatus.Interrupted
-                        ? RuntimeExecutionTaskStatus.Interrupted
-                    : RuntimeExecutionTaskStatus.Pending;
+    public ExecutionTaskDisplayStatus SessionStatusForIndicator => Session?.IsRunning == true
+        ? ExecutionTaskDisplayStatus.Running
+        : Session?.Outcome == RuntimeExecutionTaskOutcome.Completed
+            ? ExecutionTaskDisplayStatus.Completed
+            : Session?.Outcome == RuntimeExecutionTaskOutcome.Failed
+                ? ExecutionTaskDisplayStatus.Failed
+                : Session?.Outcome == RuntimeExecutionTaskOutcome.Cancelled
+                    ? ExecutionTaskDisplayStatus.Cancelled
+                    : Session?.Outcome == RuntimeExecutionTaskOutcome.Interrupted
+                        ? ExecutionTaskDisplayStatus.Interrupted
+                    : ExecutionTaskDisplayStatus.Pending;
 
     /// <summary>
     /// Gets the execution duration text shown in the selected-tab header.

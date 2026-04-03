@@ -5,20 +5,20 @@ namespace LocalAutomation.Runtime;
 /// </summary>
 public class RunResult
 {
-    public RunResult(ExecutionTaskStatus result)
+    public RunResult(ExecutionTaskOutcome outcome)
     {
-        Result = result;
+        Outcome = outcome;
     }
 
-    public ExecutionTaskStatus Result { get; set; }
+    public ExecutionTaskOutcome Outcome { get; set; }
 
     public bool Success
     {
-        get => Result == ExecutionTaskStatus.Completed;
-        set => Result = value ? ExecutionTaskStatus.Completed : ExecutionTaskStatus.Failed;
+        get => Outcome == ExecutionTaskOutcome.Completed;
+        set => Outcome = value ? ExecutionTaskOutcome.Completed : ExecutionTaskOutcome.Failed;
     }
 
-    public bool WasCancelled => Result == ExecutionTaskStatus.Cancelled;
+    public bool WasCancelled => Outcome == ExecutionTaskOutcome.Cancelled;
 
     public int ExitCode { get; set; }
 }

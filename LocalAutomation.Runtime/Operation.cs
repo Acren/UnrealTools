@@ -100,7 +100,23 @@ public abstract class Operation
     /// </summary>
     public string GetOperationTempPath()
     {
-        return Path.Combine(OutputPaths.Root(), "Temp");
+        return Path.Combine(OutputPaths.TempRoot(), ExecutionPathConventions.MakeCompactSegment(OperationName));
+    }
+
+    /// <summary>
+    /// Returns the temporary directory used by the provided execution task, isolating live session-backed runs from one
+    /// another while keeping preview-time path resolution stable.
+    /// </summary>
+    public string GetOperationTempPath(ExecutionTaskContext context)
+    {
+        if (context == null)
+        {
+            throw new ArgumentNullException(nameof(context));
+        }
+
+        return context.SessionId is ExecutionSessionId sessionId
+            ? Path.Combine(OutputPaths.GetSessionTempRoot(sessionId), ExecutionPathConventions.MakeCompactSegment(OperationName))
+            : GetOperationTempPath();
     }
 
     /// <summary>
@@ -184,21 +200,35 @@ public abstract class Operation
             .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
 
         OperationResult result = await Runner.RunChildOperation(childOperation, operationParameters, context).ConfigureAwait(false);
-        activity.SetTag("result.outcome", result.Result.ToString())
+        activity.SetTag("result.outcome", result.Outcome.ToString())
             .SetTag("result.success", result.Success);
+        context.Logger.LogDebug(
+            "Task '{TaskTitle}' received child operation '{ChildOperation}' result '{Outcome}' (required={Required}) with reason '{FailureReason}'.",
+            context.Title,
+            childOperation.OperationName,
+            result.Outcome,
+            required,
+            result.FailureReason ?? string.Empty);
         if (!required || result.Success)
         {
             return result;
         }
 
-        if (result.Result == ExecutionTaskStatus.Cancelled)
+        if (result.Outcome == ExecutionTaskOutcome.Cancelled)
         {
             activity.SetTag("result.transition", "ThrowCancelled");
             throw new OperationCanceledException(context.CancellationToken);
         }
 
-        if (result.Result == ExecutionTaskStatus.Interrupted)
+        if (result.Outcome == ExecutionTaskOutcome.Interrupted)
         {
+            /* Interrupted child operations currently propagate as a normal result instead of an exception. Log that branch
+               explicitly so callback methods that only await the child run still leave a trace in the launch log. */
+            context.Logger.LogWarning(
+                "Task '{TaskTitle}' is returning interrupted child result from '{ChildOperation}' without throwing. FailureReason='{FailureReason}'.",
+                context.Title,
+                childOperation.OperationName,
+                result.FailureReason ?? string.Empty);
             activity.SetTag("result.transition", "ReturnInterrupted");
             return result;
         }

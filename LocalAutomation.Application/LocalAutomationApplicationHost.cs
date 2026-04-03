@@ -14,7 +14,7 @@ public sealed class LocalAutomationApplicationHost
     /// <summary>
     /// Creates an application host around a populated extension catalog.
     /// </summary>
-    public LocalAutomationApplicationHost(ExtensionCatalog catalog, string? appDataRootPath = null, string? targetSettingsFileName = null)
+    public LocalAutomationApplicationHost(ExtensionCatalog catalog, string? appDataRootPath = null, string? targetSettingsFileName = null, string? shellDataFolderName = null, string? defaultOutputRootPath = null, string? defaultTempRootPath = null)
     {
         Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         string resolvedAppDataRootPath = appDataRootPath ?? Path.Combine(
@@ -28,7 +28,7 @@ public sealed class LocalAutomationApplicationHost
         ExecutionRuntime = new ExecutionRuntimeService();
         OptionEditors = new OptionEditorService(catalog);
         OptionValues = new LayeredSettingsPersistenceService(catalog, resolvedAppDataRootPath, resolvedTargetSettingsFileName);
-        ApplicationSettings = new ApplicationSettings();
+        ApplicationSettings = new ApplicationSettings(defaultOutputRootPath, defaultTempRootPath);
         OptionValues.ApplyGlobalSettings(ApplicationSettings);
         ApplyApplicationSettings();
         Operations = new OperationCatalogService(catalog);
@@ -78,6 +78,33 @@ public sealed class LocalAutomationApplicationHost
     public void ApplyApplicationSettings()
     {
         OutputPaths.SetRoot(ApplicationSettings.OutputRootPath);
+        OutputPaths.SetTempRoot(ApplicationSettings.TempRootPath);
+        CleanupStaleSessionTempRoots();
+    }
+
+    /// <summary>
+    /// Deletes stale per-session temp roots left behind by prior crashes or abrupt exits so temp usage does not grow
+    /// without bound across launches.
+    /// </summary>
+    private static void CleanupStaleSessionTempRoots()
+    {
+        string sessionsRootPath = OutputPaths.GetSessionTempRootParent();
+        if (!Directory.Exists(sessionsRootPath))
+        {
+            return;
+        }
+
+        foreach (string sessionPath in Directory.GetDirectories(sessionsRootPath))
+        {
+            try
+            {
+                Directory.Delete(sessionPath, recursive: true);
+            }
+            catch
+            {
+                // Best-effort cleanup only. Active or locked directories can remain and will be retried on the next launch.
+            }
+        }
     }
 
     /// <summary>

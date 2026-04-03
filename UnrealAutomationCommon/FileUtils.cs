@@ -1,4 +1,6 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
+using System.Collections;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -6,11 +8,41 @@ using System.Threading;
 
 namespace UnrealAutomationCommon
 {
+    internal sealed class FileMaterializationEntry
+    {
+        public FileMaterializationEntry(string relativePath, bool required = false)
+        {
+            RelativePath = relativePath ?? throw new ArgumentNullException(nameof(relativePath));
+            Required = required;
+        }
+
+        public string RelativePath { get; }
+
+        public bool Required { get; }
+    }
+
+    internal sealed class FileMaterializationSpec : IEnumerable<FileMaterializationEntry>
+    {
+        public List<FileMaterializationEntry> Entries { get; } = new();
+
+        public void Add(string relativePath, bool required = false)
+        {
+            Entries.Add(new FileMaterializationEntry(relativePath, required));
+        }
+
+        public IEnumerator<FileMaterializationEntry> GetEnumerator() => Entries.GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     internal class FileUtils
     {
         // placeInside: SourcePath directory will be copied inside DestinationPath, otherwise the copy will be renamed to DestinationPath
         public static void CopyDirectory(string SourcePath, string DestinationPath, bool placeInside = false)
         {
+            SourcePath = Path.GetFullPath(SourcePath);
+            DestinationPath = Path.GetFullPath(DestinationPath);
+
             if (placeInside)
             {
                 string dirName = new DirectoryInfo(SourcePath).Name;
@@ -21,17 +53,71 @@ namespace UnrealAutomationCommon
 
             //Now Create all of the directories
             foreach (string dirPath in Directory.GetDirectories(SourcePath, "*", SearchOption.AllDirectories))
-                Directory.CreateDirectory(dirPath.Replace(SourcePath, DestinationPath));
+            {
+                string relativeDirectoryPath = Path.GetRelativePath(SourcePath, dirPath);
+                Directory.CreateDirectory(Path.Combine(DestinationPath, relativeDirectoryPath));
+            }
 
             //Copy all the files & Replaces any files with the same name
             foreach (string newPath in Directory.GetFiles(SourcePath, "*.*", SearchOption.AllDirectories))
-                File.Copy(newPath, newPath.Replace(SourcePath, DestinationPath), true);
+            {
+                string relativeFilePath = Path.GetRelativePath(SourcePath, newPath);
+                string destinationFilePath = Path.Combine(DestinationPath, relativeFilePath);
+                string? destinationDirectoryPath = Path.GetDirectoryName(destinationFilePath);
+                if (!string.IsNullOrWhiteSpace(destinationDirectoryPath))
+                {
+                    Directory.CreateDirectory(destinationDirectoryPath);
+                }
+
+                File.Copy(newPath, destinationFilePath, true);
+            }
         }
 
         public static void CopySubdirectory(string SourcePath, string DestinationPath, string Subdirectory)
         {
             Directory.CreateDirectory(Path.Combine(DestinationPath, Subdirectory));
             CopyDirectory(Path.Combine(SourcePath, Subdirectory), Path.Combine(DestinationPath, Subdirectory));
+        }
+
+        public static void MaterializeDirectory(string sourceRootPath, string destinationRootPath, FileMaterializationSpec spec)
+        {
+            if (spec == null)
+            {
+                throw new ArgumentNullException(nameof(spec));
+            }
+
+            sourceRootPath = Path.GetFullPath(sourceRootPath);
+            destinationRootPath = Path.GetFullPath(destinationRootPath);
+            Directory.CreateDirectory(destinationRootPath);
+
+            foreach (FileMaterializationEntry entry in spec.Entries)
+            {
+                string sourcePath = Path.Combine(sourceRootPath, entry.RelativePath);
+                string destinationPath = Path.Combine(destinationRootPath, entry.RelativePath);
+
+                if (Directory.Exists(sourcePath))
+                {
+                    CopyDirectory(sourcePath, destinationPath);
+                    continue;
+                }
+
+                if (File.Exists(sourcePath))
+                {
+                    string? destinationDirectoryPath = Path.GetDirectoryName(destinationPath);
+                    if (!string.IsNullOrWhiteSpace(destinationDirectoryPath))
+                    {
+                        Directory.CreateDirectory(destinationDirectoryPath);
+                    }
+
+                    File.Copy(sourcePath, destinationPath, true);
+                    continue;
+                }
+
+                if (entry.Required)
+                {
+                    throw new FileNotFoundException($"Required materialization entry is missing: {sourcePath}", sourcePath);
+                }
+            }
         }
 
         public static void CopyFile(string SourceDirectoryPath, string DestinationDirectoryPath, string FileName, bool ErrorIfSourceMissing = true, bool Overwrite = false)

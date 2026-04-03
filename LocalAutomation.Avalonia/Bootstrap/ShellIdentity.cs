@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 namespace LocalAutomation.Avalonia.Bootstrap;
 
@@ -18,7 +19,9 @@ public sealed class ShellIdentity
         targetSettingsFileName: ".localautomation.json",
         sessionFileName: "session.json",
         launchLogFilePrefix: "LocalAutomation.Avalonia",
-        loggerCategoryName: "LocalAutomation.Avalonia");
+        loggerCategoryName: "LocalAutomation.Avalonia",
+        defaultOutputRootPath: @"C:\LocalAutomation",
+        defaultTempRootPath: Path.Combine(Path.GetTempPath(), "LocalAutomation"));
 
     /// <summary>
     /// Creates a shell identity descriptor for one launcher executable.
@@ -30,7 +33,9 @@ public sealed class ShellIdentity
         string targetSettingsFileName,
         string sessionFileName,
         string launchLogFilePrefix,
-        string loggerCategoryName)
+        string loggerCategoryName,
+        string defaultOutputRootPath,
+        string defaultTempRootPath)
     {
         ApplicationName = Validate(applicationName, nameof(applicationName));
         WindowTitle = Validate(windowTitle, nameof(windowTitle));
@@ -39,6 +44,8 @@ public sealed class ShellIdentity
         SessionFileName = Validate(sessionFileName, nameof(sessionFileName));
         LaunchLogFilePrefix = Validate(launchLogFilePrefix, nameof(launchLogFilePrefix));
         LoggerCategoryName = Validate(loggerCategoryName, nameof(loggerCategoryName));
+        DefaultOutputRootPath = Validate(defaultOutputRootPath, nameof(defaultOutputRootPath));
+        DefaultTempRootPath = Validate(defaultTempRootPath, nameof(defaultTempRootPath));
     }
 
     /// <summary>
@@ -77,7 +84,17 @@ public sealed class ShellIdentity
     public string LoggerCategoryName { get; }
 
     /// <summary>
-    /// Rejects empty launcher identity values so a branded host never partially configures the shared shell.
+    /// Gets the default output root path used by this host when no persisted override exists.
+    /// </summary>
+    public string DefaultOutputRootPath { get; }
+
+    /// <summary>
+    /// Gets the default temp root path used by this host when no persisted override exists.
+    /// </summary>
+    public string DefaultTempRootPath { get; }
+
+    /// <summary>
+    /// Rejects empty launcher identity values so a host never partially configures the shared shell.
     /// </summary>
     private static string Validate(string value, string parameterName)
     {

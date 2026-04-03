@@ -17,11 +17,11 @@ namespace LocalAutomation.Runtime;
 public sealed class ExecutionTask : INotifyPropertyChanged
 {
     private ExecutionTaskId? _parentId;
-    private ExecutionTaskStatus _status;
+    private ExecutionTaskState _state;
     private string _statusReason;
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _finishedAt;
-    private ExecutionTaskStatus? _result;
+    private ExecutionTaskOutcome? _outcome;
     private readonly Dictionary<Type, object> _stateByType = new();
 
     /// <summary>
@@ -39,7 +39,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         OperationParameters? operationParameters = null,
         IEnumerable<Type>? declaredOptionTypes = null,
         Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync = null,
-        ExecutionTaskStatus? result = null,
+        ExecutionTaskOutcome? outcome = null,
         bool isOperationRoot = false,
         bool isCallbackTask = false,
         ExecutionTaskId? callbackOwnerTaskId = null)
@@ -59,7 +59,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
         DeclaredOptionTypes = (declaredOptionTypes ?? Array.Empty<Type>()).ToList().AsReadOnly();
         ExecuteAsync = executeAsync;
-        Result = result;
+        Outcome = outcome;
         IsOperationRoot = isOperationRoot;
         IsCallbackTask = isCallbackTask;
         CallbackOwnerTaskId = callbackOwnerTaskId;
@@ -67,9 +67,9 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
         /* Runtime lifecycle and semantic outcome are tracked separately. Disabled tasks start in a completed lifecycle
            state because no scheduler work remains for them, while their semantic outcome still reports Disabled. */
-        _status = enabled ? ExecutionTaskStatus.Planned : ExecutionTaskStatus.Completed;
+        _state = enabled ? ExecutionTaskState.Planned : ExecutionTaskState.Completed;
         _statusReason = enabled ? string.Empty : DisabledReason;
-        _result = enabled ? result : ExecutionTaskStatus.Disabled;
+        _outcome = enabled ? outcome : ExecutionTaskOutcome.Disabled;
     }
 
     private readonly List<ExecutionTaskId> _dependsOn;
@@ -106,10 +106,10 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     /// <summary>
     /// Gets the current execution lifecycle status for this task scope.
     /// </summary>
-    public ExecutionTaskStatus Status
+    public ExecutionTaskState State
     {
-        get => _status;
-        internal set => SetProperty(ref _status, value);
+        get => _state;
+        internal set => SetProperty(ref _state, value);
     }
 
     public string StatusReason
@@ -134,10 +134,10 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     /// Gets the semantic outcome for this task scope once known. A task may still be running while this result is already
     /// determined, such as when a child failure has doomed the scope but cleanup is still unwinding.
     /// </summary>
-    public ExecutionTaskStatus? Result
+    public ExecutionTaskOutcome? Outcome
     {
-        get => _result;
-        internal set => SetProperty(ref _result, value);
+        get => _outcome;
+        internal set => SetProperty(ref _outcome, value);
     }
 
     /// <summary>
@@ -160,19 +160,19 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
     internal ExecutionTask CloneForSession()
     {
-        return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Result, IsOperationRoot, IsCallbackTask, CallbackOwnerTaskId);
+        return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Outcome, IsOperationRoot, IsCallbackTask, CallbackOwnerTaskId);
     }
 
     internal void InitializeRuntimeState(bool hasBegunExecution)
     {
         /* Sessions reset only lifecycle state here. Semantic outcome stays separate so disabled tasks can still render as
            Disabled while the scheduler treats them as already finished. */
-        ExecutionTaskStatus initialStatus = Enabled
-            ? (hasBegunExecution ? ExecutionTaskStatus.Pending : ExecutionTaskStatus.Planned)
-            : ExecutionTaskStatus.Completed;
-        Status = initialStatus;
+        ExecutionTaskState initialState = Enabled
+            ? (hasBegunExecution ? ExecutionTaskState.Pending : ExecutionTaskState.Planned)
+            : ExecutionTaskState.Completed;
+        State = initialState;
         StatusReason = Enabled ? string.Empty : DisabledReason;
-        Result = Enabled ? null : ExecutionTaskStatus.Disabled;
+        Outcome = Enabled ? null : ExecutionTaskOutcome.Disabled;
         StartedAt = null;
         FinishedAt = null;
     }
@@ -220,23 +220,23 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     /// Applies one complete runtime-state snapshot and raises property notifications only after the full state is
     /// internally consistent. This prevents observers from seeing torn combinations such as Running plus Result=Completed.
     /// </summary>
-    internal void ApplyRuntimeState(ExecutionTaskStatus status, string statusReason, ExecutionTaskStatus? result, DateTimeOffset? startedAt, DateTimeOffset? finishedAt)
+    internal void ApplyRuntimeState(ExecutionTaskState state, string statusReason, ExecutionTaskOutcome? outcome, DateTimeOffset? startedAt, DateTimeOffset? finishedAt)
     {
-        bool statusChanged = !Equals(_status, status);
+        bool stateChanged = !Equals(_state, state);
         bool statusReasonChanged = !Equals(_statusReason, statusReason);
-        bool resultChanged = !Equals(_result, result);
+        bool outcomeChanged = !Equals(_outcome, outcome);
         bool startedAtChanged = !Equals(_startedAt, startedAt);
         bool finishedAtChanged = !Equals(_finishedAt, finishedAt);
 
-        _status = status;
+        _state = state;
         _statusReason = statusReason;
-        _result = result;
+        _outcome = outcome;
         _startedAt = startedAt;
         _finishedAt = finishedAt;
 
-        if (statusChanged)
+        if (stateChanged)
         {
-            RaisePropertyChanged(nameof(Status));
+            RaisePropertyChanged(nameof(State));
         }
 
         if (statusReasonChanged)
@@ -244,9 +244,9 @@ public sealed class ExecutionTask : INotifyPropertyChanged
             RaisePropertyChanged(nameof(StatusReason));
         }
 
-        if (resultChanged)
+        if (outcomeChanged)
         {
-            RaisePropertyChanged(nameof(Result));
+            RaisePropertyChanged(nameof(Outcome));
         }
 
         if (startedAtChanged)

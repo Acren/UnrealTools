@@ -158,7 +158,8 @@ public partial class ExecutionTaskCard : UserControl
     /// </summary>
     private void HandleObservedNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal) ||
+        if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.State), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
         {
@@ -188,6 +189,6 @@ public partial class ExecutionTaskCard : UserControl
 
         /* Let the extracted control own the timer and conic brush creation while the task card only forwards whether the
            current task status should display the animated accent treatment. */
-        animatedBorderChrome.IsAnimated = _observedNode.Status == global::LocalAutomation.Runtime.ExecutionTaskStatus.Running;
+        animatedBorderChrome.IsAnimated = _observedNode.State == global::LocalAutomation.Runtime.ExecutionTaskState.Running;
     }
 }

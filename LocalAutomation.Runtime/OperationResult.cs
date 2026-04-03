@@ -11,15 +11,15 @@ public class OperationResult : RunResult
     /// Creates an operation result with the provided success state.
     /// </summary>
     public OperationResult(bool success)
-        : base(success ? ExecutionTaskStatus.Completed : ExecutionTaskStatus.Failed)
+        : base(success ? ExecutionTaskOutcome.Completed : ExecutionTaskOutcome.Failed)
     {
     }
 
     /// <summary>
     /// Creates an operation result with the provided semantic result.
     /// </summary>
-    public OperationResult(ExecutionTaskStatus result)
-        : base(result)
+    public OperationResult(ExecutionTaskOutcome outcome)
+        : base(outcome)
     {
     }
 
@@ -33,7 +33,7 @@ public class OperationResult : RunResult
     /// </summary>
     public static OperationResult Succeeded(int exitCode = 0)
     {
-        return new OperationResult(ExecutionTaskStatus.Completed)
+        return new OperationResult(ExecutionTaskOutcome.Completed)
         {
             ExitCode = exitCode
         };
@@ -44,7 +44,7 @@ public class OperationResult : RunResult
     /// </summary>
     public static OperationResult Failed(int exitCode = 0, string? failureReason = null)
     {
-        return new OperationResult(ExecutionTaskStatus.Failed)
+        return new OperationResult(ExecutionTaskOutcome.Failed)
         {
             ExitCode = exitCode,
             FailureReason = failureReason
@@ -56,7 +56,7 @@ public class OperationResult : RunResult
     /// </summary>
     public static OperationResult Cancelled(int exitCode = 0, string? failureReason = null)
     {
-        return new OperationResult(ExecutionTaskStatus.Cancelled)
+        return new OperationResult(ExecutionTaskOutcome.Cancelled)
         {
             ExitCode = exitCode,
             FailureReason = failureReason
@@ -68,7 +68,7 @@ public class OperationResult : RunResult
     /// </summary>
     public static OperationResult Interrupted(int exitCode = 0, string? failureReason = null)
     {
-        return new OperationResult(ExecutionTaskStatus.Interrupted)
+        return new OperationResult(ExecutionTaskOutcome.Interrupted)
         {
             ExitCode = exitCode,
             FailureReason = failureReason

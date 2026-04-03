@@ -56,9 +56,9 @@ public class EventStreamLogger : ILogger, IExecutionTaskLoggerFactory, IExecutio
         return _taskLoggerFactory?.CreateTaskLogger(taskId) ?? this;
     }
 
-    public void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null)
+    public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
     {
-        _taskStateSink?.SetTaskStatus(taskId, status, statusReason);
+        _taskStateSink?.SetTaskState(taskId, state, statusReason);
     }
 
     private sealed class NullScope : IDisposable

@@ -31,7 +31,7 @@ public sealed class LayeredSettingsPersistenceService
     private readonly Dictionary<Type, string> _typeOwnerPrefixCache = new();
 
     /// <summary>
-    /// Creates a layered settings service rooted in the current branded LocalAppData location.
+    /// Creates a layered settings service rooted in the current host-specific LocalAppData location.
     /// </summary>
     public LayeredSettingsPersistenceService(ExtensionCatalog catalog, string appDataRootPath, string targetSettingsFileName)
     {

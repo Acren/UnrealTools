@@ -59,6 +59,11 @@ public sealed class ExecutionTaskContext
     public ExecutionSession? Session { get; }
 
     /// <summary>
+    /// Gets the current execution session identifier when the task is running inside a live session.
+    /// </summary>
+    public ExecutionSessionId? SessionId => Session?.Id;
+
+    /// <summary>
     /// Gets the active root scheduler when this task is running inside a scheduler-owned execution session. Nested child
     /// operations re-enter this same scheduler so the run continues on one live session graph instead of creating a
     /// detached child execution path.

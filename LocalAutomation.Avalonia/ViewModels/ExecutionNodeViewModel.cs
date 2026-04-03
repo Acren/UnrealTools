@@ -3,7 +3,8 @@ using Avalonia;
 using Avalonia.Media;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
-using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
+using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
+using RuntimeExecutionTaskState = LocalAutomation.Runtime.ExecutionTaskState;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -121,20 +122,25 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Gets the raw execution lifecycle status.
+    /// Gets the raw execution state.
     /// </summary>
-    public RuntimeExecutionTaskStatus Status => Task.Status;
+    public RuntimeExecutionTaskState State => Task.State;
 
     /// <summary>
     /// Gets the semantic outcome once known.
     /// </summary>
-    public RuntimeExecutionTaskStatus? Result => Task.Result;
+    public RuntimeExecutionTaskOutcome? Outcome => Task.Outcome;
+
+    /// <summary>
+    /// Gets the combined display status rendered by the graph surfaces.
+    /// </summary>
+    public ExecutionTaskDisplayStatus Status => Task.Status;
 
     /// <summary>
     /// Gets the primary semantic status shown on the graph. Lifecycle remains available separately for animation and
     /// active-work context.
     /// </summary>
-    public RuntimeExecutionTaskStatus DisplayStatus => Task.DisplayStatus;
+    public ExecutionTaskDisplayStatus DisplayStatus => Task.DisplayStatus;
 
     /// <summary>
     /// Gets the number of direct child items rendered inside this group.
@@ -313,8 +319,9 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     private void HandleTaskPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Status), StringComparison.Ordinal) ||
-            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Result), StringComparison.Ordinal) ||
+        if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.State), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Outcome), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Status), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.DisplayStatus), StringComparison.Ordinal))
         {
             RaiseStatusChanged();
@@ -350,7 +357,8 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         /* Graph surfaces still listen for Status changes, so relay both lifecycle and semantic-display updates when either
            source changes on the shared task view model. */
         RaisePropertyChanged(nameof(Status));
-        RaisePropertyChanged(nameof(Result));
+        RaisePropertyChanged(nameof(State));
+        RaisePropertyChanged(nameof(Outcome));
         RaisePropertyChanged(nameof(DisplayStatus));
         RaisePropertyChanged(nameof(StatusText));
         RaisePropertyChanged(nameof(StatusLabelText));

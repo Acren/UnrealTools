@@ -37,7 +37,7 @@ public sealed class ExecutionSession
         }
     }
 
-    public event Action<ExecutionTaskId, ExecutionTaskStatus, string?>? TaskStatusChanged;
+    public event Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?, string?>? TaskStateChanged;
     public event Action? TaskGraphChanged;
 
     public ExecutionSessionId Id { get; }
@@ -61,12 +61,12 @@ public sealed class ExecutionSession
     /// </summary>
     public Task Completion => _completionSource.Task;
 
-    public ExecutionTaskStatus? Outcome { get; set; }
+    public ExecutionTaskOutcome? Outcome { get; set; }
 
     public bool? Success
     {
-        get => Outcome == null ? null : Outcome == ExecutionTaskStatus.Completed;
-        set => Outcome = value == null ? null : (value.Value ? ExecutionTaskStatus.Completed : ExecutionTaskStatus.Failed);
+        get => Outcome == null ? null : Outcome == ExecutionTaskOutcome.Completed;
+        set => Outcome = value == null ? null : (value.Value ? ExecutionTaskOutcome.Completed : ExecutionTaskOutcome.Failed);
     }
 
     public string OperationName { get; set; } = string.Empty;
@@ -119,7 +119,7 @@ public sealed class ExecutionSession
                 effectiveStart = effectiveStart == null || task.StartedAt < effectiveStart ? task.StartedAt : effectiveStart;
             }
 
-            if (task.Status == ExecutionTaskStatus.Running)
+            if (task.State == ExecutionTaskState.Running)
             {
                 effectiveEnd = timestampNow;
                 continue;
@@ -168,12 +168,12 @@ public sealed class ExecutionSession
         return _tasksById.TryGetValue(taskId.Value, out ExecutionTask? task) ? task.LogStream : null;
     }
 
-    public void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason = null)
+    public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
     {
-        /* Public status writes update lifecycle only. Semantic result is derived separately so callbacks, containers, and
-           child-failure propagation can share the same scheduler model without overloading one enum with two meanings. */
-        SetTaskStatusCore(taskId, status, statusReason);
-        PropagateTerminalStatusToUntouchedDescendants(taskId, status, statusReason);
+        /* Public state writes update execution state only. Semantic outcome is derived separately so callbacks,
+           containers, and child-failure propagation can share one runtime model without overloading one enum with two
+           meanings. */
+        SetTaskStateCore(taskId, state, statusReason);
         RefreshAncestorTaskStates(taskId);
     }
 
@@ -186,8 +186,8 @@ public sealed class ExecutionSession
         /* A failed subtree keeps lifecycle and semantic outcome separate: the failing task completes with Result=Failed,
            untouched descendants complete with Result=Skipped, and sibling subtrees that already began real work are
            marked Interrupted while still allowing active callbacks to unwind. */
-        CompleteTaskWithResult(failedTaskId, ExecutionTaskStatus.Failed, statusReason);
-        SkipUnfinishedDescendants(failedTaskId, BuildInheritedDescendantReason(failedTaskId, ExecutionTaskStatus.Failed, statusReason));
+        CompleteTaskWithOutcome(failedTaskId, ExecutionTaskOutcome.Failed, statusReason);
+        SkipUnfinishedDescendants(failedTaskId, BuildInheritedDescendantReason(failedTaskId, ExecutionTaskOutcome.Failed, statusReason));
 
         ExecutionTaskId failedSiblingRootId = failedTaskId;
         ExecutionTaskId? currentAncestorId = GetTask(failedTaskId).ParentId;
@@ -204,7 +204,7 @@ public sealed class ExecutionSession
                 InterruptSiblingSubtree(childTaskId, failedSiblingRootId);
             }
 
-            CompleteTaskWithResult(currentAncestorId.Value, ExecutionTaskStatus.Failed, statusReason);
+            CompleteTaskWithOutcome(currentAncestorId.Value, ExecutionTaskOutcome.Failed, statusReason);
             failedSiblingRootId = currentAncestorId.Value;
             currentAncestorId = ancestorTask.ParentId;
         }
@@ -213,24 +213,24 @@ public sealed class ExecutionSession
     public void BeginExecution()
     {
         _hasBegunExecution = true;
-        foreach (ExecutionTask task in _tasks.Where(task => task.Status == ExecutionTaskStatus.Planned))
+        foreach (ExecutionTask task in _tasks.Where(task => task.State == ExecutionTaskState.Planned))
         {
             if (!task.Enabled)
             {
-                task.Status = ExecutionTaskStatus.Completed;
+                task.State = ExecutionTaskState.Completed;
                 task.StatusReason = task.DisabledReason;
                 continue;
             }
 
-            task.Status = ExecutionTaskStatus.Pending;
+            task.State = ExecutionTaskState.Pending;
             task.StatusReason = string.Empty;
         }
     }
 
-    [Obsolete("Use task.Status directly instead.")]
-    public ExecutionTaskStatus? GetTaskStatus(ExecutionTaskId? taskId)
+    [Obsolete("Use task.State directly instead.")]
+    public ExecutionTaskState? GetTaskState(ExecutionTaskId? taskId)
     {
-        return taskId == null ? null : GetTask(taskId.Value).Status;
+        return taskId == null ? null : GetTask(taskId.Value).State;
     }
 
     [Obsolete("Use task.StatusReason directly instead.")]
@@ -304,12 +304,12 @@ public sealed class ExecutionSession
                 return;
             }
 
-            TaskStatusChanged -= OnTaskStatusChanged;
+            TaskStateChanged -= OnTaskStateChanged;
             cancellationRegistration.Dispose();
             completionSource.TrySetResult(true);
         }
 
-        void OnTaskStatusChanged(ExecutionTaskId taskId, ExecutionTaskStatus _, string? __)
+        void OnTaskStateChanged(ExecutionTaskId taskId, ExecutionTaskState _, ExecutionTaskOutcome? __, string? ___)
         {
             if (!IsTaskTerminal(taskId))
             {
@@ -324,11 +324,11 @@ public sealed class ExecutionSession
 
         cancellationRegistration = cancellationToken.Register(() =>
         {
-            TaskStatusChanged -= OnTaskStatusChanged;
+            TaskStateChanged -= OnTaskStateChanged;
             completionSource.TrySetCanceled(cancellationToken);
         });
 
-        TaskStatusChanged += OnTaskStatusChanged;
+        TaskStateChanged += OnTaskStateChanged;
         lock (remainingTaskIds)
         {
             foreach (ExecutionTaskId taskId in remainingTaskIds.ToList())
@@ -402,39 +402,39 @@ public sealed class ExecutionSession
     /// </summary>
     public bool IsTaskTerminal(ExecutionTaskId taskId)
     {
-        return GetTask(taskId).Status == ExecutionTaskStatus.Completed;
+        return GetTask(taskId).State == ExecutionTaskState.Completed;
     }
 
-    private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskStatus status, string? statusReason)
+    private void SetTaskStateCore(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason)
     {
         ExecutionTask task = GetTask(taskId);
         string normalizedReason = statusReason ?? string.Empty;
-        if (task.Status == status && string.Equals(task.StatusReason, normalizedReason, StringComparison.Ordinal))
+        if (task.State == state && string.Equals(task.StatusReason, normalizedReason, StringComparison.Ordinal))
         {
             return;
         }
 
-        ValidateLifecycleTransition(task, status);
-        ValidateObservedState(task.Id, status, task.Result);
-        (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(task, status);
-        task.ApplyRuntimeState(status, normalizedReason, task.Result, startedAt, finishedAt);
-        TaskStatusChanged?.Invoke(taskId, status, statusReason);
+        ValidateStateTransition(task, state);
+        ValidateObservedState(task.Id, state, task.Outcome);
+        (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(task, state);
+        task.ApplyRuntimeState(state, normalizedReason, task.Outcome, startedAt, finishedAt);
+        TaskStateChanged?.Invoke(taskId, state, task.Outcome, statusReason);
     }
 
-    private static (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) ResolveTaskTiming(ExecutionTask task, ExecutionTaskStatus status)
+    private static (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) ResolveTaskTiming(ExecutionTask task, ExecutionTaskState state)
     {
         DateTimeOffset? startedAt = task.StartedAt;
         DateTimeOffset? finishedAt = task.FinishedAt;
         DateTimeOffset timestamp = DateTimeOffset.Now;
 
-        if (status == ExecutionTaskStatus.Running && task.StartedAt == null)
+        if (state == ExecutionTaskState.Running && task.StartedAt == null)
         {
             startedAt = timestamp;
             finishedAt = null;
             return (startedAt, finishedAt);
         }
 
-        if (status == ExecutionTaskStatus.Completed)
+        if (state == ExecutionTaskState.Completed)
         {
             startedAt ??= timestamp;
             finishedAt = timestamp;
@@ -447,21 +447,21 @@ public sealed class ExecutionSession
     /// Records the semantic outcome for one task without changing its current lifecycle status. This lets a scope become
     /// doomed while nested work is still unwinding.
     /// </summary>
-    internal void SetTaskResult(ExecutionTaskId taskId, ExecutionTaskStatus? result, string? statusReason = null)
+    internal void SetTaskOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome? outcome, string? statusReason = null)
     {
         ExecutionTask task = GetTask(taskId);
         string normalizedReason = statusReason ?? string.Empty;
-        if (task.Result == result && (statusReason == null || string.Equals(task.StatusReason, normalizedReason, StringComparison.Ordinal)))
+        if (task.Outcome == outcome && (statusReason == null || string.Equals(task.StatusReason, normalizedReason, StringComparison.Ordinal)))
         {
             return;
         }
 
-        ValidateResultTransition(task, result);
+        ValidateOutcomeTransition(task, outcome);
         string effectiveReason = statusReason != null ? normalizedReason : task.StatusReason;
-        ValidateObservedState(task.Id, task.Status, result);
-        task.ApplyRuntimeState(task.Status, effectiveReason, result, task.StartedAt, task.FinishedAt);
+        ValidateObservedState(task.Id, task.State, outcome);
+        task.ApplyRuntimeState(task.State, effectiveReason, outcome, task.StartedAt, task.FinishedAt);
 
-        TaskStatusChanged?.Invoke(taskId, task.Status, task.StatusReason);
+        TaskStateChanged?.Invoke(taskId, task.State, task.Outcome, task.StatusReason);
     }
 
     /// <summary>
@@ -471,7 +471,7 @@ public sealed class ExecutionSession
     internal void InterruptTask(ExecutionTaskId taskId, string? statusReason = null)
     {
         ExecutionTask task = GetTask(taskId);
-        if (task.Status == ExecutionTaskStatus.Completed)
+        if (task.State == ExecutionTaskState.Completed)
         {
             throw new InvalidOperationException($"Task '{taskId}' cannot be interrupted after it already completed.");
         }
@@ -481,7 +481,7 @@ public sealed class ExecutionSession
             throw new InvalidOperationException($"Task '{taskId}' cannot be interrupted before execution has started.");
         }
 
-        SetTaskResult(taskId, ExecutionTaskStatus.Interrupted, statusReason);
+        SetTaskOutcome(taskId, ExecutionTaskOutcome.Interrupted, statusReason);
         RefreshAncestorTaskStates(taskId);
     }
 
@@ -489,46 +489,46 @@ public sealed class ExecutionSession
     /// Completes one task lifecycle while preserving any previously assigned failure, cancellation, or interruption result
     /// that was recorded while descendant work was still unwinding.
     /// </summary>
-    internal void CompleteTaskLifecycle(ExecutionTaskId taskId, ExecutionTaskStatus successResult = ExecutionTaskStatus.Completed, string? statusReason = null)
+    internal void CompleteTaskLifecycle(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
     {
         ExecutionTask task = GetTask(taskId);
-        ExecutionTaskStatus finalResult = task.Result is ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Interrupted
-            ? task.Result.Value
-            : successResult;
-        string? finalReason = finalResult == successResult ? statusReason : task.StatusReason;
-        CompleteTaskWithResult(taskId, finalResult, finalReason);
+        ExecutionTaskOutcome finalOutcome = task.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted
+            ? task.Outcome.Value
+            : successOutcome;
+        string? finalReason = finalOutcome == successOutcome ? statusReason : task.StatusReason;
+        CompleteTaskWithOutcome(taskId, finalOutcome, finalReason);
     }
 
     /// <summary>
     /// Applies one lifecycle/result update as a single externally visible state change so observers never see torn state
     /// between status and semantic result fields.
     /// </summary>
-    private void SetTaskStateCore(ExecutionTaskId taskId, ExecutionTaskStatus status, ExecutionTaskStatus? result, string? statusReason)
+    private void SetTaskSnapshot(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
         ExecutionTask task = GetTask(taskId);
         string normalizedReason = statusReason ?? string.Empty;
-        if (task.Status == status && task.Result == result && string.Equals(task.StatusReason, normalizedReason, StringComparison.Ordinal))
+        if (task.State == state && task.Outcome == outcome && string.Equals(task.StatusReason, normalizedReason, StringComparison.Ordinal))
         {
             return;
         }
 
-        ValidateLifecycleTransition(task, status);
-        ValidateResultTransition(task, result);
-        ValidateObservedState(task.Id, status, result);
-        (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(task, status);
-        task.ApplyRuntimeState(status, normalizedReason, result, startedAt, finishedAt);
-        TaskStatusChanged?.Invoke(taskId, status, statusReason);
+        ValidateStateTransition(task, state);
+        ValidateOutcomeTransition(task, outcome);
+        ValidateObservedState(task.Id, state, outcome);
+        (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(task, state);
+        task.ApplyRuntimeState(state, normalizedReason, outcome, startedAt, finishedAt);
+        TaskStateChanged?.Invoke(taskId, state, outcome, statusReason);
     }
 
     /// <summary>
     /// Completes one task lifecycle and assigns its semantic outcome in a single operation so container rollups and UI
     /// projections observe a consistent state.
     /// </summary>
-    internal void CompleteTaskWithResult(ExecutionTaskId taskId, ExecutionTaskStatus result, string? statusReason = null)
+    internal void CompleteTaskWithOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome outcome, string? statusReason = null)
     {
-        ValidateTerminalAssignment(taskId, result);
-        SetTaskStateCore(taskId, ExecutionTaskStatus.Completed, result, statusReason);
-        PropagateTerminalStatusToUntouchedDescendants(taskId, result, statusReason);
+        ValidateTerminalAssignment(taskId, outcome);
+        SetTaskSnapshot(taskId, ExecutionTaskState.Completed, outcome, statusReason);
+        PropagateTerminalOutcomeToUntouchedDescendants(taskId, outcome, statusReason);
         RefreshAncestorTaskStates(taskId);
     }
 
@@ -558,26 +558,26 @@ public sealed class ExecutionSession
         return entries.Count(entry => entry.Verbosity >= LogLevel.Error);
     }
 
-    private void PropagateTerminalStatusToUntouchedDescendants(ExecutionTaskId parentTaskId, ExecutionTaskStatus status, string? statusReason)
+    private void PropagateTerminalOutcomeToUntouchedDescendants(ExecutionTaskId parentTaskId, ExecutionTaskOutcome outcome, string? statusReason)
     {
         /* Descendants that never started inherit a completed lifecycle plus the semantic outcome that explains why they
            will never run. */
-        ExecutionTaskStatus descendantResult = status switch
+        ExecutionTaskOutcome descendantOutcome = outcome switch
         {
-            ExecutionTaskStatus.Skipped => ExecutionTaskStatus.Skipped,
-            ExecutionTaskStatus.Cancelled => ExecutionTaskStatus.Skipped,
-            ExecutionTaskStatus.Interrupted => ExecutionTaskStatus.Skipped,
-            ExecutionTaskStatus.Failed => ExecutionTaskStatus.Skipped,
+            ExecutionTaskOutcome.Skipped => ExecutionTaskOutcome.Skipped,
+            ExecutionTaskOutcome.Cancelled => ExecutionTaskOutcome.Skipped,
+            ExecutionTaskOutcome.Interrupted => ExecutionTaskOutcome.Skipped,
+            ExecutionTaskOutcome.Failed => ExecutionTaskOutcome.Skipped,
             _ => default
         };
 
-        if (descendantResult == default)
+        if (descendantOutcome == default)
         {
             return;
         }
 
-        string? descendantReason = BuildInheritedDescendantReason(parentTaskId, status, statusReason);
-        SkipUnfinishedDescendants(parentTaskId, descendantReason, descendantResult);
+        string? descendantReason = BuildInheritedDescendantReason(parentTaskId, outcome, statusReason);
+        SkipUnfinishedDescendants(parentTaskId, descendantReason, descendantOutcome);
     }
 
     /// <summary>
@@ -600,55 +600,55 @@ public sealed class ExecutionSession
                 .Select(GetTask)
                 .ToList();
 
-            bool anyChildRunning = childTasks.Any(task => task.Status == ExecutionTaskStatus.Running);
-            bool anyPending = childTasks.Any(task => task.Status is ExecutionTaskStatus.Pending or ExecutionTaskStatus.Planned);
-            ExecutionTask? failedTask = childTasks.FirstOrDefault(task => task.Result == ExecutionTaskStatus.Failed);
-            ExecutionTask? cancelledTask = childTasks.FirstOrDefault(task => task.Result == ExecutionTaskStatus.Cancelled);
-            ExecutionTask? interruptedTask = childTasks.FirstOrDefault(task => task.Result == ExecutionTaskStatus.Interrupted);
-            ExecutionTask? skippedTask = childTasks.FirstOrDefault(task => task.Result == ExecutionTaskStatus.Skipped);
-            bool allDisabled = childTasks.All(task => task.Result == ExecutionTaskStatus.Disabled);
+            bool anyChildRunning = childTasks.Any(task => task.State == ExecutionTaskState.Running);
+            bool anyPending = childTasks.Any(task => task.State is ExecutionTaskState.Pending or ExecutionTaskState.Planned);
+            ExecutionTask? failedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Failed);
+            ExecutionTask? cancelledTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Cancelled);
+            ExecutionTask? interruptedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Interrupted);
+            ExecutionTask? skippedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Skipped);
+            bool allDisabled = childTasks.All(task => task.Outcome == ExecutionTaskOutcome.Disabled);
 
-            ExecutionTaskStatus parentLifecycle;
-            if (parentTask.Result is ExecutionTaskStatus.Failed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Interrupted or ExecutionTaskStatus.Skipped)
+            ExecutionTaskState parentState;
+            if (parentTask.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped)
             {
-                parentLifecycle = ExecutionTaskStatus.Completed;
+                parentState = ExecutionTaskState.Completed;
             }
             else if (anyChildRunning)
             {
-                parentLifecycle = ExecutionTaskStatus.Running;
+                parentState = ExecutionTaskState.Running;
             }
             else if (anyPending)
             {
                 /* Parent scope activation is scheduler-owned. Pending children should not make a parent appear Running on
                    their own, but an already-activated scope remains Running while it waits for those children to start. */
-                parentLifecycle = parentTask.Status == ExecutionTaskStatus.Running
-                    ? ExecutionTaskStatus.Running
-                    : ExecutionTaskStatus.Pending;
+                parentState = parentTask.State == ExecutionTaskState.Running
+                    ? ExecutionTaskState.Running
+                    : ExecutionTaskState.Pending;
             }
             else
             {
-                parentLifecycle = ExecutionTaskStatus.Completed;
+                parentState = ExecutionTaskState.Completed;
             }
 
-            ExecutionTaskStatus? parentResult = anyPending || anyChildRunning
+            ExecutionTaskOutcome? parentOutcome = anyPending || anyChildRunning
                 ? failedTask != null
-                    ? ExecutionTaskStatus.Failed
+                    ? ExecutionTaskOutcome.Failed
                     : cancelledTask != null
-                        ? ExecutionTaskStatus.Cancelled
+                        ? ExecutionTaskOutcome.Cancelled
                         : interruptedTask != null
-                            ? ExecutionTaskStatus.Interrupted
+                            ? ExecutionTaskOutcome.Interrupted
                         : null
                 : failedTask != null
-                    ? ExecutionTaskStatus.Failed
+                    ? ExecutionTaskOutcome.Failed
                     : cancelledTask != null
-                        ? ExecutionTaskStatus.Cancelled
+                        ? ExecutionTaskOutcome.Cancelled
                         : interruptedTask != null
-                            ? ExecutionTaskStatus.Interrupted
+                            ? ExecutionTaskOutcome.Interrupted
                         : allDisabled
-                            ? ExecutionTaskStatus.Disabled
+                            ? ExecutionTaskOutcome.Disabled
                             : skippedTask != null
-                                ? ExecutionTaskStatus.Skipped
-                                : ExecutionTaskStatus.Completed;
+                                ? ExecutionTaskOutcome.Skipped
+                                : ExecutionTaskOutcome.Completed;
             string? parentReason = failedTask?.StatusReason;
             parentReason ??= cancelledTask?.StatusReason;
             parentReason ??= interruptedTask?.StatusReason;
@@ -658,12 +658,12 @@ public sealed class ExecutionSession
                 parentReason ??= "All child tasks are disabled.";
             }
 
-            if (parentResult == ExecutionTaskStatus.Completed && childTasks.Any(childTask => childTask.Status != ExecutionTaskStatus.Completed))
+            if (parentOutcome == ExecutionTaskOutcome.Completed && childTasks.Any(childTask => childTask.State != ExecutionTaskState.Completed))
             {
                 throw new InvalidOperationException($"Task '{currentParentId.Value}' cannot roll up to completed while child work is still non-terminal.");
             }
 
-            SetTaskStateCore(currentParentId.Value, parentLifecycle, parentResult, parentReason);
+            SetTaskSnapshot(currentParentId.Value, parentState, parentOutcome, parentReason);
             currentParentId = parentTask.ParentId;
         }
     }
@@ -671,28 +671,28 @@ public sealed class ExecutionSession
     /// <summary>
     /// Skips every unfinished descendant beneath the provided parent task.
     /// </summary>
-    private void SkipUnfinishedDescendants(ExecutionTaskId parentTaskId, string? reason, ExecutionTaskStatus skippedResult = ExecutionTaskStatus.Skipped)
+    private void SkipUnfinishedDescendants(ExecutionTaskId parentTaskId, string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
     {
         foreach (ExecutionTaskId childTaskId in GetTask(parentTaskId).ChildTaskIds)
         {
-            SkipUnfinishedSubtree(childTaskId, reason, skippedResult);
+            SkipUnfinishedSubtree(childTaskId, reason, skippedOutcome);
         }
     }
 
     /// <summary>
      /// Skips every unfinished task in the provided subtree without disturbing tasks that already reached terminal states.
      /// </summary>
-    private void SkipUnfinishedSubtree(ExecutionTaskId rootTaskId, string? reason, ExecutionTaskStatus skippedResult = ExecutionTaskStatus.Skipped)
+    private void SkipUnfinishedSubtree(ExecutionTaskId rootTaskId, string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
     {
         ExecutionTask task = GetTask(rootTaskId);
-        if (task.Status is ExecutionTaskStatus.Planned or ExecutionTaskStatus.Pending)
+        if (task.State is ExecutionTaskState.Planned or ExecutionTaskState.Pending)
         {
-            CompleteTaskWithResult(rootTaskId, skippedResult, reason);
+            CompleteTaskWithOutcome(rootTaskId, skippedOutcome, reason);
         }
 
         foreach (ExecutionTaskId childTaskId in task.ChildTaskIds)
         {
-            SkipUnfinishedSubtree(childTaskId, reason, skippedResult);
+            SkipUnfinishedSubtree(childTaskId, reason, skippedOutcome);
         }
     }
 
@@ -713,7 +713,7 @@ public sealed class ExecutionSession
             return;
         }
 
-        SkipUnfinishedSubtree(rootTaskId, reason, ExecutionTaskStatus.Skipped);
+        SkipUnfinishedSubtree(rootTaskId, reason, ExecutionTaskOutcome.Skipped);
     }
 
     /// <summary>
@@ -738,7 +738,7 @@ public sealed class ExecutionSession
         return GetTask(rootTaskId).ChildTaskIds.Any(childTaskId =>
         {
             ExecutionTask childTask = GetTask(childTaskId);
-            return childTask.Status != ExecutionTaskStatus.Completed || HasNonTerminalDescendants(childTaskId);
+            return childTask.State != ExecutionTaskState.Completed || HasNonTerminalDescendants(childTaskId);
         });
     }
 
@@ -749,7 +749,7 @@ public sealed class ExecutionSession
     private void MarkSubtreeInterrupted(ExecutionTaskId rootTaskId, string? reason)
     {
         ExecutionTask task = GetTask(rootTaskId);
-        if (task.Status != ExecutionTaskStatus.Completed)
+        if (task.State != ExecutionTaskState.Completed)
         {
             if (HasTaskStarted(task))
             {
@@ -757,7 +757,7 @@ public sealed class ExecutionSession
             }
             else
             {
-                CompleteTaskWithResult(rootTaskId, ExecutionTaskStatus.Skipped, reason);
+                CompleteTaskWithOutcome(rootTaskId, ExecutionTaskOutcome.Skipped, reason);
             }
         }
 
@@ -772,80 +772,80 @@ public sealed class ExecutionSession
     /// </summary>
     private static bool HasTaskStarted(ExecutionTask task)
     {
-        if (task.Status == ExecutionTaskStatus.Running || task.StartedAt != null)
+        if (task.State == ExecutionTaskState.Running || task.StartedAt != null)
         {
             return true;
         }
 
-        return task.Result is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Cancelled or ExecutionTaskStatus.Interrupted or ExecutionTaskStatus.Failed;
+        return task.Outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Failed;
     }
 
     /// <summary>
     /// Guards lifecycle transitions so task state only moves forward through the execution model.
     /// </summary>
-    private static void ValidateLifecycleTransition(ExecutionTask task, ExecutionTaskStatus nextStatus)
+    private static void ValidateStateTransition(ExecutionTask task, ExecutionTaskState nextState)
     {
-        if (task.Status == ExecutionTaskStatus.Completed && nextStatus != ExecutionTaskStatus.Completed)
+        if (task.State == ExecutionTaskState.Completed && nextState != ExecutionTaskState.Completed)
         {
-            throw new InvalidOperationException($"Task '{task.Id}' cannot transition from completed lifecycle back to '{nextStatus}'.");
+            throw new InvalidOperationException($"Task '{task.Id}' cannot transition from completed execution state back to '{nextState}'.");
         }
 
-        if (task.Status == ExecutionTaskStatus.Running && nextStatus is ExecutionTaskStatus.Pending or ExecutionTaskStatus.Planned)
+        if (task.State == ExecutionTaskState.Running && nextState is ExecutionTaskState.Pending or ExecutionTaskState.Planned)
         {
-            throw new InvalidOperationException($"Task '{task.Id}' cannot transition from running to '{nextStatus}'.");
+            throw new InvalidOperationException($"Task '{task.Id}' cannot transition from running to '{nextState}'.");
         }
     }
 
     /// <summary>
     /// Guards combined observable state so lifecycle and semantic outcome never describe contradictory execution states.
     /// </summary>
-    private static void ValidateObservedState(ExecutionTaskId taskId, ExecutionTaskStatus lifecycleStatus, ExecutionTaskStatus? result)
+    private static void ValidateObservedState(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
-        if (lifecycleStatus == ExecutionTaskStatus.Running && result is ExecutionTaskStatus.Completed or ExecutionTaskStatus.Skipped or ExecutionTaskStatus.Disabled)
+        if (state == ExecutionTaskState.Running && outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Skipped or ExecutionTaskOutcome.Disabled)
         {
-            throw new InvalidOperationException($"Task '{taskId}' cannot be running while reporting semantic result '{result}'.");
+            throw new InvalidOperationException($"Task '{taskId}' cannot be running while reporting semantic outcome '{outcome}'.");
         }
 
-        if (lifecycleStatus is ExecutionTaskStatus.Planned or ExecutionTaskStatus.Pending && result != null)
+        if (state is ExecutionTaskState.Planned or ExecutionTaskState.Pending && outcome != null)
         {
-            throw new InvalidOperationException($"Task '{taskId}' cannot remain queued while reporting semantic result '{result}'.");
+            throw new InvalidOperationException($"Task '{taskId}' cannot remain queued while reporting semantic outcome '{outcome}'.");
         }
 
-        if (lifecycleStatus == ExecutionTaskStatus.Completed && result == null)
+        if (state == ExecutionTaskState.Completed && outcome == null)
         {
-            throw new InvalidOperationException($"Task '{taskId}' cannot complete its lifecycle without a semantic result.");
+            throw new InvalidOperationException($"Task '{taskId}' cannot complete its execution state without a semantic outcome.");
         }
     }
 
     /// <summary>
     /// Guards semantic result transitions so only stricter outcomes can replace a previously assigned result.
     /// </summary>
-    private static void ValidateResultTransition(ExecutionTask task, ExecutionTaskStatus? nextResult)
+    private static void ValidateOutcomeTransition(ExecutionTask task, ExecutionTaskOutcome? nextOutcome)
     {
-        if (task.Result == null || nextResult == null || task.Result == nextResult)
+        if (task.Outcome == null || nextOutcome == null || task.Outcome == nextOutcome)
         {
             return;
         }
 
-        if (CanUpgradeTaskResult(task.Result.Value, nextResult.Value))
+        if (CanUpgradeTaskOutcome(task.Outcome.Value, nextOutcome.Value))
         {
             return;
         }
 
-        throw new InvalidOperationException($"Task '{task.Id}' cannot change result from '{task.Result}' to '{nextResult}'.");
+        throw new InvalidOperationException($"Task '{task.Id}' cannot change outcome from '{task.Outcome}' to '{nextOutcome}'.");
     }
 
     /// <summary>
     /// Defines the small set of semantic result upgrades that remain legal after a task has already been marked with a
     /// weaker doomed outcome.
     /// </summary>
-    private static bool CanUpgradeTaskResult(ExecutionTaskStatus currentResult, ExecutionTaskStatus nextResult)
+    private static bool CanUpgradeTaskOutcome(ExecutionTaskOutcome currentOutcome, ExecutionTaskOutcome nextOutcome)
     {
-        return (currentResult, nextResult) switch
+        return (currentOutcome, nextOutcome) switch
         {
-            (ExecutionTaskStatus.Interrupted, ExecutionTaskStatus.Failed) => true,
-            (ExecutionTaskStatus.Cancelled, ExecutionTaskStatus.Failed) => true,
-            (ExecutionTaskStatus.Interrupted, ExecutionTaskStatus.Cancelled) => true,
+            (ExecutionTaskOutcome.Interrupted, ExecutionTaskOutcome.Failed) => true,
+            (ExecutionTaskOutcome.Cancelled, ExecutionTaskOutcome.Failed) => true,
+            (ExecutionTaskOutcome.Interrupted, ExecutionTaskOutcome.Cancelled) => true,
             _ => false
         };
     }
@@ -854,39 +854,39 @@ public sealed class ExecutionSession
     /// Guards terminal assignments so untouched-only outcomes cannot be applied after a task or subtree has started real
     /// execution.
     /// </summary>
-    private void ValidateTerminalAssignment(ExecutionTaskId taskId, ExecutionTaskStatus result)
+    private void ValidateTerminalAssignment(ExecutionTaskId taskId, ExecutionTaskOutcome outcome)
     {
-        if (result == ExecutionTaskStatus.Completed && HasNonTerminalDescendants(taskId))
+        if (outcome == ExecutionTaskOutcome.Completed && HasNonTerminalDescendants(taskId))
         {
             throw new InvalidOperationException($"Task '{taskId}' cannot complete successfully while it still has non-terminal descendants.");
         }
 
-        if (result == ExecutionTaskStatus.Skipped && HasStartedWorkInSubtree(taskId))
+        if (outcome == ExecutionTaskOutcome.Skipped && HasStartedWorkInSubtree(taskId))
         {
             throw new InvalidOperationException($"Task '{taskId}' cannot be marked skipped after execution has started in its subtree.");
         }
 
-        if (result == ExecutionTaskStatus.Interrupted && !HasStartedWorkInSubtree(taskId))
+        if (outcome == ExecutionTaskOutcome.Interrupted && !HasStartedWorkInSubtree(taskId))
         {
             throw new InvalidOperationException($"Task '{taskId}' cannot be marked interrupted before execution has started in its subtree.");
         }
     }
 
-    private string? BuildInheritedDescendantReason(ExecutionTaskId parentTaskId, ExecutionTaskStatus status, string? statusReason)
+    private string? BuildInheritedDescendantReason(ExecutionTaskId parentTaskId, ExecutionTaskOutcome outcome, string? statusReason)
     {
         if (!string.IsNullOrWhiteSpace(statusReason))
         {
-            return status == ExecutionTaskStatus.Skipped
+            return outcome == ExecutionTaskOutcome.Skipped
                 ? statusReason
-                : $"Skipped because parent task '{parentTaskId}' {status.ToString().ToLowerInvariant()}: {statusReason}";
+                : $"Skipped because parent task '{parentTaskId}' {outcome.ToString().ToLowerInvariant()}: {statusReason}";
         }
 
-        return status switch
+        return outcome switch
         {
-            ExecutionTaskStatus.Skipped => $"Skipped because parent task '{parentTaskId}' was skipped.",
-            ExecutionTaskStatus.Cancelled => $"Skipped because parent task '{parentTaskId}' was cancelled.",
-            ExecutionTaskStatus.Interrupted => $"Skipped because parent task '{parentTaskId}' was interrupted.",
-            ExecutionTaskStatus.Failed => $"Skipped because parent task '{parentTaskId}' failed.",
+            ExecutionTaskOutcome.Skipped => $"Skipped because parent task '{parentTaskId}' was skipped.",
+            ExecutionTaskOutcome.Cancelled => $"Skipped because parent task '{parentTaskId}' was cancelled.",
+            ExecutionTaskOutcome.Interrupted => $"Skipped because parent task '{parentTaskId}' was interrupted.",
+            ExecutionTaskOutcome.Failed => $"Skipped because parent task '{parentTaskId}' failed.",
             _ => null
         };
     }

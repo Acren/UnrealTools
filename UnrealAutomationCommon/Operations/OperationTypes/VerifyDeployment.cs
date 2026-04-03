@@ -128,7 +128,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             context.Logger.LogInformation($"Identified {exampleProjectZip} as best example project");
 
-            string temp = GetOperationTempPath();
+            string temp = GetOperationTempPath(context);
             string exampleProjectTestPath = Path.Combine(temp, "ExampleProject");
 
             FileUtils.DeleteDirectoryIfExists(exampleProjectTestPath);

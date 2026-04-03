@@ -1,6 +1,4 @@
 using Avalonia.Controls;
-using RuntimeExecutionTaskStatus = LocalAutomation.Runtime.ExecutionTaskStatus;
-
 namespace LocalAutomation.Avalonia.Controls;
 
 /// <summary>
@@ -21,18 +19,18 @@ internal static class ExecutionStatusClasses
     /// <summary>
     /// Applies the shared semantic status classes used by execution-graph styles.
     /// </summary>
-    public static void ApplyStatusClasses(Classes classes, RuntimeExecutionTaskStatus status)
+    public static void ApplyStatusClasses(Classes classes, ExecutionTaskDisplayStatus status)
     {
         /* Graph styling keys follow the user-facing semantic outcome. Callers pass lifecycle state separately when they
            need active-running affordances such as animation. */
-        classes.Set("pending", status is RuntimeExecutionTaskStatus.Pending);
-        classes.Set("planned", status is RuntimeExecutionTaskStatus.Planned);
-        classes.Set("skipped", status is RuntimeExecutionTaskStatus.Skipped);
-        classes.Set("disabled", status is RuntimeExecutionTaskStatus.Disabled);
-        classes.Set("running", status is RuntimeExecutionTaskStatus.Running);
-        classes.Set("completed", status is RuntimeExecutionTaskStatus.Completed);
-        classes.Set("failed", status is RuntimeExecutionTaskStatus.Failed);
-        classes.Set("cancelled", status is RuntimeExecutionTaskStatus.Cancelled);
-        classes.Set("interrupted", status is RuntimeExecutionTaskStatus.Interrupted);
+        classes.Set("pending", status is ExecutionTaskDisplayStatus.Pending);
+        classes.Set("planned", status is ExecutionTaskDisplayStatus.Planned);
+        classes.Set("skipped", status is ExecutionTaskDisplayStatus.Skipped);
+        classes.Set("disabled", status is ExecutionTaskDisplayStatus.Disabled);
+        classes.Set("running", status is ExecutionTaskDisplayStatus.Running);
+        classes.Set("completed", status is ExecutionTaskDisplayStatus.Completed);
+        classes.Set("failed", status is ExecutionTaskDisplayStatus.Failed);
+        classes.Set("cancelled", status is ExecutionTaskDisplayStatus.Cancelled);
+        classes.Set("interrupted", status is ExecutionTaskDisplayStatus.Interrupted);
     }
 }

@@ -27,7 +27,7 @@ public sealed class SessionPersistenceService
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
 
-        // Keep each launcher's persisted shell state inside its own LocalAppData root so branded hosts do not overwrite
+        // Keep each launcher's persisted shell state inside its own LocalAppData root so host-specific shells do not overwrite
         // one another's target lists, selected operations, or option values.
         string dataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

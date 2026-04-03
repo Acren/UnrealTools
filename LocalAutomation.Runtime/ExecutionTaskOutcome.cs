@@ -1,13 +1,10 @@
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Represents the lifecycle state of an execution task.
+/// Represents the semantic terminal outcome of an execution task or operation.
 /// </summary>
-public enum ExecutionTaskStatus
+public enum ExecutionTaskOutcome
 {
-    Planned,
-    Pending,
-    Running,
     Completed,
     Failed,
     Skipped,

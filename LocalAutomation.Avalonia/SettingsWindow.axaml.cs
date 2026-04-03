@@ -7,7 +7,7 @@ using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomati
 namespace LocalAutomation.Avalonia;
 
 /// <summary>
-/// Hosts the global application settings editor for the current branded launcher.
+/// Hosts the global application settings editor for the current launcher.
 /// </summary>
 public partial class SettingsWindow : Window
 {

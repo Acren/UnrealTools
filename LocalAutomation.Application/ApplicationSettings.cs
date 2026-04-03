@@ -6,14 +6,28 @@ using LocalAutomation.Runtime;
 namespace LocalAutomation.Application;
 
 /// <summary>
-/// Stores durable application-wide preferences for one branded launcher host.
+/// Stores durable application-wide preferences for one launcher host.
 /// </summary>
 [PersistedSettings("app")]
 public sealed class ApplicationSettings : INotifyPropertyChanged
 {
     private bool _enablePerformanceTelemetry;
     private double _minimumPerformanceTelemetryMilliseconds;
-    private string _outputRootPath = OutputPaths.DefaultRootPath;
+    private readonly string _defaultOutputRootPath;
+    private readonly string _defaultTempRootPath;
+    private string _outputRootPath;
+    private string _tempRootPath;
+
+    /// <summary>
+    /// Creates one application-settings instance with host-specific path defaults.
+    /// </summary>
+    public ApplicationSettings(string? defaultOutputRootPath = null, string? defaultTempRootPath = null)
+    {
+        _defaultOutputRootPath = string.IsNullOrWhiteSpace(defaultOutputRootPath) ? OutputPaths.DefaultRootPath : defaultOutputRootPath.Trim();
+        _defaultTempRootPath = string.IsNullOrWhiteSpace(defaultTempRootPath) ? OutputPaths.GetDefaultTempRootPath() : defaultTempRootPath.Trim();
+        _outputRootPath = _defaultOutputRootPath;
+        _tempRootPath = _defaultTempRootPath;
+    }
 
     /// <summary>
     /// Raised whenever one persisted application preference changes.
@@ -33,7 +47,7 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
         set
         {
             string normalizedValue = string.IsNullOrWhiteSpace(value)
-                ? OutputPaths.DefaultRootPath
+                ? _defaultOutputRootPath
                 : value.Trim();
 
             if (string.Equals(_outputRootPath, normalizedValue, StringComparison.Ordinal))
@@ -42,6 +56,32 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
             }
 
             _outputRootPath = normalizedValue;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the shared root directory under which temporary automation workspaces are written.
+    /// </summary>
+    [DisplayName("Temp root path")]
+    [Description("Controls the base folder used for temporary run workspaces and scratch files. Defaults to a folder under the system TEMP directory.")]
+    [PathEditor(PathEditorKind.Directory, Title = "Select temp root folder")]
+    [PersistedValue(PersistenceScope.Global)]
+    public string TempRootPath
+    {
+        get => _tempRootPath;
+        set
+        {
+            string normalizedValue = string.IsNullOrWhiteSpace(value)
+                ? _defaultTempRootPath
+                : value.Trim();
+
+            if (string.Equals(_tempRootPath, normalizedValue, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _tempRootPath = normalizedValue;
             OnPropertyChanged();
         }
     }

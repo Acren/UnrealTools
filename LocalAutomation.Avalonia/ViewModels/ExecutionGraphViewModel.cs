@@ -345,8 +345,8 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Lays out one sibling set. The root task's direct children stack vertically so the highest-level scopes read like
-    /// tracks, while every deeper level flows horizontally in authored order.
+    /// Lays out one sibling set as dependency stages: sequential stages flow left-to-right while tasks that can run in
+    /// parallel within the same stage stack vertically.
     /// </summary>
     private LayoutBounds LayoutDirectChildren(RuntimeExecutionTaskId? parentId, double originX, double originY)
     {
@@ -356,46 +356,145 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             return LayoutBounds.Empty;
         }
 
-        /* Only the root task's direct children stack vertically. Those nodes typically represent the highest-level tracks
-           in the run, such as one engine-specific scope per selected version. Deeper levels return to the dependency-column
-           layout so each track reads left-to-right instead of collapsing into one tall tower of nested groups. */
-        bool isRootChildSet = parentId is RuntimeExecutionTaskId resolvedParentId &&
-            _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? parentOfParentId) &&
-            parentOfParentId == null;
-        if (isRootChildSet)
+        IReadOnlyList<IReadOnlyList<ExecutionNodeViewModel>> stages = BuildSiblingStages(children);
+        if (stages.Count == 1)
         {
-            LayoutBounds stackedBounds = LayoutBounds.Empty;
-            double currentY = originY;
+            return LayoutChildrenVertically(children, originX, originY);
+        }
 
-            foreach (ExecutionNodeViewModel child in children)
+        return LayoutSiblingStages(stages, originX, originY);
+    }
+
+    /// <summary>
+    /// Partitions one sibling set into dependency stages so siblings with no remaining intra-sibling dependencies share a
+    /// stage and later dependents flow into columns to the right.
+    /// </summary>
+    private IReadOnlyList<IReadOnlyList<ExecutionNodeViewModel>> BuildSiblingStages(IReadOnlyList<ExecutionNodeViewModel> children)
+    {
+        if (children.Count <= 1)
+        {
+            return new[] { children };
+        }
+
+        Dictionary<RuntimeExecutionTaskId, ExecutionNodeViewModel> childrenById = children.ToDictionary(child => child.Id);
+        Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> siblingOwnerByTaskId = BuildSiblingOwnerMap(children);
+        Dictionary<RuntimeExecutionTaskId, HashSet<RuntimeExecutionTaskId>> remainingDependencies = children.ToDictionary(
+            child => child.Id,
+            child => child.Task.Task.DependsOn
+                .Select(dependencyId => siblingOwnerByTaskId.TryGetValue(dependencyId, out RuntimeExecutionTaskId ownerId) ? ownerId : default)
+                .Where(ownerId => ownerId != default && ownerId != child.Id && childrenById.ContainsKey(ownerId))
+                .ToHashSet());
+        List<ExecutionNodeViewModel> remainingChildren = children.ToList();
+        List<IReadOnlyList<ExecutionNodeViewModel>> stages = new();
+
+        while (remainingChildren.Count > 0)
+        {
+            List<ExecutionNodeViewModel> stage = remainingChildren
+                .Where(child => remainingDependencies[child.Id].Count == 0)
+                .ToList();
+
+            if (stage.Count == 0)
             {
-                LayoutBounds childBounds = LayoutGroupNode(child, originX, currentY);
-                stackedBounds = stackedBounds.Include(childBounds);
-                currentY = childBounds.Bottom + RowGap;
+                /* Valid execution plans are DAGs, so this fallback should only protect the UI from malformed data. When a
+                   cycle slips through, preserve authored order instead of failing layout. */
+                stage.Add(remainingChildren[0]);
             }
 
-            return stackedBounds;
+            stages.Add(stage);
+            HashSet<RuntimeExecutionTaskId> completedStageIds = stage
+                .Select(child => child.Id)
+                .ToHashSet();
+            remainingChildren.RemoveAll(child => completedStageIds.Contains(child.Id));
+
+            foreach (HashSet<RuntimeExecutionTaskId> dependencySet in remainingDependencies.Values)
+            {
+                dependencySet.RemoveWhere(completedStageIds.Contains);
+            }
         }
 
-        /* Deeper levels intentionally ignore dependency columns for now. Rendering siblings left-to-right in authored
-           order keeps each subtree readable even when the underlying task set has no explicit sibling dependencies yet. */
+        return stages;
+    }
+
+    /// <summary>
+    /// Maps every task id inside the provided sibling subtrees back to the direct sibling container that owns that task so
+    /// dependencies on descendant callback nodes still count as dependencies on the sibling stage.
+    /// </summary>
+    private Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> BuildSiblingOwnerMap(IReadOnlyList<ExecutionNodeViewModel> children)
+    {
+        Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> ownerMap = new();
+        foreach (ExecutionNodeViewModel child in children)
+        {
+            foreach (RuntimeExecutionTaskId subtreeTaskId in EnumerateSubtreeTaskIds(child.Id))
+            {
+                ownerMap[subtreeTaskId] = child.Id;
+            }
+        }
+
+        return ownerMap;
+    }
+
+    /// <summary>
+    /// Enumerates one node id plus all descendant task ids in its subtree.
+    /// </summary>
+    private IEnumerable<RuntimeExecutionTaskId> EnumerateSubtreeTaskIds(RuntimeExecutionTaskId rootId)
+    {
+        yield return rootId;
+        foreach (ExecutionNodeViewModel child in GetDirectChildren(rootId))
+        {
+            foreach (RuntimeExecutionTaskId childId in EnumerateSubtreeTaskIds(child.Id))
+            {
+                yield return childId;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lays out one sibling set vertically, treating each child subtree like its own stacked track.
+    /// </summary>
+    private LayoutBounds LayoutChildrenVertically(IReadOnlyList<ExecutionNodeViewModel> children, double originX, double originY)
+    {
+        LayoutBounds stackedBounds = LayoutBounds.Empty;
+        double currentY = originY;
+
+        foreach (ExecutionNodeViewModel child in children)
+        {
+            LayoutBounds childBounds = LayoutNodeSubtree(child, originX, currentY);
+            stackedBounds = stackedBounds.Include(childBounds);
+            currentY = childBounds.Bottom + RowGap;
+        }
+
+        return stackedBounds;
+    }
+
+    /// <summary>
+    /// Lays out dependency stages left-to-right, stacking the tasks within each stage vertically and then centering the
+    /// shorter stage columns within the tallest column.
+    /// </summary>
+    private LayoutBounds LayoutSiblingStages(IReadOnlyList<IReadOnlyList<ExecutionNodeViewModel>> stages, double originX, double originY)
+    {
         LayoutBounds bounds = LayoutBounds.Empty;
         double currentX = originX;
-        List<(ExecutionNodeViewModel Node, LayoutBounds Bounds)> laidOutChildren = new(children.Count);
-        foreach (ExecutionNodeViewModel node in children)
+        List<(IReadOnlyList<ExecutionNodeViewModel> Stage, LayoutBounds Bounds)> laidOutStages = new(stages.Count);
+        foreach (IReadOnlyList<ExecutionNodeViewModel> stage in stages)
         {
-            LayoutBounds nodeBounds = HasChildren(node.Id)
-                ? LayoutGroupNode(node, currentX, originY)
-                : LayoutLeafNode(node, currentX, originY);
-
-            laidOutChildren.Add((node, nodeBounds));
-            bounds = bounds.Include(nodeBounds);
-            currentX = nodeBounds.Right + ColumnGap;
+            LayoutBounds stageBounds = LayoutChildrenVertically(stage, currentX, originY);
+            laidOutStages.Add((stage, stageBounds));
+            bounds = bounds.Include(stageBounds);
+            currentX = stageBounds.Right + ColumnGap;
         }
 
-        bounds = CenterSiblingRowVertically(laidOutChildren, bounds);
+        return CenterStageColumnsVertically(laidOutStages, bounds);
+    }
 
-        return bounds;
+    /// <summary>
+    /// Lays out either a leaf or group subtree for one direct child without duplicating the node-kind branch at every
+    /// sibling-layout call site.
+    /// </summary>
+    private LayoutBounds LayoutNodeSubtree(ExecutionNodeViewModel node, double x, double y)
+    {
+        return HasChildren(node.Id)
+            ? LayoutGroupNode(node, x, y)
+            : LayoutLeafNode(node, x, y);
     }
 
     /// <summary>
@@ -479,19 +578,19 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Centers each sibling subtree within the tallest item in one horizontal row so shorter nodes do not cling to the
-    /// top edge when a neighboring group or task grows taller.
+    /// Centers each stage column within the tallest sibling-stage column so shorter parallel stacks do not cling to the top
+    /// edge when a neighboring stage grows taller.
     /// </summary>
-    private LayoutBounds CenterSiblingRowVertically(IReadOnlyList<(ExecutionNodeViewModel Node, LayoutBounds Bounds)> siblings, LayoutBounds rowBounds)
+    private LayoutBounds CenterStageColumnsVertically(IReadOnlyList<(IReadOnlyList<ExecutionNodeViewModel> Stage, LayoutBounds Bounds)> stages, LayoutBounds rowBounds)
     {
-        if (siblings.Count <= 1 || rowBounds.IsEmpty)
+        if (stages.Count <= 1 || rowBounds.IsEmpty)
         {
             return rowBounds;
         }
 
-        double rowHeight = siblings.Max(sibling => sibling.Bounds.Height);
+        double rowHeight = stages.Max(stage => stage.Bounds.Height);
         bool anyOffsetApplied = false;
-        foreach ((ExecutionNodeViewModel node, LayoutBounds bounds) in siblings)
+        foreach ((IReadOnlyList<ExecutionNodeViewModel> stage, LayoutBounds bounds) in stages)
         {
             double deltaY = (rowHeight - bounds.Height) / 2.0;
             if (Math.Abs(deltaY) <= 0.5)
@@ -499,7 +598,11 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
                 continue;
             }
 
-            OffsetSubtree(node.Id, 0, deltaY);
+            foreach (ExecutionNodeViewModel node in stage)
+            {
+                OffsetSubtree(node.Id, 0, deltaY);
+            }
+
             anyOffsetApplied = true;
         }
 
@@ -509,9 +612,12 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         }
 
         LayoutBounds centeredBounds = LayoutBounds.Empty;
-        foreach ((ExecutionNodeViewModel node, _) in siblings)
+        foreach ((IReadOnlyList<ExecutionNodeViewModel> stage, _) in stages)
         {
-            centeredBounds = centeredBounds.Include(GetSubtreeBounds(node.Id));
+            foreach (ExecutionNodeViewModel node in stage)
+            {
+                centeredBounds = centeredBounds.Include(GetSubtreeBounds(node.Id));
+            }
         }
 
         return centeredBounds;
