@@ -15,6 +15,13 @@ namespace LocalAutomation.Runtime;
 /// </summary>
 public sealed class ExecutionPlanScheduler
 {
+    private enum SchedulerStopReason
+    {
+        None,
+        UserCancelled,
+        InterruptedByTerminalOutcome
+    }
+
     private const string WaitingForDependenciesReason = "Waiting for dependencies.";
     private const string UnsatisfiedDependenciesReason = "Scheduler could not satisfy the remaining dependencies.";
     private readonly ILogger _logger;
@@ -28,6 +35,7 @@ public sealed class ExecutionPlanScheduler
     private TaskCompletionSource<bool> _workAvailableSignal = CreateWorkAvailableSignal();
     private CancellationTokenSource? _schedulerCancellationSource;
     private CancellationToken _executionCancellationToken;
+    private SchedulerStopReason _stopReason;
     private bool _encounteredFailure;
     private bool _encounteredCancellation;
     private DateTime _lastCompletionHandledAtUtc = DateTime.MinValue;
@@ -67,8 +75,17 @@ public sealed class ExecutionPlanScheduler
 
                 if (_executionCancellationToken.IsCancellationRequested)
                 {
-                    _encounteredCancellation = true;
-                    CancelOutstandingTasks();
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        SetStopReason(SchedulerStopReason.UserCancelled);
+                    }
+
+                    if (_stopReason == SchedulerStopReason.UserCancelled)
+                    {
+                        _encounteredCancellation = true;
+                    }
+
+                    CancelOutstandingTasks(_stopReason, runningTaskReason: ResolveStopReasonMessage(_stopReason));
                     break;
                 }
 
@@ -320,19 +337,20 @@ public sealed class ExecutionPlanScheduler
            forced terminal state must trigger the same cancellation path that user cancellation uses. */
         if (ShouldCancelExecutionForTerminalOutcome(taskId, state, outcome))
         {
+            SetStopReason(ResolveStopReason(outcome));
             RequestExecutionCancellation();
 
             /* Interrupted remains a distinct run outcome from user cancellation, so the scheduler only records
                cancellation here when the terminal status itself is Cancelled. Interrupted task state is preserved and the
                final result still rolls up from semantic task outcomes after running callbacks unwind. */
-            if (outcome == ExecutionTaskOutcome.Cancelled)
+            if (_stopReason == SchedulerStopReason.UserCancelled)
             {
                 _encounteredCancellation = true;
             }
 
             /* Forced terminal states should also immediately close out untouched queued work so the scheduler does not
                attempt to keep scheduling siblings while already-running callbacks are unwinding. */
-            CancelOutstandingTasks(statusReason, preserveRunningTerminalOutcomes: true);
+            CancelOutstandingTasks(_stopReason, runningTaskReason: statusReason, preserveRunningTerminalOutcomes: true);
         }
 
         SignalWorkAvailable();
@@ -489,12 +507,24 @@ public sealed class ExecutionPlanScheduler
             }
             else if (result.Outcome == ExecutionTaskOutcome.Cancelled)
             {
-                _encounteredCancellation = true;
-                _session.CompleteTaskLifecycle(completedTaskId, ExecutionTaskOutcome.Cancelled, "Cancelled.");
-                CancelOutstandingTasks();
+                SchedulerStopReason stopReason = _stopReason == SchedulerStopReason.None
+                    ? SchedulerStopReason.UserCancelled
+                    : _stopReason;
+                SetStopReason(stopReason);
+                if (stopReason == SchedulerStopReason.UserCancelled)
+                {
+                    _encounteredCancellation = true;
+                }
+
+                _session.CompleteTaskLifecycle(
+                    completedTaskId,
+                    stopReason == SchedulerStopReason.UserCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted,
+                    ResolveStopReasonMessage(stopReason));
+                CancelOutstandingTasks(stopReason, runningTaskReason: ResolveStopReasonMessage(stopReason));
             }
             else if (result.Outcome == ExecutionTaskOutcome.Interrupted)
             {
+                SetStopReason(SchedulerStopReason.InterruptedByTerminalOutcome);
                 _session.InterruptTask(completedTaskId, result.FailureReason);
             }
             else
@@ -507,9 +537,20 @@ public sealed class ExecutionPlanScheduler
         }
         catch (OperationCanceledException)
         {
-            _encounteredCancellation = true;
-            _session.CompleteTaskLifecycle(completedTaskId, ExecutionTaskOutcome.Cancelled, "Cancelled.");
-            CancelOutstandingTasks();
+            SchedulerStopReason stopReason = _stopReason == SchedulerStopReason.None
+                ? SchedulerStopReason.UserCancelled
+                : _stopReason;
+            SetStopReason(stopReason);
+            if (stopReason == SchedulerStopReason.UserCancelled)
+            {
+                _encounteredCancellation = true;
+            }
+
+            _session.CompleteTaskLifecycle(
+                completedTaskId,
+                stopReason == SchedulerStopReason.UserCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted,
+                ResolveStopReasonMessage(stopReason));
+            CancelOutstandingTasks(stopReason, runningTaskReason: ResolveStopReasonMessage(stopReason));
         }
         catch (Exception ex)
         {
@@ -660,7 +701,7 @@ public sealed class ExecutionPlanScheduler
     /// <summary>
     /// Marks all remaining runnable tasks after a global cancellation request.
     /// </summary>
-    private void CancelOutstandingTasks(string? runningTaskReason = null, bool preserveRunningTerminalOutcomes = false)
+    private void CancelOutstandingTasks(SchedulerStopReason stopReason, string? runningTaskReason = null, bool preserveRunningTerminalOutcomes = false)
     {
         foreach (ExecutionTask task in _session.Tasks.Where(task => task.ExecuteAsync != null))
         {
@@ -672,11 +713,15 @@ public sealed class ExecutionPlanScheduler
 
             bool taskBodyIsStillActive = currentState == ExecutionTaskState.Running || IsTaskTrackedAsRunning(task.Id);
             ExecutionTaskOutcome nextOutcome = taskBodyIsStillActive
-                ? ExecutionTaskOutcome.Cancelled
+                ? stopReason == SchedulerStopReason.UserCancelled
+                    ? ExecutionTaskOutcome.Cancelled
+                    : ExecutionTaskOutcome.Interrupted
                 : ExecutionTaskOutcome.Skipped;
-            string reason = nextOutcome == ExecutionTaskOutcome.Cancelled
-                ? runningTaskReason ?? "Cancelled."
-                : "Skipped because execution was cancelled.";
+            string reason = taskBodyIsStillActive
+                ? runningTaskReason ?? ResolveStopReasonMessage(stopReason)
+                : stopReason == SchedulerStopReason.UserCancelled
+                    ? "Skipped because execution was cancelled."
+                    : "Skipped because execution was interrupted.";
 
             /* Externally forced terminal results such as Interrupted may already be recorded on running tasks while their
                callbacks continue unwinding. Completing lifecycle through CompleteTaskLifecycle preserves those stricter
@@ -689,6 +734,45 @@ public sealed class ExecutionPlanScheduler
 
             _session.CompleteTaskLifecycle(task.Id, nextOutcome, reason);
         }
+    }
+
+    /// <summary>
+    /// Records the most authoritative scheduler-wide stop reason seen so later token-driven shutdown paths map running
+    /// work to the correct user-facing outcome.
+    /// </summary>
+    private void SetStopReason(SchedulerStopReason stopReason)
+    {
+        if (stopReason == SchedulerStopReason.None || _stopReason == stopReason)
+        {
+            return;
+        }
+
+        if (_stopReason == SchedulerStopReason.UserCancelled)
+        {
+            return;
+        }
+
+        _stopReason = stopReason;
+    }
+
+    /// <summary>
+    /// Maps terminal task outcomes to the scheduler-wide stop reason that should be applied to collateral work.
+    /// </summary>
+    private static SchedulerStopReason ResolveStopReason(ExecutionTaskOutcome? outcome)
+    {
+        return outcome == ExecutionTaskOutcome.Cancelled
+            ? SchedulerStopReason.UserCancelled
+            : SchedulerStopReason.InterruptedByTerminalOutcome;
+    }
+
+    /// <summary>
+    /// Returns one user-facing reason string for the current scheduler-wide stop reason.
+    /// </summary>
+    private static string ResolveStopReasonMessage(SchedulerStopReason stopReason)
+    {
+        return stopReason == SchedulerStopReason.UserCancelled
+            ? "Cancelled."
+            : "Interrupted.";
     }
 
     /// <summary>

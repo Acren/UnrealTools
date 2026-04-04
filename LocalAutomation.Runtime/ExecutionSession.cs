@@ -370,6 +370,19 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
+    /// Returns the current live task definition for one authored task handle.
+    /// </summary>
+    public ExecutionTask GetTask(ExecutionTaskHandle taskHandle)
+    {
+        if (!taskHandle.IsValid)
+        {
+            throw new ArgumentException("Execution task handle is not valid.", nameof(taskHandle));
+        }
+
+        return GetTask(taskHandle.Id);
+    }
+
+    /// <summary>
     /// Returns the current explicit dependency ids for one task within the live session graph.
     /// </summary>
     public IReadOnlyList<ExecutionTaskId> GetTaskDependencies(ExecutionTaskId taskId)
@@ -845,7 +858,6 @@ public sealed class ExecutionSession
         {
             (ExecutionTaskOutcome.Interrupted, ExecutionTaskOutcome.Failed) => true,
             (ExecutionTaskOutcome.Cancelled, ExecutionTaskOutcome.Failed) => true,
-            (ExecutionTaskOutcome.Interrupted, ExecutionTaskOutcome.Cancelled) => true,
             _ => false
         };
     }
