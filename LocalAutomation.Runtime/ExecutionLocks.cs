@@ -17,8 +17,53 @@ public static class ExecutionLocks
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Acquires all provided execution locks in a deterministic order and returns one releaser that frees them in
-    /// reverse order.
+    /// Tries to acquire all provided execution locks immediately and returns one releaser that frees them in reverse
+    /// order. The scheduler uses this to keep lock-blocked work in Pending until the callback can truly start.
+    /// </summary>
+    public static bool TryAcquire(IEnumerable<ExecutionLock> executionLocks, out IAsyncDisposable handle)
+    {
+        if (executionLocks == null)
+        {
+            throw new ArgumentNullException(nameof(executionLocks));
+        }
+
+        IReadOnlyList<string> keys = GetOrderedKeys(executionLocks);
+        if (keys.Count == 0)
+        {
+            handle = AsyncDisposable.Empty;
+            return true;
+        }
+
+        List<(string Key, SemaphoreSlim Semaphore)> acquiredLocks = new(keys.Count);
+        try
+        {
+            foreach (string key in keys)
+            {
+                SemaphoreSlim semaphore = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
+                if (!semaphore.Wait(0))
+                {
+                    ReleaseAcquiredLocks(acquiredLocks);
+                    handle = AsyncDisposable.Empty;
+                    return false;
+                }
+
+                acquiredLocks.Add((key, semaphore));
+            }
+
+            handle = new Releaser(acquiredLocks);
+            return true;
+        }
+        catch
+        {
+            ReleaseAcquiredLocks(acquiredLocks);
+            handle = AsyncDisposable.Empty;
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Acquires all provided execution locks asynchronously in a deterministic order and returns one releaser that frees
+    /// them in reverse order.
     /// </summary>
     public static async Task<IAsyncDisposable> AcquireAsync(IEnumerable<ExecutionLock> executionLocks, CancellationToken cancellationToken)
     {
@@ -27,15 +72,7 @@ public static class ExecutionLocks
             throw new ArgumentNullException(nameof(executionLocks));
         }
 
-        IReadOnlyList<string> keys = executionLocks
-            .Select(ExecutionLockKeys.GetKey)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(key => key, StringComparer.Ordinal)
-            .ToList();
-
-        /* Lock keys are sorted before acquisition so any future callback that needs more than one lock waits in the same
-           order as every other callback. That keeps the in-process lock table deadlock-free even when different
-           operations declare overlapping lock sets. */
+        IReadOnlyList<string> keys = GetOrderedKeys(executionLocks);
         if (keys.Count == 0)
         {
             return AsyncDisposable.Empty;
@@ -55,12 +92,35 @@ public static class ExecutionLocks
         }
         catch
         {
-            for (int index = acquiredLocks.Count - 1; index >= 0; index--)
-            {
-                acquiredLocks[index].Semaphore.Release();
-            }
-
+            ReleaseAcquiredLocks(acquiredLocks);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Normalizes the declared locks into one deterministic ordered key list so both blocking and non-blocking acquire
+    /// paths use the same deadlock-free ordering.
+    /// </summary>
+    private static IReadOnlyList<string> GetOrderedKeys(IEnumerable<ExecutionLock> executionLocks)
+    {
+        /* Lock keys are sorted before acquisition so any callback that needs more than one lock waits in the same order
+           as every other callback. That keeps the in-process lock table deadlock-free even when different operations
+           declare overlapping lock sets. */
+        return executionLocks
+            .Select(ExecutionLockKeys.GetKey)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Releases a partially acquired lock set in reverse order so failed multi-lock attempts do not leak semaphore state.
+    /// </summary>
+    private static void ReleaseAcquiredLocks(IReadOnlyList<(string Key, SemaphoreSlim Semaphore)> acquiredLocks)
+    {
+        for (int index = acquiredLocks.Count - 1; index >= 0; index--)
+        {
+            acquiredLocks[index].Semaphore.Release();
         }
     }
 

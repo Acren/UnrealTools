@@ -377,7 +377,7 @@ public sealed class ExecutionPlanScheduler
         while (true)
         {
             passCount += 1;
-            bool activatedScopes = ActivateReadyScopes();
+            bool startedThisPass = false;
             List<ExecutionTask> readyTasks = GetSchedulerReadyTasks();
             if (passCount == 1)
             {
@@ -386,12 +386,7 @@ public sealed class ExecutionPlanScheduler
 
             if (readyTasks.Count == 0)
             {
-                if (!activatedScopes)
-                {
-                    break;
-                }
-
-                continue;
+                break;
             }
 
             foreach (ExecutionTask task in readyTasks)
@@ -418,22 +413,45 @@ public sealed class ExecutionPlanScheduler
                     throw new InvalidOperationException($"Task '{task.Id}' cannot start execution while it already has semantic outcome '{task.Outcome}'.");
                 }
 
-                SetState(task.Id, ExecutionTaskState.Running);
-                ExecutionTaskContext context = new(task.Id, task.Title, CreateTaskLogger(task.Id), cancellationToken, new ValidatedOperationParameters(task.Title, task.OperationParameters, task.DeclaredOptionTypes), task.Operation, _session, this);
-                Task<OperationResult> runningTask = StartTaskBodyAsync(task, context);
-                lock (_syncRoot)
+                IReadOnlyList<ExecutionLock> executionLocks = task.Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(task.Title, task.OperationParameters, task.DeclaredOptionTypes));
+                if (!TryReserveExecutionLocks(task, executionLocks, out AsyncLockHandle lockHandle))
                 {
-                    if (_runningTasks.TryGetValue(task.Id, out Task<OperationResult>? existingTask))
-                    {
-                        throw new InvalidOperationException($"Task '{task.Id}' cannot be started twice. Existing running task entry is still active ({existingTask.Status}).");
-                    }
-
-                    _runningTasks[task.Id] = runningTask;
-                    _taskOwners[runningTask] = task.Id;
+                    /* Lock-blocked tasks remain Pending until the scheduler can reserve their full lock set. */
+                    continue;
                 }
 
-                startedAny = true;
-                startedCount += 1;
+                try
+                {
+                    SetState(task.Id, ExecutionTaskState.Running);
+                    ExecutionTaskContext context = new(task.Id, task.Title, CreateTaskLogger(task.Id), cancellationToken, new ValidatedOperationParameters(task.Title, task.OperationParameters, task.DeclaredOptionTypes), task.Operation, _session, this);
+                    Task<OperationResult> runningTask = StartTaskBodyAsync(task, context, lockHandle);
+                    lock (_syncRoot)
+                    {
+                        if (_runningTasks.TryGetValue(task.Id, out Task<OperationResult>? existingTask))
+                        {
+                            throw new InvalidOperationException($"Task '{task.Id}' cannot be started twice. Existing running task entry is still active ({existingTask.Status}).");
+                        }
+
+                        _runningTasks[task.Id] = runningTask;
+                        _taskOwners[runningTask] = task.Id;
+                    }
+
+                    startedAny = true;
+                    startedThisPass = true;
+                    startedCount += 1;
+                }
+                catch
+                {
+                    lockHandle.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    throw;
+                }
+            }
+
+            /* A pass that found structurally ready work but could not start any of it means every candidate is blocked on
+               execution locks. The scheduler must yield here and wait for running work to complete instead of spinning. */
+            if (!startedThisPass)
+            {
+                break;
             }
         }
 
@@ -444,14 +462,14 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Returns the executable tasks that are immediately runnable in the current live graph state.
-    /// </summary>
+     /// Returns the executable tasks that are immediately runnable in the current live graph state.
+     /// </summary>
     private List<ExecutionTask> GetSchedulerReadyTasks()
     {
         return _session.Tasks
             .Where(task => task.ExecuteAsync != null)
             .Where(task => task.State == ExecutionTaskState.Pending)
-            .Where(IsParentScopeRunning)
+            .Where(AreAncestorScopesOpen)
             .Where(task => task.DependsOn.All(IsDependencySatisfied))
             .OrderBy(task => task.Id.Value, StringComparer.Ordinal)
             .ToList();
@@ -463,14 +481,15 @@ public sealed class ExecutionPlanScheduler
     /// </summary>
     private void ValidateNoReadyTasksRemainPending()
     {
-        ExecutionTask? strandedTask = GetSchedulerReadyTasks().FirstOrDefault();
+        ExecutionTask? strandedTask = GetSchedulerReadyTasks()
+            .FirstOrDefault(task => task.Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(task.Title, task.OperationParameters, task.DeclaredOptionTypes)).Count == 0);
         if (strandedTask == null)
         {
             return;
         }
 
         string taskPath = _session.GetTaskDisplayPath(strandedTask.Id);
-        throw new InvalidOperationException($"Scheduler left runnable task '{taskPath}' ({strandedTask.Id}) pending even though its parent scope is running and all dependencies are satisfied.");
+        throw new InvalidOperationException($"Scheduler left runnable task '{taskPath}' ({strandedTask.Id}) pending even though its ancestor scopes are open, it declares no execution locks, and all dependencies are satisfied.");
     }
 
     /// <summary>
@@ -593,7 +612,7 @@ public sealed class ExecutionPlanScheduler
             }
 
             bool waitingForDependencies = task.DependsOn.Any(dependencyId => !IsDependencySatisfied(dependencyId));
-            bool waitingForParent = !IsParentScopeRunning(task);
+            bool waitingForParent = !AreAncestorScopesOpen(task);
             string? waitingReason = waitingForDependencies
                 ? WaitingForDependenciesReason
                 : waitingForParent
@@ -604,43 +623,32 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Activates non-executable container scopes once their own dependencies are satisfied so child tasks can use parent
-    /// running state as the structural gate instead of duplicating container dependency edges.
+    /// Returns whether every ancestor container for the provided task is structurally open. Container openness is based on
+    /// dependency satisfaction and non-terminal lifecycle, not on whether the scope is visibly Running.
     /// </summary>
-    private bool ActivateReadyScopes()
+    private bool AreAncestorScopesOpen(ExecutionTask task)
     {
-        bool activatedAny = false;
-        List<ExecutionTask> readyScopes = _session.Tasks
-            .Where(task => task.ExecuteAsync == null)
-            .Where(task => task.Enabled)
-            .Where(task => task.Outcome == null)
-            .Where(task => task.State == ExecutionTaskState.Pending)
-            .Where(task => task.DependsOn.All(IsDependencySatisfied))
-            .Where(IsParentScopeRunning)
-            .OrderBy(task => task.Id.Value, StringComparer.Ordinal)
-            .ToList();
-        foreach (ExecutionTask scope in readyScopes)
+        ExecutionTask? currentTask = task.ParentId is ExecutionTaskId parentId
+            ? _session.GetTask(parentId)
+            : null;
+        while (currentTask != null)
         {
-            SetState(scope.Id, ExecutionTaskState.Running);
-            activatedAny = true;
+            if (currentTask.State == ExecutionTaskState.Completed || currentTask.Outcome != null)
+            {
+                return false;
+            }
+
+            if (!currentTask.DependsOn.All(IsDependencySatisfied))
+            {
+                return false;
+            }
+
+            currentTask = currentTask.ParentId is ExecutionTaskId nextParentId
+                ? _session.GetTask(nextParentId)
+                : null;
         }
 
-        return activatedAny;
-    }
-
-    /// <summary>
-    /// Returns whether the parent scope for the provided task has already been activated. Root tasks have no parent
-    /// gate and may start as soon as their explicit dependencies are satisfied.
-    /// </summary>
-    private bool IsParentScopeRunning(ExecutionTask task)
-    {
-        if (task.ParentId is not ExecutionTaskId parentId)
-        {
-            return true;
-        }
-
-        ExecutionTask parentTask = _session.GetTask(parentId);
-        return parentTask.State == ExecutionTaskState.Running;
+        return true;
     }
 
     /// <summary>
@@ -971,14 +979,14 @@ public sealed class ExecutionPlanScheduler
     /// Dispatches one task body onto the thread pool so callbacks that do synchronous work before their first await do
     /// not block the scheduler loop from starting other ready work in the same scheduling pass.
     /// </summary>
-    private Task<OperationResult> StartTaskBodyAsync(ExecutionTask task, ExecutionTaskContext context)
+    private Task<OperationResult> StartTaskBodyAsync(ExecutionTask task, ExecutionTaskContext context, AsyncLockHandle lockHandle)
     {
         TaskCompletionSource<OperationResult> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ThreadPool.QueueUserWorkItem(async _ =>
         {
             try
             {
-                completionSource.TrySetResult(await ExecuteTaskBodyAsync(task, context).ConfigureAwait(false));
+                completionSource.TrySetResult(await ExecuteTaskBodyAsync(task, context, lockHandle).ConfigureAwait(false));
             }
             catch (OperationCanceledException)
             {
@@ -995,15 +1003,14 @@ public sealed class ExecutionPlanScheduler
     /// <summary>
      /// Executes one task body while preserving task-state error and cancellation reporting at the scheduler boundary.
      /// </summary>
-    private async Task<OperationResult> ExecuteTaskBodyAsync(ExecutionTask task, ExecutionTaskContext context)
+    private async Task<OperationResult> ExecuteTaskBodyAsync(ExecutionTask task, ExecutionTaskContext context, AsyncLockHandle lockHandle)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.ExecuteTaskBody")
             .SetTag("task.id", task.Id.Value)
             .SetTag("task.title", task.Title);
-        IReadOnlyList<ExecutionLock> executionLocks = context.Operation.GetDeclaredExecutionLocks(context.ValidatedOperationParameters);
         try
         {
-            await using IAsyncDisposable lockHandle = await AcquireExecutionLocksAsync(context, executionLocks).ConfigureAwait(false);
+            await using AsyncLockHandle acquiredLockHandle = lockHandle;
             OperationResult result = await task.ExecuteAsync!(context).ConfigureAwait(false);
             activity.SetTag("task.outcome", result.Outcome.ToString());
             return result;
@@ -1026,20 +1033,29 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Acquires the declared execution locks for one task callback and logs visible lock wait/acquire transitions.
-     /// </summary>
-    private async Task<IAsyncDisposable> AcquireExecutionLocksAsync(ExecutionTaskContext context, IReadOnlyList<ExecutionLock> executionLocks)
+    /// Tries to reserve the declared execution locks for one task before the scheduler marks that task Running. This
+    /// keeps lock-blocked tasks visibly Pending until callback execution can begin immediately.
+    /// </summary>
+    private bool TryReserveExecutionLocks(ExecutionTask task, IReadOnlyList<ExecutionLock> executionLocks, out AsyncLockHandle lockHandle)
     {
         if (executionLocks.Count == 0)
         {
-            return AsyncLockHandle.Empty;
+            lockHandle = AsyncLockHandle.Empty;
+            return true;
         }
 
         string lockSummary = string.Join(", ", executionLocks.Select(executionLock => executionLock.Key));
-        context.Logger.LogInformation("Waiting for execution lock(s): {ExecutionLocks}", lockSummary);
-        IAsyncDisposable handle = await ExecutionLocks.AcquireAsync(executionLocks, context.CancellationToken).ConfigureAwait(false);
-        context.Logger.LogInformation("Acquired execution lock(s): {ExecutionLocks}", lockSummary);
-        return new AsyncLockHandle(handle, context.Logger, lockSummary);
+        ILogger taskLogger = CreateTaskLogger(task.Id);
+        if (!ExecutionLocks.TryAcquire(executionLocks, out IAsyncDisposable handle))
+        {
+            taskLogger.LogDebug("Execution lock(s) still busy for task '{TaskTitle}': {ExecutionLocks}", task.Title, lockSummary);
+            lockHandle = AsyncLockHandle.Empty;
+            return false;
+        }
+
+        taskLogger.LogInformation("Acquired execution lock(s): {ExecutionLocks}", lockSummary);
+        lockHandle = new AsyncLockHandle(handle, taskLogger, lockSummary);
+        return true;
     }
 
     /// <summary>

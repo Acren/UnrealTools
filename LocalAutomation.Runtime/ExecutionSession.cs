@@ -632,26 +632,20 @@ public sealed class ExecutionSession
             }
             else if (anyPending)
             {
-                /* Parent scope activation is scheduler-owned. Pending children should not make a parent appear Running on
-                   their own, but an already-activated scope remains Running while it waits for those children to start. */
-                parentState = parentTask.State == ExecutionTaskState.Running
-                    ? ExecutionTaskState.Running
-                    : ExecutionTaskState.Pending;
+                /* Container scopes report Running only while some descendant is truly executing. Once no child is running,
+                   the scope returns to Pending until more descendant work can actually start. */
+                parentState = ExecutionTaskState.Pending;
             }
             else
             {
                 parentState = ExecutionTaskState.Completed;
             }
 
-            ExecutionTaskOutcome? parentOutcome = anyPending || anyChildRunning
-                ? failedTask != null
-                    ? ExecutionTaskOutcome.Failed
-                    : cancelledTask != null
-                        ? ExecutionTaskOutcome.Cancelled
-                        : interruptedTask != null
-                            ? ExecutionTaskOutcome.Interrupted
-                        : null
-                : failedTask != null
+            ExecutionTaskOutcome? parentOutcome = parentTask.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped
+                ? parentTask.Outcome
+                : anyPending || anyChildRunning
+                    ? null
+                    : failedTask != null
                     ? ExecutionTaskOutcome.Failed
                     : cancelledTask != null
                         ? ExecutionTaskOutcome.Cancelled
@@ -794,7 +788,8 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Guards lifecycle transitions so task state only moves forward through the execution model.
+    /// Guards lifecycle transitions so executable callbacks move monotonically while container scopes may return from
+    /// Running to Pending when all active descendants stop and later descendants are still queued.
     /// </summary>
     private static void ValidateStateTransition(ExecutionTask task, ExecutionTaskState nextState)
     {
@@ -803,8 +798,14 @@ public sealed class ExecutionSession
             throw new InvalidOperationException($"Task '{task.Id}' cannot transition from completed execution state back to '{nextState}'.");
         }
 
+        bool isContainerScope = task.ExecuteAsync == null && task.ChildTaskIds.Count > 0;
         if (task.State == ExecutionTaskState.Running && nextState is ExecutionTaskState.Pending or ExecutionTaskState.Planned)
         {
+            if (isContainerScope && nextState == ExecutionTaskState.Pending)
+            {
+                return;
+            }
+
             throw new InvalidOperationException($"Task '{task.Id}' cannot transition from running to '{nextState}'.");
         }
     }
