@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Provides in-process exclusive locks for typed execution lock requirements. Operations declare logical lock needs and
+/// Provides in-process exclusive locks for typed execution locks. Operations declare logical lock needs and
 /// the runtime translates them into shared semaphores so concurrent tasks in the same app instance cannot race on shared
 /// external resources.
 /// </summary>
@@ -17,17 +17,17 @@ public static class ExecutionLocks
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Acquires all provided lock requirements in a deterministic order and returns one releaser that frees them in
+    /// Acquires all provided execution locks in a deterministic order and returns one releaser that frees them in
     /// reverse order.
     /// </summary>
-    public static async Task<IAsyncDisposable> AcquireAsync(IEnumerable<ExecutionLockRequirement> requirements, CancellationToken cancellationToken)
+    public static async Task<IAsyncDisposable> AcquireAsync(IEnumerable<ExecutionLock> executionLocks, CancellationToken cancellationToken)
     {
-        if (requirements == null)
+        if (executionLocks == null)
         {
-            throw new ArgumentNullException(nameof(requirements));
+            throw new ArgumentNullException(nameof(executionLocks));
         }
 
-        IReadOnlyList<string> keys = requirements
+        IReadOnlyList<string> keys = executionLocks
             .Select(ExecutionLockKeys.GetKey)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(key => key, StringComparer.Ordinal)

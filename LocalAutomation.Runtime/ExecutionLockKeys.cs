@@ -8,14 +8,14 @@ namespace LocalAutomation.Runtime;
 internal static class ExecutionLockKeys
 {
     /// <summary>
-    /// Resolves one typed lock requirement to the internal dictionary key used by the shared semaphore table.
+    /// Resolves one typed execution lock to the internal dictionary key used by the shared semaphore table.
     /// </summary>
-    public static string GetKey(ExecutionLockRequirement requirement)
+    public static string GetKey(ExecutionLock executionLock)
     {
-        return requirement switch
+        return executionLock switch
         {
-            null => throw new ArgumentNullException(nameof(requirement)),
-            _ => requirement.Key
+            null => throw new ArgumentNullException(nameof(executionLock)),
+            _ => executionLock.Key
         };
     }
 }

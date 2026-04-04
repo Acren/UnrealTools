@@ -1000,10 +1000,10 @@ public sealed class ExecutionPlanScheduler
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.ExecuteTaskBody")
             .SetTag("task.id", task.Id.Value)
             .SetTag("task.title", task.Title);
-        IReadOnlyList<ExecutionLockRequirement> lockRequirements = context.Operation.GetDeclaredExecutionLocks(context.ValidatedOperationParameters);
+        IReadOnlyList<ExecutionLock> executionLocks = context.Operation.GetDeclaredExecutionLocks(context.ValidatedOperationParameters);
         try
         {
-            await using IAsyncDisposable lockHandle = await AcquireExecutionLocksAsync(context, lockRequirements).ConfigureAwait(false);
+            await using IAsyncDisposable lockHandle = await AcquireExecutionLocksAsync(context, executionLocks).ConfigureAwait(false);
             OperationResult result = await task.ExecuteAsync!(context).ConfigureAwait(false);
             activity.SetTag("task.outcome", result.Outcome.ToString());
             return result;
@@ -1026,20 +1026,20 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Acquires the declared execution locks for one task callback and logs visible lock wait/acquire transitions.
-    /// </summary>
-    private async Task<IAsyncDisposable> AcquireExecutionLocksAsync(ExecutionTaskContext context, IReadOnlyList<ExecutionLockRequirement> lockRequirements)
+     /// Acquires the declared execution locks for one task callback and logs visible lock wait/acquire transitions.
+     /// </summary>
+    private async Task<IAsyncDisposable> AcquireExecutionLocksAsync(ExecutionTaskContext context, IReadOnlyList<ExecutionLock> executionLocks)
     {
-        if (lockRequirements.Count == 0)
+        if (executionLocks.Count == 0)
         {
             return AsyncLockHandle.Empty;
         }
 
-        string requirementSummary = string.Join(", ", lockRequirements.Select(requirement => requirement.GetType().Name));
-        context.Logger.LogInformation("Waiting for execution lock(s): {ExecutionLocks}", requirementSummary);
-        IAsyncDisposable handle = await ExecutionLocks.AcquireAsync(lockRequirements, context.CancellationToken).ConfigureAwait(false);
-        context.Logger.LogInformation("Acquired execution lock(s): {ExecutionLocks}", requirementSummary);
-        return new AsyncLockHandle(handle, context.Logger, requirementSummary);
+        string lockSummary = string.Join(", ", executionLocks.Select(executionLock => executionLock.Key));
+        context.Logger.LogInformation("Waiting for execution lock(s): {ExecutionLocks}", lockSummary);
+        IAsyncDisposable handle = await ExecutionLocks.AcquireAsync(executionLocks, context.CancellationToken).ConfigureAwait(false);
+        context.Logger.LogInformation("Acquired execution lock(s): {ExecutionLocks}", lockSummary);
+        return new AsyncLockHandle(handle, context.Logger, lockSummary);
     }
 
     /// <summary>

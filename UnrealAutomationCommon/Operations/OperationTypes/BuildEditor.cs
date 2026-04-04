@@ -20,13 +20,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 });
         }
 
-        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLockRequirement> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLock> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             /* BuildCookRun editor builds still run through UAT/UBT under the hood, so they share the same process-local
                Unreal build lock as direct Build.bat flows. */
-            foreach (global::LocalAutomation.Runtime.ExecutionLockRequirement requirement in base.GetExecutionLocks(operationParameters))
+            foreach (global::LocalAutomation.Runtime.ExecutionLock executionLock in base.GetExecutionLocks(operationParameters))
             {
-                yield return requirement;
+                yield return executionLock;
             }
 
             yield return UnrealExecutionLocks.GlobalBuild;

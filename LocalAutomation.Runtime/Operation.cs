@@ -181,9 +181,9 @@ public abstract class Operation
     /// <summary>
     /// Declares any exclusive locks the runtime should hold while this operation's task callback is executing.
     /// </summary>
-    protected virtual IEnumerable<ExecutionLockRequirement> GetExecutionLocks(ValidatedOperationParameters operationParameters)
+    protected virtual IEnumerable<ExecutionLock> GetExecutionLocks(ValidatedOperationParameters operationParameters)
     {
-        return Array.Empty<ExecutionLockRequirement>();
+        return Array.Empty<ExecutionLock>();
     }
 
     /// <summary>
@@ -195,10 +195,10 @@ public abstract class Operation
         return FailOnWarning();
     }
 
-    internal IReadOnlyList<ExecutionLockRequirement> GetDeclaredExecutionLocks(ValidatedOperationParameters operationParameters)
+    internal IReadOnlyList<ExecutionLock> GetDeclaredExecutionLocks(ValidatedOperationParameters operationParameters)
     {
         return GetExecutionLocks(operationParameters)
-            .Where(requirement => requirement != null)
+            .Where(executionLock => executionLock != null)
             .Distinct()
             .ToList();
     }

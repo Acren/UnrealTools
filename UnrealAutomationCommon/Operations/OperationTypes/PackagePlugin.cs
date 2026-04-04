@@ -23,13 +23,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 .Concat(new[] { typeof(AdditionalArgumentsOptions), typeof(PluginBuildOptions) });
         }
 
-        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLockRequirement> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLock> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             /* BuildPlugin runs through UAT and shares Unreal's writable build-rule outputs with other tool-driven build
                flows, so plugin packaging participates in the same in-process lock. */
-            foreach (global::LocalAutomation.Runtime.ExecutionLockRequirement requirement in base.GetExecutionLocks(operationParameters))
+            foreach (global::LocalAutomation.Runtime.ExecutionLock executionLock in base.GetExecutionLocks(operationParameters))
             {
-                yield return requirement;
+                yield return executionLock;
             }
 
             yield return UnrealExecutionLocks.GlobalBuild;

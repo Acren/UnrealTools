@@ -27,13 +27,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 });
         }
 
-        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLockRequirement> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLock> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             /* Project packaging compiles and stages through UAT, which touches the same shared Unreal build metadata as
                editor and direct build flows. */
-            foreach (global::LocalAutomation.Runtime.ExecutionLockRequirement requirement in base.GetExecutionLocks(operationParameters))
+            foreach (global::LocalAutomation.Runtime.ExecutionLock executionLock in base.GetExecutionLocks(operationParameters))
             {
-                yield return requirement;
+                yield return executionLock;
             }
 
             yield return UnrealExecutionLocks.GlobalBuild;

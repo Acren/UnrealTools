@@ -23,13 +23,13 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 });
         }
 
-        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLockRequirement> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLock> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             /* Direct Build.bat flows participate in the shared Unreal build lock so multiple callbacks in the same app do
                not race on UnrealBuildTool's writable rules state. */
-            foreach (global::LocalAutomation.Runtime.ExecutionLockRequirement requirement in base.GetExecutionLocks(operationParameters))
+            foreach (global::LocalAutomation.Runtime.ExecutionLock executionLock in base.GetExecutionLocks(operationParameters))
             {
-                yield return requirement;
+                yield return executionLock;
             }
 
             yield return UnrealExecutionLocks.GlobalBuild;
