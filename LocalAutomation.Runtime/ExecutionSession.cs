@@ -254,7 +254,7 @@ public sealed class ExecutionSession
         InsertedExecutionTasks insertedTasks;
         using (PerformanceActivityScope insertActivity = PerformanceTelemetry.StartActivity("ExecutionSession.MergeChildTasks.InsertUnderParent"))
         {
-            insertedTasks = ExecutionTaskInsertion.InsertUnderParent(childPlan, parentTaskId, ExecutionTaskId.New);
+            insertedTasks = ExecutionTaskInsertion.InsertUnderParent(childPlan, parentTaskId);
             insertActivity.SetTag("inserted.task.count", insertedTasks.Tasks.Count)
                 .SetTag("inserted.root.id", insertedTasks.RootTaskId.Value);
         }

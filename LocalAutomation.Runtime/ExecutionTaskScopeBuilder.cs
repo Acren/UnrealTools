@@ -11,7 +11,6 @@ public sealed class ExecutionTaskScopeBuilder
     private readonly ExecutionPlanBuilder _owner;
     private readonly ExecutionTaskHandle _parent;
     private readonly ExecutionChildMode _mode;
-    private ExecutionTaskBuilder? _lastTask;
     private ExecutionPlanBuilder.ChildDeclarationEntry? _parallelScopeEntry;
 
     internal ExecutionTaskScopeBuilder(ExecutionPlanBuilder owner, ExecutionTaskHandle parent, ExecutionChildMode mode)
@@ -22,24 +21,13 @@ public sealed class ExecutionTaskScopeBuilder
     }
 
     /// <summary>
-     /// Declares the next sibling task in this scope.
-     /// </summary>
+    /// Declares the next task in this child scope, reusing one shared declaration entry when the scope is parallel.
+    /// </summary>
     public ExecutionTaskBuilder Task(string title, string? description = null)
     {
-        ExecutionTaskBuilder task = _owner.Task(title, description, _parent);
-        if (_mode == ExecutionChildMode.Parallel)
-        {
-            _parallelScopeEntry ??= _owner.RegisterChildScopeEntry(_parent);
-            _owner.AddScopeEntryTask(_parallelScopeEntry, task.Definition);
-            _owner.AddScopeCompletionTask(_parallelScopeEntry, task.Definition);
-        }
-        else
-        {
-            _owner.RegisterChildScopeTaskEntry(_parent, task.Definition);
-        }
-
-        _lastTask = task;
-        return task;
+        return _mode == ExecutionChildMode.Parallel
+            ? _owner.DeclareRelativeTask(_parent, title, description, TaskPlacement.ChildParallel, ref _parallelScopeEntry)
+            : _owner.DeclareRelativeTask(_parent, title, description, TaskPlacement.ChildSequential);
     }
 
 }

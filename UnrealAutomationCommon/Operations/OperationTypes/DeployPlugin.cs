@@ -902,7 +902,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     engines
                         .Task($"UE {engineVersion.MajorMinorString}", "Per-engine deployment scope")
-                        .ExpandChildOperation<DeployPluginForEngine>(() => CreateEngineParameters(operationParameters.CreateChild(), engineVersion));
+                        .AddChildOperation<DeployPluginForEngine>(
+                            "Deploy Plugin For Engine",
+                            () => CreateEngineParameters(operationParameters.CreateChild(), engineVersion),
+                            "Per-engine deployment execution subtree")
+                            .HideInGraph();
                 }
             });
         }
