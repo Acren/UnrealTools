@@ -10,6 +10,6 @@ namespace UnrealAutomationCommon.Unreal
         /// Serializes UBT/UAT-backed work inside one app instance so Unreal's shared writable build-rule artifacts are not
         /// regenerated concurrently by multiple callbacks.
         /// </summary>
-        public static LocalAutomation.Runtime.ExecutionLock GlobalBuild { get; } = new("unreal-build", "global");
+        public static LocalAutomation.Runtime.ExecutionLock GlobalBuild { get; } = new("unreal-build");
     }
 }

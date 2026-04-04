@@ -107,7 +107,7 @@ public static class ExecutionLocks
            as every other task body. That keeps the in-process lock table deadlock-free even when different operations
            declare overlapping lock sets. */
         return executionLocks
-            .Select(ExecutionLockKeys.GetKey)
+            .Select(executionLock => executionLock.Key)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(key => key, StringComparer.Ordinal)
             .ToList();

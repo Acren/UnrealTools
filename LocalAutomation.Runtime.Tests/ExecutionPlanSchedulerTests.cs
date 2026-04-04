@@ -154,7 +154,7 @@ public sealed class ExecutionPlanSchedulerTests
     public async Task TaskWaitingForExecutionLockStaysPending()
     {
         // Arrange: two parallel body tasks contend for the same lock, and branch A holds it open.
-        ExecutionLock sharedLock = new("test-lock-task-waiting", "contended");
+        ExecutionLock sharedLock = new("pending-lock");
         TaskCompletionSource<bool> branchAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ExecutionTaskHandle branchAHandle = default;
@@ -236,7 +236,7 @@ public sealed class ExecutionPlanSchedulerTests
     public async Task ParentScopeStaysPendingWhileChildWaitsForExecutionLock()
     {
         // Arrange: each branch contains one active child, but branch A holds the shared lock open first.
-        ExecutionLock sharedLock = new("test-lock-parent-scope", "branch-lock");
+        ExecutionLock sharedLock = new("parent-pending-lock");
         TaskCompletionSource<bool> branchAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> branchBStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);

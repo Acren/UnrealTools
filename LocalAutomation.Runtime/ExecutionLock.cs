@@ -8,36 +8,21 @@ namespace LocalAutomation.Runtime;
 /// </summary>
 public sealed class ExecutionLock : IEquatable<ExecutionLock>
 {
-    public ExecutionLock(string family, string scope)
+    public ExecutionLock(string key)
     {
-        Family = string.IsNullOrWhiteSpace(family)
-            ? throw new ArgumentException("Execution lock family is required.", nameof(family))
-            : family;
-        Scope = string.IsNullOrWhiteSpace(scope)
-            ? throw new ArgumentException("Execution lock scope is required.", nameof(scope))
-            : scope;
+        Key = string.IsNullOrWhiteSpace(key)
+            ? throw new ArgumentException("Execution lock key is required.", nameof(key))
+            : key;
     }
-
-    /// <summary>
-    /// Gets the logical lock family name used to group related lock instances.
-    /// </summary>
-    public string Family { get; }
-
-    /// <summary>
-    /// Gets the logical lock scope within the family.
-    /// </summary>
-    public string Scope { get; }
 
     /// <summary>
     /// Gets the normalized runtime key used by the in-process semaphore table.
     /// </summary>
-    public string Key => Family + ":" + Scope;
+    public string Key { get; }
 
     public bool Equals(ExecutionLock? other)
     {
-        return other != null &&
-            string.Equals(Family, other.Family, StringComparison.Ordinal) &&
-            string.Equals(Scope, other.Scope, StringComparison.Ordinal);
+        return other != null && string.Equals(Key, other.Key, StringComparison.Ordinal);
     }
 
     public override bool Equals(object? obj)
@@ -47,8 +32,6 @@ public sealed class ExecutionLock : IEquatable<ExecutionLock>
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(
-            StringComparer.Ordinal.GetHashCode(Family),
-            StringComparer.Ordinal.GetHashCode(Scope));
+        return StringComparer.Ordinal.GetHashCode(Key);
     }
 }
