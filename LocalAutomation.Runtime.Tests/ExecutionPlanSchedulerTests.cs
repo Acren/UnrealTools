@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Xunit;
 
 namespace LocalAutomation.Runtime.Tests;
@@ -275,6 +276,63 @@ public sealed class ExecutionPlanSchedulerTests
             Assert.Equal("First", winner);
             Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
         }
+    }
+
+    /// <summary>
+    /// Confirms that interleaved body and child declarations execute in the same explicit order they were authored on the
+    /// parent task.
+    /// </summary>
+    [Fact]
+    public async Task InterleavedBodiesAndChildrenKeepExplicitOrder()
+    {
+        // Arrange: record each body as it runs so the final list reflects scheduler start order directly.
+        List<string> executionOrder = new();
+        object executionOrderLock = new();
+
+        void Record(string step)
+        {
+            lock (executionOrderLock)
+            {
+                executionOrder.Add(step);
+            }
+        }
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Run(() =>
+            {
+                Record("root-body-1");
+                return Task.CompletedTask;
+            });
+
+            root.Child("Child").Run(() =>
+            {
+                Record("child-body");
+                return Task.CompletedTask;
+            });
+
+            root.Run(() =>
+            {
+                Record("root-body-2");
+                return Task.CompletedTask;
+            });
+
+            root.Children(scope =>
+            {
+                scope.Task("Nested").Run(() =>
+                {
+                    Record("nested-body");
+                    return Task.CompletedTask;
+                });
+            });
+        });
+
+        // Act: execute the authored plan through the real runtime pipeline.
+        (_, _, OperationResult result) = await RuntimeTestUtilities.ExecuteAsync(operation);
+
+        // Assert: the bodies should run in the same interleaved order that the plan author declared them.
+        Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+        Assert.Equal(new[] { "root-body-1", "child-body", "root-body-2", "nested-body" }, executionOrder);
     }
 
     /// <summary>
