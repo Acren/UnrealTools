@@ -145,4 +145,137 @@ public sealed class ExecutionPlanSchedulerTests
         Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(branchBActiveHandle.Id).Outcome);
         Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchAQueuedCallbackHandle.Id).Outcome);
     }
+
+    /// <summary>
+    /// Confirms that a callback blocked only on an execution lock should remain pending until the scheduler can actually
+    /// start executing its body.
+    /// </summary>
+    [Fact]
+    public async Task TaskWaitingForExecutionLockStaysPending()
+    {
+        // Arrange: two parallel callbacks contend for the same lock, and branch A holds it open.
+        ExecutionLock sharedLock = new("test-lock", "contended");
+        TaskCompletionSource<bool> branchAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskHandle branchAHandle = default;
+        ExecutionTaskHandle branchBHandle = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Branch A").Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchAHandle);
+                scope.Task("Branch B").Run(_ => Task.FromResult(OperationResult.Succeeded()), out branchBHandle);
+            });
+        }, sharedLock);
+
+        // Act: start the scheduler and wait until the lock holder is definitely running.
+        (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+        await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(branchAHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        // Assert: the contended task should still be pending because it has not acquired the lock yet.
+        ExecutionTask blockedTask = session.GetTask(branchBHandle.Id);
+        Assert.Equal(ExecutionTaskState.Pending, blockedTask.State);
+
+        // Cleanup: release the lock holder so the run can finish normally.
+        releaseBranchA.TrySetResult(true);
+        OperationResult result = await executeTask;
+
+        // Assert: once the lock is released, the blocked task should still be able to complete successfully.
+        Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Completed, session.GetTask(branchBHandle.Id).Outcome);
+    }
+
+    /// <summary>
+    /// Confirms that a container scope with no running descendants stays pending while its child is still blocked on an
+    /// unsatisfied dependency.
+    /// </summary>
+    [Fact]
+    public async Task ParentScopeStaysPendingWhileChildWaitsForDependencies()
+    {
+        // Arrange: the branch child depends on a separate callback that is still running.
+        TaskCompletionSource<bool> releaseDependency = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskHandle dependencyHandle = default;
+        ExecutionTaskHandle waitingChildHandle = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(scope =>
+            {
+                scope.Task("Dependency").Run(RuntimeTestUtilities.RunUntilReleased(new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously), releaseDependency), out dependencyHandle);
+                scope.Task("Branch").Children(branchScope =>
+                {
+                    branchScope.Task("Waiting Child").After(dependencyHandle).Run(_ => Task.FromResult(OperationResult.Succeeded()), out waitingChildHandle);
+                });
+            });
+        });
+
+        // Act: start the scheduler and wait until the dependency callback has definitely started.
+        (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+        await session.GetTask(dependencyHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        // Assert: both the waiting child and its parent scope should still read as pending.
+        ExecutionTask waitingChild = session.GetTask(waitingChildHandle.Id);
+        ExecutionTask parentScope = session.GetTask(waitingChild.ParentId!.Value);
+        Assert.Equal(ExecutionTaskState.Pending, waitingChild.State);
+        Assert.Equal(ExecutionTaskState.Pending, parentScope.State);
+
+        // Cleanup: release the dependency so the run can complete.
+        releaseDependency.TrySetResult(true);
+        await executeTask;
+    }
+
+    /// <summary>
+    /// Confirms that a container scope with a child blocked only on a contended execution lock stays pending until one of
+    /// its descendants actually starts running.
+    /// </summary>
+    [Fact]
+    public async Task ParentScopeStaysPendingWhileChildWaitsForExecutionLock()
+    {
+        // Arrange: each branch contains one active child, but branch A holds the shared lock open first.
+        ExecutionLock sharedLock = new("test-lock", "branch-lock");
+        TaskCompletionSource<bool> branchAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> branchBStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseBranchB = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskHandle branchAHandle = default;
+        ExecutionTaskHandle branchBHandle = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Branch A").Children(branchScope =>
+                {
+                    branchScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchAHandle);
+                });
+
+                scope.Task("Branch B").Children(branchScope =>
+                {
+                    branchScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilReleased(branchBStarted, releaseBranchB), out branchBHandle);
+                });
+            });
+        }, sharedLock);
+
+        // Act: start the scheduler and wait until branch A is definitely running with the shared lock.
+        (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+        await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(branchAHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        // Assert: branch B should still be pending because its child cannot start until the lock becomes available.
+        ExecutionTask branchBTask = session.GetTask(branchBHandle.Id);
+        ExecutionTask branchBScope = session.GetTask(branchBTask.ParentId!.Value);
+        Assert.Equal(ExecutionTaskState.Pending, branchBTask.State);
+        Assert.Equal(ExecutionTaskState.Pending, branchBScope.State);
+
+        // Cleanup: release both branches in sequence so the run can complete if the scheduler eventually starts branch B.
+        releaseBranchA.TrySetResult(true);
+        await branchBStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        releaseBranchB.TrySetResult(true);
+        await executeTask;
+    }
 }

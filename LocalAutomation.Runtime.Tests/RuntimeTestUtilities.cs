@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
@@ -69,15 +70,31 @@ internal static class RuntimeTestUtilities
     }
 
     /// <summary>
-    /// Minimal inline operation wrapper that lets tests define plan shape through the normal runtime operation pipeline.
+    /// Creates one task body that signals when it starts, then stays active until the provided gate allows it to finish.
+    /// This keeps scheduler tests deterministic when they need one callback to hold a lock or dependency boundary open.
     /// </summary>
-    internal sealed class InlineOperation : Operation<TestTarget>
+    public static Func<ExecutionTaskContext, Task<OperationResult>> RunUntilReleased(TaskCompletionSource<bool> started, TaskCompletionSource<bool> release)
+    {
+        return async _ =>
+        {
+            started.TrySetResult(true);
+            await release.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            return OperationResult.Succeeded();
+        };
+    }
+
+    /// <summary>
+     /// Minimal inline operation wrapper that lets tests define plan shape through the normal runtime operation pipeline.
+     /// </summary>
+    internal class InlineOperation : Operation<TestTarget>
     {
         private readonly Action<ExecutionTaskBuilder> _buildPlan;
+        private readonly IReadOnlyList<ExecutionLock> _executionLocks;
 
-        public InlineOperation(Action<ExecutionTaskBuilder> buildPlan)
+        public InlineOperation(Action<ExecutionTaskBuilder> buildPlan, params ExecutionLock[] executionLocks)
         {
             _buildPlan = buildPlan;
+            _executionLocks = executionLocks ?? Array.Empty<ExecutionLock>();
         }
 
         /// <summary>
@@ -85,7 +102,7 @@ internal static class RuntimeTestUtilities
         /// </summary>
         protected override string GetOperationName()
         {
-            return "Scheduler Semantics";
+            return "Scheduler Test Operation";
         }
 
         /// <summary>
@@ -94,6 +111,15 @@ internal static class RuntimeTestUtilities
         protected override void DescribeExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
         {
             _buildPlan(root);
+        }
+
+        /// <summary>
+        /// Declares the same execution locks for every callback in this test operation so scheduler tests can focus on
+        /// graph semantics instead of duplicating lock plumbing across helper types.
+        /// </summary>
+        protected override IEnumerable<ExecutionLock> GetExecutionLocks(ValidatedOperationParameters operationParameters)
+        {
+            return _executionLocks;
         }
     }
 
