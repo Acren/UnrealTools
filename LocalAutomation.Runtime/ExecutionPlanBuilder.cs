@@ -77,9 +77,7 @@ public sealed class ExecutionPlanBuilder
                 executeAsync: item.ExecuteAsync,
                 outcome: null,
                 isOperationRoot: item.IsOperationRoot,
-                isHiddenInGraph: item.IsHiddenInGraph,
-                kind: item.Kind,
-                bodyOwnerTaskId: item.BodyOwnerTaskId))
+                isHiddenInGraph: item.IsHiddenInGraph))
             .ToList();
         List<ExecutionDependency> dependencies = _items
             .SelectMany(item => item.DependencyIds.Select(dependencyId => new ExecutionDependency(dependencyId, item.Id)))
@@ -196,8 +194,6 @@ public sealed class ExecutionPlanBuilder
         /* Internal body tasks carry the runnable work for authored Run(...) declarations, so the graph hides them by
            default and lets the global reveal toggle surface them only when lower-level troubleshooting is needed. */
         bodyDefinition.IsHiddenInGraph = true;
-        bodyDefinition.Kind = ExecutionTaskKind.Body;
-        bodyDefinition.BodyOwnerTaskId = parentDefinition.Id;
         _items.Add(bodyDefinition);
 
         ChildDeclarationEntry declaration = new(NextOrderIndex(), ChildDeclarationKind.Body);
@@ -394,8 +390,6 @@ public sealed class ExecutionPlanBuilder
                 importedDefinition.Operation = childTask.Operation;
                 importedDefinition.IsOperationRoot = childTask.IsOperationRoot;
                 importedDefinition.IsHiddenInGraph = childTask.IsHiddenInGraph;
-                importedDefinition.Kind = childTask.Kind;
-                importedDefinition.BodyOwnerTaskId = childTask.BodyOwnerTaskId;
                 importedDefinition.DependencyIds.AddRange(childTask.DependsOn);
                 AddImportedDefinition(importedDefinition);
             }
@@ -525,10 +519,6 @@ public sealed class ExecutionPlanBuilder
         public bool IsOperationRoot { get; set; }
 
         public bool IsHiddenInGraph { get; set; }
-
-        public ExecutionTaskKind Kind { get; set; } = ExecutionTaskKind.Scope;
-
-        public ExecutionTaskId? BodyOwnerTaskId { get; set; }
     }
 
     internal sealed class ChildDeclarationEntry
@@ -603,9 +593,8 @@ internal static class ExecutionTaskInsertion
     }
 
     /// <summary>
-    /// Creates one imported task instance while preserving the authored task id, internal dependencies, and body-owner
-    /// relationships from the child plan. Only the imported root receives a new parent link and optional parent-side
-    /// presentation overrides.
+    /// Creates one imported task instance while preserving the authored task id and internal dependency structure from the
+    /// child plan. Only the imported root receives a new parent link and optional parent-side presentation overrides.
     /// </summary>
     private static ExecutionTask CreateImportedTask(ExecutionTask childTask, ExecutionTaskId? parentId, ChildOperationRootOverrides? rootOverrides)
     {
@@ -623,9 +612,7 @@ internal static class ExecutionTaskInsertion
             childTask.ExecuteAsync,
             outcome: null,
             isOperationRoot: childTask.IsOperationRoot,
-            isHiddenInGraph: childTask.IsHiddenInGraph || (rootOverrides?.IsHiddenInGraph ?? false),
-            kind: childTask.Kind,
-            bodyOwnerTaskId: childTask.BodyOwnerTaskId);
+            isHiddenInGraph: childTask.IsHiddenInGraph || (rootOverrides?.IsHiddenInGraph ?? false));
     }
 }
 
