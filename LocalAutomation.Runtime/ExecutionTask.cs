@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 
@@ -23,6 +24,9 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     private DateTimeOffset? _finishedAt;
     private ExecutionTaskOutcome? _outcome;
     private readonly Dictionary<Type, object> _stateByType = new();
+    private readonly object _stateWaitSyncRoot = new();
+    private readonly HashSet<ExecutionTaskState> _reachedStates = new();
+    private readonly Dictionary<ExecutionTaskState, List<TaskCompletionSource<bool>>> _stateWaiters = new();
 
     /// <summary>
     /// Creates one execution task from authored metadata. Sessions later clone these tasks into live nodes and initialize
@@ -70,6 +74,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         _state = enabled ? ExecutionTaskState.Planned : ExecutionTaskState.Completed;
         _statusReason = enabled ? string.Empty : DisabledReason;
         _outcome = enabled ? outcome : ExecutionTaskOutcome.Disabled;
+        ResetReachedStates(_state);
     }
 
     private readonly List<ExecutionTaskId> _dependsOn;
@@ -158,6 +163,78 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
     public BufferedLogStream LogStream { get; }
 
+    /// <summary>
+    /// Waits until this task reaches the requested runtime state at least once during the current session lifetime.
+    /// </summary>
+    public Task WaitForStateAsync(ExecutionTaskState targetState, CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled(cancellationToken);
+        }
+
+        TaskCompletionSource<bool>? completionSource;
+        CancellationTokenRegistration cancellationRegistration = default;
+        lock (_stateWaitSyncRoot)
+        {
+            if (_reachedStates.Contains(targetState))
+            {
+                return Task.CompletedTask;
+            }
+
+            if (_state == ExecutionTaskState.Completed)
+            {
+                return Task.FromException(CreateUnreachableStateException(targetState));
+            }
+
+            completionSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_stateWaiters.TryGetValue(targetState, out List<TaskCompletionSource<bool>>? waiters))
+            {
+                waiters = new List<TaskCompletionSource<bool>>();
+                _stateWaiters[targetState] = waiters;
+            }
+
+            waiters.Add(completionSource);
+            if (cancellationToken.CanBeCanceled)
+            {
+                cancellationRegistration = cancellationToken.Register(() =>
+                {
+                    lock (_stateWaitSyncRoot)
+                    {
+                        if (_stateWaiters.TryGetValue(targetState, out List<TaskCompletionSource<bool>>? registrations))
+                        {
+                            registrations.Remove(completionSource);
+                            if (registrations.Count == 0)
+                            {
+                                _stateWaiters.Remove(targetState);
+                            }
+                        }
+                    }
+
+                    completionSource.TrySetCanceled(cancellationToken);
+                });
+            }
+        }
+
+        return AwaitStateAsync(completionSource, cancellationRegistration);
+    }
+
+    /// <summary>
+    /// Waits until this task starts executing.
+    /// </summary>
+    public Task WaitForStartAsync(CancellationToken cancellationToken = default)
+    {
+        return WaitForStateAsync(ExecutionTaskState.Running, cancellationToken);
+    }
+
+    /// <summary>
+    /// Waits until this task reaches a completed runtime state.
+    /// </summary>
+    public Task WaitForCompletionAsync(CancellationToken cancellationToken = default)
+    {
+        return WaitForStateAsync(ExecutionTaskState.Completed, cancellationToken);
+    }
+
     internal ExecutionTask CloneForSession()
     {
         return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Outcome, IsOperationRoot, IsCallbackTask, CallbackOwnerTaskId);
@@ -175,6 +252,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         Outcome = Enabled ? null : ExecutionTaskOutcome.Disabled;
         StartedAt = null;
         FinishedAt = null;
+        ResetReachedStates(initialState);
     }
 
     internal void AddChild(ExecutionTaskId childTaskId)
@@ -234,6 +312,49 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         _startedAt = startedAt;
         _finishedAt = finishedAt;
 
+        List<TaskCompletionSource<bool>> completedWaiters = new();
+        List<TaskCompletionSource<bool>> failedWaiters = new();
+        lock (_stateWaitSyncRoot)
+        {
+            bool reachedNewState = _reachedStates.Add(state);
+            if (reachedNewState && _stateWaiters.TryGetValue(state, out List<TaskCompletionSource<bool>>? matchingWaiters))
+            {
+                completedWaiters.AddRange(matchingWaiters);
+                _stateWaiters.Remove(state);
+            }
+
+            if (state == ExecutionTaskState.Completed)
+            {
+                foreach ((ExecutionTaskState waiterState, List<TaskCompletionSource<bool>> waiters) in _stateWaiters.ToList())
+                {
+                    if (_reachedStates.Contains(waiterState))
+                    {
+                        completedWaiters.AddRange(waiters);
+                    }
+                    else
+                    {
+                        failedWaiters.AddRange(waiters);
+                    }
+
+                    _stateWaiters.Remove(waiterState);
+                }
+            }
+        }
+
+        foreach (TaskCompletionSource<bool> waiter in completedWaiters)
+        {
+            waiter.TrySetResult(true);
+        }
+
+        if (state == ExecutionTaskState.Completed)
+        {
+            InvalidOperationException unreachableStateException = CreateUnreachableStateException(null);
+            foreach (TaskCompletionSource<bool> waiter in failedWaiters)
+            {
+                waiter.TrySetException(unreachableStateException);
+            }
+        }
+
         if (stateChanged)
         {
             RaisePropertyChanged(nameof(State));
@@ -274,5 +395,43 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
         field = value;
         RaisePropertyChanged(propertyName);
+    }
+
+    /// <summary>
+    /// Resets the reached-state set when a live session reinitializes this task for a new run.
+    /// </summary>
+    private void ResetReachedStates(ExecutionTaskState initialState)
+    {
+        lock (_stateWaitSyncRoot)
+        {
+            _reachedStates.Clear();
+            _reachedStates.Add(initialState);
+            _stateWaiters.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Awaits one registered state waiter and always disposes its cancellation registration.
+    /// </summary>
+    private static async Task AwaitStateAsync(TaskCompletionSource<bool> completionSource, CancellationTokenRegistration cancellationRegistration)
+    {
+        try
+        {
+            await completionSource.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            cancellationRegistration.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a consistent exception when a caller waits for a state the task can no longer reach.
+    /// </summary>
+    private InvalidOperationException CreateUnreachableStateException(ExecutionTaskState? targetState)
+    {
+        return targetState == null
+            ? new InvalidOperationException($"Task '{Title}' ({Id}) completed before one or more awaited states were reached.")
+            : new InvalidOperationException($"Task '{Title}' ({Id}) completed before reaching awaited state '{targetState}'.");
     }
 }

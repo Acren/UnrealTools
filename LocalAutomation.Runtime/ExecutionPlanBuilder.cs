@@ -128,7 +128,7 @@ public sealed class ExecutionPlanBuilder
         return handle.Id;
     }
 
-    internal void AttachCallback(PlanItemDefinition parentDefinition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
+    internal ExecutionTaskHandle AttachCallback(PlanItemDefinition parentDefinition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
         _ = parentDefinition ?? throw new ArgumentNullException(nameof(parentDefinition));
         Func<ExecutionTaskContext, Task<OperationResult>> resolvedExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
@@ -152,6 +152,8 @@ public sealed class ExecutionPlanBuilder
         declaration.EntryTaskIds.Add(callbackDefinition.Id);
         declaration.CompletionTaskIds.Add(callbackDefinition.Id);
         parentDefinition.ChildDeclarations.Add(declaration);
+
+        return FinalizeTask(callbackDefinition);
     }
 
     internal void AttachChildOperation(PlanItemDefinition parentDefinition, Type operationType, Func<OperationParameters> createParameters)

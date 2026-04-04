@@ -73,12 +73,20 @@ public sealed class ExecutionTaskBuilder
     /// </summary>
     public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task> executeAsync)
     {
+        return Run(executeAsync, out _);
+    }
+
+    /// <summary>
+    /// Attaches the async execution body for this task and exposes the generated executable task handle.
+    /// </summary>
+    public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task> executeAsync, out ExecutionTaskHandle executionTaskHandle)
+    {
         if (executeAsync == null)
         {
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        _owner.AttachCallback(_definition, async context =>
+        executionTaskHandle = _owner.AttachCallback(_definition, async context =>
         {
             await executeAsync(context);
             return OperationResult.Succeeded();
@@ -91,7 +99,16 @@ public sealed class ExecutionTaskBuilder
     /// </summary>
     public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
-        _owner.AttachCallback(_definition, executeAsync);
+        return Run(executeAsync, out _);
+    }
+
+    /// <summary>
+    /// Attaches the async execution body for this task when the callback needs to return an explicit operation result and
+    /// exposes the generated executable task handle.
+    /// </summary>
+    public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync, out ExecutionTaskHandle executionTaskHandle)
+    {
+        executionTaskHandle = _owner.AttachCallback(_definition, executeAsync);
         return this;
     }
 
@@ -110,12 +127,21 @@ public sealed class ExecutionTaskBuilder
     /// </summary>
     public ExecutionTaskBuilder Run(Func<Task> executeAsync)
     {
+        return Run(executeAsync, out _);
+    }
+
+    /// <summary>
+    /// Attaches the async execution body for this task when no execution context is needed and exposes the generated
+    /// executable task handle.
+    /// </summary>
+    public ExecutionTaskBuilder Run(Func<Task> executeAsync, out ExecutionTaskHandle executionTaskHandle)
+    {
         if (executeAsync == null)
         {
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        _owner.AttachCallback(_definition, async _ =>
+        executionTaskHandle = _owner.AttachCallback(_definition, async _ =>
         {
             await executeAsync();
             return OperationResult.Succeeded();

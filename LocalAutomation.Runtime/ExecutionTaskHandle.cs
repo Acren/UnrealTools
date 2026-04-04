@@ -17,5 +17,8 @@ public readonly struct ExecutionTaskHandle
     /// </summary>
     public bool IsValid => !string.IsNullOrWhiteSpace(Id.Value);
 
-    internal ExecutionTaskId Id { get; }
+    /// <summary>
+    /// Gets the runtime task identifier represented by this handle.
+    /// </summary>
+    public ExecutionTaskId Id { get; }
 }
