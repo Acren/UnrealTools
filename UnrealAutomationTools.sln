@@ -26,6 +26,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LocalAutomation.Avalonia", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnrealCommander.Avalonia", "UnrealCommander.Avalonia\UnrealCommander.Avalonia.csproj", "{8BBFEA76-724F-4C73-8C57-D774A0F740B2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalAutomation.Runtime.Tests", "LocalAutomation.Runtime.Tests\LocalAutomation.Runtime.Tests.csproj", "{3D140F2B-8BDF-408A-A769-077154EB1442}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -201,6 +203,24 @@ Global
 		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Release|x64.Build.0 = Release|Any CPU
 		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Release|x86.ActiveCfg = Release|Any CPU
 		{8BBFEA76-724F-4C73-8C57-D774A0F740B2}.Release|x86.Build.0 = Release|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Debug|x64.Build.0 = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Debug|x86.Build.0 = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Development|Any CPU.ActiveCfg = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Development|Any CPU.Build.0 = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Development|x64.ActiveCfg = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Development|x64.Build.0 = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Development|x86.ActiveCfg = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Development|x86.Build.0 = Debug|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Release|x64.ActiveCfg = Release|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Release|x64.Build.0 = Release|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Release|x86.ActiveCfg = Release|Any CPU
+		{3D140F2B-8BDF-408A-A769-077154EB1442}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
