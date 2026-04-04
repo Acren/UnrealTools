@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -25,6 +25,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     typeof(PackageOptions),
                     typeof(CookOptions)
                 });
+        }
+
+        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLockRequirement> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        {
+            /* Project packaging compiles and stages through UAT, which touches the same shared Unreal build metadata as
+               editor and direct build flows. */
+            foreach (global::LocalAutomation.Runtime.ExecutionLockRequirement requirement in base.GetExecutionLocks(operationParameters))
+            {
+                yield return requirement;
+            }
+
+            yield return UnrealExecutionLocks.GlobalBuild;
         }
 
         protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)

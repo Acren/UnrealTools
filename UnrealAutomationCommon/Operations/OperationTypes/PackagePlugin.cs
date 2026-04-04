@@ -23,6 +23,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 .Concat(new[] { typeof(AdditionalArgumentsOptions), typeof(PluginBuildOptions) });
         }
 
+        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLockRequirement> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        {
+            /* BuildPlugin runs through UAT and shares Unreal's writable build-rule outputs with other tool-driven build
+               flows, so plugin packaging participates in the same in-process lock. */
+            foreach (global::LocalAutomation.Runtime.ExecutionLockRequirement requirement in base.GetExecutionLocks(operationParameters))
+            {
+                yield return requirement;
+            }
+
+            yield return UnrealExecutionLocks.GlobalBuild;
+        }
+
         // Fail early when the selected engine cannot even advertise the requested code platforms.
         protected override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {

@@ -419,7 +419,7 @@ public sealed class ExecutionPlanScheduler
                 }
 
                 SetState(task.Id, ExecutionTaskState.Running);
-                ExecutionTaskContext context = new(task.Id, task.Title, CreateTaskLogger(task.Id), cancellationToken, new ValidatedOperationParameters(task.Title, task.OperationParameters, task.DeclaredOptionTypes), _session, this);
+                ExecutionTaskContext context = new(task.Id, task.Title, CreateTaskLogger(task.Id), cancellationToken, new ValidatedOperationParameters(task.Title, task.OperationParameters, task.DeclaredOptionTypes), task.Operation, _session, this);
                 Task<OperationResult> runningTask = StartTaskBodyAsync(task, context);
                 lock (_syncRoot)
                 {
@@ -1000,8 +1000,10 @@ public sealed class ExecutionPlanScheduler
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.ExecuteTaskBody")
             .SetTag("task.id", task.Id.Value)
             .SetTag("task.title", task.Title);
+        IReadOnlyList<ExecutionLockRequirement> lockRequirements = context.Operation.GetDeclaredExecutionLocks(context.ValidatedOperationParameters);
         try
         {
+            await using IAsyncDisposable lockHandle = await AcquireExecutionLocksAsync(context, lockRequirements).ConfigureAwait(false);
             OperationResult result = await task.ExecuteAsync!(context).ConfigureAwait(false);
             activity.SetTag("task.outcome", result.Outcome.ToString());
             return result;
@@ -1020,6 +1022,55 @@ public sealed class ExecutionPlanScheduler
             /* Preserve the original exception so the scheduler can log the real root cause and expose the innermost
                message in task status instead of a wrapper message. */
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Acquires the declared execution locks for one task callback and logs visible lock wait/acquire transitions.
+    /// </summary>
+    private async Task<IAsyncDisposable> AcquireExecutionLocksAsync(ExecutionTaskContext context, IReadOnlyList<ExecutionLockRequirement> lockRequirements)
+    {
+        if (lockRequirements.Count == 0)
+        {
+            return AsyncLockHandle.Empty;
+        }
+
+        string requirementSummary = string.Join(", ", lockRequirements.Select(requirement => requirement.GetType().Name));
+        context.Logger.LogInformation("Waiting for execution lock(s): {ExecutionLocks}", requirementSummary);
+        IAsyncDisposable handle = await ExecutionLocks.AcquireAsync(lockRequirements, context.CancellationToken).ConfigureAwait(false);
+        context.Logger.LogInformation("Acquired execution lock(s): {ExecutionLocks}", requirementSummary);
+        return new AsyncLockHandle(handle, context.Logger, requirementSummary);
+    }
+
+    /// <summary>
+    /// Wraps one acquired lock handle so release logging stays paired with the same callback scope that acquired it.
+    /// </summary>
+    private sealed class AsyncLockHandle : IAsyncDisposable
+    {
+        public static AsyncLockHandle Empty { get; } = new(null, null, null);
+
+        private readonly IAsyncDisposable? _inner;
+        private readonly ILogger? _logger;
+        private readonly string? _summary;
+
+        public AsyncLockHandle(IAsyncDisposable? inner, ILogger? logger, string? summary)
+        {
+            _inner = inner;
+            _logger = logger;
+            _summary = summary;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_inner != null)
+            {
+                await _inner.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (_logger != null && !string.IsNullOrWhiteSpace(_summary))
+            {
+                _logger.LogInformation("Released execution lock(s): {ExecutionLocks}", _summary);
+            }
         }
     }
 

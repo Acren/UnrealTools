@@ -13,7 +13,7 @@ public sealed class ExecutionTaskContext
     /// <summary>
     /// Creates one execution context for a scheduled task invocation.
     /// </summary>
-    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, ValidatedOperationParameters validatedOperationParameters, ExecutionSession? session = null, ExecutionPlanScheduler? scheduler = null)
+    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, ValidatedOperationParameters validatedOperationParameters, Operation operation, ExecutionSession? session = null, ExecutionPlanScheduler? scheduler = null)
     {
         TaskId = taskId;
         Title = string.IsNullOrWhiteSpace(title)
@@ -22,6 +22,7 @@ public sealed class ExecutionTaskContext
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
         CancellationToken = cancellationToken;
         ValidatedOperationParameters = validatedOperationParameters ?? throw new ArgumentNullException(nameof(validatedOperationParameters));
+        Operation = operation ?? throw new ArgumentNullException(nameof(operation));
         Session = session;
         Scheduler = scheduler;
     }
@@ -53,6 +54,11 @@ public sealed class ExecutionTaskContext
     public ValidatedOperationParameters ValidatedOperationParameters { get; }
 
     /// <summary>
+    /// Gets the originating operation instance that authored the current task callback.
+    /// </summary>
+    public Operation Operation { get; }
+
+    /// <summary>
     /// Gets the live execution session when the current task is running inside a session-backed execution. Runtime child
     /// operation attachment flows through this session rather than through the immutable plan that originally seeded it.
     /// </summary>
@@ -76,7 +82,7 @@ public sealed class ExecutionTaskContext
      /// </summary>
     internal ExecutionTaskContext CreateForTask(ExecutionTaskId taskId, string title, ILogger logger, ValidatedOperationParameters validatedOperationParameters)
     {
-        return new ExecutionTaskContext(taskId, title, logger, CancellationToken, validatedOperationParameters, Session, Scheduler);
+        return new ExecutionTaskContext(taskId, title, logger, CancellationToken, validatedOperationParameters, Operation, Session, Scheduler);
     }
 
     /// <summary>

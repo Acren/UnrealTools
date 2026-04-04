@@ -35,6 +35,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     public ExecutionTask(
         ExecutionTaskId id,
         string title,
+        Operation operation,
         string? description = null,
         ExecutionTaskId? parentId = null,
         IEnumerable<ExecutionTaskId>? dependsOn = null,
@@ -52,6 +53,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         Title = string.IsNullOrWhiteSpace(title)
             ? throw new ArgumentException("Execution task title is required.", nameof(title))
             : title;
+        Operation = operation ?? throw new ArgumentNullException(nameof(operation));
         Description = description ?? string.Empty;
         _parentId = parentId;
         _dependsOn = new List<ExecutionTaskId>((dependsOn ?? Array.Empty<ExecutionTaskId>()));
@@ -85,6 +87,8 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     public ExecutionTaskId Id { get; }
 
     public string Title { get; }
+
+    public Operation Operation { get; }
 
     public string Description { get; }
 
@@ -237,7 +241,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
     internal ExecutionTask CloneForSession()
     {
-        return new ExecutionTask(Id, Title, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Outcome, IsOperationRoot, IsCallbackTask, CallbackOwnerTaskId);
+        return new ExecutionTask(Id, Title, Operation, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Outcome, IsOperationRoot, IsCallbackTask, CallbackOwnerTaskId);
     }
 
     internal void InitializeRuntimeState(bool hasBegunExecution)

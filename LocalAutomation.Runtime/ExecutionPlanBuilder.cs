@@ -18,6 +18,7 @@ public sealed class ExecutionPlanBuilder
     private readonly Func<Operation, OperationParameters, ExecutionPlan?> _buildChildPlan;
     private IReadOnlyCollection<Type> _declaredOptionTypes = Array.Empty<Type>();
     private int _nextSequence = 0;
+    private Operation _operation = null!;
 
     internal OperationParameters OperationParameters { get; private set; } = null!;
 
@@ -65,6 +66,7 @@ public sealed class ExecutionPlanBuilder
             .Select(item => new ExecutionTask(
                 id: item.Id,
                 title: item.Title,
+                operation: item.Operation,
                 description: item.Description,
                 parentId: item.ParentId,
                 dependsOn: item.DependencyIds,
@@ -87,6 +89,11 @@ public sealed class ExecutionPlanBuilder
     internal void SetBuilderOperationParameters(OperationParameters operationParameters)
     {
         OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
+    }
+
+    internal void SetOperation(Operation operation)
+    {
+        _operation = operation ?? throw new ArgumentNullException(nameof(operation));
     }
 
     internal void SetDeclaredOptionTypes(IEnumerable<Type> declaredOptionTypes)
@@ -275,7 +282,8 @@ public sealed class ExecutionPlanBuilder
             ParentId = parentId,
             IsOperationRoot = parentId == null,
             Enabled = true,
-            DisabledReason = string.Empty
+            DisabledReason = string.Empty,
+            Operation = _operation
         };
     }
 
@@ -309,6 +317,7 @@ public sealed class ExecutionPlanBuilder
                 importedDefinition.OperationParameters = childTask.OperationParameters;
                 importedDefinition.DeclaredOptionTypes = childTask.DeclaredOptionTypes.ToList();
                 importedDefinition.ExecuteAsync = childTask.ExecuteAsync;
+                importedDefinition.Operation = childTask.Operation;
                 importedDefinition.IsOperationRoot = childTask.IsOperationRoot;
                 importedDefinition.IsCallbackTask = childTask.IsCallbackTask;
                 importedDefinition.CallbackOwnerTaskId = childTask.CallbackOwnerTaskId;
@@ -413,6 +422,8 @@ public sealed class ExecutionPlanBuilder
 
         public string DisabledReason { get; set; } = string.Empty;
 
+        public Operation Operation { get; set; } = null!;
+
         public OperationParameters OperationParameters { get; set; } = null!;
 
         public List<Type> DeclaredOptionTypes { get; set; } = new();
@@ -498,6 +509,7 @@ internal static class ExecutionTaskInsertion
             insertedTasks.Add(new ExecutionTask(
                 remappedTaskId,
                 childTask.Title,
+                childTask.Operation,
                 childTask.Description,
                 remappedParentId,
                 childTask.DependsOn.Select(dependencyId => remappedIds[dependencyId]).ToList(),

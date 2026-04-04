@@ -250,6 +250,7 @@ public sealed class Runner
 
         ExecutionPlanId planId = ExecutionIdentifierFactory.CreatePlanId(operation.GetType().Name);
         ExecutionPlanBuilder builder = new(operation.OperationName, planId, (childOperation, childParameters) => BuildWrappedPlan(childOperation, childParameters, logger));
+        builder.SetOperation(operation);
         builder.SetBuilderOperationParameters(operationParameters);
         builder.SetDeclaredOptionTypes(operation.GetRequiredOptionSetTypes(operationParameters.Target));
         ExecutionTaskBuilder root = builder.Task(operation.OperationName, operationParameters.Target.DisplayName, default);

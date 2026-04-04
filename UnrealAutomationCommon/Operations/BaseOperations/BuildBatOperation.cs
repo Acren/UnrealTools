@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Collections.Generic;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 using RuntimeTarget = LocalAutomation.Runtime.OperationTarget;
@@ -20,6 +21,18 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                     typeof(BuildConfigurationOptions),
                     typeof(UbtCompilerOptions)
                 });
+        }
+
+        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLockRequirement> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        {
+            /* Direct Build.bat flows participate in the shared Unreal build lock so multiple callbacks in the same app do
+               not race on UnrealBuildTool's writable rules state. */
+            foreach (global::LocalAutomation.Runtime.ExecutionLockRequirement requirement in base.GetExecutionLocks(operationParameters))
+            {
+                yield return requirement;
+            }
+
+            yield return UnrealExecutionLocks.GlobalBuild;
         }
 
         // Validate shared direct-UBT overrides once so every Build.bat-backed operation enforces the same limits.

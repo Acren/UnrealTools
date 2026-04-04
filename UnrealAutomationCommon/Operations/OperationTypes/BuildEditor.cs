@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Collections.Generic;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
@@ -17,6 +18,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     typeof(OperationOptionTypes.BuildConfigurationOptions),
                     typeof(OperationOptionTypes.PackageOptions)
                 });
+        }
+
+        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLockRequirement> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        {
+            /* BuildCookRun editor builds still run through UAT/UBT under the hood, so they share the same process-local
+               Unreal build lock as direct Build.bat flows. */
+            foreach (global::LocalAutomation.Runtime.ExecutionLockRequirement requirement in base.GetExecutionLocks(operationParameters))
+            {
+                yield return requirement;
+            }
+
+            yield return UnrealExecutionLocks.GlobalBuild;
         }
 
         protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)

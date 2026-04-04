@@ -179,12 +179,28 @@ public abstract class Operation
     }
 
     /// <summary>
+    /// Declares any exclusive locks the runtime should hold while this operation's task callback is executing.
+    /// </summary>
+    protected virtual IEnumerable<ExecutionLockRequirement> GetExecutionLocks(ValidatedOperationParameters operationParameters)
+    {
+        return Array.Empty<ExecutionLockRequirement>();
+    }
+
+    /// <summary>
     /// Exposes the warning-failure policy to the framework-owned execution pipeline without making callers subclass this
     /// type just to inspect the configured behavior.
     /// </summary>
     internal bool ShouldFailOnWarning()
     {
         return FailOnWarning();
+    }
+
+    internal IReadOnlyList<ExecutionLockRequirement> GetDeclaredExecutionLocks(ValidatedOperationParameters operationParameters)
+    {
+        return GetExecutionLocks(operationParameters)
+            .Where(requirement => requirement != null)
+            .Distinct()
+            .ToList();
     }
 
     /// <summary>
