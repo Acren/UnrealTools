@@ -54,7 +54,7 @@ internal static class RuntimeTestUtilities
     }
 
     /// <summary>
-    /// Provides a reusable callback body for active work that should remain running until the scheduler cancels it.
+    /// Provides a reusable task body for active work that should remain running until the scheduler cancels it.
     /// </summary>
     public static async Task<OperationResult> RunUntilCancelled(ExecutionTaskContext context)
     {
@@ -71,7 +71,7 @@ internal static class RuntimeTestUtilities
 
     /// <summary>
     /// Creates one task body that signals when it starts, then stays active until the provided gate allows it to finish.
-    /// This keeps scheduler tests deterministic when they need one callback to hold a lock or dependency boundary open.
+    /// This keeps scheduler tests deterministic when they need one body task to hold a lock or dependency boundary open.
     /// </summary>
     public static Func<ExecutionTaskContext, Task<OperationResult>> RunUntilReleased(TaskCompletionSource<bool> started, TaskCompletionSource<bool> release)
     {
@@ -106,7 +106,7 @@ internal static class RuntimeTestUtilities
         }
 
         /// <summary>
-        /// Delegates plan construction to the test-provided builder callback.
+        /// Delegates plan construction to the test-provided builder action.
         /// </summary>
         protected override void DescribeExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
         {
@@ -114,7 +114,7 @@ internal static class RuntimeTestUtilities
         }
 
         /// <summary>
-        /// Declares the same execution locks for every callback in this test operation so scheduler tests can focus on
+        /// Declares the same execution locks for every task body in this test operation so scheduler tests can focus on
         /// graph semantics instead of duplicating lock plumbing across helper types.
         /// </summary>
         protected override IEnumerable<ExecutionLock> GetExecutionLocks(ValidatedOperationParameters operationParameters)

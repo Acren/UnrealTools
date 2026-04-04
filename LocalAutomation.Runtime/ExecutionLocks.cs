@@ -103,8 +103,8 @@ public static class ExecutionLocks
     /// </summary>
     private static IReadOnlyList<string> GetOrderedKeys(IEnumerable<ExecutionLock> executionLocks)
     {
-        /* Lock keys are sorted before acquisition so any callback that needs more than one lock waits in the same order
-           as every other callback. That keeps the in-process lock table deadlock-free even when different operations
+        /* Lock keys are sorted before acquisition so any task body that needs more than one lock waits in the same order
+           as every other task body. That keeps the in-process lock table deadlock-free even when different operations
            declare overlapping lock sets. */
         return executionLocks
             .Select(ExecutionLockKeys.GetKey)
@@ -159,7 +159,7 @@ public static class ExecutionLocks
         public static AsyncDisposable Empty { get; } = new();
 
         /// <summary>
-        /// Provides one no-op lock handle for callbacks that do not declare any lock requirements so the scheduler can use
+        /// Provides one no-op lock handle for task bodies that do not declare any lock requirements so the scheduler can use
         /// a single disposal path regardless of whether locks were acquired.
         /// </summary>
         public ValueTask DisposeAsync() => default;

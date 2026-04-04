@@ -137,7 +137,7 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
     /// detail.
     /// </summary>
     [DisplayName("Reveal hidden tasks")]
-    [Description("Shows graph tasks that are normally collapsed, including internal callback nodes and any authored tasks marked as hidden.")]
+    [Description("Shows graph tasks that are normally collapsed, including internal body nodes and any authored tasks marked as hidden.")]
     [PersistedValue(PersistenceScope.Global)]
     public bool RevealHiddenTasks
     {

@@ -19,11 +19,11 @@ public sealed class ExecutionPlanSchedulerTests
         TaskCompletionSource<bool> allowBranchAFailure = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ExecutionTaskHandle branchAActiveHandle = default;
         ExecutionTaskHandle branchBActiveHandle = default;
-        ExecutionTaskHandle branchBQueuedCallbackHandle = default;
+        ExecutionTaskHandle branchBQueuedBodyHandle = default;
 
         /* The plan shape mirrors the production scenario in the smallest possible form:
-           - Branch A has one active callback that will fail and one queued callback that never matters.
-           - Branch B has one active callback that only stops when cancellation reaches it and one queued callback that
+           - Branch A has one active body task that will fail and one queued body task that never matters.
+           - Branch B has one active body task that only stops when cancellation reaches it and one queued body task that
              should stay untouched.
            When Branch A fails, Branch B.Active Work is already running and Branch B.Queued Work is still pending. */
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
@@ -33,7 +33,7 @@ public sealed class ExecutionPlanSchedulerTests
                 scope.Task("Branch A").Children(branchAScope =>
                 {
                     /* Capture the execution handle directly from Run(..., out ...) so the test can await the live runtime
-                       task by identity without rediscovering the callback node later. */
+                       task by identity without rediscovering the hidden body node later. */
                     branchAScope.Task("Active Work").Run(async _ =>
                     {
                         await allowBranchAFailure.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -44,13 +44,13 @@ public sealed class ExecutionPlanSchedulerTests
 
                 scope.Task("Branch B").Children(branchBScope =>
                 {
-                    /* This callback blocks forever until the scheduler cancels it. That makes it the collateral running
+                    /* This body task blocks forever until the scheduler cancels it. That makes it the collateral running
                        work whose semantic outcome should become Interrupted, not Cancelled, when Branch A fails. */
                     branchBScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilCancelled, out branchBActiveHandle);
                     branchBScope.Task("Queued Work").Run(context =>
                     {
                         return Task.FromResult(OperationResult.Succeeded());
-                    }, out branchBQueuedCallbackHandle);
+                    }, out branchBQueuedBodyHandle);
                 });
             });
         });
@@ -67,7 +67,7 @@ public sealed class ExecutionPlanSchedulerTests
 
         Assert.True(branchAActiveHandle.IsValid);
         Assert.True(branchBActiveHandle.IsValid);
-        Assert.True(branchBQueuedCallbackHandle.IsValid);
+        Assert.True(branchBQueuedBodyHandle.IsValid);
 
         /* Expected outcomes:
            - overall run fails because Branch A failed directly,
@@ -77,7 +77,7 @@ public sealed class ExecutionPlanSchedulerTests
         Assert.Equal(ExecutionTaskOutcome.Failed, result.Outcome);
         Assert.Equal(ExecutionTaskOutcome.Failed, session.GetTask(branchAActiveHandle.Id).Outcome);
         Assert.Equal(ExecutionTaskOutcome.Interrupted, session.GetTask(branchBActiveHandle.Id).Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchBQueuedCallbackHandle.Id).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchBQueuedBodyHandle.Id).Outcome);
     }
 
     /// <summary>
@@ -90,7 +90,7 @@ public sealed class ExecutionPlanSchedulerTests
            the sibling-failure interruption path above. */
         ExecutionTaskHandle branchAActiveHandle = default;
         ExecutionTaskHandle branchBActiveHandle = default;
-        ExecutionTaskHandle branchAQueuedCallbackHandle = default;
+        ExecutionTaskHandle branchAQueuedBodyHandle = default;
 
         /* This scenario uses the same two-branch shape, but neither branch fails on its own.
            The only stop signal comes from the explicit cancellation token passed to ExecuteAsync. That means active work
@@ -107,7 +107,7 @@ public sealed class ExecutionPlanSchedulerTests
                     branchAScope.Task("Queued Work").Run(context =>
                     {
                         return Task.FromResult(OperationResult.Succeeded());
-                    }, out branchAQueuedCallbackHandle);
+                    }, out branchAQueuedBodyHandle);
                 });
 
                 scope.Task("Branch B").Children(branchBScope =>
@@ -118,7 +118,7 @@ public sealed class ExecutionPlanSchedulerTests
         });
 
         /* This case still needs the authored plan before execution only because the scheduler is started manually so the
-           test can cancel it at the right time. The queued callback id is captured directly from Run(..., out handle), so
+           test can cancel it at the right time. The queued body-task id is captured directly from Run(..., out handle), so
            no string-based plan lookup is needed. */
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         using CancellationTokenSource cancellationSource = new();
@@ -134,26 +134,26 @@ public sealed class ExecutionPlanSchedulerTests
 
         Assert.True(branchAActiveHandle.IsValid);
         Assert.True(branchBActiveHandle.IsValid);
-        Assert.True(branchAQueuedCallbackHandle.IsValid);
+        Assert.True(branchAQueuedBodyHandle.IsValid);
 
         /* Expected outcomes:
            - overall run is Cancelled because the user token ended the run,
-           - both active callbacks are Cancelled,
-           - the untouched queued callback is Skipped because it never started. */
+           - both active body tasks are Cancelled,
+           - the untouched queued body task is Skipped because it never started. */
         Assert.Equal(ExecutionTaskOutcome.Cancelled, result.Outcome);
         Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(branchAActiveHandle.Id).Outcome);
         Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(branchBActiveHandle.Id).Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchAQueuedCallbackHandle.Id).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchAQueuedBodyHandle.Id).Outcome);
     }
 
     /// <summary>
-    /// Confirms that a callback blocked only on an execution lock should remain pending until the scheduler can actually
+    /// Confirms that a body task blocked only on an execution lock should remain pending until the scheduler can actually
     /// start executing its body.
     /// </summary>
     [Fact]
     public async Task TaskWaitingForExecutionLockStaysPending()
     {
-        // Arrange: two parallel callbacks contend for the same lock, and branch A holds it open.
+        // Arrange: two parallel body tasks contend for the same lock, and branch A holds it open.
         ExecutionLock sharedLock = new("test-lock", "contended");
         TaskCompletionSource<bool> branchAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -195,7 +195,7 @@ public sealed class ExecutionPlanSchedulerTests
     [Fact]
     public async Task ParentScopeStaysPendingWhileChildWaitsForDependencies()
     {
-        // Arrange: the branch child depends on a separate callback that is still running.
+        // Arrange: the branch child depends on a separate body task that is still running.
         TaskCompletionSource<bool> releaseDependency = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ExecutionTaskHandle dependencyHandle = default;
         ExecutionTaskHandle waitingChildHandle = default;
@@ -212,7 +212,7 @@ public sealed class ExecutionPlanSchedulerTests
             });
         });
 
-        // Act: start the scheduler and wait until the dependency callback has definitely started.
+        // Act: start the scheduler and wait until the dependency body task has definitely started.
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
         await session.GetTask(dependencyHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));

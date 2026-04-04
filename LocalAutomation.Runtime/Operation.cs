@@ -179,7 +179,7 @@ public abstract class Operation
     }
 
     /// <summary>
-    /// Declares any exclusive locks the runtime should hold while this operation's task callback is executing.
+    /// Declares any exclusive locks the runtime should hold while this operation's task body is executing.
     /// </summary>
     protected virtual IEnumerable<ExecutionLock> GetExecutionLocks(ValidatedOperationParameters operationParameters)
     {
@@ -239,7 +239,7 @@ public abstract class Operation
         if (result.Outcome == ExecutionTaskOutcome.Interrupted)
         {
             /* Interrupted child operations currently propagate as a normal result instead of an exception. Log that branch
-               explicitly so callback methods that only await the child run still leave a trace in the launch log. */
+               explicitly so task-body methods that only await the child run still leave a trace in the launch log. */
             context.Logger.LogWarning(
                 "Task '{TaskTitle}' is returning interrupted child result from '{ChildOperation}' without throwing. FailureReason='{FailureReason}'.",
                 context.Title,

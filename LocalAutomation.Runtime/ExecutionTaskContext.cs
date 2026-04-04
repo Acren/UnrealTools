@@ -48,13 +48,13 @@ public sealed class ExecutionTaskContext
     public CancellationToken CancellationToken { get; }
 
     /// <summary>
-    /// Gets the operation-scoped validated parameter view so task callbacks can read declared option sets without
+    /// Gets the operation-scoped validated parameter view so task bodies can read declared option sets without
     /// falling back to the raw parameter bag.
     /// </summary>
     public ValidatedOperationParameters ValidatedOperationParameters { get; }
 
     /// <summary>
-    /// Gets the originating operation instance that authored the current task callback.
+    /// Gets the originating operation instance that authored the current task body.
     /// </summary>
     public Operation Operation { get; }
 
@@ -86,7 +86,7 @@ public sealed class ExecutionTaskContext
     }
 
     /// <summary>
-    /// Stores one strongly typed state value on the nearest operation root so sibling callbacks in the same nested
+    /// Stores one strongly typed state value on the nearest operation root so sibling body tasks in the same nested
     /// operation can share state while logging and execution still stay attached to the currently running task.
     /// </summary>
     public void SetOperationState<T>(T value) where T : class

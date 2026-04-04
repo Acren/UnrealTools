@@ -7,7 +7,7 @@ using LocalAutomation.Core;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Builds a previewable execution plan where task callbacks, child scopes, and expanded child operations all participate
+/// Builds a previewable execution plan where task body nodes, child scopes, and expanded child operations all participate
 /// in one ordered child-declaration stream beneath each parent task.
 /// </summary>
 public sealed class ExecutionPlanBuilder
@@ -78,8 +78,8 @@ public sealed class ExecutionPlanBuilder
                 outcome: null,
                 isOperationRoot: item.IsOperationRoot,
                 isHiddenInGraph: item.IsHiddenInGraph,
-                isCallbackTask: item.IsCallbackTask,
-                callbackOwnerTaskId: item.CallbackOwnerTaskId))
+                kind: item.Kind,
+                bodyOwnerTaskId: item.BodyOwnerTaskId))
             .ToList();
         List<ExecutionDependency> dependencies = _items
             .SelectMany(item => item.DependencyIds.Select(dependencyId => new ExecutionDependency(dependencyId, item.Id)))
@@ -177,35 +177,35 @@ public sealed class ExecutionPlanBuilder
         return handle.Id;
     }
 
-    internal ExecutionTaskHandle AttachCallback(PlanItemDefinition parentDefinition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
+    internal ExecutionTaskHandle AttachBodyTask(PlanItemDefinition parentDefinition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
         _ = parentDefinition ?? throw new ArgumentNullException(nameof(parentDefinition));
         Func<ExecutionTaskContext, Task<OperationResult>> resolvedExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
 
-        PlanItemDefinition callbackDefinition = CreateItem(
+        PlanItemDefinition bodyDefinition = CreateItem(
             GenerateTaskId(),
-            CreateCallbackTitle(parentDefinition),
+            CreateBodyTaskTitle(parentDefinition),
             parentDefinition.Description,
             parentDefinition.Id);
-        callbackDefinition.Enabled = parentDefinition.Enabled;
-        callbackDefinition.DisabledReason = parentDefinition.DisabledReason;
-        callbackDefinition.OperationParameters = parentDefinition.OperationParameters;
-        callbackDefinition.DeclaredOptionTypes = parentDefinition.DeclaredOptionTypes.ToList();
-        callbackDefinition.ExecuteAsync = resolvedExecuteAsync;
-        callbackDefinition.IsOperationRoot = false;
-        /* Callback tasks are lowered implementation details for authored Run(...) declarations, so the graph hides them
-           by default and lets the global reveal toggle surface them when deeper troubleshooting is needed. */
-        callbackDefinition.IsHiddenInGraph = true;
-        callbackDefinition.IsCallbackTask = true;
-        callbackDefinition.CallbackOwnerTaskId = parentDefinition.Id;
-        _items.Add(callbackDefinition);
+        bodyDefinition.Enabled = parentDefinition.Enabled;
+        bodyDefinition.DisabledReason = parentDefinition.DisabledReason;
+        bodyDefinition.OperationParameters = parentDefinition.OperationParameters;
+        bodyDefinition.DeclaredOptionTypes = parentDefinition.DeclaredOptionTypes.ToList();
+        bodyDefinition.ExecuteAsync = resolvedExecuteAsync;
+        bodyDefinition.IsOperationRoot = false;
+        /* Internal body tasks carry the runnable work for authored Run(...) declarations, so the graph hides them by
+           default and lets the global reveal toggle surface them only when lower-level troubleshooting is needed. */
+        bodyDefinition.IsHiddenInGraph = true;
+        bodyDefinition.Kind = ExecutionTaskKind.Body;
+        bodyDefinition.BodyOwnerTaskId = parentDefinition.Id;
+        _items.Add(bodyDefinition);
 
-        ChildDeclarationEntry declaration = new(NextOrderIndex(), ChildDeclarationKind.Callback);
-        declaration.EntryTaskIds.Add(callbackDefinition.Id);
-        declaration.CompletionTaskIds.Add(callbackDefinition.Id);
+        ChildDeclarationEntry declaration = new(NextOrderIndex(), ChildDeclarationKind.Body);
+        declaration.EntryTaskIds.Add(bodyDefinition.Id);
+        declaration.CompletionTaskIds.Add(bodyDefinition.Id);
         parentDefinition.ChildDeclarations.Add(declaration);
 
-        return FinalizeTask(callbackDefinition);
+        return FinalizeTask(bodyDefinition);
     }
 
     /// <summary>
@@ -394,8 +394,8 @@ public sealed class ExecutionPlanBuilder
                 importedDefinition.Operation = childTask.Operation;
                 importedDefinition.IsOperationRoot = childTask.IsOperationRoot;
                 importedDefinition.IsHiddenInGraph = childTask.IsHiddenInGraph;
-                importedDefinition.IsCallbackTask = childTask.IsCallbackTask;
-                importedDefinition.CallbackOwnerTaskId = childTask.CallbackOwnerTaskId;
+                importedDefinition.Kind = childTask.Kind;
+                importedDefinition.BodyOwnerTaskId = childTask.BodyOwnerTaskId;
                 importedDefinition.DependencyIds.AddRange(childTask.DependsOn);
                 AddImportedDefinition(importedDefinition);
             }
@@ -460,12 +460,12 @@ public sealed class ExecutionPlanBuilder
         return _items.Single(item => item.Id == taskId);
     }
 
-    private static string CreateCallbackTitle(PlanItemDefinition parentDefinition)
+    private static string CreateBodyTaskTitle(PlanItemDefinition parentDefinition)
     {
-        int callbackIndex = parentDefinition.ChildDeclarations.Count(entry => entry.Kind == ChildDeclarationKind.Callback) + 1;
-        return callbackIndex == 1
-            ? parentDefinition.Title + ".Callback"
-            : parentDefinition.Title + ".Callback " + callbackIndex;
+        int bodyIndex = parentDefinition.ChildDeclarations.Count(entry => entry.Kind == ChildDeclarationKind.Body) + 1;
+        return bodyIndex == 1
+            ? parentDefinition.Title + ".Body"
+            : parentDefinition.Title + ".Body " + bodyIndex;
     }
 
     private static IReadOnlyList<ExecutionTaskId> GetLeafCompletionTaskIds(IReadOnlyList<ExecutionTask> tasks)
@@ -526,9 +526,9 @@ public sealed class ExecutionPlanBuilder
 
         public bool IsHiddenInGraph { get; set; }
 
-        public bool IsCallbackTask { get; set; }
+        public ExecutionTaskKind Kind { get; set; } = ExecutionTaskKind.Scope;
 
-        public ExecutionTaskId? CallbackOwnerTaskId { get; set; }
+        public ExecutionTaskId? BodyOwnerTaskId { get; set; }
     }
 
     internal sealed class ChildDeclarationEntry
@@ -561,7 +561,7 @@ public sealed class ExecutionPlanBuilder
 
 internal enum ChildDeclarationKind
 {
-    Callback,
+    Body,
     ChildScope,
     ChildOperation
 }
@@ -603,7 +603,7 @@ internal static class ExecutionTaskInsertion
     }
 
     /// <summary>
-    /// Creates one imported task instance while preserving the authored task id, internal dependencies, and callback-owner
+    /// Creates one imported task instance while preserving the authored task id, internal dependencies, and body-owner
     /// relationships from the child plan. Only the imported root receives a new parent link and optional parent-side
     /// presentation overrides.
     /// </summary>
@@ -624,8 +624,8 @@ internal static class ExecutionTaskInsertion
             outcome: null,
             isOperationRoot: childTask.IsOperationRoot,
             isHiddenInGraph: childTask.IsHiddenInGraph || (rootOverrides?.IsHiddenInGraph ?? false),
-            isCallbackTask: childTask.IsCallbackTask,
-            callbackOwnerTaskId: childTask.CallbackOwnerTaskId);
+            kind: childTask.Kind,
+            bodyOwnerTaskId: childTask.BodyOwnerTaskId);
     }
 }
 

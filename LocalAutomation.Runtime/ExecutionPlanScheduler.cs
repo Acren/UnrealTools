@@ -166,7 +166,7 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Processes every task callback that has already completed so visible task state is published promptly instead of
+    /// Processes every task body that has already completed so visible task state is published promptly instead of
     /// waiting for one completion per outer scheduler loop iteration.
     /// </summary>
     private async Task<bool> DrainCompletedRunningTasksAsync()
@@ -241,7 +241,7 @@ public sealed class ExecutionPlanScheduler
                 .SetTag("inserted.root.id", mergeResult.RootTask.Id.Value)
                 .SetTag("inserted.task.count", mergeResult.InsertedTaskIds.Count);
 
-            /* The child-operation wait boundary decides whether the parent callback stays alive. Log both entry and exit so
+            /* The child-operation wait boundary decides whether the parent body stays alive. Log both entry and exit so
                the next launch log can distinguish a real wait from an immediate return or cancellation. */
             List<ExecutionTaskId> initiallyNonTerminalTaskIds = mergeResult.InsertedTaskIds
                 .Where(taskId => !_session.IsTaskTerminal(taskId))
@@ -332,7 +332,7 @@ public sealed class ExecutionPlanScheduler
     {
         NormalizeRunningTaskTerminalOutcome(taskId, state, outcome, statusReason);
 
-        /* Running callbacks only stop promptly when their shared execution token is cancelled. Session state alone is not
+        /* Running body tasks only stop promptly when their shared execution token is cancelled. Session state alone is not
            enough because process-backed tasks observe cancellation through the task context token, so any externally
            forced terminal state must trigger the same cancellation path that user cancellation uses. */
         if (ShouldCancelExecutionForTerminalOutcome(taskId, state, outcome))
@@ -342,14 +342,14 @@ public sealed class ExecutionPlanScheduler
 
             /* Interrupted remains a distinct run outcome from user cancellation, so the scheduler only records
                cancellation here when the terminal status itself is Cancelled. Interrupted task state is preserved and the
-               final result still rolls up from semantic task outcomes after running callbacks unwind. */
+               final result still rolls up from semantic task outcomes after running body tasks unwind. */
             if (_stopReason == SchedulerStopReason.UserCancelled)
             {
                 _encounteredCancellation = true;
             }
 
             /* Forced terminal states should also immediately close out untouched queued work so the scheduler does not
-               attempt to keep scheduling siblings while already-running callbacks are unwinding. */
+               attempt to keep scheduling siblings while already-running body tasks are unwinding. */
             CancelOutstandingTasks(_stopReason, runningTaskReason: statusReason, preserveRunningTerminalOutcomes: true);
         }
 
@@ -550,7 +550,7 @@ public sealed class ExecutionPlanScheduler
             {
                 _encounteredFailure = true;
                 _session.FailScopeFromTask(completedTaskId, string.IsNullOrWhiteSpace(result.FailureReason)
-                    ? "The task execution callback returned failure."
+                    ? "The task body returned failure."
                     : result.FailureReason);
             }
         }
@@ -577,7 +577,7 @@ public sealed class ExecutionPlanScheduler
             ILogger taskLogger = CreateTaskLogger(completedTaskId);
             Exception rootException = ex.GetBaseException();
 
-            /* Callback exceptions need to land in the task log with the full exception payload so the UI can surface the
+            /* Body-task exceptions need to land in the task log with the full exception payload so the UI can surface the
                actual failure instead of only the scheduler's generic failure summary. */
             completionActivity.SetTag("task.outcome", "Exception")
                 .SetTag("exception.type", rootException.GetType().FullName ?? rootException.GetType().Name)
@@ -732,7 +732,7 @@ public sealed class ExecutionPlanScheduler
                     : "Skipped because execution was interrupted.";
 
             /* Externally forced terminal results such as Interrupted may already be recorded on running tasks while their
-               callbacks continue unwinding. Completing lifecycle through CompleteTaskLifecycle preserves those stricter
+               body tasks continue unwinding. Completing lifecycle through CompleteTaskLifecycle preserves those stricter
                semantic results instead of flattening them back to Cancelled. */
             if (preserveRunningTerminalOutcomes && taskBodyIsStillActive)
             {
@@ -785,7 +785,7 @@ public sealed class ExecutionPlanScheduler
 
     /// <summary>
     /// Returns whether the provided task-state event describes a terminal semantic outcome that should stop the shared
-    /// execution token while callback code is still active.
+    /// execution token while body code is still active.
     /// </summary>
     private bool ShouldCancelExecutionForTerminalOutcome(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
@@ -799,8 +799,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Converts externally forced terminal lifecycle states on active callbacks into semantic results without marking the
-    /// task completed yet. This preserves the intended terminal outcome while the callback still unwinds under
+    /// Converts externally forced terminal lifecycle states on active body tasks into semantic results without marking the
+    /// task completed yet. This preserves the intended terminal outcome while the body still unwinds under
     /// cancellation.
     /// </summary>
     private void NormalizeRunningTaskTerminalOutcome(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
@@ -837,7 +837,7 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Returns whether the scheduler still owns a live callback task for the provided task id.
+    /// Returns whether the scheduler still owns a live body task for the provided task id.
     /// </summary>
     private bool IsTaskTrackedAsRunning(ExecutionTaskId taskId)
     {
@@ -848,7 +848,7 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Returns the currently running task callbacks. Scheduler progress now follows only dependency readiness, so there is
+    /// Returns the currently running task bodies. Scheduler progress now follows only dependency readiness, so there is
     /// no separate subset of capacity-consuming tasks.
     /// </summary>
     private Task<OperationResult>[] GetActiveRunningTasksSnapshot()
@@ -897,7 +897,7 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Creates the reusable scheduler wake signal with asynchronous continuations so task callbacks do not resume the
+    /// Creates the reusable scheduler wake signal with asynchronous continuations so task bodies do not resume the
     /// scheduler inline while still holding graph-mutation call stacks.
     /// </summary>
     private static TaskCompletionSource<bool> CreateWorkAvailableSignal()
@@ -976,7 +976,7 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Dispatches one task body onto the thread pool so callbacks that do synchronous work before their first await do
+    /// Dispatches one task body onto the thread pool so bodies that do synchronous work before their first await do
     /// not block the scheduler loop from starting other ready work in the same scheduling pass.
     /// </summary>
     private Task<OperationResult> StartTaskBodyAsync(ExecutionTask task, ExecutionTaskContext context, AsyncLockHandle lockHandle)
@@ -1034,7 +1034,7 @@ public sealed class ExecutionPlanScheduler
 
     /// <summary>
     /// Tries to reserve the declared execution locks for one task before the scheduler marks that task Running. This
-    /// keeps lock-blocked tasks visibly Pending until callback execution can begin immediately.
+    /// keeps lock-blocked tasks visibly Pending until body execution can begin immediately.
     /// </summary>
     private bool TryReserveExecutionLocks(ExecutionTask task, IReadOnlyList<ExecutionLock> executionLocks, out AsyncLockHandle lockHandle)
     {
@@ -1059,7 +1059,7 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Wraps one acquired lock handle so release logging stays paired with the same callback scope that acquired it.
+    /// Wraps one acquired lock handle so release logging stays paired with the same task body that acquired it.
     /// </summary>
     private sealed class AsyncLockHandle : IAsyncDisposable
     {

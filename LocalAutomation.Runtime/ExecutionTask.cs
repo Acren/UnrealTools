@@ -11,6 +11,16 @@ using LocalAutomation.Core;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
+/// Distinguishes structural scope tasks from internal body tasks that carry the runnable work for authored `.Run(...)`
+/// declarations.
+/// </summary>
+public enum ExecutionTaskKind
+{
+    Scope,
+    Body
+}
+
+/// <summary>
 /// Represents one execution-graph node. Authored plans and live sessions share this type, but runtime sessions own their
 /// own cloned task instances so mutable graph state, runtime state, and task-scoped logs never leak back into preview
 /// plan objects.
@@ -47,8 +57,8 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         ExecutionTaskOutcome? outcome = null,
         bool isOperationRoot = false,
         bool isHiddenInGraph = false,
-        bool isCallbackTask = false,
-        ExecutionTaskId? callbackOwnerTaskId = null)
+        ExecutionTaskKind kind = ExecutionTaskKind.Scope,
+        ExecutionTaskId? bodyOwnerTaskId = null)
     {
         Id = id;
         Title = string.IsNullOrWhiteSpace(title)
@@ -69,8 +79,8 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         Outcome = outcome;
         IsOperationRoot = isOperationRoot;
         IsHiddenInGraph = isHiddenInGraph;
-        IsCallbackTask = isCallbackTask;
-        CallbackOwnerTaskId = callbackOwnerTaskId;
+        Kind = kind;
+        BodyOwnerTaskId = bodyOwnerTaskId;
         LogStream = new BufferedLogStream();
 
         /* Runtime lifecycle and semantic outcome are tracked separately. Disabled tasks start in a completed lifecycle
@@ -164,14 +174,15 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     public bool IsHiddenInGraph { get; }
 
     /// <summary>
-     /// Gets whether this task is an implicit visible callback node lowered from an authored `.Run(...)` declaration.
-      /// </summary>
-    public bool IsCallbackTask { get; }
+    /// Gets whether this task is a structural scope node or one internal body node lowered from an authored `.Run(...)`
+    /// declaration.
+    /// </summary>
+    public ExecutionTaskKind Kind { get; }
 
     /// <summary>
-    /// Gets the authored/container task that owns this callback task when one exists.
+    /// Gets the structural scope task that owns this body task when one exists.
     /// </summary>
-    public ExecutionTaskId? CallbackOwnerTaskId { get; }
+    public ExecutionTaskId? BodyOwnerTaskId { get; }
 
     public BufferedLogStream LogStream { get; }
 
@@ -251,7 +262,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     {
         /* Session-owned clones preserve graph visibility metadata so preview and runtime tabs collapse the same authored
            internal tasks unless the user explicitly reveals hidden nodes in the UI. */
-        return new ExecutionTask(Id, Title, Operation, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Outcome, IsOperationRoot, IsHiddenInGraph, IsCallbackTask, CallbackOwnerTaskId);
+        return new ExecutionTask(Id, Title, Operation, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Outcome, IsOperationRoot, IsHiddenInGraph, Kind, BodyOwnerTaskId);
     }
 
     internal void InitializeRuntimeState(bool hasBegunExecution)

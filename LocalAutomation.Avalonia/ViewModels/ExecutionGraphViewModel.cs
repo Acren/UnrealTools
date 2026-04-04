@@ -491,7 +491,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
     /// <summary>
     /// Maps every task id inside the provided sibling subtrees back to the direct sibling container that owns that task so
-    /// dependencies on descendant callback nodes still count as dependencies on the sibling stage.
+    /// dependencies on descendant body nodes still count as dependencies on the sibling stage.
     /// </summary>
     private Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> BuildSiblingOwnerMap(IReadOnlyList<ExecutionNodeViewModel> children)
     {

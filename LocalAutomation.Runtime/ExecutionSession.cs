@@ -170,7 +170,7 @@ public sealed class ExecutionSession
 
     public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
     {
-        /* Public state writes update execution state only. Semantic outcome is derived separately so callbacks,
+        /* Public state writes update execution state only. Semantic outcome is derived separately so body tasks,
            containers, and child-failure propagation can share one runtime model without overloading one enum with two
            meanings. */
         SetTaskStateCore(taskId, state, statusReason);
@@ -185,7 +185,7 @@ public sealed class ExecutionSession
     {
         /* A failed subtree keeps lifecycle and semantic outcome separate: the failing task completes with Result=Failed,
            untouched descendants complete with Result=Skipped, and sibling subtrees that already began real work are
-           marked Interrupted while still allowing active callbacks to unwind. */
+           marked Interrupted while still allowing active body tasks to unwind. */
         CompleteTaskWithOutcome(failedTaskId, ExecutionTaskOutcome.Failed, statusReason);
         SkipUnfinishedDescendants(failedTaskId, BuildInheritedDescendantReason(failedTaskId, ExecutionTaskOutcome.Failed, statusReason));
 
@@ -594,7 +594,7 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Derives lifecycle and semantic outcome for container scopes from their children. Callback tasks own their own
+    /// Derives lifecycle and semantic outcome for container scopes from their children. Body tasks own their own
     /// lifecycle directly, while authored/container tasks are finished by child aggregation only.
     /// </summary>
     private void RefreshAncestorTaskStates(ExecutionTaskId taskId)
@@ -751,7 +751,7 @@ public sealed class ExecutionSession
 
     /// <summary>
     /// Marks one started subtree as interrupted after sibling failure. Started nodes keep their current lifecycle so any
-    /// active callbacks can finish unwinding, while untouched nodes become skipped because they never ran.
+    /// active body tasks can finish unwinding, while untouched nodes become skipped because they never ran.
     /// </summary>
     private void MarkSubtreeInterrupted(ExecutionTaskId rootTaskId, string? reason)
     {
@@ -788,7 +788,7 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Guards lifecycle transitions so executable callbacks move monotonically while container scopes may return from
+    /// Guards lifecycle transitions so executable body tasks move monotonically while container scopes may return from
     /// Running to Pending when all active descendants stop and later descendants are still queued.
     /// </summary>
     private static void ValidateStateTransition(ExecutionTask task, ExecutionTaskState nextState)

@@ -117,7 +117,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        executionTaskHandle = _owner.AttachCallback(_definition, async context =>
+        executionTaskHandle = _owner.AttachBodyTask(_definition, async context =>
         {
             await executeAsync(context);
             return OperationResult.Succeeded();
@@ -126,7 +126,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 
     /// <summary>
-    /// Attaches the async execution body for this task when the callback needs to return an explicit operation result.
+    /// Attaches the async execution body for this task when the body needs to return an explicit operation result.
     /// </summary>
     public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
@@ -134,12 +134,12 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 
     /// <summary>
-    /// Attaches the async execution body for this task when the callback needs to return an explicit operation result and
+    /// Attaches the async execution body for this task when the body needs to return an explicit operation result and
     /// exposes the generated executable task handle.
     /// </summary>
     public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync, out ExecutionTaskHandle executionTaskHandle)
     {
-        executionTaskHandle = _owner.AttachCallback(_definition, executeAsync);
+        executionTaskHandle = _owner.AttachBodyTask(_definition, executeAsync);
         return this;
     }
 
@@ -162,7 +162,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        executionTaskHandle = _owner.AttachCallback(_definition, async _ =>
+        executionTaskHandle = _owner.AttachBodyTask(_definition, async _ =>
         {
             await executeAsync();
             return OperationResult.Succeeded();

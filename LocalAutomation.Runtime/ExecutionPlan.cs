@@ -8,7 +8,7 @@ namespace LocalAutomation.Runtime;
 
 /// <summary>
 /// Represents the authored execution DAG for an operation, including task hierarchy, dependencies, and executable task
-/// callbacks.
+/// bodies.
 /// </summary>
 public sealed class ExecutionPlan
 {

@@ -77,7 +77,7 @@ public sealed class Runner
     }
 
     /// <summary>
-    /// Executes the current operation by building its plan, wrapping task callbacks with framework-owned execution
+    /// Executes the current operation by building its plan, wrapping task bodies with framework-owned execution
     /// context, and then running that plan through the shared scheduler.
     /// </summary>
     public async Task<OperationResult> Run(ExecutionPlan plan, ExecutionSession? session = null)
@@ -100,7 +100,7 @@ public sealed class Runner
         if (requirementsError != null)
         {
             /* Requirement failures are normal failed results, not exceptions. Log the concrete validation message here so
-               parent callbacks and the UI can surface the actual reason even when no task body ever starts. */
+               parent bodies and the UI can surface the actual reason even when no task body ever starts. */
             eventLogger.LogError("Operation '{OperationName}' requirements failed: {RequirementsError}", Operation.OperationName, requirementsError);
             return OperationResult.Failed(failureReason: requirementsError);
         }
@@ -128,7 +128,7 @@ public sealed class Runner
     }
 
     /// <summary>
-    /// Executes one nested child operation by merging its tasks beneath the currently executing callback task and then
+    /// Executes one nested child operation by merging its tasks beneath the currently executing body task and then
     /// waiting for the inserted tasks to finish through ordinary dependency-driven scheduling.
     /// </summary>
     public static async Task<OperationResult> RunChildOperation(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext)
