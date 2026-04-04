@@ -462,8 +462,10 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Returns the executable tasks that are immediately runnable in the current live graph state.
-     /// </summary>
+    /// Returns the executable tasks that are immediately runnable in the current live graph state.
+    /// Stable session insertion order is preserved so equally ready sibling tasks keep the authored plan order instead of
+    /// being re-sorted by random task ids.
+    /// </summary>
     private List<ExecutionTask> GetSchedulerReadyTasks()
     {
         return _session.Tasks
@@ -471,7 +473,6 @@ public sealed class ExecutionPlanScheduler
             .Where(task => task.State == ExecutionTaskState.Pending)
             .Where(AreAncestorScopesOpen)
             .Where(task => task.DependsOn.All(IsDependencySatisfied))
-            .OrderBy(task => task.Id.Value, StringComparer.Ordinal)
             .ToList();
     }
 
