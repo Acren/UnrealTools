@@ -30,7 +30,10 @@ public sealed class LocalAutomationApplicationHost
         OptionValues = new LayeredSettingsPersistenceService(catalog, resolvedAppDataRootPath, resolvedTargetSettingsFileName);
         ApplicationSettings = new ApplicationSettings(defaultOutputRootPath, defaultTempRootPath);
         OptionValues.ApplyGlobalSettings(ApplicationSettings);
+        /* Startup needs the persisted temp-root override in place before stale-session cleanup runs so cleanup scans the
+           correct per-host session folder exactly once when the application host is created. */
         ApplyApplicationSettings();
+        CleanupStaleSessionTempRoots();
         Operations = new OperationCatalogService(catalog);
         OperationRuntime = new OperationRuntimeService();
         OperationSession = new OperationSessionService(Operations, OperationRuntime);
@@ -73,13 +76,13 @@ public sealed class LocalAutomationApplicationHost
     public ApplicationSettings ApplicationSettings { get; }
 
     /// <summary>
-    /// Applies the current application settings to host-wide runtime services that need immediate updates.
+    /// Applies the current application settings to host-wide runtime services that need immediate updates while leaving
+    /// startup-only maintenance work to the host-construction path.
     /// </summary>
     public void ApplyApplicationSettings()
     {
         OutputPaths.SetRoot(ApplicationSettings.OutputRootPath);
         OutputPaths.SetTempRoot(ApplicationSettings.TempRootPath);
-        CleanupStaleSessionTempRoots();
     }
 
     /// <summary>
