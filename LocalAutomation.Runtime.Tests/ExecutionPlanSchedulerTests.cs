@@ -189,6 +189,95 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
+    /// Confirms that equally ready sibling body tasks start in declared order when a shared lock forces the scheduler to
+    /// choose exactly one winner first.
+    /// </summary>
+    [Fact]
+    public async Task ReadySiblingBodiesStartInDeclaredOrder()
+    {
+        // Arrange: first and second are equally ready, but a shared lock means only one body can actually start first.
+        ExecutionLock sharedLock = new("declared-order-lock");
+        TaskCompletionSource<string> firstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("First").Run(async _ =>
+                {
+                    firstStarted.TrySetResult("First");
+                    await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    return OperationResult.Succeeded();
+                });
+                scope.Task("Second").Run(async _ =>
+                {
+                    firstStarted.TrySetResult("Second");
+                    await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    return OperationResult.Succeeded();
+                });
+            });
+        }, sharedLock);
+
+        // Act: execute once and capture whichever sibling body actually started first.
+        (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+        string winner = await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        releaseWinner.TrySetResult(true);
+        OperationResult result = await executeTask;
+
+        // Assert: declared-first work should win the shared lock and the overall run still completes successfully.
+        Assert.Equal("First", winner);
+        Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+    }
+
+    /// <summary>
+    /// Confirms that the same declared-first sibling keeps winning across fresh plan builds, which would fail if the
+    /// scheduler were still tie-breaking equally ready work by random task id.
+    /// </summary>
+    [Fact]
+    public async Task ReadySiblingBodiesStayDeterministicAcrossFreshPlans()
+    {
+        // Arrange: each run rebuilds the same parallel sibling shape so fresh task ids cannot affect the winner.
+        for (int runIndex = 0; runIndex < 10; runIndex += 1)
+        {
+            ExecutionLock sharedLock = new($"determinism-lock-{runIndex}");
+            TaskCompletionSource<string> winnerSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+            {
+                root.Children(ExecutionChildMode.Parallel, scope =>
+                {
+                    scope.Task("First").Run(async _ =>
+                    {
+                        winnerSource.TrySetResult("First");
+                        await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        return OperationResult.Succeeded();
+                    });
+                    scope.Task("Second").Run(async _ =>
+                    {
+                        winnerSource.TrySetResult("Second");
+                        await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        return OperationResult.Succeeded();
+                    });
+                });
+            }, sharedLock);
+
+            // Act: rebuild and run the same authored shape repeatedly, recording the first-starting sibling each time.
+            (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+            Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+            string winner = await winnerSource.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            releaseWinner.TrySetResult(true);
+            OperationResult result = await executeTask;
+
+            // Assert: every fresh plan build should still prefer the declared-first sibling.
+            Assert.Equal("First", winner);
+            Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+        }
+    }
+
+    /// <summary>
     /// Confirms that a container scope with no running descendants stays pending while its child is still blocked on an
     /// unsatisfied dependency.
     /// </summary>
