@@ -159,10 +159,20 @@ public sealed class ExecutionTaskBuilder
     }
 
     /// <summary>
-     /// Declares one sequential sibling task under the same parent. Normal sibling order is authored through the shared
-     /// declaration stream instead of by injecting an implicit explicit dependency edge here.
-     /// </summary>
-    public ExecutionTaskBuilder Task(string title, string? description = null)
+    /// Declares one direct child task beneath the current task and registers it in the parent's child-declaration stream.
+    /// </summary>
+    public ExecutionTaskBuilder Child(string title, string? description = null)
+    {
+        ExecutionTaskBuilder childTask = _owner.Task(title, description, Handle);
+        _owner.RegisterChildScopeTaskEntry(Handle, childTask.Definition);
+        return childTask;
+    }
+
+    /// <summary>
+    /// Declares one sequential sibling task under the same parent. Normal sibling order is authored through the shared
+    /// declaration stream instead of by injecting an explicit dependency edge here.
+    /// </summary>
+    public ExecutionTaskBuilder Then(string title, string? description = null)
     {
         ExecutionTaskBuilder nextTask = _owner.Task(title, description, _parent);
         _owner.RegisterSequentialSiblingEntry(_parent, nextTask.Definition);
