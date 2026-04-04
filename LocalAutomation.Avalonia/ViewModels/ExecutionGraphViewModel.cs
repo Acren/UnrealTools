@@ -44,13 +44,20 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private readonly Dictionary<RuntimeExecutionTaskId, ExecutionNodeViewModel> _nodesById = new();
     private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _childrenByParentId = new();
     private readonly Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> _parentByTaskId = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTask> _rawTasksById = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _rawChildrenByParentId = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> _visibleTaskIdByRawTaskId = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _ownedRawTaskIdsByVisibleNodeId = new();
     private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _leafDescendantsByGroupId = new();
     private readonly Dictionary<RuntimeExecutionTaskId, double> _measuredNodeWidths = new();
+    private readonly List<RuntimeExecutionTaskId> _rootTaskIds = new();
     private IReadOnlyDictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel> _tasksById = new Dictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel>();
+    private IReadOnlyList<RuntimeExecutionTask>? _sourceTasks;
     private ExecutionNodeViewModel? _selectedNode;
     private double _canvasWidth;
     private double _canvasHeight;
     private bool _isUpdatingGraph;
+    private bool _revealHiddenTasks;
 
     /// <summary>
     /// Formats one optional duration using the compact runtime clock style shared by the workspace header and graph metrics.
@@ -90,6 +97,15 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     {
         get => _isUpdatingGraph;
         private set => SetProperty(ref _isUpdatingGraph, value);
+    }
+
+    /// <summary>
+    /// Gets whether the graph currently reveals tasks that are normally collapsed out of the visible hierarchy.
+    /// </summary>
+    public bool RevealHiddenTasks
+    {
+        get => _revealHiddenTasks;
+        private set => SetProperty(ref _revealHiddenTasks, value);
     }
 
     /// <summary>
@@ -175,6 +191,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             .SetTag("plan.has_result", tasks != null)
             .SetTag("plan.task.count", tasks?.Count ?? 0);
 
+        _sourceTasks = tasks?.ToList();
         IsUpdatingGraph = true;
         try
         {
@@ -183,8 +200,13 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             _nodesById.Clear();
             _childrenByParentId.Clear();
             _parentByTaskId.Clear();
+            _rawTasksById.Clear();
+            _rawChildrenByParentId.Clear();
+            _visibleTaskIdByRawTaskId.Clear();
+            _ownedRawTaskIdsByVisibleNodeId.Clear();
             _leafDescendantsByGroupId.Clear();
             _measuredNodeWidths.Clear();
+            _rootTaskIds.Clear();
 
             if (tasks == null)
             {
@@ -216,6 +238,21 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         {
             IsUpdatingGraph = false;
         }
+    }
+
+    /// <summary>
+    /// Updates whether the graph should reveal tasks that are normally collapsed and rebuilds the current projection when
+    /// that preference changes.
+    /// </summary>
+    public void SetRevealHiddenTasks(bool revealHiddenTasks)
+    {
+        if (RevealHiddenTasks == revealHiddenTasks)
+        {
+            return;
+        }
+
+        RevealHiddenTasks = revealHiddenTasks;
+        SetGraph(_sourceTasks);
     }
 
     /// <summary>
@@ -305,9 +342,16 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private void BuildNodeLookup(IReadOnlyList<RuntimeExecutionTask> tasks)
     {
+        /* The canvas only renders visible tasks. Hidden authored/internal tasks still exist in the raw runtime graph,
+           but they collapse into the nearest visible ancestor unless the user reveals hidden nodes globally. */
         List<ExecutionNodeViewModel> nodes = new(tasks.Count);
         foreach (RuntimeExecutionTask task in tasks)
         {
+            if (!ShouldRenderTask(task))
+            {
+                continue;
+            }
+
             if (!_tasksById.TryGetValue(task.Id, out ExecutionTaskViewModel? taskViewModel))
             {
                 throw new InvalidOperationException($"No shared ExecutionTaskViewModel exists for task '{task.Id}'.");
@@ -326,21 +370,51 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private void BuildHierarchyLookups(IEnumerable<RuntimeExecutionTask> tasks)
     {
+        /* Build the raw hierarchy first so the graph can collapse hidden tasks without losing subtree ownership,
+           dependency remapping, or selection-scoped logs. */
         foreach (RuntimeExecutionTask task in tasks)
         {
-            _parentByTaskId[task.Id] = task.ParentId;
+            _rawTasksById[task.Id] = task;
             if (task.ParentId is not RuntimeExecutionTaskId parentId)
             {
                 continue;
             }
 
-            if (!_childrenByParentId.TryGetValue(parentId, out List<RuntimeExecutionTaskId>? childIds))
+            if (!_rawChildrenByParentId.TryGetValue(parentId, out List<RuntimeExecutionTaskId>? childIds))
             {
                 childIds = new List<RuntimeExecutionTaskId>();
-                _childrenByParentId[parentId] = childIds;
+                _rawChildrenByParentId[parentId] = childIds;
             }
 
             childIds.Add(task.Id);
+        }
+
+        /* Project visible parents by climbing through any hidden ancestors so containment frames connect visible tasks
+           directly even when intermediate implementation-detail nodes still exist in the runtime tree. */
+        foreach (RuntimeExecutionTask task in tasks.Where(ShouldRenderTask))
+        {
+            RuntimeExecutionTaskId? visibleParentId = FindVisibleParentId(task);
+            _parentByTaskId[task.Id] = visibleParentId;
+            if (visibleParentId is not RuntimeExecutionTaskId resolvedVisibleParentId)
+            {
+                _rootTaskIds.Add(task.Id);
+                continue;
+            }
+
+            if (!_childrenByParentId.TryGetValue(resolvedVisibleParentId, out List<RuntimeExecutionTaskId>? childIds))
+            {
+                childIds = new List<RuntimeExecutionTaskId>();
+                _childrenByParentId[resolvedVisibleParentId] = childIds;
+            }
+
+            childIds.Add(task.Id);
+        }
+
+        /* Record which raw tasks belong to each visible node's collapsed segment so subtree log selection can still
+           include hidden descendants even though the graph renders only visible tasks. */
+        foreach (RuntimeExecutionTask rootTask in tasks.Where(task => task.ParentId == null))
+        {
+            MapRawTasksToVisibleOwners(rootTask.Id, currentVisibleOwnerId: null);
         }
     }
 
@@ -424,7 +498,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> ownerMap = new();
         foreach (ExecutionNodeViewModel child in children)
         {
-            foreach (RuntimeExecutionTaskId subtreeTaskId in EnumerateSubtreeTaskIds(child.Id))
+            foreach (RuntimeExecutionTaskId subtreeTaskId in EnumerateVisibleSubtreeRawTaskIds(child.Id))
             {
                 ownerMap[subtreeTaskId] = child.Id;
             }
@@ -436,12 +510,19 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// <summary>
     /// Enumerates one node id plus all descendant task ids in its subtree.
     /// </summary>
-    private IEnumerable<RuntimeExecutionTaskId> EnumerateSubtreeTaskIds(RuntimeExecutionTaskId rootId)
+    private IEnumerable<RuntimeExecutionTaskId> EnumerateVisibleSubtreeRawTaskIds(RuntimeExecutionTaskId rootId)
     {
-        yield return rootId;
+        if (_ownedRawTaskIdsByVisibleNodeId.TryGetValue(rootId, out List<RuntimeExecutionTaskId>? ownedTaskIds))
+        {
+            foreach (RuntimeExecutionTaskId taskId in ownedTaskIds)
+            {
+                yield return taskId;
+            }
+        }
+
         foreach (ExecutionNodeViewModel child in GetDirectChildren(rootId))
         {
-            foreach (RuntimeExecutionTaskId childId in EnumerateSubtreeTaskIds(child.Id))
+            foreach (RuntimeExecutionTaskId childId in EnumerateVisibleSubtreeRawTaskIds(child.Id))
             {
                 yield return childId;
             }
@@ -678,7 +759,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
 
             string summaryText = directChildren.Count == 0
                 ? "No child tasks"
-                : $"{directChildren.Count} child item{(directChildren.Count == 1 ? string.Empty : "s")} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {leafDescendants.Count} runnable task{(leafDescendants.Count == 1 ? string.Empty : "s")}";
+                : $"{directChildren.Count} child item{(directChildren.Count == 1 ? string.Empty : "s")} - {leafDescendants.Count} runnable task{(leafDescendants.Count == 1 ? string.Empty : "s")}";
 
             node.SetHierarchyMetrics(directChildren.Count, leafDescendants.Count, summaryText);
         }
@@ -727,14 +808,32 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         {
             foreach (RuntimeExecutionTaskId dependencyId in target.Task.Task.DependsOn)
             {
-                if (_nodesById.TryGetValue(dependencyId, out ExecutionNodeViewModel? source))
+                RuntimeExecutionTaskId? visibleDependencyId = GetVisibleTaskId(dependencyId);
+                if (visibleDependencyId == null || visibleDependencyId == target.Id)
+                {
+                    continue;
+                }
+
+                /* Visible containment already communicates ancestor/descendant structure, so suppress dependency lines
+                   inside the same visible branch after hidden-task collapsing remaps internal callback dependencies onto
+                   their nearest visible owners. */
+                if (IsVisibleAncestor(visibleDependencyId.Value, target.Id) || IsVisibleAncestor(target.Id, visibleDependencyId.Value))
+                {
+                    continue;
+                }
+
+                if (_nodesById.TryGetValue(visibleDependencyId.Value, out ExecutionNodeViewModel? source))
                 {
                     edges.Add(new ExecutionEdgeViewModel(source, target));
                 }
             }
         }
 
-        _edges.AddRange(edges);
+        /* Collapsing multiple hidden tasks can make several raw dependencies resolve to the same visible edge, so dedupe
+           the rendered edge list by visible source/target pair before exposing it to the canvas. */
+        _edges.AddRange(edges
+            .GroupBy(edge => (edge.Source.Id, edge.Target.Id))
+            .Select(group => group.First()));
     }
 
     /// <summary>
@@ -766,14 +865,19 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         }
 
         RuntimeExecutionTaskId? previouslySelectedTaskId = SelectedNode?.Id;
-        if (previouslySelectedTaskId != null && _nodesById.TryGetValue(previouslySelectedTaskId.Value, out ExecutionNodeViewModel? existingSelection))
+        RuntimeExecutionTaskId? restoredSelectionId = previouslySelectedTaskId == null
+            ? null
+            : ResolveVisibleSelectionId(previouslySelectedTaskId.Value);
+        if (restoredSelectionId != null && _nodesById.TryGetValue(restoredSelectionId.Value, out ExecutionNodeViewModel? existingSelection))
         {
             SelectNode(existingSelection);
             return;
         }
 
-        RuntimeExecutionTask rootTask = _tasksById.Values.Select(task => task.Task).Single(task => task.ParentId == null);
-        SelectNode(_nodesById[rootTask.Id]);
+        RuntimeExecutionTaskId? fallbackRootId = _rootTaskIds.Count > 0 ? _rootTaskIds[0] : null;
+        SelectNode(fallbackRootId != null && _nodesById.TryGetValue(fallbackRootId.Value, out ExecutionNodeViewModel? rootSelection)
+            ? rootSelection
+            : _nodes.FirstOrDefault());
     }
 
     /// <summary>
@@ -781,7 +885,12 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private IReadOnlyList<ExecutionNodeViewModel> GetDirectChildren(RuntimeExecutionTaskId? parentId)
     {
-        if (parentId == null || !_childrenByParentId.TryGetValue(parentId.Value, out List<RuntimeExecutionTaskId>? childIds))
+        if (parentId == null)
+        {
+            return _rootTaskIds.Select(childId => _nodesById[childId]).ToList();
+        }
+
+        if (!_childrenByParentId.TryGetValue(parentId.Value, out List<RuntimeExecutionTaskId>? childIds))
         {
             return Array.Empty<ExecutionNodeViewModel>();
         }
@@ -826,6 +935,125 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Returns whether one raw task should appear as a visible node in the current graph projection.
+    /// </summary>
+    private bool ShouldRenderTask(RuntimeExecutionTask task)
+    {
+        return RevealHiddenTasks || !task.IsHiddenInGraph;
+    }
+
+    /// <summary>
+    /// Climbs the raw task ancestry until the nearest visible parent is found so collapsed hidden tasks do not create
+    /// empty visible containers.
+    /// </summary>
+    private RuntimeExecutionTaskId? FindVisibleParentId(RuntimeExecutionTask task)
+    {
+        RuntimeExecutionTaskId? currentParentId = task.ParentId;
+        while (currentParentId is RuntimeExecutionTaskId parentId)
+        {
+            if (_rawTasksById.TryGetValue(parentId, out RuntimeExecutionTask? parentTask) && ShouldRenderTask(parentTask))
+            {
+                return parentId;
+            }
+
+            currentParentId = _rawTasksById.TryGetValue(parentId, out parentTask)
+                ? parentTask.ParentId
+                : null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Maps every raw task to the visible node that owns it in the collapsed graph so edge remapping and log selection
+    /// can still reason about hidden tasks.
+    /// </summary>
+    private void MapRawTasksToVisibleOwners(RuntimeExecutionTaskId taskId, RuntimeExecutionTaskId? currentVisibleOwnerId)
+    {
+        bool isVisible = _nodesById.ContainsKey(taskId);
+        RuntimeExecutionTaskId? nextVisibleOwnerId = isVisible ? taskId : currentVisibleOwnerId;
+        if (nextVisibleOwnerId is RuntimeExecutionTaskId visibleOwnerId)
+        {
+            _visibleTaskIdByRawTaskId[taskId] = visibleOwnerId;
+            if (!_ownedRawTaskIdsByVisibleNodeId.TryGetValue(visibleOwnerId, out List<RuntimeExecutionTaskId>? ownedTaskIds))
+            {
+                ownedTaskIds = new List<RuntimeExecutionTaskId>();
+                _ownedRawTaskIdsByVisibleNodeId[visibleOwnerId] = ownedTaskIds;
+            }
+
+            ownedTaskIds.Add(taskId);
+        }
+
+        if (!_rawChildrenByParentId.TryGetValue(taskId, out List<RuntimeExecutionTaskId>? childIds))
+        {
+            return;
+        }
+
+        foreach (RuntimeExecutionTaskId childId in childIds)
+        {
+            MapRawTasksToVisibleOwners(childId, nextVisibleOwnerId);
+        }
+    }
+
+    /// <summary>
+    /// Resolves one raw task id to the visible node that represents it in the current collapsed graph.
+    /// </summary>
+    private RuntimeExecutionTaskId? GetVisibleTaskId(RuntimeExecutionTaskId rawTaskId)
+    {
+        return _visibleTaskIdByRawTaskId.TryGetValue(rawTaskId, out RuntimeExecutionTaskId visibleTaskId)
+            ? visibleTaskId
+            : null;
+    }
+
+    /// <summary>
+    /// Returns whether one visible task currently sits in the ancestor chain of another visible task.
+    /// </summary>
+    private bool IsVisibleAncestor(RuntimeExecutionTaskId ancestorId, RuntimeExecutionTaskId descendantId)
+    {
+        RuntimeExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(descendantId, out RuntimeExecutionTaskId? parentId)
+            ? parentId
+            : null;
+        while (currentParentId is RuntimeExecutionTaskId resolvedParentId)
+        {
+            if (resolvedParentId == ancestorId)
+            {
+                return true;
+            }
+
+            currentParentId = _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? nextParentId)
+                ? nextParentId
+                : null;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Restores selection to the nearest visible ancestor when a previously selected hidden task becomes collapsed by the
+    /// current reveal preference.
+    /// </summary>
+    private RuntimeExecutionTaskId? ResolveVisibleSelectionId(RuntimeExecutionTaskId taskId)
+    {
+        if (_nodesById.ContainsKey(taskId))
+        {
+            return taskId;
+        }
+
+        RuntimeExecutionTaskId? currentTaskId = taskId;
+        while (currentTaskId is RuntimeExecutionTaskId resolvedTaskId && _rawTasksById.TryGetValue(resolvedTaskId, out RuntimeExecutionTask? task))
+        {
+            if (_nodesById.ContainsKey(resolvedTaskId))
+            {
+                return resolvedTaskId;
+            }
+
+            currentTaskId = task.ParentId;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Returns the measured natural width for one node when available, falling back to the minimum graph-node width for
     /// pre-measure layout passes.
     /// </summary>
@@ -844,16 +1072,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     {
         using (PerformanceActivityScope layoutActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.Layout"))
         {
-            RuntimeExecutionTask rootTask = _tasksById.Values.Select(task => task.Task).Single(task => task.ParentId == null);
-            ExecutionNodeViewModel rootNode = _nodesById[rootTask.Id];
-            if (HasChildren(rootTask.Id))
-            {
-                LayoutGroupNode(rootNode, 24, 24);
-            }
-            else
-            {
-                LayoutLeafNode(rootNode, 24, 24);
-            }
+            LayoutDirectChildren(parentId: null, originX: 24, originY: 24);
         }
 
         using (PerformanceActivityScope metricsActivity = PerformanceTelemetry.StartActivity("ExecutionGraph.ApplyHierarchyMetrics"))
@@ -885,7 +1104,13 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     private IEnumerable<RuntimeExecutionTaskId> GetTaskSubtreeIds(RuntimeExecutionTaskId rootId)
     {
-        yield return rootId;
+        if (_ownedRawTaskIdsByVisibleNodeId.TryGetValue(rootId, out List<RuntimeExecutionTaskId>? ownedTaskIds))
+        {
+            foreach (RuntimeExecutionTaskId taskId in ownedTaskIds)
+            {
+                yield return taskId;
+            }
+        }
 
         if (!_childrenByParentId.TryGetValue(rootId, out List<RuntimeExecutionTaskId>? childIds))
         {

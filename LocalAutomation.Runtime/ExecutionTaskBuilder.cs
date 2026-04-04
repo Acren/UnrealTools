@@ -69,6 +69,15 @@ public sealed class ExecutionTaskBuilder
     }
 
     /// <summary>
+    /// Marks whether this task should be collapsed out of the graph projection until hidden tasks are revealed.
+    /// </summary>
+    public ExecutionTaskBuilder HideInGraph(bool hidden = true)
+    {
+        _owner.SetGraphVisibility(_definition, hidden);
+        return this;
+    }
+
+    /// <summary>
     /// Attaches the async execution body for this task.
     /// </summary>
     public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task> executeAsync)

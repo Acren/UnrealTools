@@ -46,6 +46,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync = null,
         ExecutionTaskOutcome? outcome = null,
         bool isOperationRoot = false,
+        bool isHiddenInGraph = false,
         bool isCallbackTask = false,
         ExecutionTaskId? callbackOwnerTaskId = null)
     {
@@ -67,6 +68,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         ExecuteAsync = executeAsync;
         Outcome = outcome;
         IsOperationRoot = isOperationRoot;
+        IsHiddenInGraph = isHiddenInGraph;
         IsCallbackTask = isCallbackTask;
         CallbackOwnerTaskId = callbackOwnerTaskId;
         LogStream = new BufferedLogStream();
@@ -156,8 +158,14 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     public bool IsOperationRoot { get; }
 
     /// <summary>
+    /// Gets whether this task should be collapsed out of the graph projection unless the UI is configured to reveal
+    /// hidden tasks.
+    /// </summary>
+    public bool IsHiddenInGraph { get; }
+
+    /// <summary>
      /// Gets whether this task is an implicit visible callback node lowered from an authored `.Run(...)` declaration.
-     /// </summary>
+      /// </summary>
     public bool IsCallbackTask { get; }
 
     /// <summary>
@@ -241,7 +249,9 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
     internal ExecutionTask CloneForSession()
     {
-        return new ExecutionTask(Id, Title, Operation, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Outcome, IsOperationRoot, IsCallbackTask, CallbackOwnerTaskId);
+        /* Session-owned clones preserve graph visibility metadata so preview and runtime tabs collapse the same authored
+           internal tasks unless the user explicitly reveals hidden nodes in the UI. */
+        return new ExecutionTask(Id, Title, Operation, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Outcome, IsOperationRoot, IsHiddenInGraph, IsCallbackTask, CallbackOwnerTaskId);
     }
 
     internal void InitializeRuntimeState(bool hasBegunExecution)

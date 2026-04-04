@@ -56,6 +56,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         _pendingLogFlushTimer.Tick += HandlePendingLogFlushTimerTick;
         _runtimeDurationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _runtimeDurationTimer.Tick += HandleRuntimeDurationTimerTick;
+        _services.ApplicationSettings.PropertyChanged += HandleApplicationSettingsChanged;
 
         RuntimeTabs.Add(CreateApplicationLogTab());
         RuntimeTabs.Add(CreatePlanPreviewTab());
@@ -281,7 +282,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             throw new ArgumentNullException(nameof(session));
         }
 
-        ExecutionGraphViewModel graph = new();
+        ExecutionGraphViewModel graph = CreateExecutionGraphViewModel();
         RuntimeWorkspaceTabViewModel runtimeTab = new(
             id: session.Id.Value,
             title: session.OperationName,
@@ -843,7 +844,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// <summary>
     /// Creates the permanent first workspace tab used for application-level logs.
     /// </summary>
-    private static RuntimeWorkspaceTabViewModel CreateApplicationLogTab()
+    private RuntimeWorkspaceTabViewModel CreateApplicationLogTab()
     {
         return new RuntimeWorkspaceTabViewModel(
             id: "application-log",
@@ -851,13 +852,13 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             subtitle: string.Empty,
             kind: RuntimeWorkspaceTabKind.ApplicationLog,
             presentation: new RuntimeWorkspaceTabPresentation(showGraph: false, showLog: true, showSubtitle: false, showStatusMarker: false, showRuntimeMetrics: false),
-            graph: new ExecutionGraphViewModel());
+            graph: CreateExecutionGraphViewModel());
     }
 
     /// <summary>
     /// Creates the permanent plan-preview workspace tab.
     /// </summary>
-    private static RuntimeWorkspaceTabViewModel CreatePlanPreviewTab()
+    private RuntimeWorkspaceTabViewModel CreatePlanPreviewTab()
     {
         RuntimeWorkspaceTabViewModel planTab = new(
             id: "plan-preview",
@@ -865,8 +866,42 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             subtitle: "Current selection preview",
             kind: RuntimeWorkspaceTabKind.PlanPreview,
             presentation: new RuntimeWorkspaceTabPresentation(showGraph: true, showLog: false, showSubtitle: false, showStatusMarker: false, showRuntimeMetrics: false),
-            graph: new ExecutionGraphViewModel());
+            graph: CreateExecutionGraphViewModel());
         return planTab;
+    }
+
+    /// <summary>
+    /// Creates one graph view model that starts with the current global hidden-task reveal preference.
+    /// </summary>
+    private ExecutionGraphViewModel CreateExecutionGraphViewModel()
+    {
+        ExecutionGraphViewModel graph = new();
+        graph.SetRevealHiddenTasks(_services.ApplicationSettings.RevealHiddenTasks);
+        return graph;
+    }
+
+    /// <summary>
+    /// Refreshes all open graph tabs when the global hidden-task reveal preference changes.
+    /// </summary>
+    private void HandleApplicationSettingsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(e.PropertyName) &&
+            !string.Equals(e.PropertyName, nameof(LocalAutomation.Application.ApplicationSettings.RevealHiddenTasks), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        bool revealHiddenTasks = _services.ApplicationSettings.RevealHiddenTasks;
+        foreach (RuntimeWorkspaceTabViewModel tab in RuntimeTabs)
+        {
+            tab.Graph.SetRevealHiddenTasks(revealHiddenTasks);
+            if (tab.ShowsLog)
+            {
+                RebuildTabSelectedLogEntries(tab);
+            }
+        }
+
+        RaiseSelectionStateChanged();
     }
 
     /// <summary>

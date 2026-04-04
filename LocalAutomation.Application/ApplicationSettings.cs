@@ -12,6 +12,7 @@ namespace LocalAutomation.Application;
 public sealed class ApplicationSettings : INotifyPropertyChanged
 {
     private bool _enablePerformanceTelemetry;
+    private bool _revealHiddenTasks;
     private double _minimumPerformanceTelemetryMilliseconds;
     private readonly string _defaultOutputRootPath;
     private readonly string _defaultTempRootPath;
@@ -127,6 +128,28 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
             }
 
             _minimumPerformanceTelemetryMilliseconds = normalizedValue;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether graph views should reveal tasks that are normally collapsed as internal implementation
+    /// detail.
+    /// </summary>
+    [DisplayName("Reveal hidden tasks")]
+    [Description("Shows graph tasks that are normally collapsed, including internal callback nodes and any authored tasks marked as hidden.")]
+    [PersistedValue(PersistenceScope.Global)]
+    public bool RevealHiddenTasks
+    {
+        get => _revealHiddenTasks;
+        set
+        {
+            if (_revealHiddenTasks == value)
+            {
+                return;
+            }
+
+            _revealHiddenTasks = value;
             OnPropertyChanged();
         }
     }

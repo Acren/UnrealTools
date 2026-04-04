@@ -77,6 +77,7 @@ public sealed class ExecutionPlanBuilder
                 executeAsync: item.ExecuteAsync,
                 outcome: null,
                 isOperationRoot: item.IsOperationRoot,
+                isHiddenInGraph: item.IsHiddenInGraph,
                 isCallbackTask: item.IsCallbackTask,
                 callbackOwnerTaskId: item.CallbackOwnerTaskId))
             .ToList();
@@ -125,6 +126,11 @@ public sealed class ExecutionPlanBuilder
         definition.Description = description ?? string.Empty;
     }
 
+    internal void SetGraphVisibility(PlanItemDefinition definition, bool isHiddenInGraph)
+    {
+        definition.IsHiddenInGraph = isHiddenInGraph;
+    }
+
     internal ExecutionTaskId GetTaskId(ExecutionTaskHandle handle)
     {
         if (!handle.IsValid)
@@ -151,6 +157,9 @@ public sealed class ExecutionPlanBuilder
         callbackDefinition.DeclaredOptionTypes = parentDefinition.DeclaredOptionTypes.ToList();
         callbackDefinition.ExecuteAsync = resolvedExecuteAsync;
         callbackDefinition.IsOperationRoot = false;
+        /* Callback tasks are lowered implementation details for authored Run(...) declarations, so the graph hides them
+           by default and lets the global reveal toggle surface them when deeper troubleshooting is needed. */
+        callbackDefinition.IsHiddenInGraph = true;
         callbackDefinition.IsCallbackTask = true;
         callbackDefinition.CallbackOwnerTaskId = parentDefinition.Id;
         _items.Add(callbackDefinition);
@@ -319,6 +328,7 @@ public sealed class ExecutionPlanBuilder
                 importedDefinition.ExecuteAsync = childTask.ExecuteAsync;
                 importedDefinition.Operation = childTask.Operation;
                 importedDefinition.IsOperationRoot = childTask.IsOperationRoot;
+                importedDefinition.IsHiddenInGraph = childTask.IsHiddenInGraph;
                 importedDefinition.IsCallbackTask = childTask.IsCallbackTask;
                 importedDefinition.CallbackOwnerTaskId = childTask.CallbackOwnerTaskId;
                 importedDefinition.DependencyIds.AddRange(childTask.DependsOn);
@@ -434,6 +444,8 @@ public sealed class ExecutionPlanBuilder
 
         public bool IsOperationRoot { get; set; }
 
+        public bool IsHiddenInGraph { get; set; }
+
         public bool IsCallbackTask { get; set; }
 
         public ExecutionTaskId? CallbackOwnerTaskId { get; set; }
@@ -520,6 +532,7 @@ internal static class ExecutionTaskInsertion
                 childTask.ExecuteAsync,
                 outcome: null,
                 isOperationRoot: childTask.IsOperationRoot,
+                isHiddenInGraph: childTask.IsHiddenInGraph,
                 isCallbackTask: childTask.IsCallbackTask,
                 callbackOwnerTaskId: remappedCallbackOwnerTaskId));
         }
