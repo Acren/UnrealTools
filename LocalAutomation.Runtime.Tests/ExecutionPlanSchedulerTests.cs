@@ -18,9 +18,9 @@ public sealed class ExecutionPlanSchedulerTests
         /* Branch A waits until the test explicitly releases it after both active tasks are confirmed running. That keeps
            the scenario focused on interrupting already-running collateral work instead of startup-time skipping. */
         TaskCompletionSource<bool> allowBranchAFailure = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ExecutionTaskHandle branchAActiveHandle = default;
-        ExecutionTaskHandle branchBActiveHandle = default;
-        ExecutionTaskHandle branchBQueuedBodyHandle = default;
+        ExecutionTaskId branchAActiveTaskId = default;
+        ExecutionTaskId branchBActiveTaskId = default;
+        ExecutionTaskId branchBQueuedBodyTaskId = default;
 
         /* The plan shape mirrors the production scenario in the smallest possible form:
            - Branch A has one active body task that will fail and one queued body task that never matters.
@@ -39,7 +39,7 @@ public sealed class ExecutionPlanSchedulerTests
                     {
                         await allowBranchAFailure.Task.WaitAsync(TimeSpan.FromSeconds(1));
                         return OperationResult.Failed(failureReason: "Branch A failed.");
-                    }, out branchAActiveHandle);
+                    }, out branchAActiveTaskId);
                     branchAScope.Task("Queued Work").Run(() => Task.FromResult(OperationResult.Succeeded()));
                 });
 
@@ -47,11 +47,11 @@ public sealed class ExecutionPlanSchedulerTests
                 {
                     /* This body task blocks forever until the scheduler cancels it. That makes it the collateral running
                        work whose semantic outcome should become Interrupted, not Cancelled, when Branch A fails. */
-                    branchBScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilCancelled, out branchBActiveHandle);
+                    branchBScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilCancelled, out branchBActiveTaskId);
                     branchBScope.Task("Queued Work").Run(context =>
                     {
                         return Task.FromResult(OperationResult.Succeeded());
-                    }, out branchBQueuedBodyHandle);
+                    }, out branchBQueuedBodyTaskId);
                 });
             });
         });
@@ -60,15 +60,15 @@ public sealed class ExecutionPlanSchedulerTests
            allowing Branch A to fail. */
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
-        await session.GetTask(branchAActiveHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await session.GetTask(branchBActiveHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(branchAActiveTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(branchBActiveTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
         allowBranchAFailure.TrySetResult(true);
 
         OperationResult result = await executeTask;
 
-        Assert.True(branchAActiveHandle.IsValid);
-        Assert.True(branchBActiveHandle.IsValid);
-        Assert.True(branchBQueuedBodyHandle.IsValid);
+        Assert.NotEqual(default, branchAActiveTaskId);
+        Assert.NotEqual(default, branchBActiveTaskId);
+        Assert.NotEqual(default, branchBQueuedBodyTaskId);
 
         /* Expected outcomes:
            - overall run fails because Branch A failed directly,
@@ -76,9 +76,9 @@ public sealed class ExecutionPlanSchedulerTests
            - Branch B.Active Work is Interrupted because sibling failure stopped it,
            - Branch B.Queued Work is Skipped because it never started. */
         Assert.Equal(ExecutionTaskOutcome.Failed, result.Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Failed, session.GetTask(branchAActiveHandle.Id).Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Interrupted, session.GetTask(branchBActiveHandle.Id).Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchBQueuedBodyHandle.Id).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Failed, session.GetTask(branchAActiveTaskId).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Interrupted, session.GetTask(branchBActiveTaskId).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchBQueuedBodyTaskId).Outcome);
     }
 
     /// <summary>
@@ -89,9 +89,9 @@ public sealed class ExecutionPlanSchedulerTests
     {
         /* Both active branches block until the test cancels the scheduler token, which isolates the user-cancel path from
            the sibling-failure interruption path above. */
-        ExecutionTaskHandle branchAActiveHandle = default;
-        ExecutionTaskHandle branchBActiveHandle = default;
-        ExecutionTaskHandle branchAQueuedBodyHandle = default;
+        ExecutionTaskId branchAActiveTaskId = default;
+        ExecutionTaskId branchBActiveTaskId = default;
+        ExecutionTaskId branchAQueuedBodyTaskId = default;
 
         /* This scenario uses the same two-branch shape, but neither branch fails on its own.
            The only stop signal comes from the explicit cancellation token passed to ExecuteAsync. That means active work
@@ -104,16 +104,16 @@ public sealed class ExecutionPlanSchedulerTests
                 {
                     /* Capture the active execution handle so the test can await the real runtime task reaching Running
                        before it cancels the session. */
-                    branchAScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilCancelled, out branchAActiveHandle);
+                    branchAScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilCancelled, out branchAActiveTaskId);
                     branchAScope.Task("Queued Work").Run(context =>
                     {
                         return Task.FromResult(OperationResult.Succeeded());
-                    }, out branchAQueuedBodyHandle);
+                    }, out branchAQueuedBodyTaskId);
                 });
 
                 scope.Task("Branch B").Children(branchBScope =>
                 {
-                    branchBScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilCancelled, out branchBActiveHandle);
+                    branchBScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilCancelled, out branchBActiveTaskId);
                 });
             });
         });
@@ -127,24 +127,24 @@ public sealed class ExecutionPlanSchedulerTests
         /* Wait until both active branches are definitely running before cancelling so the assertions exercise active-work
            cancellation semantics instead of startup-time skipping. */
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, cancellationSource.Token);
-        await session.GetTask(branchAActiveHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await session.GetTask(branchBActiveHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(branchAActiveTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(branchBActiveTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
         cancellationSource.Cancel();
 
         OperationResult result = await executeTask;
 
-        Assert.True(branchAActiveHandle.IsValid);
-        Assert.True(branchBActiveHandle.IsValid);
-        Assert.True(branchAQueuedBodyHandle.IsValid);
+        Assert.NotEqual(default, branchAActiveTaskId);
+        Assert.NotEqual(default, branchBActiveTaskId);
+        Assert.NotEqual(default, branchAQueuedBodyTaskId);
 
         /* Expected outcomes:
            - overall run is Cancelled because the user token ended the run,
            - both active body tasks are Cancelled,
            - the untouched queued body task is Skipped because it never started. */
         Assert.Equal(ExecutionTaskOutcome.Cancelled, result.Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(branchAActiveHandle.Id).Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(branchBActiveHandle.Id).Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchAQueuedBodyHandle.Id).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(branchAActiveTaskId).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(branchBActiveTaskId).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchAQueuedBodyTaskId).Outcome);
     }
 
     /// <summary>
@@ -158,8 +158,8 @@ public sealed class ExecutionPlanSchedulerTests
         ExecutionLock sharedLock = new("pending-lock");
         TaskCompletionSource<bool> branchAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ExecutionTaskHandle branchAHandle = default;
-        ExecutionTaskHandle branchBHandle = default;
+        ExecutionTaskId branchAHandle = default;
+        ExecutionTaskId branchBHandle = default;
 
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
@@ -174,10 +174,10 @@ public sealed class ExecutionPlanSchedulerTests
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        await session.GetTask(branchAHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(branchAHandle).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
         // Assert: the contended task should still be pending because it has not acquired the lock yet.
-        ExecutionTask blockedTask = session.GetTask(branchBHandle.Id);
+        ExecutionTask blockedTask = session.GetTask(branchBHandle);
         Assert.Equal(ExecutionTaskState.Pending, blockedTask.State);
 
         // Cleanup: release the lock holder so the run can finish normally.
@@ -186,7 +186,7 @@ public sealed class ExecutionPlanSchedulerTests
 
         // Assert: once the lock is released, the blocked task should still be able to complete successfully.
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Completed, session.GetTask(branchBHandle.Id).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Completed, session.GetTask(branchBHandle).Outcome);
     }
 
     /// <summary>
@@ -344,17 +344,17 @@ public sealed class ExecutionPlanSchedulerTests
     {
         // Arrange: the branch child depends on a separate body task that is still running.
         TaskCompletionSource<bool> releaseDependency = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ExecutionTaskHandle dependencyHandle = default;
-        ExecutionTaskHandle waitingChildHandle = default;
+        ExecutionTaskId dependencyTaskId = default;
+        ExecutionTaskId waitingChildTaskId = default;
 
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
             root.Children(scope =>
             {
-                scope.Task("Dependency").Run(RuntimeTestUtilities.RunUntilReleased(new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously), releaseDependency), out dependencyHandle);
+                scope.Task("Dependency").Run(RuntimeTestUtilities.RunUntilReleased(new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously), releaseDependency), out dependencyTaskId);
                 scope.Task("Branch").Children(branchScope =>
                 {
-                    branchScope.Task("Waiting Child").After(dependencyHandle).Run(_ => Task.FromResult(OperationResult.Succeeded()), out waitingChildHandle);
+                    branchScope.Task("Waiting Child").After(dependencyTaskId).Run(_ => Task.FromResult(OperationResult.Succeeded()), out waitingChildTaskId);
                 });
             });
         });
@@ -362,10 +362,10 @@ public sealed class ExecutionPlanSchedulerTests
         // Act: start the scheduler and wait until the dependency body task has definitely started.
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
-        await session.GetTask(dependencyHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(dependencyTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
         // Assert: both the waiting child and its parent scope should still read as pending.
-        ExecutionTask waitingChild = session.GetTask(waitingChildHandle.Id);
+        ExecutionTask waitingChild = session.GetTask(waitingChildTaskId);
         ExecutionTask parentScope = session.GetTask(waitingChild.ParentId!.Value);
         Assert.Equal(ExecutionTaskState.Pending, waitingChild.State);
         Assert.Equal(ExecutionTaskState.Pending, parentScope.State);
@@ -388,8 +388,8 @@ public sealed class ExecutionPlanSchedulerTests
         TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> branchBStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseBranchB = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ExecutionTaskHandle branchAHandle = default;
-        ExecutionTaskHandle branchBHandle = default;
+        ExecutionTaskId branchAHandle = default;
+        ExecutionTaskId branchBHandle = default;
 
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
@@ -411,10 +411,10 @@ public sealed class ExecutionPlanSchedulerTests
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        await session.GetTask(branchAHandle.Id).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(branchAHandle).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
         // Assert: branch B should still be pending because its child cannot start until the lock becomes available.
-        ExecutionTask branchBTask = session.GetTask(branchBHandle.Id);
+        ExecutionTask branchBTask = session.GetTask(branchBHandle);
         ExecutionTask branchBScope = session.GetTask(branchBTask.ParentId!.Value);
         Assert.Equal(ExecutionTaskState.Pending, branchBTask.State);
         Assert.Equal(ExecutionTaskState.Pending, branchBScope.State);

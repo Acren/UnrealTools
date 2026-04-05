@@ -227,18 +227,6 @@ public sealed class ExecutionSession
         }
     }
 
-    [Obsolete("Use task.State directly instead.")]
-    public ExecutionTaskState? GetTaskState(ExecutionTaskId? taskId)
-    {
-        return taskId == null ? null : GetTask(taskId.Value).State;
-    }
-
-    [Obsolete("Use task.StatusReason directly instead.")]
-    public string? GetTaskStatusReason(ExecutionTaskId? taskId)
-    {
-        return taskId == null ? null : GetTask(taskId.Value).StatusReason;
-    }
-
     /// <summary>
     /// Inserts one child plan beneath the currently executing task in the live session graph using the shared
     /// task-insertion path.
@@ -367,19 +355,6 @@ public sealed class ExecutionSession
         }
 
         return task;
-    }
-
-    /// <summary>
-    /// Returns the current live task definition for one authored task handle.
-    /// </summary>
-    public ExecutionTask GetTask(ExecutionTaskHandle taskHandle)
-    {
-        if (!taskHandle.IsValid)
-        {
-            throw new ArgumentException("Execution task handle is not valid.", nameof(taskHandle));
-        }
-
-        return GetTask(taskHandle.Id);
     }
 
     /// <summary>

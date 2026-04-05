@@ -40,21 +40,21 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
 {
     private readonly ExecutionPlanBuilder _owner;
     private readonly ExecutionPlanBuilder.PlanItemDefinition _definition;
-    private readonly ExecutionTaskHandle _parent;
+    private readonly ExecutionTaskId? _parentId;
 
-    internal ExecutionTaskBuilder(ExecutionPlanBuilder owner, ExecutionPlanBuilder.PlanItemDefinition definition, ExecutionTaskHandle parent)
+    internal ExecutionTaskBuilder(ExecutionPlanBuilder owner, ExecutionPlanBuilder.PlanItemDefinition definition, ExecutionTaskId? parentId)
     {
         _owner = owner;
         _definition = definition;
-        _parent = parent;
+        _parentId = parentId;
         _owner.SetOperationParameters(_definition, owner.OperationParameters);
-        Handle = _owner.FinalizeTask(_definition);
+        Id = _definition.Id;
     }
 
     /// <summary>
-    /// Gets the typed handle for the declared task.
+    /// Gets the task id for the declared task.
     /// </summary>
-    public ExecutionTaskHandle Handle { get; }
+    public ExecutionTaskId Id { get; }
 
     internal ExecutionPlanBuilder.PlanItemDefinition Definition => _definition;
 
@@ -71,20 +71,20 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// <summary>
     /// Declares that this task depends on the provided earlier task.
     /// </summary>
-    public ExecutionTaskBuilder After(ExecutionTaskHandle dependency)
+    public ExecutionTaskBuilder After(ExecutionTaskId dependencyId)
     {
-        _owner.AddDependency(_definition, dependency);
+        _owner.AddTaskDependency(_definition, dependencyId);
         return this;
     }
 
     /// <summary>
     /// Declares that this task depends on each provided earlier task.
     /// </summary>
-    public ExecutionTaskBuilder After(params ExecutionTaskHandle[] dependencies)
+    public ExecutionTaskBuilder After(params ExecutionTaskId[] dependencyIds)
     {
-        foreach (ExecutionTaskHandle dependency in dependencies)
+        foreach (ExecutionTaskId dependencyId in dependencyIds)
         {
-            _owner.AddDependency(_definition, dependency);
+            _owner.AddTaskDependency(_definition, dependencyId);
         }
 
         return this;
@@ -108,16 +108,16 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 
     /// <summary>
-    /// Attaches the async execution body for this task and exposes the generated executable task handle.
+    /// Attaches the async execution body for this task and exposes the generated executable body task id.
     /// </summary>
-    public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task> executeAsync, out ExecutionTaskHandle executionTaskHandle)
+    public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task> executeAsync, out ExecutionTaskId executionTaskId)
     {
         if (executeAsync == null)
         {
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        executionTaskHandle = _owner.AttachBodyTask(_definition, async context =>
+        executionTaskId = _owner.AttachBodyTask(_definition, async context =>
         {
             await executeAsync(context);
             return OperationResult.Succeeded();
@@ -135,11 +135,11 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
 
     /// <summary>
     /// Attaches the async execution body for this task when the body needs to return an explicit operation result and
-    /// exposes the generated executable task handle.
+    /// exposes the generated executable body task id.
     /// </summary>
-    public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync, out ExecutionTaskHandle executionTaskHandle)
+    public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync, out ExecutionTaskId executionTaskId)
     {
-        executionTaskHandle = _owner.AttachBodyTask(_definition, executeAsync);
+        executionTaskId = _owner.AttachBodyTask(_definition, executeAsync);
         return this;
     }
 
@@ -153,16 +153,16 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
 
     /// <summary>
     /// Attaches the async execution body for this task when no execution context is needed and exposes the generated
-    /// executable task handle.
+    /// executable body task id.
     /// </summary>
-    public ExecutionTaskBuilder Run(Func<Task> executeAsync, out ExecutionTaskHandle executionTaskHandle)
+    public ExecutionTaskBuilder Run(Func<Task> executeAsync, out ExecutionTaskId executionTaskId)
     {
         if (executeAsync == null)
         {
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        executionTaskHandle = _owner.AttachBodyTask(_definition, async _ =>
+        executionTaskId = _owner.AttachBodyTask(_definition, async _ =>
         {
             await executeAsync();
             return OperationResult.Succeeded();
@@ -175,7 +175,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// </summary>
     public ExecutionTaskBuilder Child(string title, string? description = null)
     {
-        return _owner.DeclareSequentialRelativeTask(Handle, title, description);
+        return _owner.DeclareSequentialRelativeTask(Id, title, description);
     }
 
     /// <summary>
@@ -205,7 +205,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// </summary>
     public ExecutionTaskBuilder Then(string title, string? description = null)
     {
-        return _owner.DeclareSequentialRelativeTask(_parent, title, description);
+        return _owner.DeclareSequentialRelativeTask(_parentId ?? throw new InvalidOperationException("Root tasks cannot declare sequential siblings."), title, description);
     }
 
     /// <summary>
@@ -227,7 +227,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
             throw new ArgumentNullException(nameof(build));
         }
 
-        build(new ExecutionTaskScopeBuilder(_owner, Handle, mode));
+        build(new ExecutionTaskScopeBuilder(_owner, Id, mode));
         return this;
     }
 }

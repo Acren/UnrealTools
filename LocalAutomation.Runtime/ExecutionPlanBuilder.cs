@@ -38,12 +38,12 @@ public sealed class ExecutionPlanBuilder
     /// Declares one authored task container in the plan and returns its fluent builder. Exactly one root task is allowed;
     /// additional tasks must be declared beneath that root.
     /// </summary>
-    public ExecutionTaskBuilder Task(string title, string? description = null, ExecutionTaskHandle parent = default)
+    public ExecutionTaskBuilder Task(string title, string? description = null, ExecutionTaskId? parentId = null)
     {
-        ValidateParent(parent);
-        PlanItemDefinition definition = CreateItem(GenerateTaskId(), title, description, parent.IsValid ? parent.Id : null);
+        ValidateParent(parentId);
+        PlanItemDefinition definition = CreateItem(GenerateTaskId(), title, description, parentId);
         _items.Add(definition);
-        return new ExecutionTaskBuilder(this, definition, parent);
+        return new ExecutionTaskBuilder(this, definition, parentId);
     }
 
     /// <summary>
@@ -100,16 +100,11 @@ public sealed class ExecutionPlanBuilder
         _declaredOptionTypes = (declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))).ToList();
     }
 
-    internal void AddDependency(PlanItemDefinition definition, ExecutionTaskHandle dependency)
+    internal void AddTaskDependency(PlanItemDefinition definition, ExecutionTaskId dependencyId)
     {
-        if (!dependency.IsValid)
+        foreach (ExecutionTaskId completionTaskId in GetCompletionTaskIds(dependencyId))
         {
-            throw new ArgumentException("Execution task dependency handle is not valid.", nameof(dependency));
-        }
-
-        foreach (ExecutionTaskId completionTaskId in GetCompletionTaskIds(dependency.Id))
-        {
-            AddDependency(definition, completionTaskId);
+            AddDirectDependency(definition, completionTaskId);
         }
     }
 
@@ -133,15 +128,15 @@ public sealed class ExecutionPlanBuilder
     /// Declares one task relative to an existing parent and appends it to the correct ordered step in that parent's child
     /// step list.
     /// </summary>
-    internal ExecutionTaskBuilder DeclareRelativeTask(ExecutionTaskHandle parent, string title, string? description, bool parallel, ref ChildDeclarationEntry? sharedDeclaration)
+    internal ExecutionTaskBuilder DeclareRelativeTask(ExecutionTaskId parentId, string title, string? description, bool parallel, ref ChildDeclarationEntry? sharedDeclaration)
     {
-        ExecutionTaskBuilder task = Task(title, description, parent);
+        ExecutionTaskBuilder task = Task(title, description, parentId);
 
         /* Sequential declarations each get their own ordered step, while parallel scopes reuse one shared step whose
            entry and completion sets are the same sibling task list. */
         ChildDeclarationEntry declaration = parallel
-            ? sharedDeclaration ??= AppendChildStep(parent, ChildDeclarationKind.ParallelChildren)
-            : AppendChildStep(parent, ChildDeclarationKind.ChildTask);
+            ? sharedDeclaration ??= AppendChildStep(parentId, ChildDeclarationKind.ParallelChildren)
+            : AppendChildStep(parentId, ChildDeclarationKind.ChildTask);
         if (!parallel)
         {
             declaration.RootTaskId = task.Definition.Id;
@@ -152,17 +147,7 @@ public sealed class ExecutionPlanBuilder
         return task;
     }
 
-    internal ExecutionTaskId GetTaskId(ExecutionTaskHandle handle)
-    {
-        if (!handle.IsValid)
-        {
-            throw new ArgumentException("Execution task handle is not valid.", nameof(handle));
-        }
-
-        return handle.Id;
-    }
-
-    internal ExecutionTaskHandle AttachBodyTask(PlanItemDefinition parentDefinition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
+    internal ExecutionTaskId AttachBodyTask(PlanItemDefinition parentDefinition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
         _ = parentDefinition ?? throw new ArgumentNullException(nameof(parentDefinition));
         Func<ExecutionTaskContext, Task<OperationResult>> resolvedExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
@@ -183,11 +168,11 @@ public sealed class ExecutionPlanBuilder
         bodyDefinition.IsHiddenInGraph = true;
         _items.Add(bodyDefinition);
 
-        ChildDeclarationEntry declaration = AppendChildStep(new ExecutionTaskHandle(parentDefinition.Id), ChildDeclarationKind.Body);
+        ChildDeclarationEntry declaration = AppendChildStep(parentDefinition.Id, ChildDeclarationKind.Body);
         declaration.RootTaskId = bodyDefinition.Id;
         declaration.AddCompletionTask(bodyDefinition.Id);
 
-        return FinalizeTask(bodyDefinition);
+        return bodyDefinition.Id;
     }
 
     /// <summary>
@@ -197,23 +182,22 @@ public sealed class ExecutionPlanBuilder
     internal ChildDeclarationEntry AttachChildOperation(PlanItemDefinition parentDefinition, Type operationType, Func<OperationParameters> createParameters, string title, string? description)
     {
         _ = parentDefinition ?? throw new ArgumentNullException(nameof(parentDefinition));
-        ChildDeclarationEntry declaration = AppendChildStep(new ExecutionTaskHandle(parentDefinition.Id), ChildDeclarationKind.ChildOperation);
+        ChildDeclarationEntry declaration = AppendChildStep(parentDefinition.Id, ChildDeclarationKind.ChildOperation);
         declaration.ChildOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
         declaration.CreateChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters));
-        declaration.ImportedRootTitle = string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Child operation title is required.", nameof(title)) : title;
-        declaration.ImportedRootDescription = description ?? string.Empty;
+        declaration.RootOverrides = new ChildOperationRootOverrides(title, description ?? string.Empty, isHiddenInGraph: false);
         return declaration;
     }
 
-    internal ExecutionTaskBuilder DeclareParallelRelativeTask(ExecutionTaskHandle parent, string title, string? description, ref ChildDeclarationEntry? sharedDeclaration)
+    internal ExecutionTaskBuilder DeclareParallelRelativeTask(ExecutionTaskId parentId, string title, string? description, ref ChildDeclarationEntry? sharedDeclaration)
     {
-        return DeclareRelativeTask(parent, title, description, parallel: true, ref sharedDeclaration);
+        return DeclareRelativeTask(parentId, title, description, parallel: true, ref sharedDeclaration);
     }
 
-    internal ExecutionTaskBuilder DeclareSequentialRelativeTask(ExecutionTaskHandle parent, string title, string? description)
+    internal ExecutionTaskBuilder DeclareSequentialRelativeTask(ExecutionTaskId parentId, string title, string? description)
     {
         ChildDeclarationEntry? sharedDeclaration = null;
-        return DeclareRelativeTask(parent, title, description, parallel: false, ref sharedDeclaration);
+        return DeclareRelativeTask(parentId, title, description, parallel: false, ref sharedDeclaration);
     }
 
     /// <summary>
@@ -222,7 +206,7 @@ public sealed class ExecutionPlanBuilder
     internal void SetChildOperationDescription(ChildDeclarationEntry declaration, string? description)
     {
         _ = declaration ?? throw new ArgumentNullException(nameof(declaration));
-        declaration.ImportedRootDescription = description ?? string.Empty;
+        declaration.RootOverrides.Description = description ?? string.Empty;
     }
 
     /// <summary>
@@ -231,18 +215,13 @@ public sealed class ExecutionPlanBuilder
     internal void SetChildOperationGraphVisibility(ChildDeclarationEntry declaration, bool isHiddenInGraph)
     {
         _ = declaration ?? throw new ArgumentNullException(nameof(declaration));
-        declaration.ImportedRootIsHiddenInGraph = isHiddenInGraph;
+        declaration.RootOverrides.IsHiddenInGraph = isHiddenInGraph;
     }
 
     internal void SetOperationParameters(PlanItemDefinition definition, OperationParameters operationParameters)
     {
         definition.OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
         definition.DeclaredOptionTypes = _declaredOptionTypes.ToList();
-    }
-
-    internal ExecutionTaskHandle FinalizeTask(PlanItemDefinition definition)
-    {
-        return new ExecutionTaskHandle(definition.Id);
     }
 
     internal IReadOnlyList<ExecutionTaskId> GetCompletionTaskIds(ExecutionTaskId taskId)
@@ -261,18 +240,17 @@ public sealed class ExecutionPlanBuilder
             : new[] { taskId };
     }
 
-    internal ChildDeclarationEntry AppendChildStep(ExecutionTaskHandle parent, ChildDeclarationKind kind)
+    internal ChildDeclarationEntry AppendChildStep(ExecutionTaskId parentId, ChildDeclarationKind kind)
     {
-        ExecutionTaskId parentId = GetTaskId(parent);
         PlanItemDefinition definition = GetDefinition(parentId);
         ChildDeclarationEntry entry = new(NextOrderIndex(), kind);
         definition.ChildDeclarations.Add(entry);
         return entry;
     }
 
-    private void ValidateParent(ExecutionTaskHandle parent)
+    private void ValidateParent(ExecutionTaskId? parentId)
     {
-        if (parent.IsValid)
+        if (parentId != null)
         {
             return;
         }
@@ -312,9 +290,9 @@ public sealed class ExecutionPlanBuilder
             ExecutionPlan childPlan = _buildChildPlan(childOperation, childParameters)
                 ?? throw new InvalidOperationException($"Child operation '{declaration.ChildOperationType!.Name}' returned no execution plan during expansion.");
             ChildOperationRootOverrides rootOverrides = new(
-                declaration.ImportedRootTitle,
-                declaration.ImportedRootDescription,
-                declaration.ImportedRootIsHiddenInGraph);
+                declaration.RootOverrides.Title,
+                declaration.RootOverrides.Description,
+                declaration.RootOverrides.IsHiddenInGraph);
             InsertedExecutionTasks insertedTasks = ExecutionTaskInsertion.InsertUnderParent(childPlan, definition.Id, rootOverrides);
 
             declaration.ChildOperationType = null;
@@ -370,7 +348,7 @@ public sealed class ExecutionPlanBuilder
                     PlanItemDefinition entryDefinition = GetDefinition(entryTaskId);
                     foreach (ExecutionTaskId previousCompletionTaskId in previousCompletionTaskIds)
                     {
-                        AddDependency(entryDefinition, previousCompletionTaskId);
+                        AddDirectDependency(entryDefinition, previousCompletionTaskId);
                     }
                 }
 
@@ -382,7 +360,7 @@ public sealed class ExecutionPlanBuilder
         }
     }
 
-    private void AddDependency(PlanItemDefinition definition, ExecutionTaskId dependencyId)
+    private void AddDirectDependency(PlanItemDefinition definition, ExecutionTaskId dependencyId)
     {
         if (!definition.DependencyIds.Contains(dependencyId))
         {
@@ -421,7 +399,6 @@ public sealed class ExecutionPlanBuilder
     /// </summary>
     private ExecutionTaskId GenerateTaskId()
     {
-        _nextSequence += 1;
         return ExecutionTaskId.New();
     }
 
@@ -482,11 +459,7 @@ public sealed class ExecutionPlanBuilder
 
         public Func<OperationParameters>? CreateChildParameters { get; set; }
 
-        public string ImportedRootTitle { get; set; } = string.Empty;
-
-        public string ImportedRootDescription { get; set; } = string.Empty;
-
-        public bool ImportedRootIsHiddenInGraph { get; set; }
+        public ChildOperationRootOverrides RootOverrides { get; set; } = null!;
 
         public IEnumerable<ExecutionTaskId> GetEntryTaskIds()
         {
@@ -584,9 +557,9 @@ internal sealed class ChildOperationRootOverrides
 
     public string Title { get; }
 
-    public string Description { get; }
+    public string Description { get; set; }
 
-    public bool IsHiddenInGraph { get; }
+    public bool IsHiddenInGraph { get; set; }
 }
 
 /// <summary>
@@ -594,21 +567,13 @@ internal sealed class ChildOperationRootOverrides
 /// </summary>
 internal sealed class InsertedExecutionTasks
 {
-    public InsertedExecutionTasks(IReadOnlyList<ExecutionTask> tasks, ExecutionTaskId rootTaskId, IReadOnlyList<ExecutionTaskId> entryTaskIds)
+    public InsertedExecutionTasks(IReadOnlyList<ExecutionTask> tasks, ExecutionTaskId rootTaskId)
     {
         Tasks = tasks ?? throw new ArgumentNullException(nameof(tasks));
         RootTaskId = rootTaskId;
-        EntryTaskIds = entryTaskIds ?? throw new ArgumentNullException(nameof(entryTaskIds));
-    }
-
-    public InsertedExecutionTasks(IReadOnlyList<ExecutionTask> tasks, ExecutionTaskId rootTaskId)
-        : this(tasks, rootTaskId, new[] { rootTaskId })
-    {
     }
 
     public IReadOnlyList<ExecutionTask> Tasks { get; }
 
     public ExecutionTaskId RootTaskId { get; }
-
-    public IReadOnlyList<ExecutionTaskId> EntryTaskIds { get; }
 }

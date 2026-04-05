@@ -9,14 +9,14 @@ namespace LocalAutomation.Runtime;
 public sealed class ExecutionTaskScopeBuilder
 {
     private readonly ExecutionPlanBuilder _owner;
-    private readonly ExecutionTaskHandle _parent;
+    private readonly ExecutionTaskId _parentId;
     private readonly ExecutionChildMode _mode;
     private ExecutionPlanBuilder.ChildDeclarationEntry? _parallelScopeEntry;
 
-    internal ExecutionTaskScopeBuilder(ExecutionPlanBuilder owner, ExecutionTaskHandle parent, ExecutionChildMode mode)
+    internal ExecutionTaskScopeBuilder(ExecutionPlanBuilder owner, ExecutionTaskId parentId, ExecutionChildMode mode)
     {
         _owner = owner;
-        _parent = parent;
+        _parentId = parentId;
         _mode = mode;
     }
 
@@ -26,8 +26,8 @@ public sealed class ExecutionTaskScopeBuilder
     public ExecutionTaskBuilder Task(string title, string? description = null)
     {
         return _mode == ExecutionChildMode.Parallel
-            ? _owner.DeclareParallelRelativeTask(_parent, title, description, ref _parallelScopeEntry)
-            : _owner.DeclareSequentialRelativeTask(_parent, title, description);
+            ? _owner.DeclareParallelRelativeTask(_parentId, title, description, ref _parallelScopeEntry)
+            : _owner.DeclareSequentialRelativeTask(_parentId, title, description);
     }
 
 }
