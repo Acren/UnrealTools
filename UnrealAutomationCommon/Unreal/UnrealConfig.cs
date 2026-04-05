@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,7 +12,7 @@ namespace UnrealAutomationCommon.Unreal
         public void AddLine(string line)
         {
             if (line.StartsWith("+") || line.StartsWith("-"))
-                // Ignore arrays for now
+            // Ignore arrays for now
             {
                 return;
             }
@@ -108,7 +108,7 @@ namespace UnrealAutomationCommon.Unreal
             for (int i = 0; i < _rawLines.Count; i++)
             {
                 string line = _rawLines[i];
-                
+
                 if (string.IsNullOrEmpty(line))
                 {
                     newLines.Add(line);
@@ -128,7 +128,7 @@ namespace UnrealAutomationCommon.Unreal
                     // Key-value line
                     string sectionName = _lineSectionMap[i];
                     string key = line.Split(new[] { '=' }, 2)[0].TrimEnd();
-                    
+
                     if (_sections.ContainsKey(sectionName))
                     {
                         string? newValue = _sections[sectionName].GetValue(key);
@@ -160,7 +160,7 @@ namespace UnrealAutomationCommon.Unreal
                 {
                     var values = section.Value.GetValues();
                     var existingKeys = writtenKeys.ContainsKey(section.Key) ? writtenKeys[section.Key] : new HashSet<string>();
-                    
+
                     foreach (var kvp in values)
                     {
                         if (!existingKeys.Contains(kvp.Key))
@@ -173,7 +173,7 @@ namespace UnrealAutomationCommon.Unreal
                                     // Find the last non-empty line of this section
                                     int insertIndex = i + 1;
                                     int lastContentIndex = i + 1;
-                                    
+
                                     while (insertIndex < newLines.Count && !newLines[insertIndex].StartsWith("["))
                                     {
                                         if (!string.IsNullOrEmpty(newLines[insertIndex]))
@@ -182,7 +182,7 @@ namespace UnrealAutomationCommon.Unreal
                                         }
                                         insertIndex++;
                                     }
-                                    
+
                                     // Insert after the last non-empty line, before any trailing empty lines
                                     newLines.Insert(lastContentIndex, $"{kvp.Key}={kvp.Value}");
                                     break;

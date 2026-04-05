@@ -1,4 +1,4 @@
-﻿using LocalAutomation.Runtime;
+using LocalAutomation.Runtime;
 
 namespace UnrealAutomationCommon;
 

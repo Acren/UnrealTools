@@ -168,7 +168,7 @@ public sealed class AnimatedConicBorder : Border
 
     /// <summary>
     /// Clones the configured conic brush template and rotates it by the current animation angle.
-     /// </summary>
+    /// </summary>
     private IBrush CreateAnimatedBrushFrame(double angle)
     {
         ConicGradientBrush template = AnimationBrush ?? CreateDefaultAnimationBrush();

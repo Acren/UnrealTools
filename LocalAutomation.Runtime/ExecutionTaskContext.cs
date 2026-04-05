@@ -79,7 +79,7 @@ public sealed class ExecutionTaskContext
     /// <summary>
     /// Creates a sibling execution context for another task within the same logical execution flow while preserving the
     /// current cancellation token and live session.
-     /// </summary>
+    /// </summary>
     internal ExecutionTaskContext CreateForTask(ExecutionTaskId taskId, string title, ILogger logger, ValidatedOperationParameters validatedOperationParameters)
     {
         return new ExecutionTaskContext(taskId, title, logger, CancellationToken, validatedOperationParameters, Operation, Session, Scheduler);
@@ -118,7 +118,7 @@ public sealed class ExecutionTaskContext
     /// <summary>
     /// Stores one strongly typed state value on the current task so descendant tasks can resolve it structurally through
     /// the ancestor chain.
-     /// </summary>
+    /// </summary>
     public void SetState<T>(T value) where T : class
     {
         GetRequiredTask().SetState(value);
@@ -126,7 +126,7 @@ public sealed class ExecutionTaskContext
 
     /// <summary>
     /// Reads a previously stored state value from the current task or any ancestor task.
-     /// </summary>
+    /// </summary>
     public T GetState<T>() where T : class
     {
         if (TryGetState(out T? value))
@@ -139,7 +139,7 @@ public sealed class ExecutionTaskContext
 
     /// <summary>
     /// Tries to read one previously stored state value from the current task or any ancestor task.
-     /// </summary>
+    /// </summary>
     public bool TryGetState<T>(out T? value) where T : class
     {
         if (Session == null)

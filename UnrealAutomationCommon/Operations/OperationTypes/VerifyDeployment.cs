@@ -1,15 +1,15 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Semver;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
-using Microsoft.Extensions.Logging;
-using Semver;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
@@ -38,8 +38,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-         /// Describes the deployment-verification subtree beneath the framework-owned root task.
-         /// </summary>
+        /// Describes the deployment-verification subtree beneath the framework-owned root task.
+        /// </summary>
         protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
         {
             Plugin plugin = GetRequiredTarget(operationParameters);
@@ -227,7 +227,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
                 PluginName = split[0];
                 PluginVersion = split.Length > 1 ? SemVersion.Parse(split[1], SemVersionStyles.Any) : null;
-                EngineVersion = split.Length > 2 ? SemVersion.Parse(split[2].Replace("UE",""), SemVersionStyles.Any) : null;
+                EngineVersion = split.Length > 2 ? SemVersion.Parse(split[2].Replace("UE", ""), SemVersionStyles.Any) : null;
             }
         }
 
@@ -241,7 +241,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             foreach (string zipPath in zipPaths)
             {
-                ExampleProjectZipInfo zipInfo = new (zipPath);
+                ExampleProjectZipInfo zipInfo = new(zipPath);
                 if (zipInfo.IsExampleProject && zipInfo.PluginName == plugin.Name)
                 {
                     pluginExampleProjectZips.Add(zipInfo);

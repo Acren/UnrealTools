@@ -36,7 +36,7 @@ public sealed class PersistedSettingDescriptor
     public PersistenceScope WriteScope { get; }
 
     /// <summary>
-     /// Gets the underlying value type that should be serialized.
-     /// </summary>
+    /// Gets the underlying value type that should be serialized.
+    /// </summary>
     public Type ValueType { get; }
 }

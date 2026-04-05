@@ -2,8 +2,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using LocalAutomation.Core;
-using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
+using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
 
@@ -176,8 +176,8 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     public bool IsFailedStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskOutcome.Failed;
 
     /// <summary>
-     /// Gets whether the status marker should show the cancelled accent.
-     /// </summary>
+    /// Gets whether the status marker should show the cancelled accent.
+    /// </summary>
     public bool IsCancelledStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskOutcome.Cancelled;
 
     /// <summary>
@@ -256,8 +256,8 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     }
 
     /// <summary>
-     /// Refreshes all shared task metrics from the current session snapshot.
-     /// </summary>
+    /// Refreshes all shared task metrics from the current session snapshot.
+    /// </summary>
     public void RefreshAllTaskMetrics()
     {
         foreach (ExecutionTaskViewModel task in _tasksById.Values)

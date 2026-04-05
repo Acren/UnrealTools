@@ -1,10 +1,10 @@
-using Newtonsoft.Json;
 using System;
-using System.IO;
-using Semver;
 using System.Collections.Generic;
-using Microsoft.Extensions.Logging;
+using System.IO;
 using LocalAutomation.Core;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using Semver;
 
 namespace UnrealAutomationCommon.Unreal
 {

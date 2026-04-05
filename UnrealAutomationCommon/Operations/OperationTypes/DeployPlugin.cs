@@ -1,4 +1,3 @@
-using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,11 +6,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using Polly;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
-using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
@@ -108,9 +108,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-         /// Gets the isolated per-engine temp root so multiple engine-specific execution scopes can run without colliding
-         /// in shared staging or package folders.
-         /// </summary>
+        /// Gets the isolated per-engine temp root so multiple engine-specific execution scopes can run without colliding
+        /// in shared staging or package folders.
+        /// </summary>
         private string GetEngineTempPath(global::LocalAutomation.Runtime.ExecutionTaskContext context, Engine engine)
         {
             return Path.Combine(base.GetOperationTempPath(context), $"UE_{engine.Version.MajorMinorString}");
@@ -148,7 +148,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 File.WriteAllText(plugin.UPluginPath, pluginDescriptor.ToString());
             }
         }
-        
+
         private void UpdateProjectDescriptorForArchive(DeploymentState state, Project project)
         {
             Engine engine = state.Engine;
@@ -164,7 +164,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 File.WriteAllText(project.UProjectPath, projectDescriptor.ToString());
             }
         }
-      
+
         /// <summary>
         /// Describes the per-engine deployment subtree beneath the framework-owned root task.
         /// </summary>
@@ -389,8 +389,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-         /// Runs one optional deployment step or records a skipped node state when the current option values disable it.
-         /// </summary>
+        /// Runs one optional deployment step or records a skipped node state when the current option values disable it.
+        /// </summary>
         private async Task TestEditor(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing host project editor");
@@ -448,7 +448,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 await RunChildOperationAsync<PackagePlugin>(buildPluginParams, context, required: true, failureMessage: "Plugin build failed");
                 childRunActivity.SetTag("child.operation", nameof(PackagePlugin));
             }
-            
+
             Plugin builtPlugin;
             using (PerformanceActivityScope materializeActivity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin.MaterializeBuiltPlugin"))
             {
@@ -640,8 +640,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-         /// Scheduler wrapper for testing the engine-plugin package.
-         /// </summary>
+        /// Scheduler wrapper for testing the engine-plugin package.
+        /// </summary>
         private async Task TestCodeExampleProjectPackageWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing code project package with installed plugin");
@@ -693,7 +693,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 // Now we'll be using the plugin in the project directory instead
 
                 context.Logger.LogInformation("Uninstall from Engine/Plugins/Marketplace");
-                
+
                 engine.UninstallPlugin(plugin.Name);
 
                 // Copy plugin to example project to prepare the demo package
@@ -727,7 +727,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             Plugin plugin = state.SourcePlugin;
             var exampleProjectPlugins = targetProject.Plugins;
-            
+
             string[] excludePlugins = deployOptions.ExcludePlugins.Replace(" ", "").Split(",");
             foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
             {
@@ -760,98 +760,98 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Directory.CreateDirectory(archivePath);
 
-                // Archive plugin build
+            // Archive plugin build
 
-                string pluginBuildZipPath = Path.Combine(archivePath, archivePrefix + "PluginBuild.zip");
-                bool archivePluginBuild = deployOptions.ArchivePluginBuild;
+            string pluginBuildZipPath = Path.Combine(archivePath, archivePrefix + "PluginBuild.zip");
+            bool archivePluginBuild = deployOptions.ArchivePluginBuild;
+            if (archivePluginBuild)
+            {
+                context.Logger.LogInformation("Archiving plugin build");
+                FileUtils.DeleteFileIfExists(pluginBuildZipPath);
+                ZipFile.CreateFromDirectory(builtPlugin.PluginPath, pluginBuildZipPath, CompressionLevel.Optimal, true);
+            }
+
+            // Archive demo exe
+
+            string demoPackageZipPath = Path.Combine(archivePath, archivePrefix + "DemoPackage.zip");
+            bool archiveDemoPackage = deployOptions.ArchiveDemoPackage;
+            if (archiveDemoPackage)
+            {
+                context.Logger.LogInformation("Archiving demo");
+
+                FileUtils.DeleteFileIfExists(demoPackageZipPath);
+                ZipFile.CreateFromDirectory(demoPackage.TargetPath, demoPackageZipPath);
+            }
+
+            // Archive example project
+
+            string exampleProjectZipPath = Path.Combine(archivePath, archivePrefix + "ExampleProject.zip");
+            bool archiveExampleProject = deployOptions.ArchiveExampleProject;
+
+            if (archiveExampleProject)
+            {
+                context.Logger.LogInformation("Archiving example project");
+
+                // First delete any extra directories
+                string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
+                FileUtils.DeleteOtherSubdirectories(exampleProject.ProjectPath, allowedExampleProjectSubDirectoryNames);
+
+                PreparePluginsForProject(state, exampleProject, deployOptions);
+
+                // Delete debug files recursive
+                FileUtils.DeleteFilesWithExtension(exampleProject.ProjectPath, new[] { ".pdb" }, SearchOption.AllDirectories);
+
+                FileUtils.DeleteFileIfExists(exampleProjectZipPath);
+                ZipFile.CreateFromDirectory(exampleProject.ProjectPath, exampleProjectZipPath);
+            }
+
+            // Archive plugin source for submission
+
+            context.Logger.LogInformation("Archiving plugin source");
+
+            // Use staging plugin which already has updated descriptor
+            string pluginSourcePath = GetWorkspacePath(state.WorkspacePath, "PluginSource", plugin.Name);
+            FileUtils.DeleteDirectoryIfExists(pluginSourcePath);
+            FileUtils.MaterializeDirectory(stagingPlugin.PluginPath, pluginSourcePath, MaterializationSpecs.CreatePlugin(stagingPlugin));
+
+            string pluginSourceArchiveZipPath = Path.Combine(archivePath, archivePrefix + "PluginSource.zip");
+            FileUtils.DeleteFileIfExists(pluginSourceArchiveZipPath);
+            ZipFile.CreateFromDirectory(pluginSourcePath, pluginSourceArchiveZipPath, CompressionLevel.Optimal, true);
+
+            string archiveOutputPath = deployOptions.ArchivePath;
+            if (!string.IsNullOrEmpty(archiveOutputPath))
+            {
+                context.Logger.LogInformation("Copying to archive output path");
+                Directory.CreateDirectory(archiveOutputPath);
+                if (!Directory.Exists(archiveOutputPath))
+                {
+                    throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
+                }
+
+                FileUtils.CopyFile(pluginSourceArchiveZipPath, archiveOutputPath, true, true);
+
                 if (archivePluginBuild)
                 {
-                    context.Logger.LogInformation("Archiving plugin build");
-                    FileUtils.DeleteFileIfExists(pluginBuildZipPath);
-                    ZipFile.CreateFromDirectory(builtPlugin.PluginPath, pluginBuildZipPath, CompressionLevel.Optimal, true);
+                    FileUtils.CopyFile(pluginBuildZipPath, archiveOutputPath, true, true);
                 }
-
-                // Archive demo exe
-
-                string demoPackageZipPath = Path.Combine(archivePath, archivePrefix + "DemoPackage.zip");
-                bool archiveDemoPackage = deployOptions.ArchiveDemoPackage;
-                if (archiveDemoPackage)
-                {
-                    context.Logger.LogInformation("Archiving demo");
-
-                    FileUtils.DeleteFileIfExists(demoPackageZipPath);
-                    ZipFile.CreateFromDirectory(demoPackage.TargetPath, demoPackageZipPath);
-                }
-
-                // Archive example project
-
-                string exampleProjectZipPath = Path.Combine(archivePath, archivePrefix + "ExampleProject.zip");
-                bool archiveExampleProject = deployOptions.ArchiveExampleProject;
 
                 if (archiveExampleProject)
                 {
-                    context.Logger.LogInformation("Archiving example project");
-
-                    // First delete any extra directories
-                    string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
-                    FileUtils.DeleteOtherSubdirectories(exampleProject.ProjectPath, allowedExampleProjectSubDirectoryNames);
-                    
-                    PreparePluginsForProject(state, exampleProject, deployOptions);
-
-                    // Delete debug files recursive
-                    FileUtils.DeleteFilesWithExtension(exampleProject.ProjectPath, new[] { ".pdb" }, SearchOption.AllDirectories);
-
-                    FileUtils.DeleteFileIfExists(exampleProjectZipPath);
-                    ZipFile.CreateFromDirectory(exampleProject.ProjectPath, exampleProjectZipPath);
+                    FileUtils.CopyFile(exampleProjectZipPath, archiveOutputPath, true, true);
                 }
 
-                // Archive plugin source for submission
-
-                context.Logger.LogInformation("Archiving plugin source");
-
-                // Use staging plugin which already has updated descriptor
-                string pluginSourcePath = GetWorkspacePath(state.WorkspacePath, "PluginSource", plugin.Name);
-                FileUtils.DeleteDirectoryIfExists(pluginSourcePath);
-                FileUtils.MaterializeDirectory(stagingPlugin.PluginPath, pluginSourcePath, MaterializationSpecs.CreatePlugin(stagingPlugin));
-
-                string pluginSourceArchiveZipPath = Path.Combine(archivePath, archivePrefix + "PluginSource.zip");
-                FileUtils.DeleteFileIfExists(pluginSourceArchiveZipPath);
-                ZipFile.CreateFromDirectory(pluginSourcePath, pluginSourceArchiveZipPath, CompressionLevel.Optimal, true);
-
-                string archiveOutputPath = deployOptions.ArchivePath;
-                if (!string.IsNullOrEmpty(archiveOutputPath))
+                if (archiveDemoPackage)
                 {
-                    context.Logger.LogInformation("Copying to archive output path");
-                    Directory.CreateDirectory(archiveOutputPath);
-                    if (!Directory.Exists(archiveOutputPath))
-                    {
-                        throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
-                    }
-
-                    FileUtils.CopyFile(pluginSourceArchiveZipPath, archiveOutputPath, true, true);
-
-                    if (archivePluginBuild)
-                    {
-                        FileUtils.CopyFile(pluginBuildZipPath, archiveOutputPath, true, true);
-                    }
-
-                    if (archiveExampleProject)
-                    {
-                        FileUtils.CopyFile(exampleProjectZipPath, archiveOutputPath, true, true);
-                    }
-
-                    if (archiveDemoPackage)
-                    {
-                        FileUtils.CopyFile(demoPackageZipPath, archiveOutputPath, true, true);
-                    }
-
+                    FileUtils.CopyFile(demoPackageZipPath, archiveOutputPath, true, true);
                 }
 
-                context.Logger.LogInformation("Finished archiving");
-                await Task.CompletedTask;
+            }
+
+            context.Logger.LogInformation("Finished archiving");
+            await Task.CompletedTask;
         }
     }
-    
+
     public class DeployPlugin : UnrealOperation<Plugin>
     {
         protected override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)

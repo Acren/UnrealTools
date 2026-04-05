@@ -27,8 +27,8 @@ public static class ExecutionPathConventions
     }
 
     /// <summary>
-     /// Returns one compact filesystem-safe segment derived from a human-readable label.
-     /// </summary>
+    /// Returns one compact filesystem-safe segment derived from a human-readable label.
+    /// </summary>
     public static string MakeCompactSegment(string source, int maxLength = DefaultMaxSegmentLength)
     {
         if (string.IsNullOrWhiteSpace(source))

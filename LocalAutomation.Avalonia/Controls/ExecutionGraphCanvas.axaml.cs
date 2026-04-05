@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
@@ -11,7 +12,6 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using System.Collections.Generic;
 using LocalAutomation.Avalonia.ViewModels;
 using LocalAutomation.Core;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
@@ -515,8 +515,8 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-     /// Creates one XAML-backed group control and positions it on the graph canvas.
-      /// </summary>
+    /// Creates one XAML-backed group control and positions it on the graph canvas.
+    /// </summary>
     private Control CreateGroupControl(ExecutionNodeViewModel group, bool useMeasuredWidth = false)
     {
         ExecutionGroupContainer container = new()
@@ -535,8 +535,8 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-     /// Creates one XAML-backed task-card control and positions it on the graph canvas.
-     /// </summary>
+    /// Creates one XAML-backed task-card control and positions it on the graph canvas.
+    /// </summary>
     private Control CreateTaskControl(ExecutionNodeViewModel node)
     {
         ExecutionTaskCard card = new()

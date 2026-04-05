@@ -1,8 +1,8 @@
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.Win32;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -45,7 +45,7 @@ namespace UnrealAutomationCommon.Unreal
                 RegistryKey currentUser = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
                 RegistryKey? currentUserBuilds = currentUser.OpenSubKey(@"SOFTWARE\Epic Games\Unreal Engine\Builds");
 
-                if(currentUserBuilds == null)
+                if (currentUserBuilds == null)
                 {
                     return result;
                 }
@@ -85,10 +85,10 @@ namespace UnrealAutomationCommon.Unreal
             RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
 
             if (engineAssociation.Contains("."))
-                // It's a launcher version
+            // It's a launcher version
             {
                 if (engineAssociation.Count(c => c == '.') > 1)
-                    // Trim patch from version number
+                // Trim patch from version number
                 {
                     engineAssociation = engineAssociation.Remove(engineAssociation.LastIndexOf('.'));
                 }
@@ -107,6 +107,7 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             foreach (LauncherManifestAppInstallation app in manifest.InstallationList)
+            {
                 if (app.AppName.StartsWith("UE_"))
                 {
                     // It's an engine install
@@ -116,6 +117,7 @@ namespace UnrealAutomationCommon.Unreal
                         Key = trimmedName
                     });
                 }
+            }
 
             return result;
         }
@@ -135,7 +137,7 @@ namespace UnrealAutomationCommon.Unreal
         public static List<EngineVersion> GetLauncherEngineInstallVersions()
         {
             List<EngineVersion> versions = new();
-            foreach(Engine engine in GetEngineInstalls())
+            foreach (Engine engine in GetEngineInstalls())
             {
                 if (!engine.IsSourceBuild && engine.Version != null && !versions.Contains(engine.Version))
                 {

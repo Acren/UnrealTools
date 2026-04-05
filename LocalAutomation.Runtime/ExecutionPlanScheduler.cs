@@ -191,9 +191,9 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Waits for one set of newly inserted child tasks. The scheduler itself stays purely dependency-driven; the wait is
-     /// satisfied by ordinary task completion in the live session graph rather than by a special child-pump scheduler mode.
-     /// </summary>
+    /// Waits for one set of newly inserted child tasks. The scheduler itself stays purely dependency-driven; the wait is
+    /// satisfied by ordinary task completion in the live session graph rather than by a special child-pump scheduler mode.
+    /// </summary>
     internal async Task<OperationResult> WaitForInsertedChildTasksAsync(Operation operation, ExecutionTaskContext parentContext, ChildTaskMergeResult mergeResult)
     {
         if (operation == null)
@@ -861,8 +861,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Returns the current scheduler wake task so the main loop can wait for new runnable work without polling.
-     /// </summary>
+    /// Returns the current scheduler wake task so the main loop can wait for new runnable work without polling.
+    /// </summary>
     private Task GetWorkAvailableSignalTask()
     {
         lock (_workSignalSyncRoot)
@@ -1002,8 +1002,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Executes one task body while preserving task-state error and cancellation reporting at the scheduler boundary.
-     /// </summary>
+    /// Executes one task body while preserving task-state error and cancellation reporting at the scheduler boundary.
+    /// </summary>
     private async Task<OperationResult> ExecuteTaskBodyAsync(ExecutionTask task, ExecutionTaskContext context, AsyncLockHandle lockHandle)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.ExecuteTaskBody")

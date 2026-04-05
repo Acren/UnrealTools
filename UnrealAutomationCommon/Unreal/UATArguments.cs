@@ -1,4 +1,4 @@
-﻿using LocalAutomation.Runtime;
+using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal

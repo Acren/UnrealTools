@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "formatter": {
+    "dotnet-csharp": {
+      "command": [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "Build/Format.ps1",
+        "-Include",
+        "$FILE"
+      ],
+      "extensions": [
+        ".cs"
+      ]
+    }
+  }
+}

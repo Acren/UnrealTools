@@ -313,8 +313,8 @@ public partial class ResponsiveMeasuredColumns : UserControl
     }
 
     /// <summary>
-     /// Computes the width assigned to each card for the current column count.
-     /// </summary>
+    /// Computes the width assigned to each card for the current column count.
+    /// </summary>
     private double ComputeCardWidth(double usableWidth, int columnCount)
     {
         if (usableWidth <= 0)

@@ -1,13 +1,13 @@
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
-using Semver;
 using LocalAutomation.Core;
 using LocalAutomation.Runtime;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Semver;
 using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
@@ -80,13 +80,13 @@ namespace UnrealAutomationCommon.Unreal
          * Alternatively it should also be possible to check the absence of a Source folder
          */
         public bool IsBlueprintOnly => PluginDescriptor?.Modules?.Count == 0;
-        
+
         /**
          * Check if the plugin has runtime modules (modules that will be included in packaged builds)
          * Runtime modules are those that are not editor-only types
          */
-        public bool HasRuntimeModules => PluginDescriptor?.Modules?.Any(m => m.Type != "Editor" && 
-                                                                             m.Type != "EditorNoCommandlet" && 
+        public bool HasRuntimeModules => PluginDescriptor?.Modules?.Any(m => m.Type != "Editor" &&
+                                                                             m.Type != "EditorNoCommandlet" &&
                                                                              m.Type != "EditorAndProgram" &&
                                                                              m.Type != "UncookedOnly") == true;
 

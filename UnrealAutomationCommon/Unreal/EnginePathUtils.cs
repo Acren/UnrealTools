@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
@@ -31,25 +31,25 @@ namespace UnrealAutomationCommon.Unreal
             switch (configuration)
             {
                 case BuildConfiguration.Debug:
-                {
-                    return "-Win64-Debug";
-                }
+                    {
+                        return "-Win64-Debug";
+                    }
                 case BuildConfiguration.DebugGame:
-                {
-                    return "-Win64-DebugGame";
-                }
+                    {
+                        return "-Win64-DebugGame";
+                    }
                 case BuildConfiguration.Test:
-                {
-                    return "-Win64-Test";
-                }
+                    {
+                        return "-Win64-Test";
+                    }
                 case BuildConfiguration.Shipping:
-                {
-                    return "-Win64-Shipping";
-                }
+                    {
+                        return "-Win64-Shipping";
+                    }
                 default:
-                {
-                    return "";
-                }
+                    {
+                        return "";
+                    }
             }
         }
 

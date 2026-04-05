@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;

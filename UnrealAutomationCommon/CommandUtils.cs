@@ -1,4 +1,4 @@
-﻿using LocalAutomation.Core;
+using LocalAutomation.Core;
 
 namespace UnrealAutomationCommon
 {

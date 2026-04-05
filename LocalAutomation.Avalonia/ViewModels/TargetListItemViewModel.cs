@@ -12,8 +12,8 @@ public sealed class TargetListItemViewModel : ViewModelBase
     private readonly LocalAutomationApplicationHost _services;
 
     /// <summary>
-     /// Creates a target list item for the provided operation target.
-     /// </summary>
+    /// Creates a target list item for the provided operation target.
+    /// </summary>
     public TargetListItemViewModel(LocalAutomationApplicationHost services, IOperationTarget target)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
@@ -28,23 +28,23 @@ public sealed class TargetListItemViewModel : ViewModelBase
     }
 
     /// <summary>
-     /// Gets the underlying runtime target instance.
-     /// </summary>
+    /// Gets the underlying runtime target instance.
+    /// </summary>
     public IOperationTarget Target { get; }
 
     /// <summary>
-     /// Gets the display name shown in the target list.
-     /// </summary>
+    /// Gets the display name shown in the target list.
+    /// </summary>
     public string DisplayName => _services.Targets.GetDisplayName(Target);
 
     /// <summary>
-     /// Gets the target type label shown in summaries and list rows.
-     /// </summary>
+    /// Gets the target type label shown in summaries and list rows.
+    /// </summary>
     public string TypeName => _services.Targets.GetTypeName(Target);
 
     /// <summary>
-     /// Gets the filesystem path or location backing the target.
-     /// </summary>
+    /// Gets the filesystem path or location backing the target.
+    /// </summary>
     public string TargetPath => _services.Targets.GetTargetPath(Target);
 
 }

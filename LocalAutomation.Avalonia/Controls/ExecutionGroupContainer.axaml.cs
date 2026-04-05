@@ -1,11 +1,11 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
-using System.ComponentModel;
-using LocalAutomation.Core;
+using Avalonia.Markup.Xaml;
 using LocalAutomation.Avalonia.ViewModels;
+using LocalAutomation.Core;
 
 namespace LocalAutomation.Avalonia.Controls;
 
@@ -52,8 +52,8 @@ public partial class ExecutionGroupContainer : UserControl
     }
 
     /// <summary>
-     /// Raised when the group header is clicked with the pointer.
-     /// </summary>
+    /// Raised when the group header is clicked with the pointer.
+    /// </summary>
     public event EventHandler<RoutedEventArgs>? Invoked;
 
     /// <summary>
@@ -84,8 +84,8 @@ public partial class ExecutionGroupContainer : UserControl
     }
 
     /// <summary>
-      /// Loads the compiled Avalonia markup for the group container.
-      /// </summary>
+    /// Loads the compiled Avalonia markup for the group container.
+    /// </summary>
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);

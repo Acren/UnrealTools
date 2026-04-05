@@ -1,10 +1,10 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using LocalAutomation.Avalonia.Bootstrap;
 using LocalAutomation.Avalonia.Controls;
 using LocalAutomation.Avalonia.Diagnostics;
 using AvaloniaApplication = Avalonia.Application;
-using LocalAutomation.Avalonia.Bootstrap;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 
 namespace LocalAutomation.Avalonia;

@@ -10,9 +10,9 @@ using LocalAutomation.Core;
 using LocalAutomation.Runtime;
 using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomationApplicationHost;
 using RuntimeExecutionPlan = LocalAutomation.Runtime.ExecutionPlan;
-using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 using RuntimeExecutionSessionId = LocalAutomation.Runtime.ExecutionSessionId;
+using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
 using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
@@ -220,8 +220,8 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     public string SelectedRuntimeTabTitle => SelectedRuntimeTab?.Title ?? "Runtime";
 
     /// <summary>
-     /// Gets whether the selected runtime tab should show task metrics in the header.
-     /// </summary>
+    /// Gets whether the selected runtime tab should show task metrics in the header.
+    /// </summary>
     public bool ShowSelectedRuntimeMetrics => SelectedRuntimeTab?.ShowsRuntimeMetrics == true;
 
     /// <summary>
@@ -415,7 +415,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         RemovePendingLogEntries(SelectedRuntimeTab);
         RebuildTabSelectedLogEntries(SelectedRuntimeTab);
-        _setStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}." );
+        _setStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}.");
         RaiseSelectionStateChanged();
     }
 

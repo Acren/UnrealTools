@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
@@ -24,7 +24,10 @@ namespace UnrealAutomationCommon.Unreal
             if (useInsights)
             {
                 var traceChannels = new List<string>();
-                foreach (TraceChannel channel in operationParameters.GetOptions<InsightsOptions>().TraceChannels) traceChannels.Add(channel.Key);
+                foreach (TraceChannel channel in operationParameters.GetOptions<InsightsOptions>().TraceChannels)
+                {
+                    traceChannels.Add(channel.Key);
+                }
 
                 arguments.SetKeyValue("trace", string.Join(",", traceChannels));
 

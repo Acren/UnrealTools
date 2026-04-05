@@ -84,8 +84,8 @@ internal static class RuntimeTestUtilities
     }
 
     /// <summary>
-     /// Minimal inline operation wrapper that lets tests define plan shape through the normal runtime operation pipeline.
-     /// </summary>
+    /// Minimal inline operation wrapper that lets tests define plan shape through the normal runtime operation pipeline.
+    /// </summary>
     internal class InlineOperation : Operation<TestTarget>
     {
         private readonly Action<ExecutionTaskBuilder> _buildPlan;

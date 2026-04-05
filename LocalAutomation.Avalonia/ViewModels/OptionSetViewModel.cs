@@ -12,8 +12,8 @@ public class OptionSetViewModel : ViewModelBase
     private readonly string _name;
 
     /// <summary>
-      /// Creates an option set view model around a runtime operation options instance.
-      /// </summary>
+    /// Creates an option set view model around a runtime operation options instance.
+    /// </summary>
     public OptionSetViewModel(LocalAutomationApplicationHost services, OperationOptions options, object? propertyGridTarget = null)
     {
         if (services == null)
@@ -36,8 +36,8 @@ public class OptionSetViewModel : ViewModelBase
     }
 
     /// <summary>
-     /// Gets the underlying runtime option set.
-     /// </summary>
+    /// Gets the underlying runtime option set.
+    /// </summary>
     public OperationOptions? Options { get; }
 
     /// <summary>
@@ -46,8 +46,8 @@ public class OptionSetViewModel : ViewModelBase
     public object PropertyGridTarget { get; }
 
     /// <summary>
-      /// Gets the title shown by the shell.
-      /// </summary>
+    /// Gets the title shown by the shell.
+    /// </summary>
     public string Name => _name;
 
 }

@@ -349,8 +349,8 @@ public static class PerformanceTelemetryListener
     private sealed class RecordedActivity
     {
         /// <summary>
-         /// Captures the completed activity's identifying and timing information.
-         /// </summary>
+        /// Captures the completed activity's identifying and timing information.
+        /// </summary>
         public RecordedActivity(Activity activity)
         {
             OperationName = activity.OperationName;
@@ -387,8 +387,8 @@ public static class PerformanceTelemetryListener
         public ActivitySpanId ParentSpanId { get; }
 
         /// <summary>
-         /// Gets the raw tag snapshot captured from the stopped activity.
-         /// </summary>
+        /// Gets the raw tag snapshot captured from the stopped activity.
+        /// </summary>
         public IReadOnlyList<KeyValuePair<string, object?>> Tags { get; }
 
     }

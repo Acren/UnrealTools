@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -32,7 +32,7 @@ namespace UnrealAutomationCommon.Unreal
                 }
 
                 if (Args.FullPath != _registeredLogFile)
-                    // Ignore logs other than the registered one
+                // Ignore logs other than the registered one
                 {
                     return;
                 }

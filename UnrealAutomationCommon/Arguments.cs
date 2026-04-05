@@ -1,7 +1,7 @@
-﻿using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.CodeAnalysis;
 
 namespace UnrealAutomationCommon
 {
@@ -93,7 +93,7 @@ namespace UnrealAutomationCommon
 
         public Arguments(IEnumerable<string> argStrings)
         {
-            foreach(string argString in argStrings)
+            foreach (string argString in argStrings)
             {
                 Argument parsedArgument = new Argument(argString);
 

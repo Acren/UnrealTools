@@ -1,9 +1,9 @@
 using System;
-using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LocalAutomation.Core;
+using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -55,7 +55,7 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         public Engine Engine { get; private set; } = null!;
-            
+
         public string EditorTargetName
         {
             get

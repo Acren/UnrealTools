@@ -169,8 +169,8 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
     }
 
     /// <summary>
-     /// Raises the derived edge properties when either endpoint moves, resizes, or changes status.
-     /// </summary>
+    /// Raises the derived edge properties when either endpoint moves, resizes, or changes status.
+    /// </summary>
     private void HandleEndpointPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(e.PropertyName) ||

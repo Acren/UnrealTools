@@ -15,8 +15,8 @@ namespace LocalAutomation.Avalonia.Bootstrap;
 public static class ShellAppBootstrapper
 {
     /// <summary>
-     /// Starts the desktop lifetime using bundled extension discovery.
-     /// </summary>
+    /// Starts the desktop lifetime using bundled extension discovery.
+    /// </summary>
     public static void Run(string[] args)
     {
         Run(args, ShellIdentity.LocalAutomation);

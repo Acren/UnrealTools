@@ -1,8 +1,8 @@
-﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Xml;
+using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -80,7 +80,7 @@ namespace UnrealAutomationCommon.Unreal
             testSuites.SetAttribute("failures", Failed.ToString());
             XmlElement testSuite = doc.CreateElement("testsuite");
             testSuites.AppendChild(testSuite);
-            if(contextLabel != null)
+            if (contextLabel != null)
             {
                 testSuite.SetAttribute("name", contextLabel);
             }

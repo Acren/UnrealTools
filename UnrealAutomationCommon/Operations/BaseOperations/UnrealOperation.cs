@@ -16,9 +16,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations;
 public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operation
 {
     /// <summary>
-     /// Unreal operations expose engine version selection, but they now read freeform additional arguments directly from
-     /// the shared parameter bag instead of mirroring them through a second Unreal-specific option set.
-     /// </summary>
+    /// Unreal operations expose engine version selection, but they now read freeform additional arguments directly from
+    /// the shared parameter bag instead of mirroring them through a second Unreal-specific option set.
+    /// </summary>
     protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
     {
         return base.GetDeclaredOptionSetTypes(target)
@@ -29,8 +29,8 @@ public abstract class UnrealOperation : global::LocalAutomation.Runtime.Operatio
     }
 
     /// <summary>
-     /// Returns the effective Unreal engine install for the current parameter state.
-     /// </summary>
+    /// Returns the effective Unreal engine install for the current parameter state.
+    /// </summary>
     public UnrealAutomationCommon.Unreal.Engine? GetTargetEngineInstall(ValidatedOperationParameters operationParameters)
     {
         EngineVersionOptions versionOptions = operationParameters.GetOptions<EngineVersionOptions>();

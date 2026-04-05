@@ -7,8 +7,8 @@ namespace LocalAutomation.Avalonia.Controls;
 internal static class ExecutionStatusClasses
 {
     /// <summary>
-     /// Applies the shared interaction classes used by execution-graph styles.
-     /// </summary>
+    /// Applies the shared interaction classes used by execution-graph styles.
+    /// </summary>
     public static void ApplyInteractionClasses(Classes classes, bool isSelected, bool isHovered, bool isPressed)
     {
         classes.Set("selected", isSelected);

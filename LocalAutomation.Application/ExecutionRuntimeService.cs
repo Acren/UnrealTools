@@ -24,9 +24,9 @@ public sealed class ExecutionRuntimeService
     }
 
     /// <summary>
-     /// Starts a shared execution session for the provided runtime operation. Callers can supply a session-created hook
-     /// so UI or host services attach listeners before execution begins and early task-state transitions are not lost.
-     /// </summary>
+    /// Starts a shared execution session for the provided runtime operation. Callers can supply a session-created hook
+    /// so UI or host services attach listeners before execution begins and early task-state transitions are not lost.
+    /// </summary>
     public LocalAutomation.Runtime.ExecutionSession StartExecution(Operation operation, OperationParameters parameters, Action<LocalAutomation.Runtime.ExecutionSession>? onSessionCreated = null)
     {
         if (operation == null)

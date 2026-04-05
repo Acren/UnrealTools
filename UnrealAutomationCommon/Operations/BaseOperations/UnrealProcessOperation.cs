@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
-using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.BaseOperations
 {
@@ -59,9 +59,11 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                     {
                         context.Logger.Log(test.State == TestState.Success ? LogLevel.Information : LogLevel.Error, EnumUtils.GetName(test.State).ToUpperInvariant().PadRight(7) + " - " + test.FullTestPath);
                         foreach (TestEntry entry in test.Entries)
-                            if (entry.Event.Type != TestEventType.Info)
                         {
-                            context.Logger.Log(entry.Event.Type == TestEventType.Error ? LogLevel.Error : LogLevel.Warning, "".PadRight(9) + " - " + entry.Event.Message);
+                            if (entry.Event.Type != TestEventType.Info)
+                            {
+                                context.Logger.Log(entry.Event.Type == TestEventType.Error ? LogLevel.Error : LogLevel.Warning, "".PadRight(9) + " - " + entry.Event.Message);
+                            }
                         }
                     }
 

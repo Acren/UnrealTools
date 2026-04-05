@@ -66,7 +66,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             if (operationParameters.GetOptions<CookOptions>().WaitForAttach)
             {
-                arguments.SetKeyValue("additionalcookeroptions","-waitforattach");
+                arguments.SetKeyValue("additionalcookeroptions", "-waitforattach");
             }
 
             return new global::LocalAutomation.Runtime.Command(engine.GetRunUATPath(), arguments.ToString());

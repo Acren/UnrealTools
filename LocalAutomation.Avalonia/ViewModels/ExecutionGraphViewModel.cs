@@ -21,13 +21,13 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     public const double NodeMinWidth = 156;
 
     /// <summary>
-     /// Defines the fixed height used for leaf task cards.
-     /// </summary>
+    /// Defines the fixed height used for leaf task cards.
+    /// </summary>
     public const double NodeHeight = 100;
 
     /// <summary>
-     /// Defines the fixed height reserved for a group-container header.
-     /// </summary>
+    /// Defines the fixed height reserved for a group-container header.
+    /// </summary>
     public const double GroupHeaderHeight = 56;
 
     /// <summary>

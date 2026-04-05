@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
-using System.IO;
-using Microsoft.Extensions.Logging;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {

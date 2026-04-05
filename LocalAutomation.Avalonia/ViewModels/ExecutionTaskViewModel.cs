@@ -3,12 +3,12 @@ using System.ComponentModel;
 using System.Threading;
 using Avalonia.Threading;
 using LocalAutomation.Core;
+using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
+using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
 using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
 using RuntimeExecutionTaskState = LocalAutomation.Runtime.ExecutionTaskState;
-using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
-using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -22,8 +22,8 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     private bool _isDisposed;
 
     /// <summary>
-     /// Creates a shared Avalonia task view model from one execution-task model.
-     /// </summary>
+    /// Creates a shared Avalonia task view model from one execution-task model.
+    /// </summary>
     public ExecutionTaskViewModel(RuntimeExecutionTask task, RuntimeExecutionSession? session = null)
     {
         Task = task ?? throw new ArgumentNullException(nameof(task));
@@ -114,7 +114,7 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// Disposes session/runtime subscriptions owned by this task view model.
-     /// </summary>
+    /// </summary>
     public void Dispose()
     {
         if (_isDisposed)

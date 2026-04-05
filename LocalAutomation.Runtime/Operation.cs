@@ -350,8 +350,8 @@ public abstract class Operation
     }
 
     /// <summary>
-     /// Lets derived operations describe child tasks beneath the framework-owned root task.
-     /// </summary>
+    /// Lets derived operations describe child tasks beneath the framework-owned root task.
+    /// </summary>
     protected internal virtual void DescribeExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
     {
         throw new NotSupportedException($"Operation '{OperationName}' must override {nameof(DescribeExecutionPlan)}.");

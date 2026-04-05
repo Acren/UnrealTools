@@ -16,15 +16,15 @@ namespace UnrealAutomationCommon.Unreal
         public bool IsSourceBuild { get; private set; }
 
         public override string Name => $"{Version} {EngineType}";
-        public override string DisplayName => Name ;
+        public override string DisplayName => Name;
 
         public string EngineType => IsSourceBuild ? "Source" : "Launcher";
 
         public string BaseEditorName => Version.MajorVersion >= 5 ? "UnrealEditor" : "UE4Editor";
 
         public EngineVersion Version => EngineVersion.Load(this.GetBuildVersionPath());
-        
-        public SemVersion SemVersion => Semver.SemVersion.Parse(Version.ToString(), SemVersionStyles.Any); 
+
+        public SemVersion SemVersion => Semver.SemVersion.Parse(Version.ToString(), SemVersionStyles.Any);
 
         public string PluginsPath => Path.Combine(TargetPath, "Engine", "Plugins");
 

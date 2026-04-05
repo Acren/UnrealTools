@@ -18,8 +18,8 @@ public sealed class EngineVersionListOptionValueConverter : IOptionValueConverte
     public string Id => "unreal.option-values.engine-version-list";
 
     /// <summary>
-     /// Returns whether the provided value type is a list of engine versions.
-     /// </summary>
+    /// Returns whether the provided value type is a list of engine versions.
+    /// </summary>
     public bool CanConvert(Type valueType)
     {
         return valueType.IsArray && valueType.GetElementType() == typeof(EngineVersion)
@@ -58,7 +58,7 @@ public sealed class EngineVersionListOptionValueConverter : IOptionValueConverte
 
     /// <summary>
     /// Materializes the restored engine versions into the immutable selection shape the runtime option model exposes.
-     /// </summary>
+    /// </summary>
     private static IReadOnlyList<EngineVersion> ToSelectionList(IEnumerable<EngineVersion> versions)
     {
         return versions.ToArray();

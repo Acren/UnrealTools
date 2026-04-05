@@ -137,8 +137,8 @@ public class OperationParameters : INotifyPropertyChanged
     }
 
     /// <summary>
-     /// Ensures a live option-set instance exists for the provided runtime type.
-     /// </summary>
+    /// Ensures a live option-set instance exists for the provided runtime type.
+    /// </summary>
     public OperationOptions EnsureOptionsInstance(Type optionsType)
     {
         OperationOptions? existingOptions = GetOptionsInstance(optionsType);

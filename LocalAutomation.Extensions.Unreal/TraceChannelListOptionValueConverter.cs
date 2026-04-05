@@ -19,7 +19,7 @@ public sealed class TraceChannelListOptionValueConverter : IOptionValueConverter
 
     /// <summary>
     /// Returns whether the provided value type is a trace-channel selection list.
-     /// </summary>
+    /// </summary>
     public bool CanConvert(Type valueType)
     {
         return valueType.IsArray && valueType.GetElementType() == typeof(TraceChannel)
@@ -41,7 +41,7 @@ public sealed class TraceChannelListOptionValueConverter : IOptionValueConverter
 
     /// <summary>
     /// Rehydrates a trace-channel selection list from persisted channel keys.
-     /// </summary>
+    /// </summary>
     public object? Deserialize(Type valueType, object? persistedValue)
     {
         IEnumerable<string?> keys = persistedValue switch
