@@ -26,8 +26,8 @@ public sealed class ExecutionTaskScopeBuilder
     public ExecutionTaskBuilder Task(string title, string? description = null)
     {
         return _mode == ExecutionChildMode.Parallel
-            ? _owner.DeclareRelativeTask(_parent, title, description, TaskPlacement.ChildParallel, ref _parallelScopeEntry)
-            : _owner.DeclareRelativeTask(_parent, title, description, TaskPlacement.ChildSequential);
+            ? _owner.DeclareParallelRelativeTask(_parent, title, description, ref _parallelScopeEntry)
+            : _owner.DeclareSequentialRelativeTask(_parent, title, description);
     }
 
 }

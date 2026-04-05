@@ -175,7 +175,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// </summary>
     public ExecutionTaskBuilder Child(string title, string? description = null)
     {
-        return _owner.DeclareRelativeTask(Handle, title, description, TaskPlacement.ChildSequential);
+        return _owner.DeclareSequentialRelativeTask(Handle, title, description);
     }
 
     /// <summary>
@@ -205,7 +205,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// </summary>
     public ExecutionTaskBuilder Then(string title, string? description = null)
     {
-        return _owner.DeclareRelativeTask(_parent, title, description, TaskPlacement.SiblingSequential);
+        return _owner.DeclareSequentialRelativeTask(_parent, title, description);
     }
 
     /// <summary>

@@ -7,8 +7,8 @@ using LocalAutomation.Core;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Builds a previewable execution plan where task body nodes, child scopes, and expanded child operations all participate
-/// in one ordered child-declaration stream beneath each parent task.
+/// Builds a previewable execution plan where ordered body steps, child tasks, parallel child groups, and expanded child
+/// operations all participate in one explicit step list beneath each parent task.
 /// </summary>
 public sealed class ExecutionPlanBuilder
 {
@@ -130,37 +130,24 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Declares one task relative to an existing parent and registers it into the correct child-declaration entry for the
-    /// requested placement mode.
+    /// Declares one task relative to an existing parent and appends it to the correct ordered step in that parent's child
+    /// step list.
     /// </summary>
-    internal ExecutionTaskBuilder DeclareRelativeTask(ExecutionTaskHandle parent, string title, string? description, TaskPlacement placement)
-    {
-        ChildDeclarationEntry? sharedDeclaration = null;
-        return DeclareRelativeTask(parent, title, description, placement, ref sharedDeclaration);
-    }
-
-    /// <summary>
-    /// Declares one task relative to an existing parent and reuses a shared declaration entry when the caller is building
-    /// a parallel scope that groups multiple tasks into the same stage.
-    /// </summary>
-    internal ExecutionTaskBuilder DeclareRelativeTask(ExecutionTaskHandle parent, string title, string? description, TaskPlacement placement, ref ChildDeclarationEntry? sharedDeclaration)
+    internal ExecutionTaskBuilder DeclareRelativeTask(ExecutionTaskHandle parent, string title, string? description, bool parallel, ref ChildDeclarationEntry? sharedDeclaration)
     {
         ExecutionTaskBuilder task = Task(title, description, parent);
 
-        /* Sequential child and sibling declarations each get their own child-declaration entry so ordering can express a
-           step-by-step chain, while parallel scopes reuse one shared entry so all tasks enter and complete together. */
-        ChildDeclarationEntry declaration = placement == TaskPlacement.ChildParallel
-            ? sharedDeclaration ??= RegisterChildScopeEntry(parent)
-            : RegisterChildScopeEntry(parent);
-        AddScopeEntryTask(declaration, task.Definition);
-        if (placement == TaskPlacement.ChildParallel)
+        /* Sequential declarations each get their own ordered step, while parallel scopes reuse one shared step whose
+           entry and completion sets are the same sibling task list. */
+        ChildDeclarationEntry declaration = parallel
+            ? sharedDeclaration ??= AppendChildStep(parent, ChildDeclarationKind.ParallelChildren)
+            : AppendChildStep(parent, ChildDeclarationKind.ChildTask);
+        if (!parallel)
         {
-            AddScopeCompletionTask(declaration, task.Definition);
+            declaration.RootTaskId = task.Definition.Id;
         }
-        else
-        {
-            SetScopeCompletionTask(declaration, task.Definition);
-        }
+
+        declaration.AddCompletionTask(task.Definition.Id);
 
         return task;
     }
@@ -196,10 +183,9 @@ public sealed class ExecutionPlanBuilder
         bodyDefinition.IsHiddenInGraph = true;
         _items.Add(bodyDefinition);
 
-        ChildDeclarationEntry declaration = new(NextOrderIndex(), ChildDeclarationKind.Body);
-        declaration.EntryTaskIds.Add(bodyDefinition.Id);
-        declaration.CompletionTaskIds.Add(bodyDefinition.Id);
-        parentDefinition.ChildDeclarations.Add(declaration);
+        ChildDeclarationEntry declaration = AppendChildStep(new ExecutionTaskHandle(parentDefinition.Id), ChildDeclarationKind.Body);
+        declaration.RootTaskId = bodyDefinition.Id;
+        declaration.AddCompletionTask(bodyDefinition.Id);
 
         return FinalizeTask(bodyDefinition);
     }
@@ -211,15 +197,23 @@ public sealed class ExecutionPlanBuilder
     internal ChildDeclarationEntry AttachChildOperation(PlanItemDefinition parentDefinition, Type operationType, Func<OperationParameters> createParameters, string title, string? description)
     {
         _ = parentDefinition ?? throw new ArgumentNullException(nameof(parentDefinition));
-        ChildDeclarationEntry declaration = new(NextOrderIndex(), ChildDeclarationKind.ChildOperation)
-        {
-            ChildOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType)),
-            CreateChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters)),
-            ImportedRootTitle = string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Child operation title is required.", nameof(title)) : title,
-            ImportedRootDescription = description ?? string.Empty
-        };
-        parentDefinition.ChildDeclarations.Add(declaration);
+        ChildDeclarationEntry declaration = AppendChildStep(new ExecutionTaskHandle(parentDefinition.Id), ChildDeclarationKind.ChildOperation);
+        declaration.ChildOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
+        declaration.CreateChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters));
+        declaration.ImportedRootTitle = string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Child operation title is required.", nameof(title)) : title;
+        declaration.ImportedRootDescription = description ?? string.Empty;
         return declaration;
+    }
+
+    internal ExecutionTaskBuilder DeclareParallelRelativeTask(ExecutionTaskHandle parent, string title, string? description, ref ChildDeclarationEntry? sharedDeclaration)
+    {
+        return DeclareRelativeTask(parent, title, description, parallel: true, ref sharedDeclaration);
+    }
+
+    internal ExecutionTaskBuilder DeclareSequentialRelativeTask(ExecutionTaskHandle parent, string title, string? description)
+    {
+        ChildDeclarationEntry? sharedDeclaration = null;
+        return DeclareRelativeTask(parent, title, description, parallel: false, ref sharedDeclaration);
     }
 
     /// <summary>
@@ -267,62 +261,13 @@ public sealed class ExecutionPlanBuilder
             : new[] { taskId };
     }
 
-    internal ChildDeclarationEntry RegisterChildScopeEntry(ExecutionTaskHandle parent)
+    internal ChildDeclarationEntry AppendChildStep(ExecutionTaskHandle parent, ChildDeclarationKind kind)
     {
         ExecutionTaskId parentId = GetTaskId(parent);
         PlanItemDefinition definition = GetDefinition(parentId);
-        ChildDeclarationEntry entry = new(NextOrderIndex(), ChildDeclarationKind.ChildScope);
+        ChildDeclarationEntry entry = new(NextOrderIndex(), kind);
         definition.ChildDeclarations.Add(entry);
         return entry;
-    }
-
-    internal ChildDeclarationEntry RegisterChildScopeTaskEntry(ExecutionTaskHandle parent, PlanItemDefinition taskDefinition)
-    {
-        _ = taskDefinition ?? throw new ArgumentNullException(nameof(taskDefinition));
-        ChildDeclarationEntry entry = RegisterChildScopeEntry(parent);
-        entry.EntryTaskIds.Add(taskDefinition.Id);
-        entry.CompletionTaskIds.Add(taskDefinition.Id);
-        return entry;
-    }
-
-    internal ChildDeclarationEntry RegisterSequentialSiblingEntry(ExecutionTaskHandle parent, PlanItemDefinition taskDefinition)
-    {
-        _ = taskDefinition ?? throw new ArgumentNullException(nameof(taskDefinition));
-        ChildDeclarationEntry entry = RegisterChildScopeEntry(parent);
-        entry.EntryTaskIds.Add(taskDefinition.Id);
-        entry.CompletionTaskIds.Add(taskDefinition.Id);
-        return entry;
-    }
-
-    internal void AddScopeEntryTask(ChildDeclarationEntry declaration, PlanItemDefinition taskDefinition)
-    {
-        _ = declaration ?? throw new ArgumentNullException(nameof(declaration));
-        _ = taskDefinition ?? throw new ArgumentNullException(nameof(taskDefinition));
-
-        if (!declaration.EntryTaskIds.Contains(taskDefinition.Id))
-        {
-            declaration.EntryTaskIds.Add(taskDefinition.Id);
-        }
-    }
-
-    internal void SetScopeCompletionTask(ChildDeclarationEntry declaration, PlanItemDefinition taskDefinition)
-    {
-        _ = declaration ?? throw new ArgumentNullException(nameof(declaration));
-        _ = taskDefinition ?? throw new ArgumentNullException(nameof(taskDefinition));
-
-        declaration.CompletionTaskIds.Clear();
-        declaration.CompletionTaskIds.Add(taskDefinition.Id);
-    }
-
-    internal void AddScopeCompletionTask(ChildDeclarationEntry declaration, PlanItemDefinition taskDefinition)
-    {
-        _ = declaration ?? throw new ArgumentNullException(nameof(declaration));
-        _ = taskDefinition ?? throw new ArgumentNullException(nameof(taskDefinition));
-
-        if (!declaration.CompletionTaskIds.Contains(taskDefinition.Id))
-        {
-            declaration.CompletionTaskIds.Add(taskDefinition.Id);
-        }
     }
 
     private void ValidateParent(ExecutionTaskHandle parent)
@@ -374,8 +319,7 @@ public sealed class ExecutionPlanBuilder
 
             declaration.ChildOperationType = null;
             declaration.CreateChildParameters = null;
-            declaration.EntryTaskIds.Clear();
-            declaration.EntryTaskIds.Add(insertedTasks.RootTaskId);
+            declaration.RootTaskId = insertedTasks.RootTaskId;
             declaration.CompletionTaskIds.Clear();
             declaration.CompletionTaskIds.AddRange(GetLeafCompletionTaskIds(insertedTasks.Tasks));
 
@@ -421,15 +365,12 @@ public sealed class ExecutionPlanBuilder
 
             foreach (ChildDeclarationEntry declaration in orderedDeclarations)
             {
-                if (declaration.EntryTaskIds.Count > 0)
+                foreach (ExecutionTaskId entryTaskId in declaration.GetEntryTaskIds())
                 {
-                    foreach (ExecutionTaskId entryTaskId in declaration.EntryTaskIds)
+                    PlanItemDefinition entryDefinition = GetDefinition(entryTaskId);
+                    foreach (ExecutionTaskId previousCompletionTaskId in previousCompletionTaskIds)
                     {
-                        PlanItemDefinition entryDefinition = GetDefinition(entryTaskId);
-                        foreach (ExecutionTaskId previousCompletionTaskId in previousCompletionTaskIds)
-                        {
-                            AddDependency(entryDefinition, previousCompletionTaskId);
-                        }
+                        AddDependency(entryDefinition, previousCompletionTaskId);
                     }
                 }
 
@@ -533,7 +474,7 @@ public sealed class ExecutionPlanBuilder
 
         public ChildDeclarationKind Kind { get; }
 
-        public List<ExecutionTaskId> EntryTaskIds { get; } = new();
+        public ExecutionTaskId? RootTaskId { get; set; }
 
         public List<ExecutionTaskId> CompletionTaskIds { get; } = new();
 
@@ -546,21 +487,37 @@ public sealed class ExecutionPlanBuilder
         public string ImportedRootDescription { get; set; } = string.Empty;
 
         public bool ImportedRootIsHiddenInGraph { get; set; }
+
+        public IEnumerable<ExecutionTaskId> GetEntryTaskIds()
+        {
+            if (RootTaskId is ExecutionTaskId rootTaskId)
+            {
+                yield return rootTaskId;
+                yield break;
+            }
+
+            foreach (ExecutionTaskId completionTaskId in CompletionTaskIds)
+            {
+                yield return completionTaskId;
+            }
+        }
+
+        public void AddCompletionTask(ExecutionTaskId taskId)
+        {
+            if (!CompletionTaskIds.Contains(taskId))
+            {
+                CompletionTaskIds.Add(taskId);
+            }
+        }
     }
 }
 
 internal enum ChildDeclarationKind
 {
     Body,
-    ChildScope,
+    ChildTask,
+    ParallelChildren,
     ChildOperation
-}
-
-internal enum TaskPlacement
-{
-    ChildSequential,
-    SiblingSequential,
-    ChildParallel
 }
 
 /// <summary>
