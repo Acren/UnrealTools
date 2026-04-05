@@ -114,7 +114,7 @@ public abstract class Operation
             throw new ArgumentNullException(nameof(context));
         }
 
-        return context.SessionId is ExecutionSessionId sessionId
+        return context.TryGetSessionId(out ExecutionSessionId sessionId)
             ? Path.Combine(OutputPaths.GetSessionTempRoot(sessionId), ExecutionPathConventions.MakeCompactSegment(OperationName))
             : GetOperationTempPath();
     }
@@ -215,7 +215,7 @@ public abstract class Operation
             .SetTag("required", required)
             .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
 
-        OperationResult result = await Runner.RunChildOperation(childOperation, operationParameters, context).ConfigureAwait(false);
+        OperationResult result = await context.RunChildOperationAsync(childOperation, operationParameters).ConfigureAwait(false);
         activity.SetTag("result.outcome", result.Outcome.ToString())
             .SetTag("result.success", result.Success);
         context.Logger.LogDebug(

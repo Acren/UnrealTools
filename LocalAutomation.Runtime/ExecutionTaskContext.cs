@@ -1,19 +1,68 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
 
 namespace LocalAutomation.Runtime;
+
+internal sealed class ExecutionTaskRuntimeServices
+{
+    private readonly ExecutionSession _session;
+    private readonly ExecutionPlanScheduler _scheduler;
+    private readonly Func<ExecutionTaskId, ILogger> _createLogger;
+
+    public ExecutionTaskRuntimeServices(ExecutionSession session, ExecutionPlanScheduler scheduler, Func<ExecutionTaskId, ILogger> createLogger)
+    {
+        _session = session ?? throw new ArgumentNullException(nameof(session));
+        _scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
+        _createLogger = createLogger ?? throw new ArgumentNullException(nameof(createLogger));
+    }
+
+    internal ExecutionTask GetTask(ExecutionTaskId taskId)
+    {
+        return _session.GetTask(taskId);
+    }
+
+    internal ILogger CreateLogger(ExecutionTaskId taskId)
+    {
+        return _createLogger(taskId);
+    }
+
+    internal void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state)
+    {
+        _session.SetTaskState(taskId, state);
+    }
+
+    internal bool AreTaskReadyToStart(ExecutionTask task)
+    {
+        return task.GetTaskStartState(_session) == TaskStartState.Ready;
+    }
+
+    internal bool CanTaskStartOwnWork(ExecutionTask task)
+    {
+        return task.CanStartOwnWork(_session);
+    }
+
+    internal ExecutionSessionId SessionId => _session.Id;
+
+    internal Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext)
+    {
+        return _session.RunChildOperationAsync(operation, operationParameters, parentContext, _scheduler);
+    }
+}
 
 /// <summary>
 /// Carries the runtime services a declared plan step needs while it executes.
 /// </summary>
 public sealed class ExecutionTaskContext
 {
+    private readonly ExecutionTaskRuntimeServices? _runtime;
+
     /// <summary>
     /// Creates one execution context for a scheduled task invocation.
     /// </summary>
-    public ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, ValidatedOperationParameters validatedOperationParameters, Operation operation, ExecutionSession? session = null, ExecutionPlanScheduler? scheduler = null)
+    internal ExecutionTaskContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, ValidatedOperationParameters validatedOperationParameters, Operation operation, ExecutionTaskRuntimeServices? runtime = null)
     {
         TaskId = taskId;
         Title = string.IsNullOrWhiteSpace(title)
@@ -23,8 +72,7 @@ public sealed class ExecutionTaskContext
         CancellationToken = cancellationToken;
         ValidatedOperationParameters = validatedOperationParameters ?? throw new ArgumentNullException(nameof(validatedOperationParameters));
         Operation = operation ?? throw new ArgumentNullException(nameof(operation));
-        Session = session;
-        Scheduler = scheduler;
+        _runtime = runtime;
     }
 
     /// <summary>
@@ -59,30 +107,22 @@ public sealed class ExecutionTaskContext
     public Operation Operation { get; }
 
     /// <summary>
-    /// Gets the live execution session when the current task is running inside a session-backed execution. Runtime child
-    /// operation attachment flows through this session rather than through the immutable plan that originally seeded it.
-    /// </summary>
-    public ExecutionSession? Session { get; }
-
-    /// <summary>
-    /// Gets the current execution session identifier when the task is running inside a live session.
-    /// </summary>
-    public ExecutionSessionId? SessionId => Session?.Id;
-
-    /// <summary>
-    /// Gets the active root scheduler when this task is running inside a scheduler-owned execution session. Nested child
-    /// operations re-enter this same scheduler so the run continues on one live session graph instead of creating a
-    /// detached child execution path.
-    /// </summary>
-    internal ExecutionPlanScheduler? Scheduler { get; }
-
-    /// <summary>
     /// Creates a sibling execution context for another task within the same logical execution flow while preserving the
     /// current cancellation token and live session.
     /// </summary>
-    internal ExecutionTaskContext CreateForTask(ExecutionTaskId taskId, string title, ILogger logger, ValidatedOperationParameters validatedOperationParameters)
+    internal ExecutionTaskContext CreateForTask(ExecutionTask task)
     {
-        return new ExecutionTaskContext(taskId, title, logger, CancellationToken, validatedOperationParameters, Operation, Session, Scheduler);
+        ValidatedOperationParameters validatedOperationParameters = new(task.Title, task.OperationParameters, task.DeclaredOptionTypes);
+        return new ExecutionTaskContext(task.Id, task.Title, GetRequiredRuntime().CreateLogger(task.Id), CancellationToken, validatedOperationParameters, Operation, _runtime);
+    }
+
+    /// <summary>
+    /// Runs a nested child operation through the same live runtime services without exposing session or scheduler objects
+    /// directly to task code.
+    /// </summary>
+    public Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters)
+    {
+        return GetRequiredRuntime().RunChildOperationAsync(operation, operationParameters, this);
     }
 
     /// <summary>
@@ -142,7 +182,7 @@ public sealed class ExecutionTaskContext
     /// </summary>
     public bool TryGetState<T>(out T? value) where T : class
     {
-        if (Session == null)
+        if (_runtime == null)
         {
             value = null;
             return false;
@@ -157,7 +197,7 @@ public sealed class ExecutionTaskContext
             }
 
             currentTask = currentTask.ParentId is ExecutionTaskId parentId
-                ? Session.GetTask(parentId)
+                ? _runtime.GetTask(parentId)
                 : null;
         }
 
@@ -170,12 +210,12 @@ public sealed class ExecutionTaskContext
     /// </summary>
     private ExecutionTask GetRequiredTask()
     {
-        if (Session == null)
+        if (_runtime == null)
         {
             throw new InvalidOperationException($"Execution state is only available while task '{Title}' is running inside a live session.");
         }
 
-        return Session.GetTask(TaskId);
+        return _runtime.GetTask(TaskId);
     }
 
     /// <summary>
@@ -192,10 +232,33 @@ public sealed class ExecutionTaskContext
             }
 
             currentTask = currentTask.ParentId is ExecutionTaskId parentId
-                ? Session!.GetTask(parentId)
+                ? GetRequiredRuntime().GetTask(parentId)
                 : null;
         }
 
         throw new InvalidOperationException($"Task '{Title}' is not contained within any operation root.");
+    }
+
+    /// <summary>
+    /// Returns the current live session identifier when the task is executing inside a runtime session.
+    /// </summary>
+    internal bool TryGetSessionId(out ExecutionSessionId sessionId)
+    {
+        if (_runtime == null)
+        {
+            sessionId = default;
+            return false;
+        }
+
+        sessionId = _runtime.SessionId;
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the private runtime services for the current execution context.
+    /// </summary>
+    internal ExecutionTaskRuntimeServices GetRequiredRuntime()
+    {
+        return _runtime ?? throw new InvalidOperationException($"Task '{Title}' is not running inside live runtime services.");
     }
 }

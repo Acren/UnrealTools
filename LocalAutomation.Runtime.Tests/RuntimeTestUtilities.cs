@@ -16,7 +16,7 @@ internal static class RuntimeTestUtilities
     {
         OperationParameters parameters = operation.CreateParameters();
         parameters.Target = new TestTarget();
-        return Runner.BuildPlan(operation, parameters)
+        return ExecutionPlanFactory.BuildPlan(operation, parameters)
             ?? throw new InvalidOperationException("The test operation did not produce an execution plan.");
     }
 
@@ -25,7 +25,7 @@ internal static class RuntimeTestUtilities
     /// </summary>
     public static ExecutionPlanScheduler CreateScheduler(ExecutionPlan plan, out ExecutionSession session)
     {
-        session = new ExecutionSession(new BufferedLogStream(), plan: plan);
+        session = new ExecutionSession(new BufferedLogStream(), plan);
         return new ExecutionPlanScheduler(NullLogger.Instance, session);
     }
 
@@ -108,7 +108,7 @@ internal static class RuntimeTestUtilities
         /// <summary>
         /// Delegates plan construction to the test-provided builder action.
         /// </summary>
-        protected override void DescribeExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
+        protected internal override void DescribeExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
         {
             _buildPlan(root);
         }

@@ -31,7 +31,7 @@ public sealed class ExecutionPlanBuilder
             ? throw new ArgumentException("Execution plan title is required.", nameof(title))
             : title;
         _planId = planId ?? ExecutionIdentifierFactory.CreatePlanId(title);
-        _buildChildPlan = buildChildPlan ?? Runner.BuildPlan;
+        _buildChildPlan = buildChildPlan ?? ExecutionPlanFactory.BuildPlan;
     }
 
     /// <summary>
@@ -188,19 +188,21 @@ public sealed class ExecutionPlanBuilder
         ParentBuildState parentState = GetParentState(parentTask.Id);
         parentState.BodyCount += 1;
 
-        ExecutionTask bodyTask = CreateItem(
+        ExecutionTask bodyTask = new ExecutionTask(
             GenerateTaskId(),
             CreateBodyTaskTitle(parentTask, parentState.BodyCount),
+            parentTask.Operation,
             parentTask.Description,
-            parentTask.Id);
-        bodyTask.SetCondition(parentTask.Enabled, parentTask.DisabledReason);
-        bodyTask.SetOperationParameters(parentTask.OperationParameters, parentTask.DeclaredOptionTypes);
-        bodyTask.SetExecuteAsync(resolvedExecuteAsync);
-        bodyTask.SetOperationRoot(false);
+            parentTask.Id,
+            enabled: parentTask.Enabled,
+            disabledReason: parentTask.DisabledReason,
+            operationParameters: parentTask.OperationParameters,
+            declaredOptionTypes: parentTask.DeclaredOptionTypes,
+            executeAsync: resolvedExecuteAsync,
+            outcome: null,
+            isOperationRoot: false,
+            isHiddenInGraph: true);
 
-        /* Internal body tasks carry the runnable work for authored Run(...) declarations, so the graph hides them by
-           default and lets the global reveal toggle surface them only when lower-level troubleshooting is needed. */
-        bodyTask.SetHiddenInGraph(true);
         AddTaskDefinition(bodyTask);
         WireDependencies(bodyTask, parentState.CompletionFrontier);
         ReplaceFrontier(parentState.CompletionFrontier, bodyTask.Id);
@@ -288,7 +290,6 @@ public sealed class ExecutionPlanBuilder
             disabledReason: string.Empty,
             operationParameters: OperationParameters,
             declaredOptionTypes: _declaredOptionTypes,
-            executeAsync: null,
             outcome: null,
             isOperationRoot: parentId == null,
             isHiddenInGraph: false);
@@ -459,21 +460,12 @@ internal static class ExecutionTaskInsertion
     /// </summary>
     private static ExecutionTask CreateImportedTask(ExecutionTask childTask, ExecutionTaskId? parentId, ChildOperationRootOverrides? rootOverrides)
     {
-        return new ExecutionTask(
-            childTask.Id,
-            rootOverrides?.Title ?? childTask.Title,
-            childTask.Operation,
-            rootOverrides?.Description ?? childTask.Description,
+        return childTask.CreateClone(
             parentId,
-            childTask.DependsOn,
-            childTask.Enabled,
-            childTask.DisabledReason,
-            childTask.OperationParameters,
-            childTask.DeclaredOptionTypes,
-            childTask.ExecuteAsync,
-            outcome: null,
-            isOperationRoot: childTask.IsOperationRoot,
-            isHiddenInGraph: childTask.IsHiddenInGraph || (rootOverrides?.IsHiddenInGraph ?? false));
+            rootOverrides?.Title ?? childTask.Title,
+            rootOverrides?.Description ?? childTask.Description,
+            childTask.IsHiddenInGraph || (rootOverrides?.IsHiddenInGraph ?? false),
+            outcome: null);
     }
 }
 

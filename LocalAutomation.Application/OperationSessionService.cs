@@ -4,6 +4,7 @@ using System.Linq;
 using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
+using Microsoft.Extensions.Logging;
 
 namespace LocalAutomation.Application;
 
@@ -14,15 +15,21 @@ namespace LocalAutomation.Application;
 public sealed class OperationSessionService
 {
     private readonly OperationCatalogService _catalog;
-    private readonly OperationRuntimeService _runtime;
 
     /// <summary>
-    /// Creates an operation session service from the shared catalog and runtime services.
+    /// Creates an operation session service from the shared catalog.
     /// </summary>
-    public OperationSessionService(OperationCatalogService catalog, OperationRuntimeService runtime)
+    public OperationSessionService(OperationCatalogService catalog)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
-        _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+    }
+
+    /// <summary>
+    /// Creates a host-facing parameter session around the shared runtime parameter model.
+    /// </summary>
+    public OperationParameterSession CreateParameterSession()
+    {
+        return new OperationParameterSession(new OperationParameters());
     }
 
     /// <summary>
@@ -102,7 +109,20 @@ public sealed class OperationSessionService
     /// </summary>
     public string? GetExecuteDisabledReason(Operation? operation, OperationParameters parameters)
     {
-        return _runtime.CheckRequirements(operation, parameters);
+        if (operation == null)
+        {
+            return "No operation selected";
+        }
+
+        try
+        {
+            return operation.CheckRequirementsSatisfied(parameters);
+        }
+        catch (Exception ex)
+        {
+            LogOperationSessionFailure(operation.GetType(), "validate execution requirements", ex);
+            return "Operation validation failed. See the application log for details.";
+        }
     }
 
     /// <summary>
@@ -118,7 +138,21 @@ public sealed class OperationSessionService
     /// </summary>
     public string GetVisibleCommandText(Operation? operation, OperationParameters parameters)
     {
-        return _runtime.GetVisibleCommandText(operation, parameters);
+        if (operation == null)
+        {
+            return "No operation";
+        }
+
+        try
+        {
+            IReadOnlyList<string> commandTexts = operation.GetCommandTexts(parameters);
+            return commandTexts.Count > 0 ? string.Join("\n", commandTexts) : "No command";
+        }
+        catch (Exception ex)
+        {
+            LogOperationSessionFailure(operation.GetType(), "build command preview", ex);
+            return "Command preview failed. See the application log for details.";
+        }
     }
 
     /// <summary>
@@ -126,7 +160,20 @@ public sealed class OperationSessionService
     /// </summary>
     public string? GetPrimaryCommandText(Operation? operation, OperationParameters parameters)
     {
-        return _runtime.GetPrimaryCommandText(operation, parameters);
+        if (operation == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return operation.GetCommandTexts(parameters).FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            LogOperationSessionFailure(operation.GetType(), "build the primary command preview", ex);
+            return null;
+        }
     }
 
     /// <summary>
@@ -142,9 +189,41 @@ public sealed class OperationSessionService
             .SetTag("operation.name", operation?.OperationName ?? string.Empty)
             .SetTag("target.type", parameters.Target?.GetType().Name ?? string.Empty);
 
-        LocalAutomation.Runtime.ExecutionPlan? plan = _runtime.BuildExecutionPlan(operation, parameters);
+        LocalAutomation.Runtime.ExecutionPlan? plan;
+        if (operation == null)
+        {
+            plan = null;
+        }
+        else
+        {
+            try
+            {
+                plan = ExecutionPlanFactory.BuildPlan(operation, parameters);
+            }
+            catch (Exception ex)
+            {
+                LogOperationSessionFailure(operation.GetType(), "build execution plan", ex);
+                plan = null;
+            }
+        }
+
         activity.SetTag("plan.has_result", plan != null)
             .SetTag("plan.task.count", plan?.Tasks.Count ?? 0);
         return plan;
+    }
+
+    /// <summary>
+    /// Logs operation inspection failures when the application logger is available, while still allowing tests or
+    /// startup paths to proceed before logging is initialized.
+    /// </summary>
+    private static void LogOperationSessionFailure(Type operationType, string activity, Exception ex)
+    {
+        try
+        {
+            ApplicationLogger.Logger.LogError(ex, "Operation session failed to {Activity} for '{OperationType}'.", activity, operationType.FullName ?? operationType.Name);
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
 }

@@ -24,8 +24,7 @@ public sealed class LocalAutomationApplicationHost
             ? LocalAutomationHostStorage.DefaultTargetSettingsFileName
             : targetSettingsFileName;
         ContextActions = new ContextActionService(catalog);
-        Execution = new ExecutionService();
-        ExecutionRuntime = new ExecutionRuntimeService();
+        Execution = new ExecutionSessionService();
         OptionEditors = new OptionEditorService(catalog);
         OptionValues = new LayeredSettingsPersistenceService(catalog, resolvedAppDataRootPath, resolvedTargetSettingsFileName);
         ApplicationSettings = new ApplicationSettings(defaultOutputRootPath, defaultTempRootPath);
@@ -35,8 +34,7 @@ public sealed class LocalAutomationApplicationHost
         ApplyApplicationSettings();
         CleanupStaleSessionTempRoots();
         Operations = new OperationCatalogService(catalog);
-        OperationRuntime = new OperationRuntimeService();
-        OperationSession = new OperationSessionService(Operations, OperationRuntime);
+        OperationSession = new OperationSessionService(Operations);
         Targets = new TargetDiscoveryService(catalog);
     }
 
@@ -58,12 +56,7 @@ public sealed class LocalAutomationApplicationHost
     /// <summary>
     /// Gets the service that tracks the shared execution session for UI hosts.
     /// </summary>
-    public ExecutionService Execution { get; }
-
-    /// <summary>
-    /// Gets the service used to start shared execution sessions through the shared runtime runner.
-    /// </summary>
-    public ExecutionRuntimeService ExecutionRuntime { get; }
+    public ExecutionSessionService Execution { get; }
 
     /// <summary>
     /// Gets the service used to resolve property-grid editor targets for option sets.
@@ -114,11 +107,6 @@ public sealed class LocalAutomationApplicationHost
     /// Gets the service used to capture and reapply stable option values for persistence.
     /// </summary>
     public LayeredSettingsPersistenceService OptionValues { get; }
-
-    /// <summary>
-    /// Gets the service used to create and inspect runtime operations through extension-provided adapters.
-    /// </summary>
-    public OperationRuntimeService OperationRuntime { get; }
 
     /// <summary>
     /// Gets the service used to derive selected-operation UI state from the shared catalog and runtime adapters.

@@ -7,15 +7,38 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
+using Microsoft.Extensions.Logging;
 
 namespace LocalAutomation.Runtime;
+
+internal enum TaskStartState
+{
+    Ready,
+    WaitingForDependencies,
+    WaitingForParent,
+    Running,
+    NoStartableWork
+}
+
+internal sealed class TaskStartResult
+{
+    public TaskStartResult(ExecutionTask task, Task<OperationResult> runningTask)
+    {
+        Task = task ?? throw new ArgumentNullException(nameof(task));
+        RunningTask = runningTask ?? throw new ArgumentNullException(nameof(runningTask));
+    }
+
+    public ExecutionTask Task { get; }
+
+    public Task<OperationResult> RunningTask { get; }
+}
 
 /// <summary>
 /// Represents one execution-graph node. Authored plans and live sessions share this type, but runtime sessions own their
 /// own cloned task instances so mutable graph state, runtime state, and task-scoped logs never leak back into preview
 /// plan objects.
 /// </summary>
-public sealed class ExecutionTask : INotifyPropertyChanged
+public class ExecutionTask : INotifyPropertyChanged
 {
     private ExecutionTaskId? _parentId;
     private string _description;
@@ -28,7 +51,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     private string _disabledReason;
     private OperationParameters _operationParameters;
     private IReadOnlyList<Type> _declaredOptionTypes;
-    private Func<ExecutionTaskContext, Task<OperationResult>>? _executeAsync;
+    private readonly Func<ExecutionTaskContext, Task<OperationResult>>? _executeAsync;
     private bool _isOperationRoot;
     private bool _isHiddenInGraph;
     private readonly Dictionary<Type, object> _stateByType = new();
@@ -65,13 +88,13 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         _parentId = parentId;
         _dependsOn = new List<ExecutionTaskId>((dependsOn ?? Array.Empty<ExecutionTaskId>()));
         DependsOn = new ReadOnlyCollection<ExecutionTaskId>(_dependsOn);
-        _childTaskIds = new List<ExecutionTaskId>();
-        ChildTaskIds = new ReadOnlyCollection<ExecutionTaskId>(_childTaskIds);
         _enabled = enabled;
         _disabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
         _operationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
         _declaredOptionTypes = (declaredOptionTypes ?? Array.Empty<Type>()).ToList().AsReadOnly();
         _executeAsync = executeAsync;
+        _childTaskIds = new List<ExecutionTaskId>();
+        ChildTaskIds = new ReadOnlyCollection<ExecutionTaskId>(_childTaskIds);
         Outcome = outcome;
         _isOperationRoot = isOperationRoot;
         _isHiddenInGraph = isHiddenInGraph;
@@ -115,8 +138,6 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     public OperationParameters OperationParameters => _operationParameters;
 
     public IReadOnlyList<Type> DeclaredOptionTypes => _declaredOptionTypes;
-
-    public Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync => _executeAsync;
 
     /// <summary>
     /// Gets the current execution lifecycle status for this task scope.
@@ -245,7 +266,165 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     {
         /* Session-owned clones preserve graph visibility metadata so preview and runtime tabs collapse the same authored
            internal tasks unless the user explicitly reveals hidden nodes in the UI. */
-        return new ExecutionTask(Id, Title, Operation, Description, ParentId, _dependsOn, Enabled, DisabledReason, OperationParameters, DeclaredOptionTypes, ExecuteAsync, Outcome, IsOperationRoot, IsHiddenInGraph);
+        return CreateClone(ParentId, Title, Description, IsHiddenInGraph, Outcome);
+    }
+
+    /// <summary>
+    /// Creates one task clone while preserving any internal runnable work and authored graph metadata.
+    /// </summary>
+    internal ExecutionTask CreateClone(ExecutionTaskId? parentId, string title, string description, bool isHiddenInGraph, ExecutionTaskOutcome? outcome = null)
+    {
+        return new ExecutionTask(
+            Id,
+            title,
+            Operation,
+            description,
+            parentId,
+            DependsOn,
+            Enabled,
+            DisabledReason,
+            OperationParameters,
+            DeclaredOptionTypes,
+            _executeAsync,
+            outcome,
+            IsOperationRoot,
+            isHiddenInGraph);
+    }
+
+    /// <summary>
+    /// Returns the child task ids owned by this task. Tasks that do not aggregate children return an empty list.
+    /// </summary>
+    internal IReadOnlyList<ExecutionTaskId> GetChildTaskIds()
+    {
+        return ChildTaskIds;
+    }
+
+    /// <summary>
+    /// Returns the current scheduler-facing start state for this task subtree.
+    /// </summary>
+    internal TaskStartState GetTaskStartState(ExecutionSession session)
+    {
+        if (session == null)
+        {
+            throw new ArgumentNullException(nameof(session));
+        }
+
+        if (State == ExecutionTaskState.Completed)
+        {
+            return TaskStartState.NoStartableWork;
+        }
+
+        if (CanStartOwnWork(session))
+        {
+            return TaskStartState.Ready;
+        }
+
+        if (GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).GetTaskStartState(session) == TaskStartState.Ready))
+        {
+            return TaskStartState.Ready;
+        }
+
+        if ((_executeAsync != null && State == ExecutionTaskState.Running) || GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).GetTaskStartState(session) == TaskStartState.Running))
+        {
+            return TaskStartState.Running;
+        }
+
+        if (_executeAsync != null && State == ExecutionTaskState.Pending)
+        {
+            if (!session.AreTaskDependenciesSatisfied(this))
+            {
+                return TaskStartState.WaitingForDependencies;
+            }
+
+            if (!session.AreTaskAncestorsOpen(this))
+            {
+                return TaskStartState.WaitingForParent;
+            }
+        }
+
+        if (GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).GetTaskStartState(session) == TaskStartState.WaitingForDependencies))
+        {
+            return TaskStartState.WaitingForDependencies;
+        }
+
+        if (GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).GetTaskStartState(session) == TaskStartState.WaitingForParent))
+        {
+            return TaskStartState.WaitingForParent;
+        }
+
+        return TaskStartState.NoStartableWork;
+    }
+
+    /// <summary>
+    /// Returns the execution locks required for the next startable work item in this task subtree.
+    /// </summary>
+    internal IReadOnlyList<ExecutionLock> GetExecutionLocksForNextStart(ExecutionSession session)
+    {
+        if (session == null)
+        {
+            throw new ArgumentNullException(nameof(session));
+        }
+
+        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        {
+            ExecutionTask childTask = session.GetTask(childTaskId);
+            if (childTask.GetTaskStartState(session) == TaskStartState.Ready)
+            {
+                return childTask.GetExecutionLocksForNextStart(session);
+            }
+        }
+
+        if (CanStartOwnWork(session))
+        {
+            return Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(Title, OperationParameters, DeclaredOptionTypes));
+        }
+
+        return Array.Empty<ExecutionLock>();
+    }
+
+    /// <summary>
+    /// Starts the next startable work item in this task subtree and returns the actual task that entered Running.
+    /// </summary>
+    internal TaskStartResult StartAsync(ExecutionTaskContext context)
+    {
+        if (context == null)
+        {
+            throw new ArgumentNullException(nameof(context));
+        }
+
+        ExecutionTaskRuntimeServices runtime = context.GetRequiredRuntime();
+
+        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        {
+            ExecutionTask childTask = runtime.GetTask(childTaskId);
+            if (runtime.AreTaskReadyToStart(childTask))
+            {
+                return childTask.StartAsync(context.CreateForTask(childTask));
+            }
+        }
+
+        if (!runtime.CanTaskStartOwnWork(this))
+        {
+            throw new InvalidOperationException($"Task '{Id}' does not have any work ready to start.");
+        }
+
+        runtime.SetTaskState(Id, ExecutionTaskState.Running);
+        return new TaskStartResult(this, _executeAsync!(context));
+    }
+
+    /// <summary>
+    /// Adds one child task to this task. Tasks that do not aggregate children fail loudly instead of silently accepting an
+    /// invalid graph shape.
+    /// </summary>
+    internal void AddChild(ExecutionTaskId childTaskId)
+    {
+        if (_childTaskIds.Contains(childTaskId))
+        {
+            return;
+        }
+
+        _childTaskIds.Add(childTaskId);
+        RaisePropertyChanged(nameof(ChildTaskIds));
     }
 
     internal void InitializeRuntimeState(bool hasBegunExecution)
@@ -261,17 +440,6 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         StartedAt = null;
         FinishedAt = null;
         ResetReachedStates(initialState);
-    }
-
-    internal void AddChild(ExecutionTaskId childTaskId)
-    {
-        if (_childTaskIds.Contains(childTaskId))
-        {
-            return;
-        }
-
-        _childTaskIds.Add(childTaskId);
-        RaisePropertyChanged(nameof(ChildTaskIds));
     }
 
     internal void AddDependency(ExecutionTaskId dependencyTaskId)
@@ -309,14 +477,6 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     {
         _operationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
         _declaredOptionTypes = (declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))).ToList().AsReadOnly();
-    }
-
-    /// <summary>
-    /// Attaches or replaces the executable body delegate while the task is still only a plan node.
-    /// </summary>
-    internal void SetExecuteAsync(Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync)
-    {
-        _executeAsync = executeAsync;
     }
 
     /// <summary>
@@ -439,7 +599,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
         }
     }
 
-    private void RaisePropertyChanged([CallerMemberName] string? propertyName = null)
+    protected void RaisePropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
@@ -492,4 +652,16 @@ public sealed class ExecutionTask : INotifyPropertyChanged
             ? new InvalidOperationException($"Task '{Title}' ({Id}) completed before one or more awaited states were reached.")
             : new InvalidOperationException($"Task '{Title}' ({Id}) completed before reaching awaited state '{targetState}'.");
     }
+
+    /// <summary>
+    /// Returns whether this task's directly attached runnable work can start immediately.
+    /// </summary>
+    internal bool CanStartOwnWork(ExecutionSession session)
+    {
+        return _executeAsync != null
+            && State == ExecutionTaskState.Pending
+            && session.AreTaskDependenciesSatisfied(this)
+            && session.AreTaskAncestorsOpen(this);
+    }
+
 }

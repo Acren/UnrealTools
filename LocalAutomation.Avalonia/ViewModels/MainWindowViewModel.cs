@@ -52,7 +52,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public MainWindowViewModel(LocalAutomationApplicationHost services)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
-        _parameterSession = _services.OperationRuntime.CreateParameterSession();
+        _parameterSession = _services.OperationSession.CreateParameterSession();
         _sessionPersistence = new SessionPersistenceService(services);
         _sessionSnapshotSaver = new DebouncedBackgroundSaver<SessionSnapshot>(
             debounceDelay: SessionSaveDebounceDelay,
@@ -317,10 +317,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
         // Attach the execution workspace and shared session registry before the runner starts so early task-state
         // transitions, especially the initial Running state, are not missed by the UI.
-        RuntimeExecutionSession session = _services.ExecutionRuntime.StartExecution(_currentOperation, _parameterSession.RawValue, session =>
+        RuntimeExecutionSession session = _services.Execution.StartExecution(_currentOperation, _parameterSession.RawValue, session =>
         {
             ExecutionWorkspace.AttachExecutionSession(session);
-            _services.Execution.AddSession(session);
         });
         SetStatus($"Started {session.OperationName} for {session.TargetName}.");
     }

@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LocalAutomation.Runtime;
 
@@ -15,29 +17,46 @@ namespace LocalAutomation.Runtime;
 /// </summary>
 public sealed class ExecutionSession
 {
-    private readonly Func<Task>? _cancelAsync;
     private readonly TaskCompletionSource<bool> _completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<ExecutionTask> _tasks = new();
     private readonly Dictionary<ExecutionTaskId, ExecutionTask> _tasksById = new();
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private readonly Operation _operation;
+    private readonly OperationParameters _operationParameters;
+    private readonly List<string> _errors = new();
+    private readonly List<string> _warnings = new();
+    private readonly SessionLogger _sessionLogger;
     private bool _hasBegunExecution;
+    private Task<OperationResult>? _currentTask;
+    private ILogger _logger = NullLogger.Instance;
 
     /// <summary>
-    /// Creates an execution session around a shared log stream and optional cancellation action.
+    /// Creates an execution session around a shared log stream and the authored plan it will execute.
     /// </summary>
-    public ExecutionSession(ILogStream logStream, Func<Task>? cancelAsync = null, ExecutionPlan? plan = null)
+    public ExecutionSession(ILogStream logStream, ExecutionPlan plan)
     {
         Id = ExecutionSessionId.New();
         LogStream = logStream ?? throw new ArgumentNullException(nameof(logStream));
-        StartedAt = DateTimeOffset.Now;
-        _cancelAsync = cancelAsync;
-
-        if (plan != null)
+        if (plan == null)
         {
-            /* Sessions own runtime-ready initialization so schedulers can treat the live graph as the single source of
-               truth instead of reapplying startup state on every execution path. */
-            _hasBegunExecution = true;
-            InitializeFromPlan(plan);
+            throw new ArgumentNullException(nameof(plan));
         }
+
+        /* The root authored task already carries the concrete operation and parameter snapshot, so the live session can
+           derive its top-level execution context directly from the plan it owns instead of requiring a second wrapper
+           object to hold the same runtime identity. */
+        ExecutionTask rootTask = plan.Tasks.Single(task => task.ParentId == null);
+        _operation = rootTask.Operation;
+        _operationParameters = rootTask.OperationParameters;
+        StartedAt = DateTimeOffset.Now;
+        _sessionLogger = new SessionLogger(this);
+
+        /* Sessions own runtime-ready initialization so schedulers can treat the live graph as the single source of
+           truth instead of reapplying startup state on every execution path. */
+        _hasBegunExecution = true;
+        InitializeFromPlan(plan);
+        OperationName = _operation.OperationName;
+        TargetName = _operationParameters.Target?.DisplayName ?? string.Empty;
     }
 
     public event Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?, string?>? TaskStateChanged;
@@ -78,9 +97,89 @@ public sealed class ExecutionSession
         get => Outcome == null ? null : Outcome == ExecutionTaskOutcome.Completed;
     }
 
-    public string OperationName { get; set; } = string.Empty;
+    public string OperationName { get; }
 
-    public string TargetName { get; set; } = string.Empty;
+    public string TargetName { get; }
+
+    /// <summary>
+    /// Gets the session-scoped logger that writes into this session's buffered log streams while still mirroring output
+    /// to the process-wide application logger.
+    /// </summary>
+    public ILogger Logger => _sessionLogger;
+
+    /// <summary>
+    /// Executes this live session through the shared scheduler after preparing the top-level runtime logger and output
+    /// directory state.
+    /// </summary>
+    public async Task RunAsync()
+    {
+        if (_currentTask != null)
+        {
+            throw new InvalidOperationException("Task is already running");
+        }
+
+        _logger = ResolveCurrentLogger();
+
+        /* Top-level execution owns the concrete output directory lifecycle so each run starts from a clean workspace
+           before any schedulable task body begins. */
+        string outputPath = _operation.GetOutputPath(_operationParameters);
+        if (Directory.Exists(outputPath))
+        {
+            Directory.Delete(outputPath, recursive: true);
+        }
+
+        EventStreamLogger eventLogger = CreateAggregatingLogger();
+        string? requirementsError = _operation.CheckRequirementsSatisfied(_operationParameters);
+        if (requirementsError != null)
+        {
+            /* Requirement failures are normal failed results, not exceptions. Log the concrete validation message here so
+               parent bodies and the UI can surface the actual reason even when no task body ever starts. */
+            eventLogger.LogError("Operation '{OperationName}' requirements failed: {RequirementsError}", _operation.OperationName, requirementsError);
+            CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Failed, requirementsError);
+            CompleteExecution();
+            return;
+        }
+
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.Run")
+            .SetTag("operation.name", _operation.OperationName)
+            .SetTag("session.id", Id.Value)
+            .SetTag("task.count", _tasks.Count);
+        using IDisposable operationTimingScope = eventLogger.BeginSection(_operation.OperationName);
+        _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, this).ExecuteAsync(_cancellationTokenSource.Token));
+        try
+        {
+            OperationResult result = await _currentTask.ConfigureAwait(false);
+            activity.SetTag("scheduler.result", result.Outcome.ToString());
+            using PerformanceActivityScope finalizeActivity = PerformanceTelemetry.StartActivity("ExecutionSession.Run.FinalizeOutcome")
+                .SetTag("operation.name", _operation.OperationName)
+                .SetTag("incoming.result", result.Outcome.ToString());
+            OperationResult finalizedResult = FinalizeOutcome(result, eventLogger);
+            CompleteRootTaskIfNeeded(finalizedResult.Outcome, finalizedResult.FailureReason);
+        }
+        catch (OperationCanceledException)
+        {
+            CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Cancelled, "Cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            AddLogEntry(new LogEntry
+            {
+                SessionId = Id.Value,
+                Message = ex.ToString(),
+                Verbosity = LogLevel.Error
+            });
+
+            CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Failed, ex.Message);
+            throw;
+        }
+        finally
+        {
+            _logger.LogDebug("'{OperationName}' task ended", _operation.OperationName);
+            _currentTask = null;
+            CompleteExecution();
+        }
+    }
 
     /// <summary>
     /// Gets the single root task that represents the overall task graph for this session.
@@ -184,8 +283,8 @@ public sealed class ExecutionSession
 
     public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
     {
-        /* Public state writes update execution state only. Semantic outcome is derived separately so body tasks,
-           containers, and child-failure propagation can share one runtime model without overloading one enum with two
+        /* Public state writes update execution state only. Semantic outcome is derived separately so direct execution,
+           child aggregation, and failure propagation can share one runtime model without overloading one enum with two
            meanings. */
         SetTaskStateCore(taskId, state, statusReason);
         RefreshAncestorTaskStates(taskId);
@@ -199,7 +298,7 @@ public sealed class ExecutionSession
     {
         /* A failed subtree keeps lifecycle and semantic outcome separate: the failing task completes with Result=Failed,
            untouched descendants complete with Result=Skipped, and sibling subtrees that already began real work are
-           marked Interrupted while still allowing active body tasks to unwind. */
+           marked Interrupted while still allowing active descendant work to unwind. */
         CompleteTaskWithOutcome(failedTaskId, ExecutionTaskOutcome.Failed, statusReason);
         SkipUnfinishedDescendants(failedTaskId, BuildInheritedDescendantReason(failedTaskId, ExecutionTaskOutcome.Failed, statusReason));
 
@@ -208,7 +307,7 @@ public sealed class ExecutionSession
         while (currentAncestorId != null)
         {
             ExecutionTask ancestorTask = GetTask(currentAncestorId.Value);
-            foreach (ExecutionTaskId childTaskId in ancestorTask.ChildTaskIds)
+            foreach (ExecutionTaskId childTaskId in ancestorTask.GetChildTaskIds())
             {
                 if (childTaskId == failedSiblingRootId)
                 {
@@ -261,6 +360,94 @@ public sealed class ExecutionSession
         activity.SetTag("inserted.root.title", mergeResult.RootTask.Title)
             .SetTag("inserted.task.count", mergeResult.InsertedTaskIds.Count);
         return mergeResult;
+    }
+
+    /// <summary>
+    /// Builds, attaches, and waits for one nested child operation within the current live session graph.
+    /// </summary>
+    internal async Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext, ExecutionPlanScheduler scheduler)
+    {
+        if (operation == null)
+        {
+            throw new ArgumentNullException(nameof(operation));
+        }
+
+        if (operationParameters == null)
+        {
+            throw new ArgumentNullException(nameof(operationParameters));
+        }
+
+        if (parentContext == null)
+        {
+            throw new ArgumentNullException(nameof(parentContext));
+        }
+
+        if (scheduler == null)
+        {
+            throw new ArgumentNullException(nameof(scheduler));
+        }
+
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.RunChildOperation")
+            .SetTag("parent.task.id", parentContext.TaskId.Value)
+            .SetTag("parent.task.title", parentContext.Title)
+            .SetTag("child.operation", operation.OperationName)
+            .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
+
+        /* Child-operation orchestration can fail before any inserted task ever appears in the live graph, so log each
+           stage explicitly to show whether the child plan was built, merged, awaited, and completed. */
+        parentContext.Logger.LogDebug(
+            "Starting child operation '{ChildOperation}' beneath task '{ParentTaskTitle}' ({ParentTaskId}) for target '{TargetDisplayName}'.",
+            operation.OperationName,
+            parentContext.Title,
+            parentContext.TaskId,
+            operationParameters.Target?.DisplayName ?? string.Empty);
+
+        ExecutionPlan childPlan;
+        using (PerformanceActivityScope buildPlanActivity = PerformanceTelemetry.StartActivity("ExecutionSession.RunChildOperation.BuildPlan"))
+        {
+            childPlan = ExecutionPlanFactory.BuildWrappedPlan(operation, operationParameters, parentContext.Logger)
+                ?? throw new InvalidOperationException($"Operation '{operation.OperationName}' did not produce an execution plan.");
+            buildPlanActivity.SetTag("child.task.count", childPlan.Tasks.Count)
+                .SetTag("child.title", childPlan.Title);
+
+            parentContext.Logger.LogDebug(
+                "Built child plan '{ChildPlanTitle}' for operation '{ChildOperation}' with {ChildTaskCount} task(s).",
+                childPlan.Title,
+                operation.OperationName,
+                childPlan.Tasks.Count);
+        }
+
+        ChildTaskMergeResult mergeResult;
+        using (PerformanceActivityScope mergeActivity = PerformanceTelemetry.StartActivity("ExecutionSession.RunChildOperation.MergeTasks"))
+        {
+            mergeResult = MergeChildTasks(parentContext.TaskId, childPlan);
+            mergeActivity.SetTag("inserted.task.count", mergeResult.InsertedTaskIds.Count)
+                .SetTag("inserted.root.id", mergeResult.RootTask.Id.Value)
+                .SetTag("inserted.root.title", mergeResult.RootTask.Title);
+
+            parentContext.Logger.LogDebug(
+                "Merged child operation '{ChildOperation}' beneath task '{ParentTaskId}'. Root='{InsertedRootTitle}' ({InsertedRootId}), inserted task ids=[{InsertedTaskIds}]",
+                operation.OperationName,
+                parentContext.TaskId,
+                mergeResult.RootTask.Title,
+                mergeResult.RootTask.Id,
+                string.Join(", ", mergeResult.InsertedTaskIds.Select(taskId => taskId.Value)));
+        }
+
+        parentContext.Logger.LogDebug(
+            "Waiting for child operation '{ChildOperation}' inserted tasks to complete beneath task '{ParentTaskId}'.",
+            operation.OperationName,
+            parentContext.TaskId);
+        OperationResult result = await scheduler.WaitForInsertedChildTasksAsync(operation, parentContext, mergeResult).ConfigureAwait(false);
+        activity.SetTag("result.outcome", result.Outcome.ToString())
+            .SetTag("result.success", result.Success);
+        parentContext.Logger.LogDebug(
+            "Child operation '{ChildOperation}' finished beneath task '{ParentTaskId}' with outcome '{Outcome}' and reason '{FailureReason}'.",
+            operation.OperationName,
+            parentContext.TaskId,
+            result.Outcome,
+            result.FailureReason ?? string.Empty);
+        return result;
     }
 
     /// <summary>
@@ -330,14 +517,209 @@ public sealed class ExecutionSession
 
     public Task CancelAsync()
     {
-        return _cancelAsync != null ? _cancelAsync() : Task.CompletedTask;
+        Task<OperationResult>? currentTask = _currentTask;
+        if (currentTask == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _logger.LogWarning("Cancelling operation '{OperationName}'", _operation.OperationName);
+        _cancellationTokenSource.Cancel();
+        return currentTask;
+    }
+
+    /// <summary>
+    /// Returns the schedulable tasks that are immediately ready to start in the current live graph state.
+    /// </summary>
+    internal IReadOnlyList<ExecutionTask> GetSchedulerReadyTasks()
+    {
+        return _tasks
+            .Where(task => task.GetTaskStartState(this) == TaskStartState.Ready)
+            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState(this) != TaskStartState.Ready)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Refreshes pending-state reasons for tasks that participate directly in scheduler execution.
+    /// </summary>
+    internal void RefreshSchedulerPendingReasons()
+    {
+        foreach (ExecutionTask task in _tasks)
+        {
+            ExecutionTaskState currentState = task.State;
+            if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running)
+            {
+                continue;
+            }
+
+            if (task.Outcome != null)
+            {
+                throw new InvalidOperationException($"Task '{task.Id}' cannot return to pending readiness while it already has semantic outcome '{task.Outcome}'.");
+            }
+
+            string? waitingReason = GetTaskSchedulingPendingReason(task);
+            if (task.GetTaskStartState(this) == TaskStartState.NoStartableWork)
+            {
+                continue;
+            }
+
+            SetTaskStateCore(task.Id, ExecutionTaskState.Pending, waitingReason);
+            RefreshAncestorTaskStates(task.Id);
+        }
+    }
+
+    /// <summary>
+    /// Returns every scheduler-managed task that has not yet reached a terminal runtime state.
+    /// </summary>
+    internal IReadOnlyList<ExecutionTaskId> GetIncompleteSchedulableTaskIds()
+    {
+        return _tasks
+            .Where(task => task.GetTaskStartState(this) != TaskStartState.NoStartableWork)
+            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState(this) == TaskStartState.NoStartableWork)
+            .Select(task => task.Id)
+            .Where(taskId => !IsTaskTerminal(taskId))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Applies a scheduler-wide stop outcome to every task that participates directly in scheduler execution.
+    /// </summary>
+    internal void CancelOutstandingSchedulableTasks(
+        Func<ExecutionTaskId, bool> isTaskTrackedAsRunning,
+        bool userCancelled,
+        string runningTaskReason,
+        string skippedTaskReason,
+        bool preserveRunningTerminalOutcomes)
+    {
+        if (isTaskTrackedAsRunning == null)
+        {
+            throw new ArgumentNullException(nameof(isTaskTrackedAsRunning));
+        }
+
+        foreach (ExecutionTask task in _tasks.Where(task => task.GetTaskStartState(this) != TaskStartState.NoStartableWork)
+            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState(this) == TaskStartState.NoStartableWork))
+        {
+            if (task.State == ExecutionTaskState.Completed)
+            {
+                continue;
+            }
+
+            bool taskExecutionIsStillActive = task.State == ExecutionTaskState.Running || isTaskTrackedAsRunning(task.Id);
+            ExecutionTaskOutcome nextOutcome = taskExecutionIsStillActive
+                ? userCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted
+                : ExecutionTaskOutcome.Skipped;
+            string reason = taskExecutionIsStillActive ? runningTaskReason : skippedTaskReason;
+
+            if (preserveRunningTerminalOutcomes && taskExecutionIsStillActive)
+            {
+                CompleteTaskLifecycle(task.Id, nextOutcome, reason);
+                continue;
+            }
+
+            CompleteTaskLifecycle(task.Id, nextOutcome, reason);
+        }
+    }
+
+    /// <summary>
+    /// Returns whether all direct dependencies for the provided task are satisfied strongly enough for downstream work to
+    /// start.
+    /// </summary>
+    internal bool AreTaskDependenciesSatisfied(ExecutionTask task)
+    {
+        return task.DependsOn.All(IsTaskDependencySatisfied);
+    }
+
+    /// <summary>
+    /// Returns the current scheduler-facing pending reason for the provided task, or null when the task is ready.
+    /// </summary>
+    internal string? GetTaskSchedulingPendingReason(ExecutionTask task)
+    {
+        if (task.State != ExecutionTaskState.Pending)
+        {
+            return null;
+        }
+
+        TaskStartState startState = task.GetTaskStartState(this);
+        if (startState == TaskStartState.WaitingForDependencies)
+        {
+            return "Waiting for dependencies.";
+        }
+
+        return startState == TaskStartState.WaitingForParent
+            ? "Waiting for parent scope."
+            : null;
+    }
+
+    /// <summary>
+    /// Starts one scheduler-ready task through the task model so callers never need to know how the concrete task stores
+    /// its runnable work.
+    /// </summary>
+    internal TaskStartResult StartTaskAsync(ExecutionTaskId taskId, Func<ExecutionTaskId, ILogger> createLogger, CancellationToken cancellationToken, ExecutionPlanScheduler scheduler)
+    {
+        if (createLogger == null)
+        {
+            throw new ArgumentNullException(nameof(createLogger));
+        }
+
+        ExecutionTask task = GetTask(taskId);
+        ValidatedOperationParameters validatedOperationParameters = new(task.Title, task.OperationParameters, task.DeclaredOptionTypes);
+        ExecutionTaskRuntimeServices runtime = new(this, scheduler, createLogger);
+        ExecutionTaskContext context = new(task.Id, task.Title, createLogger(task.Id), cancellationToken, validatedOperationParameters, task.Operation, runtime);
+        return task.StartAsync(context);
+    }
+
+    /// <summary>
+    /// Returns whether every ancestor container for the provided task is structurally open.
+    /// </summary>
+    internal bool AreTaskAncestorsOpen(ExecutionTask task)
+    {
+        ExecutionTask? currentTask = task.ParentId is ExecutionTaskId parentId
+            ? GetTask(parentId)
+            : null;
+        while (currentTask != null)
+        {
+            if (currentTask.State == ExecutionTaskState.Completed || currentTask.Outcome != null)
+            {
+                return false;
+            }
+
+            if (!AreTaskDependenciesSatisfied(currentTask))
+            {
+                return false;
+            }
+
+            currentTask = currentTask.ParentId is ExecutionTaskId nextParentId
+                ? GetTask(nextParentId)
+                : null;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Returns whether one dependency is satisfied strongly enough for downstream work to start.
+    /// </summary>
+    private bool IsTaskDependencySatisfied(ExecutionTaskId dependencyId)
+    {
+        ExecutionTask dependencyTask = GetTask(dependencyId);
+        if (dependencyTask.Outcome == ExecutionTaskOutcome.Completed)
+        {
+            return true;
+        }
+
+        if (dependencyTask.Outcome != ExecutionTaskOutcome.Disabled)
+        {
+            return false;
+        }
+
+        return dependencyTask.DependsOn.All(IsTaskDependencySatisfied);
     }
 
     /// <summary>
     /// Completes the root task when host-level shutdown needs to guarantee a terminal session outcome even if execution
     /// stopped before normal scheduler finalization reached the root.
     /// </summary>
-    public void CompleteRootTaskIfNeeded(ExecutionTaskOutcome outcome, string? statusReason = null)
+    private void CompleteRootTaskIfNeeded(ExecutionTaskOutcome outcome, string? statusReason = null)
     {
         if (_tasks.Count == 0)
         {
@@ -356,10 +738,332 @@ public sealed class ExecutionSession
     /// <summary>
     /// Marks the session as fully complete so host UI layers can await the authoritative runtime completion signal.
     /// </summary>
-    public void CompleteExecution()
+    private void CompleteExecution()
     {
+        CleanupTempRoot();
         FinishedAt ??= DateTimeOffset.Now;
         _completionSource.TrySetResult(true);
+    }
+
+    /// <summary>
+    /// Executes one delegate on a worker thread so UI-triggered runs remain asynchronous even though the live session now
+    /// owns the top-level scheduler lifecycle directly.
+    /// </summary>
+    private static Task<OperationResult> ExecuteOnThread(Func<Task<OperationResult>> executeAsync)
+    {
+        TaskCompletionSource<OperationResult> completionSource = new();
+        ThreadPool.QueueUserWorkItem(async _ =>
+        {
+            try
+            {
+                completionSource.SetResult(await executeAsync().ConfigureAwait(false));
+            }
+            catch (OperationCanceledException)
+            {
+                completionSource.SetResult(OperationResult.Cancelled());
+            }
+            catch (Exception ex)
+            {
+                completionSource.SetException(ex);
+            }
+        });
+
+        return completionSource.Task;
+    }
+
+    /// <summary>
+    /// Creates the aggregate logger used during one top-level run so warning/error counting and task-state forwarding
+    /// continue to work while the scheduler emits task-scoped output.
+    /// </summary>
+    private EventStreamLogger CreateAggregatingLogger()
+    {
+        return CreateAggregatingLogger(
+            _sessionLogger,
+            _sessionLogger,
+            _sessionLogger,
+            (level, output) =>
+            {
+                if (level >= LogLevel.Error)
+                {
+                    _errors.Add(output);
+                }
+                else if (level == LogLevel.Warning)
+                {
+                    _warnings.Add(output);
+                }
+
+                _sessionLogger.Log(level, output);
+            });
+    }
+
+    /// <summary>
+    /// Deletes the temp workspace owned by this session once the run has fully finished so session-scoped scratch data
+    /// does not accumulate across completed runs.
+    /// </summary>
+    private void CleanupTempRoot()
+    {
+        string sessionTempRoot = OutputPaths.GetSessionTempRoot(Id);
+        if (!Directory.Exists(sessionTempRoot))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(sessionTempRoot, recursive: true);
+            _logger.LogInformation("Deleted session temp root '{SessionTempRoot}'.", sessionTempRoot);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete session temp root '{SessionTempRoot}'.", sessionTempRoot);
+        }
+    }
+
+    /// <summary>
+    /// Creates an event-stream logger that forwards formatted output to the supplied sink while preserving task logging
+    /// and task-state routing when the host logger supports them.
+    /// </summary>
+    internal static EventStreamLogger CreateAggregatingLogger(ILogger fallbackLogger, IExecutionTaskLoggerFactory? taskLoggerFactory, IExecutionTaskStateSink? taskStateSink, Action<LogLevel, string>? onOutput)
+    {
+        if (fallbackLogger == null)
+        {
+            throw new ArgumentNullException(nameof(fallbackLogger));
+        }
+
+        EventStreamLogger eventLogger = new(taskLoggerFactory ?? fallbackLogger as IExecutionTaskLoggerFactory, taskStateSink ?? fallbackLogger as IExecutionTaskStateSink);
+        if (onOutput != null)
+        {
+            eventLogger.Output += (level, output) =>
+            {
+                if (output == null)
+                {
+                    throw new InvalidOperationException("Null line");
+                }
+
+                onOutput(level, output);
+            };
+        }
+
+        return eventLogger;
+    }
+
+    /// <summary>
+    /// Applies the historical operation-level warning and error rollup semantics after the scheduler has finished.
+    /// </summary>
+    private OperationResult FinalizeOutcome(OperationResult result, ILogger logger)
+    {
+        return FinalizeOutcome(_operation, result, logger, _logger, _warnings.Count, _errors.Count);
+    }
+
+    /// <summary>
+    /// Applies the historical operation-level warning and error rollup semantics for both top-level and nested runs.
+    /// </summary>
+    internal static OperationResult FinalizeOutcome(Operation operation, OperationResult result, ILogger aggregateLogger, ILogger summaryLogger, int warningCount, int errorCount)
+    {
+        if (operation == null)
+        {
+            throw new ArgumentNullException(nameof(operation));
+        }
+
+        if (result == null)
+        {
+            throw new ArgumentNullException(nameof(result));
+        }
+
+        if (aggregateLogger == null)
+        {
+            throw new ArgumentNullException(nameof(aggregateLogger));
+        }
+
+        if (summaryLogger == null)
+        {
+            throw new ArgumentNullException(nameof(summaryLogger));
+        }
+
+        if (result.Outcome == ExecutionTaskOutcome.Cancelled)
+        {
+            aggregateLogger.LogWarning("Operation '{OperationName}' terminated by user", operation.OperationName);
+        }
+        else if (result.Outcome == ExecutionTaskOutcome.Interrupted)
+        {
+            aggregateLogger.LogWarning("Operation '{OperationName}' was interrupted - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
+        }
+        else if (result.Outcome == ExecutionTaskOutcome.Completed)
+        {
+            aggregateLogger.LogInformation("Operation '{OperationName}' completed successfully - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
+        }
+        else
+        {
+            aggregateLogger.LogWarning("Operation '{OperationName}' finished with failure - {ErrorCount} error(s), {WarningCount} warning(s)", operation.OperationName, errorCount, warningCount);
+        }
+
+        if (result.Outcome == ExecutionTaskOutcome.Completed)
+        {
+            if (errorCount > 0)
+            {
+                aggregateLogger.LogError("{ErrorCount} error(s) encountered", errorCount);
+                result.Outcome = ExecutionTaskOutcome.Failed;
+                result.FailureReason ??= $"{errorCount} error(s) encountered";
+            }
+
+            if (warningCount > 0)
+            {
+                aggregateLogger.LogWarning("{WarningCount} warning(s) encountered", warningCount);
+                if (operation.ShouldFailOnWarning())
+                {
+                    aggregateLogger.LogError("Operation fails on warnings");
+                    result.Outcome = ExecutionTaskOutcome.Failed;
+                    result.FailureReason ??= "Operation fails on warnings";
+                }
+            }
+        }
+
+        if (result.Outcome == ExecutionTaskOutcome.Completed)
+        {
+            if (warningCount > 0)
+            {
+                int numToShow = Math.Min(warningCount, 50);
+                summaryLogger.LogWarning("{ShownCount} of {WarningCount} warnings:", numToShow, warningCount);
+            }
+
+            if (errorCount > 0)
+            {
+                int numToShow = Math.Min(errorCount, 50);
+                summaryLogger.LogWarning("{ShownCount} of {ErrorCount} errors:", numToShow, errorCount);
+            }
+
+            summaryLogger.LogInformation("'{OperationName}' finished with result: success", operation.OperationName);
+        }
+        else if (result.Outcome == ExecutionTaskOutcome.Cancelled)
+        {
+            summaryLogger.LogWarning("'{OperationName}' finished with result: cancelled", operation.OperationName);
+        }
+        else if (result.Outcome == ExecutionTaskOutcome.Interrupted)
+        {
+            summaryLogger.LogWarning("'{OperationName}' finished with result: interrupted", operation.OperationName);
+        }
+        else
+        {
+            summaryLogger.LogError("'{OperationName}' finished with result: failure", operation.OperationName);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Resolves the active host logger at run time so session-specific forwarding loggers can be installed before the
+    /// framework-owned execution path begins.
+    /// </summary>
+    private static ILogger ResolveCurrentLogger()
+    {
+        try
+        {
+            return ApplicationLogger.Logger;
+        }
+        catch (InvalidOperationException)
+        {
+            return NullLogger.Instance;
+        }
+    }
+
+    /// <summary>
+    /// Routes session and task log output into the session's buffered streams while still mirroring the same messages to
+    /// the process-wide fallback logger.
+    /// </summary>
+    private sealed class SessionLogger : ILogger, IExecutionTaskLoggerFactory, IExecutionTaskStateSink, IExecutionTaskScope
+    {
+        private readonly ExecutionSession _session;
+        private readonly ILogger _fallbackLogger;
+        private readonly ExecutionTaskId? _taskId;
+
+        /// <summary>
+        /// Creates one session-scoped logger around the provided session and optional task id.
+        /// </summary>
+        public SessionLogger(ExecutionSession session, ExecutionTaskId? taskId = null)
+        {
+            _session = session ?? throw new ArgumentNullException(nameof(session));
+            _fallbackLogger = ResolveCurrentLogger();
+            _taskId = taskId;
+        }
+
+        /// <summary>
+        /// Gets the current task scope carried by this logger so nested operations can inherit the same task identity.
+        /// </summary>
+        public ExecutionTaskId? CurrentTaskId => _taskId;
+
+        /// <summary>
+        /// Indicates that all log levels are enabled for the buffered execution stream.
+        /// </summary>
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// Returns a fallback logger scope when available while keeping session log capture independent of structured
+        /// scope state.
+        /// </summary>
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull
+        {
+            return _fallbackLogger.BeginScope(state) ?? NullScope.Instance;
+        }
+
+        /// <summary>
+        /// Writes one formatted log message into the session and task streams, then mirrors the same output to the
+        /// process-wide fallback logger.
+        /// </summary>
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            string message = formatter(state, exception);
+            if (exception != null)
+            {
+                message += Environment.NewLine + exception;
+            }
+
+            _session.AddLogEntry(new LogEntry
+            {
+                SessionId = _session.Id.Value,
+                TaskId = _taskId?.Value,
+                Message = message,
+                Verbosity = logLevel
+            });
+
+            _fallbackLogger.Log(logLevel, eventId, state, exception, formatter);
+        }
+
+        /// <summary>
+        /// Creates a child logger that attributes all output to the provided execution task.
+        /// </summary>
+        public ILogger CreateTaskLogger(ExecutionTaskId taskId)
+        {
+            return new SessionLogger(_session, taskId);
+        }
+
+        /// <summary>
+        /// Forwards explicit task-state transitions into the session so graph views can react without parsing log text.
+        /// </summary>
+        public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
+        {
+            _session.SetTaskState(taskId, state, statusReason);
+        }
+
+        /// <summary>
+        /// Provides a no-op scope object when the fallback logger does not create real scopes.
+        /// </summary>
+        private sealed class NullScope : IDisposable
+        {
+            /// <summary>
+            /// Gets the shared no-op scope instance.
+            /// </summary>
+            public static NullScope Instance { get; } = new();
+
+            /// <summary>
+            /// Disposes the no-op scope.
+            /// </summary>
+            public void Dispose()
+            {
+            }
+        }
     }
 
     /// <summary>
@@ -540,7 +1244,7 @@ public sealed class ExecutionSession
 
     private void CollectDescendantTaskIds(ExecutionTaskId parentTaskId, ICollection<ExecutionTaskId> descendantTaskIds)
     {
-        foreach (ExecutionTaskId childTaskId in GetTask(parentTaskId).ChildTaskIds)
+        foreach (ExecutionTaskId childTaskId in GetTask(parentTaskId).GetChildTaskIds())
         {
             descendantTaskIds.Add(childTaskId);
             CollectDescendantTaskIds(childTaskId, descendantTaskIds);
@@ -587,8 +1291,7 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Derives lifecycle and semantic outcome for container scopes from their children. Body tasks own their own
-    /// lifecycle directly, while authored/container tasks are finished by child aggregation only.
+    /// Derives lifecycle and semantic outcome for parent tasks from their child-task progress.
     /// </summary>
     private void RefreshAncestorTaskStates(ExecutionTaskId taskId)
     {
@@ -596,16 +1299,19 @@ public sealed class ExecutionSession
         while (currentParentId != null)
         {
             ExecutionTask parentTask = GetTask(currentParentId.Value);
-            if (parentTask.ChildTaskIds.Count == 0 || parentTask.ExecuteAsync != null)
+            if (parentTask.GetChildTaskIds().Count == 0)
             {
                 currentParentId = parentTask.ParentId;
                 continue;
             }
 
-            IReadOnlyList<ExecutionTask> childTasks = parentTask.ChildTaskIds
+            IReadOnlyList<ExecutionTask> childTasks = parentTask.GetChildTaskIds()
                 .Select(GetTask)
                 .ToList();
 
+            TaskStartState parentStartState = parentTask.GetTaskStartState(this);
+            bool ownTaskIsRunning = parentTask.State == ExecutionTaskState.Running && parentStartState == TaskStartState.Running;
+            bool ownTaskIsQueued = parentStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
             bool anyChildRunning = childTasks.Any(task => task.State == ExecutionTaskState.Running);
             bool anyPending = childTasks.Any(task => task.State is ExecutionTaskState.Pending or ExecutionTaskState.Planned);
             ExecutionTask? failedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Failed);
@@ -619,14 +1325,14 @@ public sealed class ExecutionSession
             {
                 parentState = ExecutionTaskState.Completed;
             }
-            else if (anyChildRunning)
+            else if (ownTaskIsRunning || anyChildRunning)
             {
                 parentState = ExecutionTaskState.Running;
             }
-            else if (anyPending)
+            else if (ownTaskIsQueued || anyPending)
             {
-                /* Container scopes report Running only while some descendant is truly executing. Once no child is running,
-                   the scope returns to Pending until more descendant work can actually start. */
+                /* Parent tasks report Running only while some internal step is truly executing. Once no internal work is
+                   running, the task returns to Pending until more descendant work can actually start. */
                 parentState = ExecutionTaskState.Pending;
             }
             else
@@ -636,7 +1342,7 @@ public sealed class ExecutionSession
 
             ExecutionTaskOutcome? parentOutcome = parentTask.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped
                 ? parentTask.Outcome
-                : anyPending || anyChildRunning
+                : ownTaskIsRunning || ownTaskIsQueued || anyPending || anyChildRunning
                     ? null
                     : failedTask != null
                     ? ExecutionTaskOutcome.Failed
@@ -673,7 +1379,7 @@ public sealed class ExecutionSession
     /// </summary>
     private void SkipUnfinishedDescendants(ExecutionTaskId parentTaskId, string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
     {
-        foreach (ExecutionTaskId childTaskId in GetTask(parentTaskId).ChildTaskIds)
+        foreach (ExecutionTaskId childTaskId in GetTask(parentTaskId).GetChildTaskIds())
         {
             SkipUnfinishedSubtree(childTaskId, reason, skippedOutcome);
         }
@@ -690,7 +1396,7 @@ public sealed class ExecutionSession
             CompleteTaskWithOutcome(rootTaskId, skippedOutcome, reason);
         }
 
-        foreach (ExecutionTaskId childTaskId in task.ChildTaskIds)
+        foreach (ExecutionTaskId childTaskId in task.GetChildTaskIds())
         {
             SkipUnfinishedSubtree(childTaskId, reason, skippedOutcome);
         }
@@ -727,7 +1433,7 @@ public sealed class ExecutionSession
             return true;
         }
 
-        return task.ChildTaskIds.Any(HasStartedWorkInSubtree);
+        return task.GetChildTaskIds().Any(HasStartedWorkInSubtree);
     }
 
     /// <summary>
@@ -735,7 +1441,7 @@ public sealed class ExecutionSession
     /// </summary>
     private bool HasNonTerminalDescendants(ExecutionTaskId rootTaskId)
     {
-        return GetTask(rootTaskId).ChildTaskIds.Any(childTaskId =>
+        return GetTask(rootTaskId).GetChildTaskIds().Any(childTaskId =>
         {
             ExecutionTask childTask = GetTask(childTaskId);
             return childTask.State != ExecutionTaskState.Completed || HasNonTerminalDescendants(childTaskId);
@@ -744,7 +1450,7 @@ public sealed class ExecutionSession
 
     /// <summary>
     /// Marks one started subtree as interrupted after sibling failure. Started nodes keep their current lifecycle so any
-    /// active body tasks can finish unwinding, while untouched nodes become skipped because they never ran.
+    /// active descendant work can finish unwinding, while untouched nodes become skipped because they never ran.
     /// </summary>
     private void MarkSubtreeInterrupted(ExecutionTaskId rootTaskId, string? reason)
     {
@@ -761,7 +1467,7 @@ public sealed class ExecutionSession
             }
         }
 
-        foreach (ExecutionTaskId childTaskId in task.ChildTaskIds)
+        foreach (ExecutionTaskId childTaskId in task.GetChildTaskIds())
         {
             MarkSubtreeInterrupted(childTaskId, reason);
         }
@@ -781,20 +1487,19 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Guards lifecycle transitions so executable body tasks move monotonically while container scopes may return from
+    /// Guards lifecycle transitions so tasks with direct execution move monotonically while parent tasks may return from
     /// Running to Pending when all active descendants stop and later descendants are still queued.
     /// </summary>
-    private static void ValidateStateTransition(ExecutionTask task, ExecutionTaskState nextState)
+    private void ValidateStateTransition(ExecutionTask task, ExecutionTaskState nextState)
     {
         if (task.State == ExecutionTaskState.Completed && nextState != ExecutionTaskState.Completed)
         {
             throw new InvalidOperationException($"Task '{task.Id}' cannot transition from completed execution state back to '{nextState}'.");
         }
 
-        bool isContainerScope = task.ExecuteAsync == null && task.ChildTaskIds.Count > 0;
         if (task.State == ExecutionTaskState.Running && nextState is ExecutionTaskState.Pending or ExecutionTaskState.Planned)
         {
-            if (isContainerScope && nextState == ExecutionTaskState.Pending)
+            if (task.GetChildTaskIds().Count > 0 && task.GetTaskStartState(this) != TaskStartState.Running && nextState == ExecutionTaskState.Pending)
             {
                 return;
             }
@@ -862,19 +1567,20 @@ public sealed class ExecutionSession
     /// </summary>
     private void ValidateTerminalAssignment(ExecutionTaskId taskId, ExecutionTaskOutcome outcome)
     {
+        ExecutionTask task = GetTask(taskId);
         if (outcome == ExecutionTaskOutcome.Completed && HasNonTerminalDescendants(taskId))
         {
-            throw new InvalidOperationException($"Task '{taskId}' cannot complete successfully while it still has non-terminal descendants.");
+            throw new InvalidOperationException($"Task '{task.Title}' ({taskId}) cannot complete successfully while it still has non-terminal descendants.");
         }
 
         if (outcome == ExecutionTaskOutcome.Skipped && HasStartedWorkInSubtree(taskId))
         {
-            throw new InvalidOperationException($"Task '{taskId}' cannot be marked skipped after execution has started in its subtree.");
+            throw new InvalidOperationException($"Task '{task.Title}' ({taskId}) cannot be marked skipped after execution has started in its subtree.");
         }
 
         if (outcome == ExecutionTaskOutcome.Interrupted && !HasStartedWorkInSubtree(taskId))
         {
-            throw new InvalidOperationException($"Task '{taskId}' cannot be marked interrupted before execution has started in its subtree.");
+            throw new InvalidOperationException($"Task '{task.Title}' ({taskId}) cannot be marked interrupted before execution has started in its subtree.");
         }
     }
 
