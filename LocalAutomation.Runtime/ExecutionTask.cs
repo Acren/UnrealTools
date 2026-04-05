@@ -664,4 +664,391 @@ public class ExecutionTask : INotifyPropertyChanged
             && session.AreTaskAncestorsOpen(this);
     }
 
+    /// <summary>
+    /// Returns whether this task has entered real execution instead of remaining untouched queued work.
+    /// </summary>
+    internal bool HasStarted =>
+        State == ExecutionTaskState.Running
+        || StartedAt != null
+        || Outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Failed;
+
+    /// <summary>
+    /// Resolves the timing timestamps that correspond to a lifecycle state transition on this task. Running tasks capture
+    /// their start time, and completing tasks capture both start and finish times.
+    /// </summary>
+    internal (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) ResolveTaskTiming(ExecutionTaskState state)
+    {
+        DateTimeOffset? startedAt = StartedAt;
+        DateTimeOffset? finishedAt = FinishedAt;
+        DateTimeOffset timestamp = DateTimeOffset.Now;
+
+        if (state == ExecutionTaskState.Running && StartedAt == null)
+        {
+            startedAt = timestamp;
+            finishedAt = null;
+            return (startedAt, finishedAt);
+        }
+
+        if (state == ExecutionTaskState.Completed)
+        {
+            startedAt ??= timestamp;
+            finishedAt = timestamp;
+        }
+
+        return (startedAt, finishedAt);
+    }
+
+    /// <summary>
+    /// Guards lifecycle transitions so tasks with direct execution move monotonically while parent tasks may return from
+    /// Running to Pending when all active descendants stop and later descendants are still queued.
+    /// </summary>
+    internal void ValidateStateTransition(ExecutionSession session, ExecutionTaskState nextState)
+    {
+        if (State == ExecutionTaskState.Completed && nextState != ExecutionTaskState.Completed)
+        {
+            throw new InvalidOperationException($"Task '{Id}' cannot transition from completed execution state back to '{nextState}'.");
+        }
+
+        if (State == ExecutionTaskState.Running && nextState is ExecutionTaskState.Pending or ExecutionTaskState.Planned)
+        {
+            /* Parent tasks may return from Running to Pending when all active descendants finish and later descendants
+               are still queued. This is only valid for container tasks whose subtree is not actively running. */
+            if (GetChildTaskIds().Count > 0 && GetTaskStartState(session) != TaskStartState.Running && nextState == ExecutionTaskState.Pending)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException($"Task '{Id}' cannot transition from running to '{nextState}'.");
+        }
+    }
+
+    /// <summary>
+    /// Guards combined observable state so lifecycle and semantic outcome never describe contradictory execution states.
+    /// </summary>
+    internal void ValidateObservedState(ExecutionTaskState state, ExecutionTaskOutcome? outcome)
+    {
+        if (state == ExecutionTaskState.Running && outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Skipped or ExecutionTaskOutcome.Disabled)
+        {
+            throw new InvalidOperationException($"Task '{Id}' cannot be running while reporting semantic outcome '{outcome}'.");
+        }
+
+        if (state is ExecutionTaskState.Planned or ExecutionTaskState.Pending && outcome != null)
+        {
+            throw new InvalidOperationException($"Task '{Id}' cannot remain queued while reporting semantic outcome '{outcome}'.");
+        }
+
+        if (state == ExecutionTaskState.Completed && outcome == null)
+        {
+            throw new InvalidOperationException($"Task '{Id}' cannot complete its execution state without a semantic outcome.");
+        }
+    }
+
+    /// <summary>
+    /// Guards semantic result transitions so only stricter outcomes can replace a previously assigned result.
+    /// </summary>
+    internal void ValidateOutcomeTransition(ExecutionTaskOutcome? nextOutcome)
+    {
+        if (Outcome == null || nextOutcome == null || Outcome == nextOutcome)
+        {
+            return;
+        }
+
+        if (CanUpgradeTaskOutcome(Outcome.Value, nextOutcome.Value))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Task '{Id}' cannot change outcome from '{Outcome}' to '{nextOutcome}'.");
+    }
+
+    /// <summary>
+    /// Defines the small set of semantic result upgrades that remain legal after a task has already been marked with a
+    /// weaker doomed outcome.
+    /// </summary>
+    internal static bool CanUpgradeTaskOutcome(ExecutionTaskOutcome currentOutcome, ExecutionTaskOutcome nextOutcome)
+    {
+        return (currentOutcome, nextOutcome) switch
+        {
+            (ExecutionTaskOutcome.Interrupted, ExecutionTaskOutcome.Failed) => true,
+            (ExecutionTaskOutcome.Cancelled, ExecutionTaskOutcome.Failed) => true,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Guards terminal assignments so untouched-only outcomes cannot be applied after a task or subtree has started real
+    /// execution.
+    /// </summary>
+    internal void ValidateTerminalAssignment(ExecutionSession session, ExecutionTaskOutcome outcome)
+    {
+        if (outcome == ExecutionTaskOutcome.Completed && HasNonTerminalDescendants(session))
+        {
+            throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot complete successfully while it still has non-terminal descendants.");
+        }
+
+        if (outcome == ExecutionTaskOutcome.Skipped && HasStartedWorkInSubtree(session))
+        {
+            throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot be marked skipped after execution has started in its subtree.");
+        }
+
+        if (outcome == ExecutionTaskOutcome.Interrupted && !HasStartedWorkInSubtree(session))
+        {
+            throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot be marked interrupted before execution has started in its subtree.");
+        }
+    }
+
+    /// <summary>
+    /// Returns whether any task in this subtree has already transitioned out of its untouched planned or pending state.
+    /// </summary>
+    internal bool HasStartedWorkInSubtree(ExecutionSession session)
+    {
+        if (HasStarted)
+        {
+            return true;
+        }
+
+        return GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).HasStartedWorkInSubtree(session));
+    }
+
+    /// <summary>
+    /// Returns whether any descendant beneath this task is still pending or running.
+    /// </summary>
+    internal bool HasNonTerminalDescendants(ExecutionSession session)
+    {
+        return GetChildTaskIds().Any(childTaskId =>
+        {
+            ExecutionTask childTask = session.GetTask(childTaskId);
+            return childTask.State != ExecutionTaskState.Completed || childTask.HasNonTerminalDescendants(session);
+        });
+    }
+
+    /// <summary>
+    /// Builds the human-readable status reason that untouched descendants inherit when their parent completes with a
+    /// non-success outcome.
+    /// </summary>
+    internal string? BuildInheritedDescendantReason(ExecutionTaskOutcome outcome, string? statusReason)
+    {
+        if (!string.IsNullOrWhiteSpace(statusReason))
+        {
+            return outcome == ExecutionTaskOutcome.Skipped
+                ? statusReason
+                : $"Skipped because parent task '{Id}' {outcome.ToString().ToLowerInvariant()}: {statusReason}";
+        }
+
+        return outcome switch
+        {
+            ExecutionTaskOutcome.Skipped => $"Skipped because parent task '{Id}' was skipped.",
+            ExecutionTaskOutcome.Cancelled => $"Skipped because parent task '{Id}' was cancelled.",
+            ExecutionTaskOutcome.Interrupted => $"Skipped because parent task '{Id}' was interrupted.",
+            ExecutionTaskOutcome.Failed => $"Skipped because parent task '{Id}' failed.",
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Skips every unfinished task in this subtree without disturbing tasks that already reached terminal states. Each
+    /// skipped task validates its terminal assignment, transitions to completed, propagates to its own descendants, and
+    /// notifies the session so events fire from the authoritative event surface.
+    /// </summary>
+    internal void SkipUnfinishedSubtree(ExecutionSession session, string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
+    {
+        if (State is ExecutionTaskState.Planned or ExecutionTaskState.Pending)
+        {
+            CompleteWithOutcome(session, skippedOutcome, reason);
+        }
+
+        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        {
+            session.GetTask(childTaskId).SkipUnfinishedSubtree(session, reason, skippedOutcome);
+        }
+    }
+
+    /// <summary>
+    /// Skips every unfinished descendant beneath this task by walking each direct child subtree.
+    /// </summary>
+    internal void SkipUnfinishedDescendants(ExecutionSession session, string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
+    {
+        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        {
+            session.GetTask(childTaskId).SkipUnfinishedSubtree(session, reason, skippedOutcome);
+        }
+    }
+
+    /// <summary>
+    /// Marks one started subtree as interrupted after sibling failure. Started nodes keep their current lifecycle so any
+    /// active descendant work can finish unwinding, while untouched nodes become skipped because they never ran.
+    /// </summary>
+    internal void MarkSubtreeInterrupted(ExecutionSession session, string? reason)
+    {
+        if (State != ExecutionTaskState.Completed)
+        {
+            if (HasStarted)
+            {
+                /* Started tasks receive an interrupted outcome without forcing lifecycle completion so any active
+                   descendant work can finish unwinding naturally. */
+                TransitionOutcome(ExecutionTaskOutcome.Interrupted, reason);
+                session.NotifyTaskChanged(Id);
+            }
+            else
+            {
+                CompleteWithOutcome(session, ExecutionTaskOutcome.Skipped, reason);
+            }
+        }
+
+        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        {
+            session.GetTask(childTaskId).MarkSubtreeInterrupted(session, reason);
+        }
+    }
+
+    /// <summary>
+    /// Interrupts one sibling subtree after a different sibling has failed. Subtrees that already started work surface as
+    /// Interrupted, while untouched subtrees remain Skipped.
+    /// </summary>
+    internal void InterruptSiblingSubtree(ExecutionSession session, ExecutionTaskId failedSiblingRootId)
+    {
+        bool subtreeStarted = HasStartedWorkInSubtree(session);
+        string reason = subtreeStarted
+            ? $"Interrupted because sibling task '{failedSiblingRootId}' failed."
+            : $"Skipped because sibling task '{failedSiblingRootId}' failed.";
+
+        if (subtreeStarted)
+        {
+            MarkSubtreeInterrupted(session, reason);
+            return;
+        }
+
+        SkipUnfinishedSubtree(session, reason, ExecutionTaskOutcome.Skipped);
+    }
+
+    /// <summary>
+    /// Propagates a terminal outcome to untouched descendants so tasks that never started inherit a completed lifecycle
+    /// plus the semantic outcome that explains why they will never run.
+    /// </summary>
+    internal void PropagateTerminalOutcomeToUntouchedDescendants(ExecutionSession session, ExecutionTaskOutcome outcome, string? statusReason)
+    {
+        /* Descendants that never started inherit a completed lifecycle plus the semantic outcome that explains why they
+           will never run. */
+        ExecutionTaskOutcome descendantOutcome = outcome switch
+        {
+            ExecutionTaskOutcome.Skipped => ExecutionTaskOutcome.Skipped,
+            ExecutionTaskOutcome.Cancelled => ExecutionTaskOutcome.Skipped,
+            ExecutionTaskOutcome.Interrupted => ExecutionTaskOutcome.Skipped,
+            ExecutionTaskOutcome.Failed => ExecutionTaskOutcome.Skipped,
+            _ => default
+        };
+
+        if (descendantOutcome == default)
+        {
+            return;
+        }
+
+        string? descendantReason = BuildInheritedDescendantReason(outcome, statusReason);
+        SkipUnfinishedDescendants(session, descendantReason, descendantOutcome);
+    }
+
+    /// <summary>
+    /// Completes this task's lifecycle and assigns its semantic outcome, then propagates to untouched descendants. The
+    /// session fires the externally visible state-changed event after each mutation. Ancestor refresh is handled by the
+    /// session-level caller since it requires cross-branch coordination.
+    /// </summary>
+    internal void CompleteWithOutcome(ExecutionSession session, ExecutionTaskOutcome outcome, string? statusReason = null)
+    {
+        ValidateTerminalAssignment(session, outcome);
+        TransitionSnapshot(session, ExecutionTaskState.Completed, outcome, statusReason);
+        session.NotifyTaskChanged(Id);
+        PropagateTerminalOutcomeToUntouchedDescendants(session, outcome, statusReason);
+    }
+
+    /// <summary>
+    /// Completes this task's lifecycle while preserving any previously assigned doomed outcome (failed, cancelled, or
+    /// interrupted) that was recorded while descendant work was still unwinding. When no doomed outcome exists, the
+    /// provided success outcome is used instead.
+    /// </summary>
+    internal void CompleteLifecycle(ExecutionSession session, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
+    {
+        ExecutionTaskOutcome finalOutcome = Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted
+            ? Outcome.Value
+            : successOutcome;
+        string? finalReason = finalOutcome == successOutcome ? statusReason : StatusReason;
+        CompleteWithOutcome(session, finalOutcome, finalReason);
+    }
+
+    /// <summary>
+    /// Marks this task as semantically interrupted without forcing lifecycle completion, so any active descendant work
+    /// can finish unwinding naturally. Ancestor refresh is handled by the session-level caller.
+    /// </summary>
+    internal void Interrupt(ExecutionSession session, string? statusReason = null)
+    {
+        if (State == ExecutionTaskState.Completed)
+        {
+            throw new InvalidOperationException($"Task '{Id}' cannot be interrupted after it already completed.");
+        }
+
+        if (!HasStarted)
+        {
+            throw new InvalidOperationException($"Task '{Id}' cannot be interrupted before execution has started.");
+        }
+
+        TransitionOutcome(ExecutionTaskOutcome.Interrupted, statusReason);
+        session.NotifyTaskChanged(Id);
+    }
+
+    /// <summary>
+    /// Validates and applies a lifecycle state transition on this task. Returns false when the transition is a no-op
+    /// because the task already has the requested state and reason.
+    /// </summary>
+    internal bool TransitionState(ExecutionSession session, ExecutionTaskState state, string? statusReason)
+    {
+        string normalizedReason = statusReason ?? string.Empty;
+        if (State == state && string.Equals(StatusReason, normalizedReason, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        ValidateStateTransition(session, state);
+        ValidateObservedState(state, Outcome);
+        (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(state);
+        ApplyRuntimeState(state, normalizedReason, Outcome, startedAt, finishedAt);
+        return true;
+    }
+
+    /// <summary>
+    /// Validates and applies a semantic outcome transition on this task. Returns false when the transition is a no-op.
+    /// </summary>
+    internal bool TransitionOutcome(ExecutionTaskOutcome? outcome, string? statusReason = null)
+    {
+        string normalizedReason = statusReason ?? string.Empty;
+        if (Outcome == outcome && (statusReason == null || string.Equals(StatusReason, normalizedReason, StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        ValidateOutcomeTransition(outcome);
+        string effectiveReason = statusReason != null ? normalizedReason : StatusReason;
+        ValidateObservedState(State, outcome);
+        ApplyRuntimeState(State, effectiveReason, outcome, StartedAt, FinishedAt);
+        return true;
+    }
+
+    /// <summary>
+    /// Validates and applies a combined lifecycle state and semantic outcome transition as a single atomic update so
+    /// observers never see torn state between lifecycle and outcome fields. Returns false when the transition is a no-op.
+    /// </summary>
+    internal bool TransitionSnapshot(ExecutionSession session, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    {
+        string normalizedReason = statusReason ?? string.Empty;
+        if (State == state && Outcome == outcome && string.Equals(StatusReason, normalizedReason, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        ValidateStateTransition(session, state);
+        ValidateOutcomeTransition(outcome);
+        ValidateObservedState(state, outcome);
+        (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(state);
+        ApplyRuntimeState(state, normalizedReason, outcome, startedAt, finishedAt);
+        return true;
+    }
+
 }
