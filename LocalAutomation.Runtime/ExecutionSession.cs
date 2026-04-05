@@ -662,8 +662,8 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-     /// Skips every unfinished task in the provided subtree without disturbing tasks that already reached terminal states.
-     /// </summary>
+    /// Skips every unfinished task in the provided subtree without disturbing tasks that already reached terminal states.
+    /// </summary>
     private void SkipUnfinishedSubtree(ExecutionTaskId rootTaskId, string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
     {
         ExecutionTask task = GetTask(rootTaskId);
