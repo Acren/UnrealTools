@@ -7,15 +7,15 @@ using LocalAutomation.Core;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Builds a previewable execution plan where ordered body steps, child tasks, parallel child groups, and expanded child
-/// operations all participate in one explicit step list beneath each parent task.
+/// Builds a previewable execution plan by authoring directly against execution tasks and wiring sequencing dependencies
+/// immediately as each child, body, or child operation is declared.
 /// </summary>
 public sealed class ExecutionPlanBuilder
 {
     private readonly ExecutionPlanId _planId;
     private readonly string _title;
     private readonly List<ExecutionTask> _items = new();
-    private readonly Dictionary<ExecutionTaskId, BuilderTaskState> _builderStateByTaskId = new();
+    private readonly Dictionary<ExecutionTaskId, ParentBuildState> _parentStateByTaskId = new();
     private readonly Func<Operation, OperationParameters, ExecutionPlan?> _buildChildPlan;
     private IReadOnlyCollection<Type> _declaredOptionTypes = Array.Empty<Type>();
     private Operation _operation = null!;
@@ -60,8 +60,6 @@ public sealed class ExecutionPlanBuilder
     /// </summary>
     public ExecutionPlan BuildPlan()
     {
-        ExpandChildOperations();
-        ApplyChildDeclarationOrdering();
         List<ExecutionTask> tasks = _items.ToList();
         List<ExecutionDependency> dependencies = _items
             .SelectMany(item => item.DependsOn.Select(dependencyId => new ExecutionDependency(dependencyId, item.Id)))
@@ -84,149 +82,187 @@ public sealed class ExecutionPlanBuilder
         _declaredOptionTypes = (declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))).ToList();
     }
 
+    /// <summary>
+    /// Expands one dependency on a previously declared task into dependencies on the current completion frontier of that
+    /// task subtree so explicit After(...) calls still follow authored child and body sequencing.
+    /// </summary>
     internal void AddTaskDependency(ExecutionTask task, ExecutionTaskId dependencyId)
     {
         foreach (ExecutionTaskId completionTaskId in GetCompletionTaskIds(dependencyId))
         {
-            AddDirectDependency(task, completionTaskId);
+            task.AddDependency(completionTaskId);
         }
     }
 
+    /// <summary>
+    /// Updates whether one authored task participates in the plan and records the disabled reason when it does not.
+    /// </summary>
     internal void SetCondition(ExecutionTask task, bool enabled, string? disabledReason)
     {
         task.SetCondition(enabled, disabledReason);
     }
 
+    /// <summary>
+    /// Updates the authored description of one task.
+    /// </summary>
     internal void SetDescription(ExecutionTask task, string? description)
     {
         task.SetDescription(description ?? string.Empty);
     }
 
+    /// <summary>
+    /// Updates whether one authored task is hidden in the graph projection.
+    /// </summary>
     internal void SetGraphVisibility(ExecutionTask task, bool isHiddenInGraph)
     {
         task.SetHiddenInGraph(isHiddenInGraph);
     }
 
     /// <summary>
-    /// Declares one task relative to an existing parent and appends it to the correct ordered step in that parent's child
-    /// step list.
+    /// Declares one sequential child task beneath the provided parent and immediately advances that parent's completion
+    /// frontier to the newly authored child.
     /// </summary>
-    internal ExecutionTaskBuilder DeclareRelativeTask(ExecutionTaskId parentId, string title, string? description, bool parallel, ref ChildDeclarationEntry? sharedDeclaration)
+    internal ExecutionTaskBuilder DeclareSequentialRelativeTask(ExecutionTaskId parentId, string title, string? description)
     {
-        ExecutionTaskBuilder task = Task(title, description, parentId);
-
-        /* Sequential declarations each get their own ordered step, while parallel scopes reuse one shared step whose
-           entry and completion sets are the same sibling task list. */
-        ChildDeclarationEntry declaration = parallel
-            ? sharedDeclaration ??= AppendChildStep(parentId)
-            : AppendChildStep(parentId);
-        if (!parallel)
-        {
-            declaration.RootTaskId = task.Id;
-        }
-
-        declaration.AddCompletionTask(task.Id);
-
-        return task;
+        ParentBuildState parentState = GetParentState(parentId);
+        ExecutionTaskBuilder childTask = CreateRelativeTask(parentId, title, description, parentState.CompletionFrontier);
+        ReplaceFrontier(parentState.CompletionFrontier, childTask.Id);
+        return childTask;
     }
 
+    /// <summary>
+    /// Declares one sequential task inside an active child scope by depending on that scope's current completion frontier
+    /// and then replacing the scope frontier with the newly authored child.
+    /// </summary>
+    internal ExecutionTaskBuilder DeclareScopedSequentialRelativeTask(ExecutionTaskId parentId, string title, string? description, IList<ExecutionTaskId> scopeFrontier)
+    {
+        ExecutionTaskBuilder childTask = CreateRelativeTask(parentId, title, description, scopeFrontier.ToList());
+        ReplaceFrontier(scopeFrontier, childTask.Id);
+        return childTask;
+    }
+
+    /// <summary>
+    /// Declares one parallel child task inside an active child scope by depending on the incoming scope frontier while
+    /// leaving sibling tasks independent from each other.
+    /// </summary>
+    internal ExecutionTaskBuilder DeclareScopedParallelRelativeTask(ExecutionTaskId parentId, string title, string? description, IReadOnlyList<ExecutionTaskId> incomingFrontier, IList<ExecutionTaskId> scopeFrontier)
+    {
+        ExecutionTaskBuilder childTask = CreateRelativeTask(parentId, title, description, incomingFrontier);
+        AddUnique(scopeFrontier, childTask.Id);
+        return childTask;
+    }
+
+    /// <summary>
+    /// Opens one child-task scope beneath the provided parent and lets the scope own the transient frontier state needed
+    /// to model sequential or parallel sibling authoring.
+    /// </summary>
+    internal void BuildChildScope(ExecutionTask parentTask, ExecutionChildMode mode, Action<ExecutionTaskScopeBuilder> build)
+    {
+        _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
+        _ = build ?? throw new ArgumentNullException(nameof(build));
+
+        ParentBuildState parentState = GetParentState(parentTask.Id);
+        ExecutionTaskScopeBuilder scopeBuilder = new(this, parentTask.Id, mode, parentState.CompletionFrontier);
+        build(scopeBuilder);
+        ReplaceFrontier(parentState.CompletionFrontier, scopeBuilder.CompletionFrontier);
+    }
+
+    /// <summary>
+    /// Attaches one hidden body task beneath the provided parent task and immediately advances the parent's completion
+    /// frontier to that body task.
+    /// </summary>
     internal ExecutionTaskId AttachBodyTask(ExecutionTask parentTask, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
         _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
         Func<ExecutionTaskContext, Task<OperationResult>> resolvedExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
 
+        ParentBuildState parentState = GetParentState(parentTask.Id);
+        parentState.BodyCount += 1;
+
         ExecutionTask bodyTask = CreateItem(
             GenerateTaskId(),
-            CreateBodyTaskTitle(parentTask),
+            CreateBodyTaskTitle(parentTask, parentState.BodyCount),
             parentTask.Description,
             parentTask.Id);
         bodyTask.SetCondition(parentTask.Enabled, parentTask.DisabledReason);
         bodyTask.SetOperationParameters(parentTask.OperationParameters, parentTask.DeclaredOptionTypes);
         bodyTask.SetExecuteAsync(resolvedExecuteAsync);
         bodyTask.SetOperationRoot(false);
+
         /* Internal body tasks carry the runnable work for authored Run(...) declarations, so the graph hides them by
            default and lets the global reveal toggle surface them only when lower-level troubleshooting is needed. */
         bodyTask.SetHiddenInGraph(true);
         AddTaskDefinition(bodyTask);
-
-        ChildDeclarationEntry declaration = AppendChildStep(parentTask.Id, isBody: true);
-        declaration.RootTaskId = bodyTask.Id;
-        declaration.AddCompletionTask(bodyTask.Id);
-
+        WireDependencies(bodyTask, parentState.CompletionFrontier);
+        ReplaceFrontier(parentState.CompletionFrontier, bodyTask.Id);
         return bodyTask.Id;
     }
 
     /// <summary>
-    /// Registers one child-operation declaration beneath the current task. The declaration stores parent-side overrides
-    /// for the imported child root while the child operation itself still owns the subtree that will be attached later.
+    /// Expands one child operation immediately, attaches the imported root beneath the current parent, and advances the
+    /// parent's completion frontier to the imported subtree's leaf tasks.
     /// </summary>
-    internal ChildDeclarationEntry AttachChildOperation(ExecutionTask parentTask, Type operationType, Func<OperationParameters> createParameters, string title, string? description)
+    internal ExecutionChildOperationBuilder AttachChildOperation(ExecutionTask parentTask, Type operationType, Func<OperationParameters> createParameters, string title, string? description)
     {
         _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
-        ChildDeclarationEntry declaration = AppendChildStep(parentTask.Id);
-        declaration.ChildOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
-        declaration.CreateChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters));
-        declaration.RootOverrides = new ChildOperationRootOverrides(title, description ?? string.Empty, isHiddenInGraph: false);
-        return declaration;
-    }
+        Type resolvedOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
+        Func<OperationParameters> createChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters));
 
-    internal ExecutionTaskBuilder DeclareParallelRelativeTask(ExecutionTaskId parentId, string title, string? description, ref ChildDeclarationEntry? sharedDeclaration)
-    {
-        return DeclareRelativeTask(parentId, title, description, parallel: true, ref sharedDeclaration);
-    }
+        Operation childOperation = Operation.CreateOperation(resolvedOperationType);
+        OperationParameters childParameters = createChildParameters();
+        ExecutionPlan childPlan = _buildChildPlan(childOperation, childParameters)
+            ?? throw new InvalidOperationException($"Child operation '{resolvedOperationType.Name}' returned no execution plan during authoring.");
+        InsertedExecutionTasks insertedTasks = ExecutionTaskInsertion.InsertUnderParent(
+            childPlan,
+            parentTask.Id,
+            new ChildOperationRootOverrides(title, description ?? string.Empty, isHiddenInGraph: false));
 
-    internal ExecutionTaskBuilder DeclareSequentialRelativeTask(ExecutionTaskId parentId, string title, string? description)
-    {
-        ChildDeclarationEntry? sharedDeclaration = null;
-        return DeclareRelativeTask(parentId, title, description, parallel: false, ref sharedDeclaration);
-    }
+        foreach (ExecutionTask childTask in insertedTasks.Tasks)
+        {
+            AddImportedDefinition(childTask);
+        }
 
-    /// <summary>
-    /// Updates the parent-authored description override for one imported child-operation root.
-    /// </summary>
-    internal void SetChildOperationDescription(ChildDeclarationEntry declaration, string? description)
-    {
-        _ = declaration ?? throw new ArgumentNullException(nameof(declaration));
-        declaration.RootOverrides.Description = description ?? string.Empty;
+        ParentBuildState parentState = GetParentState(parentTask.Id);
+        ExecutionTask importedRootTask = GetDefinition(insertedTasks.RootTaskId);
+        WireDependencies(importedRootTask, parentState.CompletionFrontier);
+        ReplaceFrontier(parentState.CompletionFrontier, GetLeafCompletionTaskIds(insertedTasks.Tasks));
+        return new ExecutionChildOperationBuilder(this, importedRootTask);
     }
 
     /// <summary>
-    /// Updates whether the imported child-operation root should be hidden in the graph projection.
+    /// Assigns the current validated operation parameters to one task while it is still only authored plan data.
     /// </summary>
-    internal void SetChildOperationGraphVisibility(ChildDeclarationEntry declaration, bool isHiddenInGraph)
-    {
-        _ = declaration ?? throw new ArgumentNullException(nameof(declaration));
-        declaration.RootOverrides.IsHiddenInGraph = isHiddenInGraph;
-    }
-
     internal void SetOperationParameters(ExecutionTask task, OperationParameters operationParameters)
     {
         task.SetOperationParameters(operationParameters ?? throw new ArgumentNullException(nameof(operationParameters)), _declaredOptionTypes);
     }
 
+    /// <summary>
+    /// Returns the current completion frontier for one task subtree. Tasks with no authored child or body work complete on
+    /// their own task id, while tasks with nested work complete on the most recently authored descendant frontier.
+    /// </summary>
     internal IReadOnlyList<ExecutionTaskId> GetCompletionTaskIds(ExecutionTaskId taskId)
     {
-        BuilderTaskState state = GetBuilderState(taskId);
-        if (state.ChildDeclarations.Count == 0)
-        {
-            return new[] { taskId };
-        }
-
-        ChildDeclarationEntry? lastDeclaration = state.ChildDeclarations
-            .LastOrDefault(entry => entry.CompletionTaskIds.Count > 0);
-        return lastDeclaration?.CompletionTaskIds.Count > 0
-            ? lastDeclaration.CompletionTaskIds.ToList()
+        ParentBuildState state = GetParentState(taskId);
+        return state.CompletionFrontier.Count > 0
+            ? state.CompletionFrontier.ToList()
             : new[] { taskId };
     }
 
-    internal ChildDeclarationEntry AppendChildStep(ExecutionTaskId parentId, bool isBody = false)
+    /// <summary>
+    /// Creates one direct child task and wires it to the provided dependency frontier.
+    /// </summary>
+    private ExecutionTaskBuilder CreateRelativeTask(ExecutionTaskId parentId, string title, string? description, IReadOnlyList<ExecutionTaskId> dependencyFrontier)
     {
-        BuilderTaskState state = GetBuilderState(parentId);
-        ChildDeclarationEntry entry = new(isBody);
-        state.ChildDeclarations.Add(entry);
-        return entry;
+        ExecutionTask task = CreateItem(GenerateTaskId(), title, description, parentId);
+        AddTaskDefinition(task);
+        WireDependencies(task, dependencyFrontier);
+        return new ExecutionTaskBuilder(this, task, parentId);
     }
 
+    /// <summary>
+    /// Fails loudly when more than one root task is authored in one execution plan.
+    /// </summary>
     private void ValidateParent(ExecutionTaskId? parentId)
     {
         if (parentId != null)
@@ -240,6 +276,9 @@ public sealed class ExecutionPlanBuilder
         }
     }
 
+    /// <summary>
+    /// Creates one authored task with the current builder-wide operation context already attached.
+    /// </summary>
     private ExecutionTask CreateItem(ExecutionTaskId id, string title, string? description, ExecutionTaskId? parentId)
     {
         return new ExecutionTask(
@@ -258,40 +297,8 @@ public sealed class ExecutionPlanBuilder
             isHiddenInGraph: false);
     }
 
-    private void ExpandChildOperations()
-    {
-        List<(ExecutionTask Parent, ChildDeclarationEntry Declaration)> declarationsToExpand = _items
-            .SelectMany(item => GetBuilderState(item.Id).ChildDeclarations.Select(declaration => (Parent: item, Declaration: declaration)))
-            .Where(tuple => tuple.Declaration.ChildOperationType != null)
-            .ToList();
-
-        foreach ((ExecutionTask parentTask, ChildDeclarationEntry declaration) in declarationsToExpand)
-        {
-            Operation childOperation = Operation.CreateOperation(declaration.ChildOperationType!);
-            OperationParameters childParameters = declaration.CreateChildParameters!();
-            ExecutionPlan childPlan = _buildChildPlan(childOperation, childParameters)
-                ?? throw new InvalidOperationException($"Child operation '{declaration.ChildOperationType!.Name}' returned no execution plan during expansion.");
-            ChildOperationRootOverrides rootOverrides = new(
-                declaration.RootOverrides.Title,
-                declaration.RootOverrides.Description,
-                declaration.RootOverrides.IsHiddenInGraph);
-            InsertedExecutionTasks insertedTasks = ExecutionTaskInsertion.InsertUnderParent(childPlan, parentTask.Id, rootOverrides);
-
-            declaration.ChildOperationType = null;
-            declaration.CreateChildParameters = null;
-            declaration.RootTaskId = insertedTasks.RootTaskId;
-            declaration.CompletionTaskIds.Clear();
-            declaration.CompletionTaskIds.AddRange(GetLeafCompletionTaskIds(insertedTasks.Tasks));
-
-            foreach (ExecutionTask childTask in insertedTasks.Tasks)
-            {
-                AddImportedDefinition(childTask);
-            }
-        }
-    }
-
     /// <summary>
-    /// Adds one imported task definition to the current plan and fails loudly if a supposedly unique task id collides.
+    /// Registers one imported task definition and creates the matching builder-side tracking state.
     /// </summary>
     private void AddImportedDefinition(ExecutionTask task)
     {
@@ -304,51 +311,71 @@ public sealed class ExecutionPlanBuilder
         AddTaskDefinition(task);
     }
 
-    private void ApplyChildDeclarationOrdering()
-    {
-        foreach (ExecutionTask task in _items)
-        {
-            List<ExecutionTaskId> previousCompletionTaskIds = new();
-
-            /* Child declarations are append-only, so authored insertion order is already the execution-order source of
-               truth. Keeping that order directly avoids carrying redundant sequence metadata just to sort it back later. */
-            foreach (ChildDeclarationEntry declaration in GetBuilderState(task.Id).ChildDeclarations)
-            {
-                foreach (ExecutionTaskId entryTaskId in declaration.GetEntryTaskIds())
-                {
-                    ExecutionTask entryTask = GetDefinition(entryTaskId);
-                    foreach (ExecutionTaskId previousCompletionTaskId in previousCompletionTaskIds)
-                    {
-                        AddDirectDependency(entryTask, previousCompletionTaskId);
-                    }
-                }
-
-                if (declaration.CompletionTaskIds.Count > 0)
-                {
-                    previousCompletionTaskIds = declaration.CompletionTaskIds.ToList();
-                }
-            }
-        }
-    }
-
-    private void AddDirectDependency(ExecutionTask task, ExecutionTaskId dependencyId)
-    {
-        task.AddDependency(dependencyId);
-    }
-
+    /// <summary>
+    /// Returns one task definition from the builder-owned task list.
+    /// </summary>
     private ExecutionTask GetDefinition(ExecutionTaskId taskId)
     {
         return _items.Single(item => item.Id == taskId);
     }
 
-    private string CreateBodyTaskTitle(ExecutionTask parentTask)
+    /// <summary>
+    /// Adds dependency edges from every task in the provided frontier to the newly declared task.
+    /// </summary>
+    private static void WireDependencies(ExecutionTask task, IReadOnlyList<ExecutionTaskId> dependencyFrontier)
     {
-        int bodyIndex = GetBuilderState(parentTask.Id).ChildDeclarations.Count(entry => entry.IsBody) + 1;
+        foreach (ExecutionTaskId dependencyTaskId in dependencyFrontier)
+        {
+            task.AddDependency(dependencyTaskId);
+        }
+    }
+
+    /// <summary>
+    /// Replaces one mutable frontier list with a new ordered set of completion task ids.
+    /// </summary>
+    private static void ReplaceFrontier(IList<ExecutionTaskId> target, IReadOnlyList<ExecutionTaskId> source)
+    {
+        target.Clear();
+        foreach (ExecutionTaskId taskId in source)
+        {
+            AddUnique(target, taskId);
+        }
+    }
+
+    /// <summary>
+    /// Replaces one mutable frontier list with one single completion task id.
+    /// </summary>
+    private static void ReplaceFrontier(IList<ExecutionTaskId> target, ExecutionTaskId taskId)
+    {
+        target.Clear();
+        target.Add(taskId);
+    }
+
+    /// <summary>
+    /// Adds one completion task id only when it is not already present.
+    /// </summary>
+    private static void AddUnique(ICollection<ExecutionTaskId> target, ExecutionTaskId taskId)
+    {
+        if (!target.Contains(taskId))
+        {
+            target.Add(taskId);
+        }
+    }
+
+    /// <summary>
+    /// Generates the stable body-task title sequence shown in the graph for repeated Run(...) calls on one parent task.
+    /// </summary>
+    private static string CreateBodyTaskTitle(ExecutionTask parentTask, int bodyIndex)
+    {
         return bodyIndex == 1
             ? parentTask.Title + ".Body"
             : parentTask.Title + ".Body " + bodyIndex;
     }
 
+    /// <summary>
+    /// Returns the leaf tasks of one imported subtree so the parent's frontier advances to the tasks that actually finish
+    /// the child operation step.
+    /// </summary>
     private static IReadOnlyList<ExecutionTaskId> GetLeafCompletionTaskIds(IReadOnlyList<ExecutionTask> tasks)
     {
         HashSet<ExecutionTaskId> parentIds = tasks
@@ -362,24 +389,25 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Registers one builder-owned task together with the sidecar declaration state used only during plan authoring.
+    /// Registers one builder-owned task together with the per-parent authoring state used to track completion frontiers
+    /// and body numbering.
     /// </summary>
     private void AddTaskDefinition(ExecutionTask task)
     {
         _items.Add(task);
-        _builderStateByTaskId.Add(task.Id, new BuilderTaskState());
+        _parentStateByTaskId.Add(task.Id, new ParentBuildState());
     }
 
     /// <summary>
-    /// Returns the builder-only declaration state for one authored task.
+    /// Returns the builder-owned state for one authored task.
     /// </summary>
-    private BuilderTaskState GetBuilderState(ExecutionTaskId taskId)
+    private ParentBuildState GetParentState(ExecutionTaskId taskId)
     {
-        return _builderStateByTaskId[taskId];
+        return _parentStateByTaskId[taskId];
     }
 
     /// <summary>
-     /// Generates a globally unique task identifier so embedded child plans can keep their authored ids without any
+    /// Generates a globally unique task identifier so embedded child plans can keep their authored ids without any
     /// parent-side remapping during plan composition or live runtime insertion.
     /// </summary>
     private ExecutionTaskId GenerateTaskId()
@@ -387,51 +415,15 @@ public sealed class ExecutionPlanBuilder
         return ExecutionTaskId.New();
     }
 
-    internal sealed class BuilderTaskState
+    /// <summary>
+    /// Tracks the current completion frontier and body naming count for one parent task while its nested child and body
+    /// steps are still being declared.
+    /// </summary>
+    private sealed class ParentBuildState
     {
-        public List<ChildDeclarationEntry> ChildDeclarations { get; } = new();
-    }
+        public List<ExecutionTaskId> CompletionFrontier { get; } = new();
 
-    internal sealed class ChildDeclarationEntry
-    {
-        public ChildDeclarationEntry(bool isBody)
-        {
-            IsBody = isBody;
-        }
-
-        public bool IsBody { get; }
-
-        public ExecutionTaskId? RootTaskId { get; set; }
-
-        public List<ExecutionTaskId> CompletionTaskIds { get; } = new();
-
-        public Type? ChildOperationType { get; set; }
-
-        public Func<OperationParameters>? CreateChildParameters { get; set; }
-
-        public ChildOperationRootOverrides RootOverrides { get; set; } = null!;
-
-        public IEnumerable<ExecutionTaskId> GetEntryTaskIds()
-        {
-            if (RootTaskId is ExecutionTaskId rootTaskId)
-            {
-                yield return rootTaskId;
-                yield break;
-            }
-
-            foreach (ExecutionTaskId completionTaskId in CompletionTaskIds)
-            {
-                yield return completionTaskId;
-            }
-        }
-
-        public void AddCompletionTask(ExecutionTaskId taskId)
-        {
-            if (!CompletionTaskIds.Contains(taskId))
-            {
-                CompletionTaskIds.Add(taskId);
-            }
-        }
+        public int BodyCount { get; set; }
     }
 }
 

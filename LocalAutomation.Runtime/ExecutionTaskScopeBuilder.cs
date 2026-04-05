@@ -1,33 +1,51 @@
 using System;
-using LocalAutomation.Core;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Builds one sibling scope of tasks beneath a shared parent and optionally auto-sequences repeated Task(...) calls.
+/// Builds one sibling scope of tasks beneath a shared parent and owns the transient completion frontier needed to model
+/// sequenced or parallel repeated Task(...) declarations.
 /// </summary>
 public sealed class ExecutionTaskScopeBuilder
 {
     private readonly ExecutionPlanBuilder _owner;
     private readonly ExecutionTaskId _parentId;
     private readonly ExecutionChildMode _mode;
-    private ExecutionPlanBuilder.ChildDeclarationEntry? _parallelScopeEntry;
+    private readonly IReadOnlyList<ExecutionTaskId> _incomingFrontier;
+    private readonly List<ExecutionTaskId> _completionFrontier;
+    private bool _hasDeclaredTasks;
 
-    internal ExecutionTaskScopeBuilder(ExecutionPlanBuilder owner, ExecutionTaskId parentId, ExecutionChildMode mode)
+    internal ExecutionTaskScopeBuilder(ExecutionPlanBuilder owner, ExecutionTaskId parentId, ExecutionChildMode mode, IReadOnlyList<ExecutionTaskId> startingFrontier)
     {
-        _owner = owner;
+        _owner = owner ?? throw new ArgumentNullException(nameof(owner));
         _parentId = parentId;
         _mode = mode;
+        _incomingFrontier = startingFrontier?.ToList() ?? throw new ArgumentNullException(nameof(startingFrontier));
+        _completionFrontier = startingFrontier.ToList();
     }
 
+    internal IReadOnlyList<ExecutionTaskId> CompletionFrontier => _completionFrontier;
+
     /// <summary>
-    /// Declares the next task in this child scope, reusing one shared declaration entry when the scope is parallel.
+    /// Declares the next task in this child scope, either appending to the current sequential frontier or joining the
+    /// parallel scope's shared completion frontier.
     /// </summary>
     public ExecutionTaskBuilder Task(string title, string? description = null)
     {
-        return _mode == ExecutionChildMode.Parallel
-            ? _owner.DeclareParallelRelativeTask(_parentId, title, description, ref _parallelScopeEntry)
-            : _owner.DeclareSequentialRelativeTask(_parentId, title, description);
-    }
+        if (_mode == ExecutionChildMode.Parallel)
+        {
+            if (!_hasDeclaredTasks)
+            {
+                _completionFrontier.Clear();
+            }
 
+            _hasDeclaredTasks = true;
+            return _owner.DeclareScopedParallelRelativeTask(_parentId, title, description, _incomingFrontier, _completionFrontier);
+        }
+
+        _hasDeclaredTasks = true;
+        return _owner.DeclareScopedSequentialRelativeTask(_parentId, title, description, _completionFrontier);
+    }
 }

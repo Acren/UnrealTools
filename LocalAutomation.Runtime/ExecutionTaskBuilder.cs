@@ -4,8 +4,8 @@ using System.Threading.Tasks;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Shares presentation-oriented builder configuration for real authored tasks and parent-side child-operation root
-/// declarations so graph-facing settings stay consistent without duplicating implementation.
+/// Shares presentation-oriented builder configuration for authored tasks and imported child-operation roots so graph-
+/// facing settings stay consistent without duplicating implementation.
 /// </summary>
 public abstract class ExecutionNodeBuilderBase<TBuilder>
     where TBuilder : ExecutionNodeBuilderBase<TBuilder>
@@ -55,8 +55,6 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// Gets the task id for the declared task.
     /// </summary>
     public ExecutionTaskId Id { get; }
-
-    internal ExecutionTask Task => _task;
 
     protected override void SetDescription(string? description)
     {
@@ -171,7 +169,8 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 
     /// <summary>
-    /// Declares one direct child task beneath the current task and registers it in the parent's child-declaration stream.
+    /// Declares one direct child task beneath the current task and immediately advances the parent's authored child
+    /// frontier to the new child task.
     /// </summary>
     public ExecutionTaskBuilder Child(string title, string? description = null)
     {
@@ -190,18 +189,17 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
 
     /// <summary>
     /// Declares one child operation beneath the current task and returns a builder that configures the imported child root
-    /// using parent-side overrides.
+    /// directly after the child plan is expanded and inserted.
     /// </summary>
     public ExecutionChildOperationBuilder AddChildOperation<TOperation>(string title, Func<OperationParameters> createParameters, string? description = null)
         where TOperation : Operation, new()
     {
-        ExecutionPlanBuilder.ChildDeclarationEntry declaration = _owner.AttachChildOperation(_task, typeof(TOperation), createParameters, title, description);
-        return new ExecutionChildOperationBuilder(_owner, declaration);
+        return _owner.AttachChildOperation(_task, typeof(TOperation), createParameters, title, description);
     }
 
     /// <summary>
-    /// Declares one sequential sibling task under the same parent. Normal sibling order is authored through the shared
-    /// declaration stream instead of by injecting an explicit dependency edge here.
+    /// Declares one sequential sibling task under the same parent by appending it to the current parent's authored child
+    /// frontier.
     /// </summary>
     public ExecutionTaskBuilder Then(string title, string? description = null)
     {
@@ -217,8 +215,8 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 
     /// <summary>
-    /// Opens a child-task scope beneath this task and controls whether sibling tasks inside that scope are auto-sequenced
-    /// or left independent.
+    /// Opens a child-task scope beneath this task and lets the scope own the transient sibling frontier needed to model
+    /// sequential or parallel child declarations.
     /// </summary>
     public ExecutionTaskBuilder Children(ExecutionChildMode mode, Action<ExecutionTaskScopeBuilder> build)
     {
@@ -227,33 +225,32 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
             throw new ArgumentNullException(nameof(build));
         }
 
-        build(new ExecutionTaskScopeBuilder(_owner, Id, mode));
+        _owner.BuildChildScope(_task, mode, build);
         return this;
     }
 }
 
 /// <summary>
-/// Configures parent-side overrides for one imported child-operation root while sharing the same graph-facing builder
-/// surface as normal authored tasks.
+/// Configures one imported child-operation root directly after the child plan has been inserted beneath its parent task.
 /// </summary>
 public sealed class ExecutionChildOperationBuilder : ExecutionNodeBuilderBase<ExecutionChildOperationBuilder>
 {
     private readonly ExecutionPlanBuilder _owner;
-    private readonly ExecutionPlanBuilder.ChildDeclarationEntry _declaration;
+    private readonly ExecutionTask _task;
 
-    internal ExecutionChildOperationBuilder(ExecutionPlanBuilder owner, ExecutionPlanBuilder.ChildDeclarationEntry declaration)
+    internal ExecutionChildOperationBuilder(ExecutionPlanBuilder owner, ExecutionTask task)
     {
         _owner = owner;
-        _declaration = declaration;
+        _task = task;
     }
 
     protected override void SetDescription(string? description)
     {
-        _owner.SetChildOperationDescription(_declaration, description);
+        _owner.SetDescription(_task, description);
     }
 
     protected override void SetHiddenInGraph(bool hidden)
     {
-        _owner.SetChildOperationGraphVisibility(_declaration, hidden);
+        _owner.SetGraphVisibility(_task, hidden);
     }
 }
