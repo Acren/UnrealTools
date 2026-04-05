@@ -188,9 +188,7 @@ public sealed class ExecutionSession
 
     public IReadOnlyList<ExecutionTaskId> GetTaskSubtreeIds(ExecutionTaskId taskId)
     {
-        List<ExecutionTaskId> subtreeIds = new() { taskId };
-        CollectDescendantTaskIds(taskId, subtreeIds);
-        return subtreeIds;
+        return GetTask(taskId).GetSubtreeIds(this);
     }
 
     public ExecutionTaskMetrics GetTaskMetrics(ExecutionTaskId? taskId, DateTimeOffset? now = null)
@@ -558,7 +556,7 @@ public sealed class ExecutionSession
                 throw new InvalidOperationException($"Task '{task.Id}' cannot return to pending readiness while it already has semantic outcome '{task.Outcome}'.");
             }
 
-            string? waitingReason = GetTaskSchedulingPendingReason(task);
+            string? waitingReason = task.GetSchedulingPendingReason(this);
             if (task.GetTaskStartState(this) == TaskStartState.NoStartableWork)
             {
                 continue;
@@ -622,36 +620,6 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Returns whether all direct dependencies for the provided task are satisfied strongly enough for downstream work to
-    /// start.
-    /// </summary>
-    internal bool AreTaskDependenciesSatisfied(ExecutionTask task)
-    {
-        return task.DependsOn.All(IsTaskDependencySatisfied);
-    }
-
-    /// <summary>
-    /// Returns the current scheduler-facing pending reason for the provided task, or null when the task is ready.
-    /// </summary>
-    internal string? GetTaskSchedulingPendingReason(ExecutionTask task)
-    {
-        if (task.State != ExecutionTaskState.Pending)
-        {
-            return null;
-        }
-
-        TaskStartState startState = task.GetTaskStartState(this);
-        if (startState == TaskStartState.WaitingForDependencies)
-        {
-            return "Waiting for dependencies.";
-        }
-
-        return startState == TaskStartState.WaitingForParent
-            ? "Waiting for parent scope."
-            : null;
-    }
-
-    /// <summary>
     /// Starts one scheduler-ready task through the task model so callers never need to know how the concrete task stores
     /// its runnable work.
     /// </summary>
@@ -667,53 +635,6 @@ public sealed class ExecutionSession
         ExecutionTaskRuntimeServices runtime = new(this, scheduler, createLogger);
         ExecutionTaskContext context = new(task.Id, task.Title, createLogger(task.Id), cancellationToken, validatedOperationParameters, task.Operation, runtime);
         return task.StartAsync(context);
-    }
-
-    /// <summary>
-    /// Returns whether every ancestor container for the provided task is structurally open.
-    /// </summary>
-    internal bool AreTaskAncestorsOpen(ExecutionTask task)
-    {
-        ExecutionTask? currentTask = task.ParentId is ExecutionTaskId parentId
-            ? GetTask(parentId)
-            : null;
-        while (currentTask != null)
-        {
-            if (currentTask.State == ExecutionTaskState.Completed || currentTask.Outcome != null)
-            {
-                return false;
-            }
-
-            if (!AreTaskDependenciesSatisfied(currentTask))
-            {
-                return false;
-            }
-
-            currentTask = currentTask.ParentId is ExecutionTaskId nextParentId
-                ? GetTask(nextParentId)
-                : null;
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Returns whether one dependency is satisfied strongly enough for downstream work to start.
-    /// </summary>
-    private bool IsTaskDependencySatisfied(ExecutionTaskId dependencyId)
-    {
-        ExecutionTask dependencyTask = GetTask(dependencyId);
-        if (dependencyTask.Outcome == ExecutionTaskOutcome.Completed)
-        {
-            return true;
-        }
-
-        if (dependencyTask.Outcome != ExecutionTaskOutcome.Disabled)
-        {
-            return false;
-        }
-
-        return dependencyTask.DependsOn.All(IsTaskDependencySatisfied);
     }
 
     /// <summary>
@@ -1081,31 +1002,12 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Returns the current explicit dependency ids for one task within the live session graph.
-    /// </summary>
-    public IReadOnlyList<ExecutionTaskId> GetTaskDependencies(ExecutionTaskId taskId)
-    {
-        return GetTask(taskId).DependsOn;
-    }
-
-    /// <summary>
     /// Builds a human-readable task path from the current live parent chain so logs can identify one task by its visible
     /// location in the execution tree instead of only by its generated id.
     /// </summary>
     public string GetTaskDisplayPath(ExecutionTaskId taskId)
     {
-        List<string> segments = new();
-        ExecutionTask? currentTask = GetTask(taskId);
-        while (currentTask != null)
-        {
-            segments.Add(currentTask.Title);
-            currentTask = currentTask.ParentId is ExecutionTaskId parentId
-                ? GetTask(parentId)
-                : null;
-        }
-
-        segments.Reverse();
-        return string.Join(" > ", segments);
+        return GetTask(taskId).GetDisplayPath(this);
     }
 
     /// <summary>
@@ -1113,7 +1015,7 @@ public sealed class ExecutionSession
     /// </summary>
     public bool IsTaskTerminal(ExecutionTaskId taskId)
     {
-        return GetTask(taskId).State == ExecutionTaskState.Completed;
+        return GetTask(taskId).IsTerminal;
     }
 
     private void SetTaskStateCore(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason)
@@ -1192,15 +1094,6 @@ public sealed class ExecutionSession
     {
         GetTask(taskId).CompleteWithOutcome(this, outcome, statusReason);
         RefreshAncestorTaskStates(taskId);
-    }
-
-    private void CollectDescendantTaskIds(ExecutionTaskId parentTaskId, ICollection<ExecutionTaskId> descendantTaskIds)
-    {
-        foreach (ExecutionTaskId childTaskId in GetTask(parentTaskId).GetChildTaskIds())
-        {
-            descendantTaskIds.Add(childTaskId);
-            CollectDescendantTaskIds(childTaskId, descendantTaskIds);
-        }
     }
 
     private TimeSpan GetSessionDuration(DateTimeOffset? now)

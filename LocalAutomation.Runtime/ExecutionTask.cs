@@ -331,12 +331,12 @@ public class ExecutionTask : INotifyPropertyChanged
 
         if (_executeAsync != null && State == ExecutionTaskState.Pending)
         {
-            if (!session.AreTaskDependenciesSatisfied(this))
+            if (!AreDependenciesSatisfied(session))
             {
                 return TaskStartState.WaitingForDependencies;
             }
 
-            if (!session.AreTaskAncestorsOpen(this))
+            if (!AreAncestorsOpen(session))
             {
                 return TaskStartState.WaitingForParent;
             }
@@ -654,14 +654,139 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Returns whether all direct dependencies for this task are satisfied strongly enough for downstream work to start.
+    /// </summary>
+    internal bool AreDependenciesSatisfied(ExecutionSession session)
+    {
+        return DependsOn.All(dependencyId => IsDependencySatisfied(session, dependencyId));
+    }
+
+    /// <summary>
+    /// Returns whether one dependency is satisfied strongly enough for downstream work to start. Disabled dependencies
+    /// are treated as satisfied when their own transitive dependencies are also satisfied.
+    /// </summary>
+    private static bool IsDependencySatisfied(ExecutionSession session, ExecutionTaskId dependencyId)
+    {
+        ExecutionTask dependencyTask = session.GetTask(dependencyId);
+        if (dependencyTask.Outcome == ExecutionTaskOutcome.Completed)
+        {
+            return true;
+        }
+
+        if (dependencyTask.Outcome != ExecutionTaskOutcome.Disabled)
+        {
+            return false;
+        }
+
+        return dependencyTask.DependsOn.All(transitiveDependencyId => IsDependencySatisfied(session, transitiveDependencyId));
+    }
+
+    /// <summary>
     /// Returns whether this task's directly attached runnable work can start immediately.
     /// </summary>
     internal bool CanStartOwnWork(ExecutionSession session)
     {
         return _executeAsync != null
             && State == ExecutionTaskState.Pending
-            && session.AreTaskDependenciesSatisfied(this)
-            && session.AreTaskAncestorsOpen(this);
+            && AreDependenciesSatisfied(session)
+            && AreAncestorsOpen(session);
+    }
+
+    /// <summary>
+    /// Returns whether every ancestor container for this task is structurally open, meaning none have completed or been
+    /// assigned a doomed outcome, and all ancestor dependencies are satisfied.
+    /// </summary>
+    internal bool AreAncestorsOpen(ExecutionSession session)
+    {
+        ExecutionTask? currentTask = ParentId is ExecutionTaskId parentId
+            ? session.GetTask(parentId)
+            : null;
+        while (currentTask != null)
+        {
+            if (currentTask.State == ExecutionTaskState.Completed || currentTask.Outcome != null)
+            {
+                return false;
+            }
+
+            if (!currentTask.AreDependenciesSatisfied(session))
+            {
+                return false;
+            }
+
+            currentTask = currentTask.ParentId is ExecutionTaskId nextParentId
+                ? session.GetTask(nextParentId)
+                : null;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the current scheduler-facing pending reason for this task, or null when the task is ready to start.
+    /// </summary>
+    internal string? GetSchedulingPendingReason(ExecutionSession session)
+    {
+        if (State != ExecutionTaskState.Pending)
+        {
+            return null;
+        }
+
+        TaskStartState startState = GetTaskStartState(session);
+        if (startState == TaskStartState.WaitingForDependencies)
+        {
+            return "Waiting for dependencies.";
+        }
+
+        return startState == TaskStartState.WaitingForParent
+            ? "Waiting for parent scope."
+            : null;
+    }
+
+    /// <summary>
+    /// Returns whether this task has reached a terminal runtime state.
+    /// </summary>
+    internal bool IsTerminal => State == ExecutionTaskState.Completed;
+
+    /// <summary>
+    /// Returns this task's id plus every descendant id beneath it in the execution tree.
+    /// </summary>
+    internal IReadOnlyList<ExecutionTaskId> GetSubtreeIds(ExecutionSession session)
+    {
+        List<ExecutionTaskId> subtreeIds = new() { Id };
+        CollectDescendantIds(session, subtreeIds);
+        return subtreeIds;
+    }
+
+    /// <summary>
+    /// Recursively collects all descendant task ids beneath this task into the provided collection.
+    /// </summary>
+    private void CollectDescendantIds(ExecutionSession session, ICollection<ExecutionTaskId> descendantTaskIds)
+    {
+        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        {
+            descendantTaskIds.Add(childTaskId);
+            session.GetTask(childTaskId).CollectDescendantIds(session, descendantTaskIds);
+        }
+    }
+
+    /// <summary>
+    /// Builds a human-readable task path from the current live parent chain so logs can identify this task by its visible
+    /// location in the execution tree instead of only by its generated id.
+    /// </summary>
+    internal string GetDisplayPath(ExecutionSession session)
+    {
+        List<string> segments = new();
+        ExecutionTask? currentTask = this;
+        while (currentTask != null)
+        {
+            segments.Add(currentTask.Title);
+            currentTask = currentTask.ParentId is ExecutionTaskId parentId
+                ? session.GetTask(parentId)
+                : null;
+        }
+
+        segments.Reverse();
+        return string.Join(" > ", segments);
     }
 
     /// <summary>
@@ -818,7 +943,7 @@ public class ExecutionTask : INotifyPropertyChanged
         return GetChildTaskIds().Any(childTaskId =>
         {
             ExecutionTask childTask = session.GetTask(childTaskId);
-            return childTask.State != ExecutionTaskState.Completed || childTask.HasNonTerminalDescendants(session);
+            return !childTask.IsTerminal || childTask.HasNonTerminalDescendants(session);
         });
     }
 
