@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace LocalAutomation.Runtime;
@@ -41,12 +42,14 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     private readonly ExecutionPlanBuilder _owner;
     private readonly ExecutionTask _task;
     private readonly ExecutionTaskId? _parentId;
+    private readonly IList<ExecutionTaskId>? _lastTaskIds;
 
-    internal ExecutionTaskBuilder(ExecutionPlanBuilder owner, ExecutionTask task, ExecutionTaskId? parentId)
+    internal ExecutionTaskBuilder(ExecutionPlanBuilder owner, ExecutionTask task, ExecutionTaskId? parentId, IList<ExecutionTaskId>? lastTaskIds = null)
     {
         _owner = owner;
         _task = task;
         _parentId = parentId;
+        _lastTaskIds = lastTaskIds;
         _owner.SetOperationParameters(_task, owner.OperationParameters);
         Id = _task.Id;
     }
@@ -198,12 +201,12 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 
     /// <summary>
-    /// Declares one sequential sibling task under the same parent by appending it to the current parent's authored child
-    /// frontier.
+    /// Declares one sequential sibling task under the same parent by depending on this visible authored task directly.
     /// </summary>
     public ExecutionTaskBuilder Then(string title, string? description = null)
     {
-        return _owner.DeclareSequentialRelativeTask(_parentId ?? throw new InvalidOperationException("Root tasks cannot declare sequential siblings."), title, description);
+        ExecutionTaskId parentId = _parentId ?? throw new InvalidOperationException("Root tasks cannot declare sequential siblings.");
+        return _owner.DeclareNextSiblingTask(_task.Id, parentId, title, description, _lastTaskIds);
     }
 
     /// <summary>

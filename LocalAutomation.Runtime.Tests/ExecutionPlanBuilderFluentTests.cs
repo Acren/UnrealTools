@@ -7,11 +7,10 @@ namespace LocalAutomation.Runtime.Tests;
 public sealed class ExecutionPlanBuilderFluentTests
 {
     /// <summary>
-    /// Confirms that fluent Then(...) chaining inside a sequenced scope follows the previous task's completion frontier
-    /// instead of just reusing the parent task as ambient context.
+    /// Confirms that fluent Then(...) chaining inside a sequenced scope depends on the previous authored task node.
     /// </summary>
     [Fact]
-    public void ThenInSequencedScopeDependsOnPreviousTaskCompletionFrontier()
+    public void ThenInSequencedScopeDependsOnPreviousAuthoredTask()
     {
         // Arrange: author the same fluent pattern used by production deploy steps.
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
@@ -23,22 +22,20 @@ public sealed class ExecutionPlanBuilderFluentTests
                     .Run(() => Task.CompletedTask));
         });
 
-        // Act: build the authored plan and find the visible tasks plus the hidden body task they sequence through.
+        // Act: build the authored plan and inspect the visible sibling tasks in the chain.
         ExecutionPlan plan = RuntimeTestUtilities.BuildPlan(operation);
         ExecutionTask prepareWorkspace = plan.Tasks.Single(task => task.Title == "Prepare Workspace");
-        ExecutionTask prepareWorkspaceBody = plan.Tasks.Single(task => task.Title == "Prepare Workspace.Body" && task.ParentId == prepareWorkspace.Id);
         ExecutionTask stagePlugin = plan.Tasks.Single(task => task.Title == "Stage Plugin");
 
-        // Assert: Stage Plugin should wait for Prepare Workspace's body task, not float independently under the same parent.
-        Assert.Contains(prepareWorkspaceBody.Id, plan.GetTaskDependencies(stagePlugin.Id));
+        // Assert: Stage Plugin should depend on the previous authored task node.
+        Assert.Contains(prepareWorkspace.Id, plan.GetTaskDependencies(stagePlugin.Id));
     }
 
     /// <summary>
-    /// Confirms that a longer fluent Then(...) chain keeps advancing through each previous sibling's completion frontier
-    /// instead of repeatedly attaching every later sibling to the same parent-level state.
+    /// Confirms that a longer fluent Then(...) chain keeps advancing through each previous authored sibling task.
     /// </summary>
     [Fact]
-    public void ThenChainKeepsAdvancingThroughPreviousSiblingCompletion()
+    public void ThenChainKeepsAdvancingThroughPreviousAuthoredSibling()
     {
         // Arrange: author the same three-step fluent sibling chain used in production deployment flows.
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
@@ -52,16 +49,14 @@ public sealed class ExecutionPlanBuilderFluentTests
                     .Run(() => Task.CompletedTask));
         });
 
-        // Act: build the plan and find each visible task plus the hidden body tasks that represent their real completion.
+        // Act: build the plan and inspect the visible tasks in the authored chain.
         ExecutionPlan plan = RuntimeTestUtilities.BuildPlan(operation);
         ExecutionTask prepareWorkspace = plan.Tasks.Single(task => task.Title == "Prepare Workspace");
-        ExecutionTask prepareWorkspaceBody = plan.Tasks.Single(task => task.Title == "Prepare Workspace.Body" && task.ParentId == prepareWorkspace.Id);
         ExecutionTask stagePlugin = plan.Tasks.Single(task => task.Title == "Stage Plugin");
-        ExecutionTask stagePluginBody = plan.Tasks.Single(task => task.Title == "Stage Plugin.Body" && task.ParentId == stagePlugin.Id);
         ExecutionTask buildEditor = plan.Tasks.Single(task => task.Title == "Build Editor");
 
-        // Assert: each fluent sibling should wait for the previous sibling's real completion frontier.
-        Assert.Contains(prepareWorkspaceBody.Id, plan.GetTaskDependencies(stagePlugin.Id));
-        Assert.Contains(stagePluginBody.Id, plan.GetTaskDependencies(buildEditor.Id));
+        // Assert: each fluent sibling should depend on the previous authored sibling task.
+        Assert.Contains(prepareWorkspace.Id, plan.GetTaskDependencies(stagePlugin.Id));
+        Assert.Contains(stagePlugin.Id, plan.GetTaskDependencies(buildEditor.Id));
     }
 }

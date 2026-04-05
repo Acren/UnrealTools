@@ -88,10 +88,7 @@ public sealed class ExecutionPlanBuilder
     /// </summary>
     internal void AddTaskDependency(ExecutionTask task, ExecutionTaskId dependencyId)
     {
-        foreach (ExecutionTaskId completionTaskId in GetCompletionTaskIds(dependencyId))
-        {
-            task.AddDependency(completionTaskId);
-        }
+        task.AddDependency(dependencyId);
     }
 
     /// <summary>
@@ -125,7 +122,7 @@ public sealed class ExecutionPlanBuilder
     internal ExecutionTaskBuilder DeclareSequentialRelativeTask(ExecutionTaskId parentId, string title, string? description)
     {
         ParentBuildState parentState = GetParentState(parentId);
-        ExecutionTaskBuilder childTask = CreateRelativeTask(parentId, title, description, parentState.CompletionFrontier);
+        ExecutionTaskBuilder childTask = CreateRelativeTask(parentId, title, description, parentState.CompletionFrontier, parentState.CompletionFrontier);
         ReplaceFrontier(parentState.CompletionFrontier, childTask.Id);
         return childTask;
     }
@@ -136,7 +133,7 @@ public sealed class ExecutionPlanBuilder
     /// </summary>
     internal ExecutionTaskBuilder DeclareScopedSequentialRelativeTask(ExecutionTaskId parentId, string title, string? description, IList<ExecutionTaskId> scopeFrontier)
     {
-        ExecutionTaskBuilder childTask = CreateRelativeTask(parentId, title, description, scopeFrontier.ToList());
+        ExecutionTaskBuilder childTask = CreateRelativeTask(parentId, title, description, scopeFrontier.ToList(), scopeFrontier);
         ReplaceFrontier(scopeFrontier, childTask.Id);
         return childTask;
     }
@@ -150,6 +147,18 @@ public sealed class ExecutionPlanBuilder
         ExecutionTaskBuilder childTask = CreateRelativeTask(parentId, title, description, incomingFrontier);
         AddUnique(scopeFrontier, childTask.Id);
         return childTask;
+    }
+
+    /// <summary>
+    /// Declares the next fluent sibling after the provided task by depending on that visible authored task directly.
+    /// Runtime completion rollup keeps authored-task dependencies waiting until the full subtree finishes.
+    /// </summary>
+    internal ExecutionTaskBuilder DeclareNextSiblingTask(ExecutionTaskId previousTaskId, ExecutionTaskId parentId, string title, string? description, IList<ExecutionTaskId>? lastTaskIds)
+    {
+        IList<ExecutionTaskId> activeLastTaskIds = lastTaskIds ?? GetParentState(parentId).CompletionFrontier;
+        ExecutionTaskBuilder siblingTask = CreateRelativeTask(parentId, title, description, new[] { previousTaskId }, activeLastTaskIds);
+        ReplaceFrontier(activeLastTaskIds, siblingTask.Id);
+        return siblingTask;
     }
 
     /// <summary>
@@ -238,26 +247,14 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Returns the current completion frontier for one task subtree. Tasks with no authored child or body work complete on
-    /// their own task id, while tasks with nested work complete on the most recently authored descendant frontier.
+    /// Creates one direct child task and wires it to the provided authored dependency frontier.
     /// </summary>
-    internal IReadOnlyList<ExecutionTaskId> GetCompletionTaskIds(ExecutionTaskId taskId)
-    {
-        ParentBuildState state = GetParentState(taskId);
-        return state.CompletionFrontier.Count > 0
-            ? state.CompletionFrontier.ToList()
-            : new[] { taskId };
-    }
-
-    /// <summary>
-    /// Creates one direct child task and wires it to the provided dependency frontier.
-    /// </summary>
-    private ExecutionTaskBuilder CreateRelativeTask(ExecutionTaskId parentId, string title, string? description, IReadOnlyList<ExecutionTaskId> dependencyFrontier)
+    private ExecutionTaskBuilder CreateRelativeTask(ExecutionTaskId parentId, string title, string? description, IReadOnlyList<ExecutionTaskId> dependencyFrontier, IList<ExecutionTaskId>? lastTaskIds = null)
     {
         ExecutionTask task = CreateItem(GenerateTaskId(), title, description, parentId);
         AddTaskDefinition(task);
         WireDependencies(task, dependencyFrontier);
-        return new ExecutionTaskBuilder(this, task, parentId);
+        return new ExecutionTaskBuilder(this, task, parentId, lastTaskIds);
     }
 
     /// <summary>
