@@ -33,6 +33,9 @@ public sealed class ExecutionSession
 
         if (plan != null)
         {
+            /* Sessions own runtime-ready initialization so schedulers can treat the live graph as the single source of
+               truth instead of reapplying startup state on every execution path. */
+            _hasBegunExecution = true;
             InitializeFromPlan(plan);
         }
     }
@@ -52,26 +55,37 @@ public sealed class ExecutionSession
 
     public DateTimeOffset StartedAt { get; }
 
-    public DateTimeOffset? FinishedAt { get; set; }
+    public DateTimeOffset? FinishedAt { get; private set; }
 
-    public bool IsRunning { get; set; }
+    /// <summary>
+    /// Gets whether the host-visible session is still active. Session running state follows the authoritative completion
+    /// signal instead of keeping a second mutable flag that can drift from task completion.
+    /// </summary>
+    public bool IsRunning => !Completion.IsCompleted;
 
     /// <summary>
     /// Gets the task that completes when the runtime has fully finalized the session outcome and running state.
     /// </summary>
     public Task Completion => _completionSource.Task;
 
-    public ExecutionTaskOutcome? Outcome { get; set; }
+    /// <summary>
+    /// Gets the semantic result of the root task, which is the semantic result of the overall session.
+    /// </summary>
+    public ExecutionTaskOutcome? Outcome => _tasks.Count == 0 ? null : RootTask.Outcome;
 
     public bool? Success
     {
         get => Outcome == null ? null : Outcome == ExecutionTaskOutcome.Completed;
-        set => Outcome = value == null ? null : (value.Value ? ExecutionTaskOutcome.Completed : ExecutionTaskOutcome.Failed);
     }
 
     public string OperationName { get; set; } = string.Empty;
 
     public string TargetName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets the single root task that represents the overall task graph for this session.
+    /// </summary>
+    public ExecutionTask RootTask => _tasks.Single(task => task.ParentId == null);
 
     public IReadOnlyList<ExecutionTaskId> GetTaskSubtreeIds(ExecutionTaskId taskId)
     {
@@ -210,23 +224,6 @@ public sealed class ExecutionSession
         }
     }
 
-    public void BeginExecution()
-    {
-        _hasBegunExecution = true;
-        foreach (ExecutionTask task in _tasks.Where(task => task.State == ExecutionTaskState.Planned))
-        {
-            if (!task.Enabled)
-            {
-                task.State = ExecutionTaskState.Completed;
-                task.StatusReason = task.DisabledReason;
-                continue;
-            }
-
-            task.State = ExecutionTaskState.Pending;
-            task.StatusReason = string.Empty;
-        }
-    }
-
     /// <summary>
     /// Inserts one child plan beneath the currently executing task in the live session graph using the shared
     /// task-insertion path.
@@ -337,10 +334,31 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
+    /// Completes the root task when host-level shutdown needs to guarantee a terminal session outcome even if execution
+    /// stopped before normal scheduler finalization reached the root.
+    /// </summary>
+    public void CompleteRootTaskIfNeeded(ExecutionTaskOutcome outcome, string? statusReason = null)
+    {
+        if (_tasks.Count == 0)
+        {
+            return;
+        }
+
+        ExecutionTask rootTask = RootTask;
+        if (rootTask.State == ExecutionTaskState.Completed)
+        {
+            return;
+        }
+
+        CompleteTaskWithOutcome(rootTask.Id, outcome, statusReason);
+    }
+
+    /// <summary>
     /// Marks the session as fully complete so host UI layers can await the authoritative runtime completion signal.
     /// </summary>
     public void CompleteExecution()
     {
+        FinishedAt ??= DateTimeOffset.Now;
         _completionSource.TrySetResult(true);
     }
 

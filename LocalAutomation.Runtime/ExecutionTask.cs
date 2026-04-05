@@ -18,11 +18,19 @@ namespace LocalAutomation.Runtime;
 public sealed class ExecutionTask : INotifyPropertyChanged
 {
     private ExecutionTaskId? _parentId;
+    private string _description;
     private ExecutionTaskState _state;
     private string _statusReason;
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _finishedAt;
     private ExecutionTaskOutcome? _outcome;
+    private bool _enabled;
+    private string _disabledReason;
+    private OperationParameters _operationParameters;
+    private IReadOnlyList<Type> _declaredOptionTypes;
+    private Func<ExecutionTaskContext, Task<OperationResult>>? _executeAsync;
+    private bool _isOperationRoot;
+    private bool _isHiddenInGraph;
     private readonly Dictionary<Type, object> _stateByType = new();
     private readonly object _stateWaitSyncRoot = new();
     private readonly HashSet<ExecutionTaskState> _reachedStates = new();
@@ -53,20 +61,20 @@ public sealed class ExecutionTask : INotifyPropertyChanged
             ? throw new ArgumentException("Execution task title is required.", nameof(title))
             : title;
         Operation = operation ?? throw new ArgumentNullException(nameof(operation));
-        Description = description ?? string.Empty;
+        _description = description ?? string.Empty;
         _parentId = parentId;
         _dependsOn = new List<ExecutionTaskId>((dependsOn ?? Array.Empty<ExecutionTaskId>()));
         DependsOn = new ReadOnlyCollection<ExecutionTaskId>(_dependsOn);
         _childTaskIds = new List<ExecutionTaskId>();
         ChildTaskIds = new ReadOnlyCollection<ExecutionTaskId>(_childTaskIds);
-        Enabled = enabled;
-        DisabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
-        OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
-        DeclaredOptionTypes = (declaredOptionTypes ?? Array.Empty<Type>()).ToList().AsReadOnly();
-        ExecuteAsync = executeAsync;
+        _enabled = enabled;
+        _disabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
+        _operationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
+        _declaredOptionTypes = (declaredOptionTypes ?? Array.Empty<Type>()).ToList().AsReadOnly();
+        _executeAsync = executeAsync;
         Outcome = outcome;
-        IsOperationRoot = isOperationRoot;
-        IsHiddenInGraph = isHiddenInGraph;
+        _isOperationRoot = isOperationRoot;
+        _isHiddenInGraph = isHiddenInGraph;
         LogStream = new BufferedLogStream();
 
         /* Runtime lifecycle and semantic outcome are tracked separately. Disabled tasks start in a completed lifecycle
@@ -88,7 +96,7 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
     public Operation Operation { get; }
 
-    public string Description { get; }
+    public string Description => _description;
 
     public ExecutionTaskId? ParentId
     {
@@ -100,15 +108,15 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
     public IReadOnlyList<ExecutionTaskId> ChildTaskIds { get; }
 
-    public bool Enabled { get; }
+    public bool Enabled => _enabled;
 
-    public string DisabledReason { get; }
+    public string DisabledReason => _disabledReason;
 
-    public OperationParameters OperationParameters { get; }
+    public OperationParameters OperationParameters => _operationParameters;
 
-    public IReadOnlyList<Type> DeclaredOptionTypes { get; }
+    public IReadOnlyList<Type> DeclaredOptionTypes => _declaredOptionTypes;
 
-    public Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync { get; }
+    public Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync => _executeAsync;
 
     /// <summary>
     /// Gets the current execution lifecycle status for this task scope.
@@ -151,13 +159,13 @@ public sealed class ExecutionTask : INotifyPropertyChanged
     /// Gets whether this task is the root container for one operation subtree. Operation-scoped context walks upward to
     /// the nearest task with this marker so nested child operations keep independent state scopes.
     /// </summary>
-    public bool IsOperationRoot { get; }
+    public bool IsOperationRoot => _isOperationRoot;
 
     /// <summary>
     /// Gets whether this task should be collapsed out of the graph projection unless the UI is configured to reveal
     /// hidden tasks.
     /// </summary>
-    public bool IsHiddenInGraph { get; }
+    public bool IsHiddenInGraph => _isHiddenInGraph;
 
     public BufferedLogStream LogStream { get; }
 
@@ -275,6 +283,56 @@ public sealed class ExecutionTask : INotifyPropertyChanged
 
         _dependsOn.Add(dependencyTaskId);
         RaisePropertyChanged(nameof(DependsOn));
+    }
+
+    /// <summary>
+    /// Updates builder-owned presentation metadata before the task graph becomes a live runtime session.
+    /// </summary>
+    internal void SetDescription(string description)
+    {
+        _description = description ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Updates whether the task participates in the authored plan and the user-facing reason when it does not.
+    /// </summary>
+    internal void SetCondition(bool enabled, string? disabledReason)
+    {
+        _enabled = enabled;
+        _disabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Assigns the validated parameter context that builder-authored execution will use at runtime.
+    /// </summary>
+    internal void SetOperationParameters(OperationParameters operationParameters, IEnumerable<Type> declaredOptionTypes)
+    {
+        _operationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
+        _declaredOptionTypes = (declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))).ToList().AsReadOnly();
+    }
+
+    /// <summary>
+    /// Attaches or replaces the executable body delegate while the task is still only a plan node.
+    /// </summary>
+    internal void SetExecuteAsync(Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync)
+    {
+        _executeAsync = executeAsync;
+    }
+
+    /// <summary>
+    /// Marks whether this authored task should be treated as an operation root for scoped runtime state.
+    /// </summary>
+    internal void SetOperationRoot(bool isOperationRoot)
+    {
+        _isOperationRoot = isOperationRoot;
+    }
+
+    /// <summary>
+    /// Controls whether this authored task is hidden in the graph projection until debugging reveals internal nodes.
+    /// </summary>
+    internal void SetHiddenInGraph(bool isHiddenInGraph)
+    {
+        _isHiddenInGraph = isHiddenInGraph;
     }
 
     internal void SetState<T>(T value) where T : class

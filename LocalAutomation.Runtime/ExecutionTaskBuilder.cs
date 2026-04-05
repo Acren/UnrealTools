@@ -39,16 +39,16 @@ public abstract class ExecutionNodeBuilderBase<TBuilder>
 public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTaskBuilder>
 {
     private readonly ExecutionPlanBuilder _owner;
-    private readonly ExecutionPlanBuilder.PlanItemDefinition _definition;
+    private readonly ExecutionTask _task;
     private readonly ExecutionTaskId? _parentId;
 
-    internal ExecutionTaskBuilder(ExecutionPlanBuilder owner, ExecutionPlanBuilder.PlanItemDefinition definition, ExecutionTaskId? parentId)
+    internal ExecutionTaskBuilder(ExecutionPlanBuilder owner, ExecutionTask task, ExecutionTaskId? parentId)
     {
         _owner = owner;
-        _definition = definition;
+        _task = task;
         _parentId = parentId;
-        _owner.SetOperationParameters(_definition, owner.OperationParameters);
-        Id = _definition.Id;
+        _owner.SetOperationParameters(_task, owner.OperationParameters);
+        Id = _task.Id;
     }
 
     /// <summary>
@@ -56,16 +56,16 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// </summary>
     public ExecutionTaskId Id { get; }
 
-    internal ExecutionPlanBuilder.PlanItemDefinition Definition => _definition;
+    internal ExecutionTask Task => _task;
 
     protected override void SetDescription(string? description)
     {
-        _owner.SetDescription(_definition, description);
+        _owner.SetDescription(_task, description);
     }
 
     protected override void SetHiddenInGraph(bool hidden)
     {
-        _owner.SetGraphVisibility(_definition, hidden);
+        _owner.SetGraphVisibility(_task, hidden);
     }
 
     /// <summary>
@@ -73,7 +73,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// </summary>
     public ExecutionTaskBuilder After(ExecutionTaskId dependencyId)
     {
-        _owner.AddTaskDependency(_definition, dependencyId);
+        _owner.AddTaskDependency(_task, dependencyId);
         return this;
     }
 
@@ -84,7 +84,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     {
         foreach (ExecutionTaskId dependencyId in dependencyIds)
         {
-            _owner.AddTaskDependency(_definition, dependencyId);
+            _owner.AddTaskDependency(_task, dependencyId);
         }
 
         return this;
@@ -95,7 +95,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// </summary>
     public ExecutionTaskBuilder When(bool enabled, string? disabledReason = null)
     {
-        _owner.SetCondition(_definition, enabled, disabledReason);
+        _owner.SetCondition(_task, enabled, disabledReason);
         return this;
     }
 
@@ -117,7 +117,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        executionTaskId = _owner.AttachBodyTask(_definition, async context =>
+        executionTaskId = _owner.AttachBodyTask(_task, async context =>
         {
             await executeAsync(context);
             return OperationResult.Succeeded();
@@ -139,7 +139,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// </summary>
     public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync, out ExecutionTaskId executionTaskId)
     {
-        executionTaskId = _owner.AttachBodyTask(_definition, executeAsync);
+        executionTaskId = _owner.AttachBodyTask(_task, executeAsync);
         return this;
     }
 
@@ -162,7 +162,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        executionTaskId = _owner.AttachBodyTask(_definition, async _ =>
+        executionTaskId = _owner.AttachBodyTask(_task, async _ =>
         {
             await executeAsync();
             return OperationResult.Succeeded();
@@ -195,7 +195,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     public ExecutionChildOperationBuilder AddChildOperation<TOperation>(string title, Func<OperationParameters> createParameters, string? description = null)
         where TOperation : Operation, new()
     {
-        ExecutionPlanBuilder.ChildDeclarationEntry declaration = _owner.AttachChildOperation(_definition, typeof(TOperation), createParameters, title, description);
+        ExecutionPlanBuilder.ChildDeclarationEntry declaration = _owner.AttachChildOperation(_task, typeof(TOperation), createParameters, title, description);
         return new ExecutionChildOperationBuilder(_owner, declaration);
     }
 

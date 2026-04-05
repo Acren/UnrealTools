@@ -54,19 +54,13 @@ public sealed class ExecutionPlanScheduler
     /// <summary>
     /// Executes the current live session until all runnable work reaches a terminal state.
     /// </summary>
-    public async Task<OperationResult> ExecuteAsync(ExecutionPlan plan, CancellationToken cancellationToken)
+    public async Task<OperationResult> ExecuteAsync(CancellationToken cancellationToken)
     {
-        if (plan == null)
-        {
-            throw new ArgumentNullException(nameof(plan));
-        }
-
         using CancellationTokenSource schedulerCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _schedulerCancellationSource = schedulerCancellationSource;
         _executionCancellationToken = schedulerCancellationSource.Token;
         _session.TaskGraphChanged += HandleSessionWorkChanged;
         _session.TaskStateChanged += HandleSessionTaskChanged;
-        InitializeSessionStates();
         try
         {
             while (true)
@@ -77,12 +71,7 @@ public sealed class ExecutionPlanScheduler
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
-                        SetStopReason(SchedulerStopReason.UserCancelled);
-                    }
-
-                    if (_stopReason == SchedulerStopReason.UserCancelled)
-                    {
-                        _encounteredCancellation = true;
+                        ApplyStopReason(SchedulerStopReason.UserCancelled);
                     }
 
                     CancelOutstandingTasks(_stopReason, runningTaskReason: ResolveStopReasonMessage(_stopReason));
@@ -138,31 +127,7 @@ public sealed class ExecutionPlanScheduler
             }
         }
 
-        /* Run outcome is synthesized from semantic results. Lifecycle state alone only answers whether work is still
-           active, so failure/cancellation detection must read Result instead of Status. */
-        if (_encounteredFailure || _session.Tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Failed))
-        {
-            string? failureReason = _session.Tasks
-                .Select(task => task.StatusReason)
-                .FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason));
-            return OperationResult.Failed(failureReason: failureReason);
-        }
-
-        if (_session.Tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Interrupted))
-        {
-            string? interruptionReason = _session.Tasks
-                .Where(task => task.Outcome == ExecutionTaskOutcome.Interrupted)
-                .Select(task => task.StatusReason)
-                .FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason));
-            return OperationResult.Interrupted(failureReason: interruptionReason);
-        }
-
-        if (_encounteredCancellation || _session.Tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Cancelled))
-        {
-            return OperationResult.Cancelled();
-        }
-
-        return OperationResult.Succeeded();
+        return BuildSessionResult();
     }
 
     /// <summary>
@@ -292,31 +257,6 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Ensures every current task in the live session starts in a runtime-ready state before scheduling begins.
-    /// </summary>
-    private void InitializeSessionStates()
-    {
-        foreach (ExecutionTask task in _session.Tasks)
-        {
-            if (!task.Enabled)
-            {
-                _session.CompleteTaskWithOutcome(task.Id, ExecutionTaskOutcome.Disabled, task.DisabledReason);
-                continue;
-            }
-
-            if (task.ExecuteAsync == null)
-            {
-                continue;
-            }
-
-            if (task.State == ExecutionTaskState.Planned)
-            {
-                SetState(task.Id, ExecutionTaskState.Pending, task.DependsOn.Count > 0 ? WaitingForDependenciesReason : null);
-            }
-        }
-    }
-
-    /// <summary>
     /// Signals the scheduler whenever the live graph changes in a way that may have created newly startable work.
     /// </summary>
     private void HandleSessionWorkChanged()
@@ -337,16 +277,8 @@ public sealed class ExecutionPlanScheduler
            forced terminal state must trigger the same cancellation path that user cancellation uses. */
         if (ShouldCancelExecutionForTerminalOutcome(taskId, state, outcome))
         {
-            SetStopReason(ResolveStopReason(outcome));
+            ApplyStopReason(ResolveStopReason(outcome));
             RequestExecutionCancellation();
-
-            /* Interrupted remains a distinct run outcome from user cancellation, so the scheduler only records
-               cancellation here when the terminal status itself is Cancelled. Interrupted task state is preserved and the
-               final result still rolls up from semantic task outcomes after running body tasks unwind. */
-            if (_stopReason == SchedulerStopReason.UserCancelled)
-            {
-                _encounteredCancellation = true;
-            }
 
             /* Forced terminal states should also immediately close out untouched queued work so the scheduler does not
                attempt to keep scheduling siblings while already-running body tasks are unwinding. */
@@ -527,24 +459,14 @@ public sealed class ExecutionPlanScheduler
             }
             else if (result.Outcome == ExecutionTaskOutcome.Cancelled)
             {
-                SchedulerStopReason stopReason = _stopReason == SchedulerStopReason.None
-                    ? SchedulerStopReason.UserCancelled
-                    : _stopReason;
-                SetStopReason(stopReason);
-                if (stopReason == SchedulerStopReason.UserCancelled)
-                {
-                    _encounteredCancellation = true;
-                }
-
-                _session.CompleteTaskLifecycle(
-                    completedTaskId,
-                    stopReason == SchedulerStopReason.UserCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted,
-                    ResolveStopReasonMessage(stopReason));
+                SchedulerStopReason stopReason = ResolveStopReasonOrDefault(SchedulerStopReason.UserCancelled);
+                ApplyStopReason(stopReason);
+                CompleteTaskWithStopOutcome(completedTaskId, stopReason);
                 CancelOutstandingTasks(stopReason, runningTaskReason: ResolveStopReasonMessage(stopReason));
             }
             else if (result.Outcome == ExecutionTaskOutcome.Interrupted)
             {
-                SetStopReason(SchedulerStopReason.InterruptedByTerminalOutcome);
+                ApplyStopReason(SchedulerStopReason.InterruptedByTerminalOutcome);
                 _session.InterruptTask(completedTaskId, result.FailureReason);
             }
             else
@@ -557,19 +479,9 @@ public sealed class ExecutionPlanScheduler
         }
         catch (OperationCanceledException)
         {
-            SchedulerStopReason stopReason = _stopReason == SchedulerStopReason.None
-                ? SchedulerStopReason.UserCancelled
-                : _stopReason;
-            SetStopReason(stopReason);
-            if (stopReason == SchedulerStopReason.UserCancelled)
-            {
-                _encounteredCancellation = true;
-            }
-
-            _session.CompleteTaskLifecycle(
-                completedTaskId,
-                stopReason == SchedulerStopReason.UserCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted,
-                ResolveStopReasonMessage(stopReason));
+            SchedulerStopReason stopReason = ResolveStopReasonOrDefault(SchedulerStopReason.UserCancelled);
+            ApplyStopReason(stopReason);
+            CompleteTaskWithStopOutcome(completedTaskId, stopReason);
             CancelOutstandingTasks(stopReason, runningTaskReason: ResolveStopReasonMessage(stopReason));
         }
         catch (Exception ex)
@@ -765,6 +677,40 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
+    /// Records the effective scheduler stop reason and mirrors user-triggered cancellation into the final session result.
+    /// </summary>
+    private void ApplyStopReason(SchedulerStopReason stopReason)
+    {
+        SetStopReason(stopReason);
+        if (_stopReason == SchedulerStopReason.UserCancelled)
+        {
+            _encounteredCancellation = true;
+        }
+    }
+
+    /// <summary>
+    /// Reuses the currently recorded stop reason when one already exists so later completion paths stay consistent with
+    /// the earlier scheduler-wide decision.
+    /// </summary>
+    private SchedulerStopReason ResolveStopReasonOrDefault(SchedulerStopReason fallbackStopReason)
+    {
+        return _stopReason == SchedulerStopReason.None
+            ? fallbackStopReason
+            : _stopReason;
+    }
+
+    /// <summary>
+    /// Completes one running task with the lifecycle and semantic outcome implied by the scheduler-wide stop reason.
+    /// </summary>
+    private void CompleteTaskWithStopOutcome(ExecutionTaskId taskId, SchedulerStopReason stopReason)
+    {
+        _session.CompleteTaskLifecycle(
+            taskId,
+            stopReason == SchedulerStopReason.UserCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted,
+            ResolveStopReasonMessage(stopReason));
+    }
+
+    /// <summary>
     /// Maps terminal task outcomes to the scheduler-wide stop reason that should be applied to collateral work.
     /// </summary>
     private static SchedulerStopReason ResolveStopReason(ExecutionTaskOutcome? outcome)
@@ -907,19 +853,52 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
+    /// Builds the top-level run result from semantic session outcomes rather than lifecycle state alone.
+    /// </summary>
+    private OperationResult BuildSessionResult()
+    {
+        /* Run outcome is synthesized from semantic results. Lifecycle state alone only answers whether work is still
+           active, so failure/cancellation detection must read Result instead of Status. */
+        if (_encounteredFailure || _session.Tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Failed))
+        {
+            return OperationResult.Failed(failureReason: GetFirstStatusReason(_session.Tasks));
+        }
+
+        if (_session.Tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Interrupted))
+        {
+            return OperationResult.Interrupted(failureReason: GetFirstStatusReason(_session.Tasks, ExecutionTaskOutcome.Interrupted));
+        }
+
+        if (_encounteredCancellation || _session.Tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Cancelled))
+        {
+            return OperationResult.Cancelled(failureReason: GetFirstStatusReason(_session.Tasks, ExecutionTaskOutcome.Cancelled));
+        }
+
+        return OperationResult.Succeeded();
+    }
+
+    /// <summary>
+    /// Returns the first non-empty status reason, optionally constrained to one semantic outcome.
+    /// </summary>
+    private static string? GetFirstStatusReason(IEnumerable<ExecutionTask> tasks, ExecutionTaskOutcome? outcome = null)
+    {
+        IEnumerable<ExecutionTask> filteredTasks = outcome == null
+            ? tasks
+            : tasks.Where(task => task.Outcome == outcome.Value);
+        return filteredTasks
+            .Select(task => task.StatusReason)
+            .FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason));
+    }
+
+    /// <summary>
     /// Builds the child-operation result from the terminal states reached by the inserted child tasks.
     /// </summary>
     private OperationResult BuildChildOperationResult(Operation operation, IReadOnlyCollection<ExecutionTaskId> childTaskIds)
     {
         List<string> warnings = new();
-        List<string> errors = new();
         foreach (LogEntry entry in _session.LogStream.Entries.Where(entry => ExecutionTaskId.FromNullable(entry.TaskId) is ExecutionTaskId taskId && childTaskIds.Contains(taskId)))
         {
-            if (entry.Verbosity >= LogLevel.Error)
-            {
-                errors.Add(entry.Message);
-            }
-            else if (entry.Verbosity == LogLevel.Warning)
+            if (entry.Verbosity == LogLevel.Warning)
             {
                 warnings.Add(entry.Message);
             }

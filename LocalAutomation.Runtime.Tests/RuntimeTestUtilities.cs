@@ -49,7 +49,7 @@ internal static class RuntimeTestUtilities
         CancellationToken cancellationToken = default)
     {
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = CreateRuntime(operation);
-        OperationResult result = await scheduler.ExecuteAsync(plan, cancellationToken).ConfigureAwait(false);
+        OperationResult result = await scheduler.ExecuteAsync(cancellationToken).ConfigureAwait(false);
         return (plan, session, result);
     }
 

@@ -110,7 +110,7 @@ public sealed class Runner
             .SetTag("plan.id", plan.Id.Value)
             .SetTag("plan.task.count", plan.Tasks.Count);
         using IDisposable operationTimingScope = eventLogger.BeginSection(Operation.OperationName);
-        _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, session).ExecuteAsync(plan, _cancellationTokenSource.Token));
+        _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, session).ExecuteAsync(_cancellationTokenSource.Token));
         try
         {
             OperationResult result = await _currentTask.ConfigureAwait(false);

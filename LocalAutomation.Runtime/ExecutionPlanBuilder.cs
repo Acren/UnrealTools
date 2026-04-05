@@ -14,10 +14,10 @@ public sealed class ExecutionPlanBuilder
 {
     private readonly ExecutionPlanId _planId;
     private readonly string _title;
-    private readonly List<PlanItemDefinition> _items = new();
+    private readonly List<ExecutionTask> _items = new();
+    private readonly Dictionary<ExecutionTaskId, BuilderTaskState> _builderStateByTaskId = new();
     private readonly Func<Operation, OperationParameters, ExecutionPlan?> _buildChildPlan;
     private IReadOnlyCollection<Type> _declaredOptionTypes = Array.Empty<Type>();
-    private int _nextSequence = 0;
     private Operation _operation = null!;
 
     internal OperationParameters OperationParameters { get; private set; } = null!;
@@ -41,9 +41,9 @@ public sealed class ExecutionPlanBuilder
     public ExecutionTaskBuilder Task(string title, string? description = null, ExecutionTaskId? parentId = null)
     {
         ValidateParent(parentId);
-        PlanItemDefinition definition = CreateItem(GenerateTaskId(), title, description, parentId);
-        _items.Add(definition);
-        return new ExecutionTaskBuilder(this, definition, parentId);
+        ExecutionTask task = CreateItem(GenerateTaskId(), title, description, parentId);
+        AddTaskDefinition(task);
+        return new ExecutionTaskBuilder(this, task, parentId);
     }
 
     /// <summary>
@@ -62,25 +62,9 @@ public sealed class ExecutionPlanBuilder
     {
         ExpandChildOperations();
         ApplyChildDeclarationOrdering();
-        List<ExecutionTask> tasks = _items
-            .Select(item => new ExecutionTask(
-                id: item.Id,
-                title: item.Title,
-                operation: item.Operation,
-                description: item.Description,
-                parentId: item.ParentId,
-                dependsOn: item.DependencyIds,
-                enabled: item.Enabled,
-                disabledReason: item.DisabledReason,
-                operationParameters: item.OperationParameters,
-                declaredOptionTypes: item.DeclaredOptionTypes,
-                executeAsync: item.ExecuteAsync,
-                outcome: null,
-                isOperationRoot: item.IsOperationRoot,
-                isHiddenInGraph: item.IsHiddenInGraph))
-            .ToList();
+        List<ExecutionTask> tasks = _items.ToList();
         List<ExecutionDependency> dependencies = _items
-            .SelectMany(item => item.DependencyIds.Select(dependencyId => new ExecutionDependency(dependencyId, item.Id)))
+            .SelectMany(item => item.DependsOn.Select(dependencyId => new ExecutionDependency(dependencyId, item.Id)))
             .ToList();
         return new ExecutionPlan(_planId, _title, tasks, dependencies);
     }
@@ -100,28 +84,27 @@ public sealed class ExecutionPlanBuilder
         _declaredOptionTypes = (declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))).ToList();
     }
 
-    internal void AddTaskDependency(PlanItemDefinition definition, ExecutionTaskId dependencyId)
+    internal void AddTaskDependency(ExecutionTask task, ExecutionTaskId dependencyId)
     {
         foreach (ExecutionTaskId completionTaskId in GetCompletionTaskIds(dependencyId))
         {
-            AddDirectDependency(definition, completionTaskId);
+            AddDirectDependency(task, completionTaskId);
         }
     }
 
-    internal void SetCondition(PlanItemDefinition definition, bool enabled, string? disabledReason)
+    internal void SetCondition(ExecutionTask task, bool enabled, string? disabledReason)
     {
-        definition.Enabled = enabled;
-        definition.DisabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
+        task.SetCondition(enabled, disabledReason);
     }
 
-    internal void SetDescription(PlanItemDefinition definition, string? description)
+    internal void SetDescription(ExecutionTask task, string? description)
     {
-        definition.Description = description ?? string.Empty;
+        task.SetDescription(description ?? string.Empty);
     }
 
-    internal void SetGraphVisibility(PlanItemDefinition definition, bool isHiddenInGraph)
+    internal void SetGraphVisibility(ExecutionTask task, bool isHiddenInGraph)
     {
-        definition.IsHiddenInGraph = isHiddenInGraph;
+        task.SetHiddenInGraph(isHiddenInGraph);
     }
 
     /// <summary>
@@ -135,54 +118,52 @@ public sealed class ExecutionPlanBuilder
         /* Sequential declarations each get their own ordered step, while parallel scopes reuse one shared step whose
            entry and completion sets are the same sibling task list. */
         ChildDeclarationEntry declaration = parallel
-            ? sharedDeclaration ??= AppendChildStep(parentId, ChildDeclarationKind.ParallelChildren)
-            : AppendChildStep(parentId, ChildDeclarationKind.ChildTask);
+            ? sharedDeclaration ??= AppendChildStep(parentId)
+            : AppendChildStep(parentId);
         if (!parallel)
         {
-            declaration.RootTaskId = task.Definition.Id;
+            declaration.RootTaskId = task.Id;
         }
 
-        declaration.AddCompletionTask(task.Definition.Id);
+        declaration.AddCompletionTask(task.Id);
 
         return task;
     }
 
-    internal ExecutionTaskId AttachBodyTask(PlanItemDefinition parentDefinition, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
+    internal ExecutionTaskId AttachBodyTask(ExecutionTask parentTask, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
-        _ = parentDefinition ?? throw new ArgumentNullException(nameof(parentDefinition));
+        _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
         Func<ExecutionTaskContext, Task<OperationResult>> resolvedExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
 
-        PlanItemDefinition bodyDefinition = CreateItem(
+        ExecutionTask bodyTask = CreateItem(
             GenerateTaskId(),
-            CreateBodyTaskTitle(parentDefinition),
-            parentDefinition.Description,
-            parentDefinition.Id);
-        bodyDefinition.Enabled = parentDefinition.Enabled;
-        bodyDefinition.DisabledReason = parentDefinition.DisabledReason;
-        bodyDefinition.OperationParameters = parentDefinition.OperationParameters;
-        bodyDefinition.DeclaredOptionTypes = parentDefinition.DeclaredOptionTypes.ToList();
-        bodyDefinition.ExecuteAsync = resolvedExecuteAsync;
-        bodyDefinition.IsOperationRoot = false;
+            CreateBodyTaskTitle(parentTask),
+            parentTask.Description,
+            parentTask.Id);
+        bodyTask.SetCondition(parentTask.Enabled, parentTask.DisabledReason);
+        bodyTask.SetOperationParameters(parentTask.OperationParameters, parentTask.DeclaredOptionTypes);
+        bodyTask.SetExecuteAsync(resolvedExecuteAsync);
+        bodyTask.SetOperationRoot(false);
         /* Internal body tasks carry the runnable work for authored Run(...) declarations, so the graph hides them by
            default and lets the global reveal toggle surface them only when lower-level troubleshooting is needed. */
-        bodyDefinition.IsHiddenInGraph = true;
-        _items.Add(bodyDefinition);
+        bodyTask.SetHiddenInGraph(true);
+        AddTaskDefinition(bodyTask);
 
-        ChildDeclarationEntry declaration = AppendChildStep(parentDefinition.Id, ChildDeclarationKind.Body);
-        declaration.RootTaskId = bodyDefinition.Id;
-        declaration.AddCompletionTask(bodyDefinition.Id);
+        ChildDeclarationEntry declaration = AppendChildStep(parentTask.Id, isBody: true);
+        declaration.RootTaskId = bodyTask.Id;
+        declaration.AddCompletionTask(bodyTask.Id);
 
-        return bodyDefinition.Id;
+        return bodyTask.Id;
     }
 
     /// <summary>
     /// Registers one child-operation declaration beneath the current task. The declaration stores parent-side overrides
     /// for the imported child root while the child operation itself still owns the subtree that will be attached later.
     /// </summary>
-    internal ChildDeclarationEntry AttachChildOperation(PlanItemDefinition parentDefinition, Type operationType, Func<OperationParameters> createParameters, string title, string? description)
+    internal ChildDeclarationEntry AttachChildOperation(ExecutionTask parentTask, Type operationType, Func<OperationParameters> createParameters, string title, string? description)
     {
-        _ = parentDefinition ?? throw new ArgumentNullException(nameof(parentDefinition));
-        ChildDeclarationEntry declaration = AppendChildStep(parentDefinition.Id, ChildDeclarationKind.ChildOperation);
+        _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
+        ChildDeclarationEntry declaration = AppendChildStep(parentTask.Id);
         declaration.ChildOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
         declaration.CreateChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters));
         declaration.RootOverrides = new ChildOperationRootOverrides(title, description ?? string.Empty, isHiddenInGraph: false);
@@ -218,33 +199,31 @@ public sealed class ExecutionPlanBuilder
         declaration.RootOverrides.IsHiddenInGraph = isHiddenInGraph;
     }
 
-    internal void SetOperationParameters(PlanItemDefinition definition, OperationParameters operationParameters)
+    internal void SetOperationParameters(ExecutionTask task, OperationParameters operationParameters)
     {
-        definition.OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
-        definition.DeclaredOptionTypes = _declaredOptionTypes.ToList();
+        task.SetOperationParameters(operationParameters ?? throw new ArgumentNullException(nameof(operationParameters)), _declaredOptionTypes);
     }
 
     internal IReadOnlyList<ExecutionTaskId> GetCompletionTaskIds(ExecutionTaskId taskId)
     {
-        PlanItemDefinition definition = GetDefinition(taskId);
-        if (definition.ChildDeclarations.Count == 0)
+        BuilderTaskState state = GetBuilderState(taskId);
+        if (state.ChildDeclarations.Count == 0)
         {
             return new[] { taskId };
         }
 
-        ChildDeclarationEntry? lastDeclaration = definition.ChildDeclarations
-            .OrderBy(entry => entry.Order)
+        ChildDeclarationEntry? lastDeclaration = state.ChildDeclarations
             .LastOrDefault(entry => entry.CompletionTaskIds.Count > 0);
         return lastDeclaration?.CompletionTaskIds.Count > 0
             ? lastDeclaration.CompletionTaskIds.ToList()
             : new[] { taskId };
     }
 
-    internal ChildDeclarationEntry AppendChildStep(ExecutionTaskId parentId, ChildDeclarationKind kind)
+    internal ChildDeclarationEntry AppendChildStep(ExecutionTaskId parentId, bool isBody = false)
     {
-        PlanItemDefinition definition = GetDefinition(parentId);
-        ChildDeclarationEntry entry = new(NextOrderIndex(), kind);
-        definition.ChildDeclarations.Add(entry);
+        BuilderTaskState state = GetBuilderState(parentId);
+        ChildDeclarationEntry entry = new(isBody);
+        state.ChildDeclarations.Add(entry);
         return entry;
     }
 
@@ -261,29 +240,32 @@ public sealed class ExecutionPlanBuilder
         }
     }
 
-    private PlanItemDefinition CreateItem(ExecutionTaskId id, string title, string? description, ExecutionTaskId? parentId)
+    private ExecutionTask CreateItem(ExecutionTaskId id, string title, string? description, ExecutionTaskId? parentId)
     {
-        return new PlanItemDefinition
-        {
-            Id = id,
-            Title = string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Execution item title is required.", nameof(title)) : title,
-            Description = description ?? string.Empty,
-            ParentId = parentId,
-            IsOperationRoot = parentId == null,
-            Enabled = true,
-            DisabledReason = string.Empty,
-            Operation = _operation
-        };
+        return new ExecutionTask(
+            id: id,
+            title: string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Execution item title is required.", nameof(title)) : title,
+            operation: _operation,
+            description: description ?? string.Empty,
+            parentId: parentId,
+            enabled: true,
+            disabledReason: string.Empty,
+            operationParameters: OperationParameters,
+            declaredOptionTypes: _declaredOptionTypes,
+            executeAsync: null,
+            outcome: null,
+            isOperationRoot: parentId == null,
+            isHiddenInGraph: false);
     }
 
     private void ExpandChildOperations()
     {
-        List<(PlanItemDefinition Parent, ChildDeclarationEntry Declaration)> declarationsToExpand = _items
-            .SelectMany(item => item.ChildDeclarations.Select(declaration => (Parent: item, Declaration: declaration)))
+        List<(ExecutionTask Parent, ChildDeclarationEntry Declaration)> declarationsToExpand = _items
+            .SelectMany(item => GetBuilderState(item.Id).ChildDeclarations.Select(declaration => (Parent: item, Declaration: declaration)))
             .Where(tuple => tuple.Declaration.ChildOperationType != null)
             .ToList();
 
-        foreach ((PlanItemDefinition definition, ChildDeclarationEntry declaration) in declarationsToExpand)
+        foreach ((ExecutionTask parentTask, ChildDeclarationEntry declaration) in declarationsToExpand)
         {
             Operation childOperation = Operation.CreateOperation(declaration.ChildOperationType!);
             OperationParameters childParameters = declaration.CreateChildParameters!();
@@ -293,7 +275,7 @@ public sealed class ExecutionPlanBuilder
                 declaration.RootOverrides.Title,
                 declaration.RootOverrides.Description,
                 declaration.RootOverrides.IsHiddenInGraph);
-            InsertedExecutionTasks insertedTasks = ExecutionTaskInsertion.InsertUnderParent(childPlan, definition.Id, rootOverrides);
+            InsertedExecutionTasks insertedTasks = ExecutionTaskInsertion.InsertUnderParent(childPlan, parentTask.Id, rootOverrides);
 
             declaration.ChildOperationType = null;
             declaration.CreateChildParameters = null;
@@ -303,17 +285,7 @@ public sealed class ExecutionPlanBuilder
 
             foreach (ExecutionTask childTask in insertedTasks.Tasks)
             {
-                PlanItemDefinition importedDefinition = CreateItem(childTask.Id, childTask.Title, childTask.Description, childTask.ParentId);
-                importedDefinition.Enabled = childTask.Enabled;
-                importedDefinition.DisabledReason = childTask.DisabledReason;
-                importedDefinition.OperationParameters = childTask.OperationParameters;
-                importedDefinition.DeclaredOptionTypes = childTask.DeclaredOptionTypes.ToList();
-                importedDefinition.ExecuteAsync = childTask.ExecuteAsync;
-                importedDefinition.Operation = childTask.Operation;
-                importedDefinition.IsOperationRoot = childTask.IsOperationRoot;
-                importedDefinition.IsHiddenInGraph = childTask.IsHiddenInGraph;
-                importedDefinition.DependencyIds.AddRange(childTask.DependsOn);
-                AddImportedDefinition(importedDefinition);
+                AddImportedDefinition(childTask);
             }
         }
     }
@@ -321,34 +293,33 @@ public sealed class ExecutionPlanBuilder
     /// <summary>
     /// Adds one imported task definition to the current plan and fails loudly if a supposedly unique task id collides.
     /// </summary>
-    private void AddImportedDefinition(PlanItemDefinition definition)
+    private void AddImportedDefinition(ExecutionTask task)
     {
-        _ = definition ?? throw new ArgumentNullException(nameof(definition));
-        if (_items.Any(item => item.Id == definition.Id))
+        _ = task ?? throw new ArgumentNullException(nameof(task));
+        if (_items.Any(item => item.Id == task.Id))
         {
-            throw new InvalidOperationException($"Execution plan already contains task '{definition.Id}'. Imported child-operation task ids must be globally unique.");
+            throw new InvalidOperationException($"Execution plan already contains task '{task.Id}'. Imported child-operation task ids must be globally unique.");
         }
 
-        _items.Add(definition);
+        AddTaskDefinition(task);
     }
 
     private void ApplyChildDeclarationOrdering()
     {
-        foreach (PlanItemDefinition definition in _items)
+        foreach (ExecutionTask task in _items)
         {
-            List<ChildDeclarationEntry> orderedDeclarations = definition.ChildDeclarations
-                .OrderBy(entry => entry.Order)
-                .ToList();
             List<ExecutionTaskId> previousCompletionTaskIds = new();
 
-            foreach (ChildDeclarationEntry declaration in orderedDeclarations)
+            /* Child declarations are append-only, so authored insertion order is already the execution-order source of
+               truth. Keeping that order directly avoids carrying redundant sequence metadata just to sort it back later. */
+            foreach (ChildDeclarationEntry declaration in GetBuilderState(task.Id).ChildDeclarations)
             {
                 foreach (ExecutionTaskId entryTaskId in declaration.GetEntryTaskIds())
                 {
-                    PlanItemDefinition entryDefinition = GetDefinition(entryTaskId);
+                    ExecutionTask entryTask = GetDefinition(entryTaskId);
                     foreach (ExecutionTaskId previousCompletionTaskId in previousCompletionTaskIds)
                     {
-                        AddDirectDependency(entryDefinition, previousCompletionTaskId);
+                        AddDirectDependency(entryTask, previousCompletionTaskId);
                     }
                 }
 
@@ -360,25 +331,22 @@ public sealed class ExecutionPlanBuilder
         }
     }
 
-    private void AddDirectDependency(PlanItemDefinition definition, ExecutionTaskId dependencyId)
+    private void AddDirectDependency(ExecutionTask task, ExecutionTaskId dependencyId)
     {
-        if (!definition.DependencyIds.Contains(dependencyId))
-        {
-            definition.DependencyIds.Add(dependencyId);
-        }
+        task.AddDependency(dependencyId);
     }
 
-    private PlanItemDefinition GetDefinition(ExecutionTaskId taskId)
+    private ExecutionTask GetDefinition(ExecutionTaskId taskId)
     {
         return _items.Single(item => item.Id == taskId);
     }
 
-    private static string CreateBodyTaskTitle(PlanItemDefinition parentDefinition)
+    private string CreateBodyTaskTitle(ExecutionTask parentTask)
     {
-        int bodyIndex = parentDefinition.ChildDeclarations.Count(entry => entry.Kind == ChildDeclarationKind.Body) + 1;
+        int bodyIndex = GetBuilderState(parentTask.Id).ChildDeclarations.Count(entry => entry.IsBody) + 1;
         return bodyIndex == 1
-            ? parentDefinition.Title + ".Body"
-            : parentDefinition.Title + ".Body " + bodyIndex;
+            ? parentTask.Title + ".Body"
+            : parentTask.Title + ".Body " + bodyIndex;
     }
 
     private static IReadOnlyList<ExecutionTaskId> GetLeafCompletionTaskIds(IReadOnlyList<ExecutionTask> tasks)
@@ -394,7 +362,24 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Generates a globally unique task identifier so embedded child plans can keep their authored ids without any
+    /// Registers one builder-owned task together with the sidecar declaration state used only during plan authoring.
+    /// </summary>
+    private void AddTaskDefinition(ExecutionTask task)
+    {
+        _items.Add(task);
+        _builderStateByTaskId.Add(task.Id, new BuilderTaskState());
+    }
+
+    /// <summary>
+    /// Returns the builder-only declaration state for one authored task.
+    /// </summary>
+    private BuilderTaskState GetBuilderState(ExecutionTaskId taskId)
+    {
+        return _builderStateByTaskId[taskId];
+    }
+
+    /// <summary>
+     /// Generates a globally unique task identifier so embedded child plans can keep their authored ids without any
     /// parent-side remapping during plan composition or live runtime insertion.
     /// </summary>
     private ExecutionTaskId GenerateTaskId()
@@ -402,54 +387,19 @@ public sealed class ExecutionPlanBuilder
         return ExecutionTaskId.New();
     }
 
-    private int NextOrderIndex()
+    internal sealed class BuilderTaskState
     {
-        _nextSequence += 1;
-        return _nextSequence;
-    }
-
-    internal sealed class PlanItemDefinition
-    {
-        public ExecutionTaskId Id { get; set; }
-
-        public string Title { get; set; } = string.Empty;
-
-        public string Description { get; set; } = string.Empty;
-
-        public ExecutionTaskId? ParentId { get; set; }
-
-        public List<ExecutionTaskId> DependencyIds { get; } = new();
-
-        public bool Enabled { get; set; }
-
-        public string DisabledReason { get; set; } = string.Empty;
-
-        public Operation Operation { get; set; } = null!;
-
-        public OperationParameters OperationParameters { get; set; } = null!;
-
-        public List<Type> DeclaredOptionTypes { get; set; } = new();
-
-        public Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync { get; set; }
-
         public List<ChildDeclarationEntry> ChildDeclarations { get; } = new();
-
-        public bool IsOperationRoot { get; set; }
-
-        public bool IsHiddenInGraph { get; set; }
     }
 
     internal sealed class ChildDeclarationEntry
     {
-        public ChildDeclarationEntry(int order, ChildDeclarationKind kind)
+        public ChildDeclarationEntry(bool isBody)
         {
-            Order = order;
-            Kind = kind;
+            IsBody = isBody;
         }
 
-        public int Order { get; }
-
-        public ChildDeclarationKind Kind { get; }
+        public bool IsBody { get; }
 
         public ExecutionTaskId? RootTaskId { get; set; }
 
@@ -483,14 +433,6 @@ public sealed class ExecutionPlanBuilder
             }
         }
     }
-}
-
-internal enum ChildDeclarationKind
-{
-    Body,
-    ChildTask,
-    ParallelChildren,
-    ChildOperation
 }
 
 /// <summary>

@@ -51,14 +51,9 @@ public sealed class ExecutionRuntimeService
             }
         }, plan: plan)
         {
-            IsRunning = true,
             OperationName = operation.OperationName,
             TargetName = parameters.Target?.DisplayName ?? string.Empty
         };
-
-        /* Copying the preview plan into the session preserves the authored graph structure, but the live execution tab
-           should start from runtime-ready state instead of continuing to show preview-only Planned nodes. */
-        session.BeginExecution();
 
         // Let UI consumers subscribe to task-status and task-log streams before the runner starts so the first Running
         // transition for long-lived tasks is visible on the graph instead of being lost during startup.
@@ -90,12 +85,12 @@ public sealed class ExecutionRuntimeService
         {
             OperationResult result = await runner.Run(plan, session);
             activity.SetTag("runner.result", result.Outcome.ToString());
-            session.Outcome = result.Outcome;
+            session.CompleteRootTaskIfNeeded(result.Outcome, result.FailureReason);
             activity.SetTag("session.outcome", session.Outcome.ToString());
         }
         catch (OperationCanceledException)
         {
-            session.Outcome = RuntimeExecutionTaskOutcome.Cancelled;
+            session.CompleteRootTaskIfNeeded(RuntimeExecutionTaskOutcome.Cancelled, "Cancelled.");
             activity.SetTag("runner.result", RuntimeExecutionTaskOutcome.Cancelled.ToString())
                 .SetTag("session.outcome", session.Outcome.ToString());
         }
@@ -108,18 +103,17 @@ public sealed class ExecutionRuntimeService
                 Verbosity = LogLevel.Error
             });
 
-            session.Outcome = RuntimeExecutionTaskOutcome.Failed;
+            session.CompleteRootTaskIfNeeded(RuntimeExecutionTaskOutcome.Failed, ex.Message);
             activity.SetTag("runner.result", "Exception")
                 .SetTag("session.outcome", session.Outcome.ToString())
                 .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name);
         }
         finally
         {
-            session.IsRunning = false;
-            activity.SetTag("session.is_running", session.IsRunning);
             ApplicationLogger.Logger = previousLogger;
             CleanupSessionTempRoot(session, previousLogger);
             session.CompleteExecution();
+            activity.SetTag("session.is_running", session.IsRunning);
         }
     }
 

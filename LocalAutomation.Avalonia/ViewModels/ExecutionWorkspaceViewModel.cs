@@ -477,7 +477,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 .SetTag("target.name", session.TargetName)
                 .SetTag("session.outcome", session.Outcome.ToString())
                 .SetTag("ui.dispatch.delay_ms", (DateTime.UtcNow - uiDispatchRequestedAtUtc).TotalMilliseconds.ToString("0"));
-            session.FinishedAt = DateTimeOffset.Now;
             runtimeTab.RefreshAllTaskMetrics();
             runtimeTab.NotifyStateChanged();
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))

@@ -59,7 +59,7 @@ public sealed class ExecutionPlanSchedulerTests
         /* This scenario needs direct scheduler control so the test can wait for both active tasks to reach Running before
            allowing Branch A to fail. */
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
-        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         await session.GetTask(branchAActiveTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchBActiveTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
         allowBranchAFailure.TrySetResult(true);
@@ -126,7 +126,7 @@ public sealed class ExecutionPlanSchedulerTests
 
         /* Wait until both active branches are definitely running before cancelling so the assertions exercise active-work
            cancellation semantics instead of startup-time skipping. */
-        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, cancellationSource.Token);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(cancellationSource.Token);
         await session.GetTask(branchAActiveTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchBActiveTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
         cancellationSource.Cancel();
@@ -172,7 +172,7 @@ public sealed class ExecutionPlanSchedulerTests
 
         // Act: start the scheduler and wait until the lock holder is definitely running.
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
-        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchATaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
@@ -222,7 +222,7 @@ public sealed class ExecutionPlanSchedulerTests
 
         // Act: execute once and capture whichever sibling body actually started first.
         (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
-        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         string winner = await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         releaseWinner.TrySetResult(true);
         OperationResult result = await executeTask;
@@ -267,7 +267,7 @@ public sealed class ExecutionPlanSchedulerTests
 
             // Act: rebuild and run the same authored shape repeatedly, recording the first-starting sibling each time.
             (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
-            Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+            Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
             string winner = await winnerSource.Task.WaitAsync(TimeSpan.FromSeconds(1));
             releaseWinner.TrySetResult(true);
             OperationResult result = await executeTask;
@@ -361,7 +361,7 @@ public sealed class ExecutionPlanSchedulerTests
 
         // Act: start the scheduler and wait until the dependency body task has definitely started.
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
-        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         await session.GetTask(dependencyTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
         // Assert: both the waiting child and its parent scope should still read as pending.
@@ -409,7 +409,7 @@ public sealed class ExecutionPlanSchedulerTests
 
         // Act: start the scheduler and wait until branch A is definitely running with the shared lock.
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
-        Task<OperationResult> executeTask = scheduler.ExecuteAsync(plan, CancellationToken.None);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchABodyTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
