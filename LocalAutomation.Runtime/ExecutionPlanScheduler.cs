@@ -344,7 +344,7 @@ public sealed class ExecutionPlanScheduler
                     throw new InvalidOperationException($"Task '{task.Id}' cannot start execution while it already has semantic outcome '{task.Outcome}'.");
                 }
 
-                IReadOnlyList<ExecutionLock> executionLocks = task.GetExecutionLocksForNextStart(_session);
+                IReadOnlyList<ExecutionLock> executionLocks = task.GetExecutionLocksForNextStart();
                 if (!TryReserveExecutionLocks(task, executionLocks, out AsyncLockHandle lockHandle))
                 {
                     /* Lock-blocked tasks remain Pending until the scheduler can reserve their full lock set. */
@@ -393,13 +393,13 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Enforces that one scheduler pass reaches a fixpoint. If executable work is still ready after the pass ends, the
-     /// scheduler has left runnable work behind and should fail immediately instead of waiting for an unrelated wake-up.
-     /// </summary>
+    /// Enforces that one scheduler pass reaches a fixpoint. If executable work is still ready after the pass ends, the
+    /// scheduler has left runnable work behind and should fail immediately instead of waiting for an unrelated wake-up.
+    /// </summary>
     private void ValidateNoReadyTasksRemainPending()
     {
         ExecutionTask? strandedTask = _session.GetSchedulerReadyTasks()
-            .FirstOrDefault(task => task.GetExecutionLocksForNextStart(_session).Count == 0);
+            .FirstOrDefault(task => task.GetExecutionLocksForNextStart().Count == 0);
         if (strandedTask == null)
         {
             return;
@@ -516,8 +516,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Marks every remaining pending task as unsatisfied when no further work can be started.
-     /// </summary>
+    /// Marks every remaining pending task as unsatisfied when no further work can be started.
+    /// </summary>
     private void MarkUnsatisfiedTasks(IEnumerable<ExecutionTaskId> taskIds)
     {
         foreach (ExecutionTaskId taskId in taskIds)
@@ -538,8 +538,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Marks all remaining runnable tasks after a global cancellation request.
-     /// </summary>
+    /// Marks all remaining runnable tasks after a global cancellation request.
+    /// </summary>
     private void CancelOutstandingTasks(SchedulerStopReason stopReason, string? runningTaskReason = null, bool preserveRunningTerminalOutcomes = false)
     {
         _session.CancelOutstandingSchedulableTasks(
@@ -679,8 +679,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Returns whether the scheduler still owns a live running task for the provided task id.
-     /// </summary>
+    /// Returns whether the scheduler still owns a live running task for the provided task id.
+    /// </summary>
     private bool IsTaskTrackedAsRunning(ExecutionTaskId taskId)
     {
         lock (_syncRoot)
@@ -690,9 +690,9 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Returns the currently running tasks. Scheduler progress now follows only dependency readiness, so there is no
-     /// separate subset of capacity-consuming work.
-     /// </summary>
+    /// Returns the currently running tasks. Scheduler progress now follows only dependency readiness, so there is no
+    /// separate subset of capacity-consuming work.
+    /// </summary>
     private Task<OperationResult>[] GetActiveRunningTasksSnapshot()
     {
         lock (_syncRoot)
@@ -739,9 +739,9 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Creates the reusable scheduler wake signal with asynchronous continuations so running tasks do not resume the
-     /// scheduler inline while still holding graph-mutation call stacks.
-     /// </summary>
+    /// Creates the reusable scheduler wake signal with asynchronous continuations so running tasks do not resume the
+    /// scheduler inline while still holding graph-mutation call stacks.
+    /// </summary>
     private static TaskCompletionSource<bool> CreateWorkAvailableSignal()
     {
         return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -843,9 +843,9 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Dispatches one task execution onto the thread pool so work that does synchronous setup before its first await does
-     /// not block the scheduler loop from starting other ready tasks in the same scheduling pass.
-     /// </summary>
+    /// Dispatches one task execution onto the thread pool so work that does synchronous setup before its first await does
+    /// not block the scheduler loop from starting other ready tasks in the same scheduling pass.
+    /// </summary>
     private TaskStartResult StartTaskExecutionAsync(ExecutionTaskId taskId, CancellationToken cancellationToken, AsyncLockHandle lockHandle)
     {
         TaskStartResult startResult = _session.StartTaskAsync(taskId, CreateTaskLogger, cancellationToken, this);
@@ -869,8 +869,8 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-     /// Executes one task while preserving task-state error and cancellation reporting at the scheduler boundary.
-     /// </summary>
+    /// Executes one task while preserving task-state error and cancellation reporting at the scheduler boundary.
+    /// </summary>
     private async Task<OperationResult> ExecuteTaskAsync(ExecutionTaskId taskId, Task<OperationResult> runningTask, AsyncLockHandle lockHandle)
     {
         ExecutionTask task = _session.GetTask(taskId);

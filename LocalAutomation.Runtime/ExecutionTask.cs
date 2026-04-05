@@ -41,6 +41,7 @@ internal sealed class TaskStartResult
 public class ExecutionTask : INotifyPropertyChanged
 {
     private ExecutionTaskId? _parentId;
+    private ExecutionTask? _parent;
     private string _description;
     private ExecutionTaskState _state;
     private string _statusReason;
@@ -93,8 +94,7 @@ public class ExecutionTask : INotifyPropertyChanged
         _operationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
         _declaredOptionTypes = (declaredOptionTypes ?? Array.Empty<Type>()).ToList().AsReadOnly();
         _executeAsync = executeAsync;
-        _childTaskIds = new List<ExecutionTaskId>();
-        ChildTaskIds = new ReadOnlyCollection<ExecutionTaskId>(_childTaskIds);
+        _children = new List<ExecutionTask>();
         Outcome = outcome;
         _isOperationRoot = isOperationRoot;
         _isHiddenInGraph = isHiddenInGraph;
@@ -109,7 +109,9 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     private readonly List<ExecutionTaskId> _dependsOn;
-    private readonly List<ExecutionTaskId> _childTaskIds;
+    private readonly List<ExecutionTask> _children;
+    private List<ExecutionTask>? _resolvedDependencies;
+    private Action<ExecutionTaskId>? _onTaskChanged;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -123,13 +125,29 @@ public class ExecutionTask : INotifyPropertyChanged
 
     public ExecutionTaskId? ParentId
     {
-        get => _parentId;
+        get => _parent?.Id ?? _parentId;
         internal set => SetProperty(ref _parentId, value);
     }
 
+    /// <summary>
+    /// Gets the direct parent task in the execution tree. Null for the root task. Set during session initialization when
+    /// the tree is wired from authored plan IDs into live object references.
+    /// </summary>
+    public ExecutionTask? Parent => _parent;
+
     public IReadOnlyList<ExecutionTaskId> DependsOn { get; }
 
-    public IReadOnlyList<ExecutionTaskId> ChildTaskIds { get; }
+    /// <summary>
+    /// Gets the IDs of direct child tasks. Derived from the live children list so the public API stays stable while the
+    /// internal storage uses direct object references.
+    /// </summary>
+    public IReadOnlyList<ExecutionTaskId> ChildTaskIds => _children.Select(child => child.Id).ToList().AsReadOnly();
+
+    /// <summary>
+    /// Gets the direct child tasks in the execution tree. Populated during session initialization and runtime child
+    /// merging via <see cref="AddChild"/>.
+    /// </summary>
+    public IReadOnlyList<ExecutionTask> Children => _children.AsReadOnly();
 
     public bool Enabled => _enabled;
 
@@ -292,62 +310,50 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns the child task ids owned by this task. Tasks that do not aggregate children return an empty list.
+    /// Returns the current scheduler-facing start state for this task subtree. Walks children and dependencies via
+    /// direct object references without requiring external session lookup.
     /// </summary>
-    internal IReadOnlyList<ExecutionTaskId> GetChildTaskIds()
+    internal TaskStartState GetTaskStartState()
     {
-        return ChildTaskIds;
-    }
-
-    /// <summary>
-    /// Returns the current scheduler-facing start state for this task subtree.
-    /// </summary>
-    internal TaskStartState GetTaskStartState(ExecutionSession session)
-    {
-        if (session == null)
-        {
-            throw new ArgumentNullException(nameof(session));
-        }
-
         if (State == ExecutionTaskState.Completed)
         {
             return TaskStartState.NoStartableWork;
         }
 
-        if (CanStartOwnWork(session))
+        if (CanStartOwnWork())
         {
             return TaskStartState.Ready;
         }
 
-        if (GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).GetTaskStartState(session) == TaskStartState.Ready))
+        if (_children.Any(child => child.GetTaskStartState() == TaskStartState.Ready))
         {
             return TaskStartState.Ready;
         }
 
-        if ((_executeAsync != null && State == ExecutionTaskState.Running) || GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).GetTaskStartState(session) == TaskStartState.Running))
+        if ((_executeAsync != null && State == ExecutionTaskState.Running) || _children.Any(child => child.GetTaskStartState() == TaskStartState.Running))
         {
             return TaskStartState.Running;
         }
 
         if (_executeAsync != null && State == ExecutionTaskState.Pending)
         {
-            if (!AreDependenciesSatisfied(session))
+            if (!AreDependenciesSatisfied())
             {
                 return TaskStartState.WaitingForDependencies;
             }
 
-            if (!AreAncestorsOpen(session))
+            if (!AreAncestorsOpen())
             {
                 return TaskStartState.WaitingForParent;
             }
         }
 
-        if (GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).GetTaskStartState(session) == TaskStartState.WaitingForDependencies))
+        if (_children.Any(child => child.GetTaskStartState() == TaskStartState.WaitingForDependencies))
         {
             return TaskStartState.WaitingForDependencies;
         }
 
-        if (GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).GetTaskStartState(session) == TaskStartState.WaitingForParent))
+        if (_children.Any(child => child.GetTaskStartState() == TaskStartState.WaitingForParent))
         {
             return TaskStartState.WaitingForParent;
         }
@@ -358,23 +364,20 @@ public class ExecutionTask : INotifyPropertyChanged
     /// <summary>
     /// Returns the execution locks required for the next startable work item in this task subtree.
     /// </summary>
-    internal IReadOnlyList<ExecutionLock> GetExecutionLocksForNextStart(ExecutionSession session)
+    /// <summary>
+    /// Returns the execution locks required for the next startable work item in this task subtree.
+    /// </summary>
+    internal IReadOnlyList<ExecutionLock> GetExecutionLocksForNextStart()
     {
-        if (session == null)
+        foreach (ExecutionTask child in _children)
         {
-            throw new ArgumentNullException(nameof(session));
-        }
-
-        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
-        {
-            ExecutionTask childTask = session.GetTask(childTaskId);
-            if (childTask.GetTaskStartState(session) == TaskStartState.Ready)
+            if (child.GetTaskStartState() == TaskStartState.Ready)
             {
-                return childTask.GetExecutionLocksForNextStart(session);
+                return child.GetExecutionLocksForNextStart();
             }
         }
 
-        if (CanStartOwnWork(session))
+        if (CanStartOwnWork())
         {
             return Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(Title, OperationParameters, DeclaredOptionTypes));
         }
@@ -384,6 +387,7 @@ public class ExecutionTask : INotifyPropertyChanged
 
     /// <summary>
     /// Starts the next startable work item in this task subtree and returns the actual task that entered Running.
+    /// Walks children via direct object references.
     /// </summary>
     internal TaskStartResult StartAsync(ExecutionTaskContext context)
     {
@@ -394,16 +398,15 @@ public class ExecutionTask : INotifyPropertyChanged
 
         ExecutionTaskRuntimeServices runtime = context.GetRequiredRuntime();
 
-        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        foreach (ExecutionTask child in _children)
         {
-            ExecutionTask childTask = runtime.GetTask(childTaskId);
-            if (runtime.AreTaskReadyToStart(childTask))
+            if (child.GetTaskStartState() == TaskStartState.Ready)
             {
-                return childTask.StartAsync(context.CreateForTask(childTask));
+                return child.StartAsync(context.CreateForTask(child));
             }
         }
 
-        if (!runtime.CanTaskStartOwnWork(this))
+        if (!CanStartOwnWork())
         {
             throw new InvalidOperationException($"Task '{Id}' does not have any work ready to start.");
         }
@@ -413,22 +416,31 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Adds one child task to this task. Tasks that do not aggregate children fail loudly instead of silently accepting an
-    /// invalid graph shape.
+    /// Adds one child task to this task and wires the parent-child object references so the tree can be navigated
+    /// directly without external lookup. Deduplicates by task identity.
     /// </summary>
-    internal void AddChild(ExecutionTaskId childTaskId)
+    internal void AddChild(ExecutionTask child)
     {
-        if (_childTaskIds.Contains(childTaskId))
+        if (child == null)
+        {
+            throw new ArgumentNullException(nameof(child));
+        }
+
+        if (_children.Any(existing => existing.Id == child.Id))
         {
             return;
         }
 
-        _childTaskIds.Add(childTaskId);
+        _children.Add(child);
+        child._parent = this;
+        RaisePropertyChanged(nameof(Children));
         RaisePropertyChanged(nameof(ChildTaskIds));
     }
 
-    internal void InitializeRuntimeState(bool hasBegunExecution)
+    internal void InitializeRuntimeState(bool hasBegunExecution, Action<ExecutionTaskId> onTaskChanged)
     {
+        _onTaskChanged = onTaskChanged ?? throw new ArgumentNullException(nameof(onTaskChanged));
+
         /* Sessions reset only lifecycle state here. Semantic outcome stays separate so disabled tasks can still render as
            Disabled while the scheduler treats them as already finished. */
         ExecutionTaskState initialState = Enabled
@@ -654,20 +666,35 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns whether all direct dependencies for this task are satisfied strongly enough for downstream work to start.
+    /// Accepts pre-resolved dependency references from the session after the full tree has been assembled. The session
+    /// resolves dependency IDs to live objects because it owns the tree and can look up tasks directly, keeping the task
+    /// free of tree-walking logic for dependency wiring.
     /// </summary>
-    internal bool AreDependenciesSatisfied(ExecutionSession session)
+    internal void SetResolvedDependencies(List<ExecutionTask> resolvedDependencies)
     {
-        return DependsOn.All(dependencyId => IsDependencySatisfied(session, dependencyId));
+        _resolvedDependencies = resolvedDependencies ?? throw new ArgumentNullException(nameof(resolvedDependencies));
     }
 
     /// <summary>
-    /// Returns whether one dependency is satisfied strongly enough for downstream work to start. Disabled dependencies
-    /// are treated as satisfied when their own transitive dependencies are also satisfied.
+    /// Returns whether all direct dependencies for this task are satisfied strongly enough for downstream work to start.
+    /// Uses resolved object references instead of session-based ID lookups.
     /// </summary>
-    private static bool IsDependencySatisfied(ExecutionSession session, ExecutionTaskId dependencyId)
+    internal bool AreDependenciesSatisfied()
     {
-        ExecutionTask dependencyTask = session.GetTask(dependencyId);
+        if (_resolvedDependencies == null)
+        {
+            throw new InvalidOperationException($"Task '{Id}' has not resolved its dependencies. Call ResolveDependencies() after building the tree.");
+        }
+
+        return _resolvedDependencies.All(IsDependencySatisfied);
+    }
+
+    /// <summary>
+    /// Returns whether one dependency task is satisfied strongly enough for downstream work to start. Disabled
+    /// dependencies are treated as satisfied when their own transitive dependencies are also satisfied.
+    /// </summary>
+    private static bool IsDependencySatisfied(ExecutionTask dependencyTask)
+    {
         if (dependencyTask.Outcome == ExecutionTaskOutcome.Completed)
         {
             return true;
@@ -678,29 +705,34 @@ public class ExecutionTask : INotifyPropertyChanged
             return false;
         }
 
-        return dependencyTask.DependsOn.All(transitiveDependencyId => IsDependencySatisfied(session, transitiveDependencyId));
+        /* Disabled dependencies pass through to their own resolved dependencies so the scheduler treats a chain of
+           disabled tasks as satisfied only when the entire transitive chain has completed or is disabled-through. */
+        if (dependencyTask._resolvedDependencies == null)
+        {
+            throw new InvalidOperationException($"Task '{dependencyTask.Id}' has not resolved its dependencies. Call ResolveDependencies() after building the tree.");
+        }
+
+        return dependencyTask._resolvedDependencies.All(IsDependencySatisfied);
     }
 
     /// <summary>
     /// Returns whether this task's directly attached runnable work can start immediately.
     /// </summary>
-    internal bool CanStartOwnWork(ExecutionSession session)
+    internal bool CanStartOwnWork()
     {
         return _executeAsync != null
             && State == ExecutionTaskState.Pending
-            && AreDependenciesSatisfied(session)
-            && AreAncestorsOpen(session);
+            && AreDependenciesSatisfied()
+            && AreAncestorsOpen();
     }
 
     /// <summary>
     /// Returns whether every ancestor container for this task is structurally open, meaning none have completed or been
     /// assigned a doomed outcome, and all ancestor dependencies are satisfied.
     /// </summary>
-    internal bool AreAncestorsOpen(ExecutionSession session)
+    internal bool AreAncestorsOpen()
     {
-        ExecutionTask? currentTask = ParentId is ExecutionTaskId parentId
-            ? session.GetTask(parentId)
-            : null;
+        ExecutionTask? currentTask = _parent;
         while (currentTask != null)
         {
             if (currentTask.State == ExecutionTaskState.Completed || currentTask.Outcome != null)
@@ -708,14 +740,12 @@ public class ExecutionTask : INotifyPropertyChanged
                 return false;
             }
 
-            if (!currentTask.AreDependenciesSatisfied(session))
+            if (!currentTask.AreDependenciesSatisfied())
             {
                 return false;
             }
 
-            currentTask = currentTask.ParentId is ExecutionTaskId nextParentId
-                ? session.GetTask(nextParentId)
-                : null;
+            currentTask = currentTask._parent;
         }
 
         return true;
@@ -724,14 +754,17 @@ public class ExecutionTask : INotifyPropertyChanged
     /// <summary>
     /// Returns the current scheduler-facing pending reason for this task, or null when the task is ready to start.
     /// </summary>
-    internal string? GetSchedulingPendingReason(ExecutionSession session)
+    /// <summary>
+    /// Returns the current scheduler-facing pending reason for this task, or null when the task is ready to start.
+    /// </summary>
+    internal string? GetSchedulingPendingReason()
     {
         if (State != ExecutionTaskState.Pending)
         {
             return null;
         }
 
-        TaskStartState startState = GetTaskStartState(session);
+        TaskStartState startState = GetTaskStartState();
         if (startState == TaskStartState.WaitingForDependencies)
         {
             return "Waiting for dependencies.";
@@ -748,24 +781,70 @@ public class ExecutionTask : INotifyPropertyChanged
     internal bool IsTerminal => State == ExecutionTaskState.Completed;
 
     /// <summary>
+    /// Searches this task and its entire subtree for a task with the given id. Returns null when no match exists beneath
+    /// this node. Used by session-level GetTask as the tree-walk replacement for the former dictionary lookup.
+    /// </summary>
+    internal ExecutionTask? FindTask(ExecutionTaskId taskId)
+    {
+        if (Id == taskId)
+        {
+            return this;
+        }
+
+        foreach (ExecutionTask child in _children)
+        {
+            ExecutionTask? found = child.FindTask(taskId);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Collects this task and all descendants into a flat list by walking the tree recursively. The order is pre-order
+    /// depth-first so parents appear before their children.
+    /// </summary>
+    internal IReadOnlyList<ExecutionTask> GetAllTasks()
+    {
+        List<ExecutionTask> allTasks = new();
+        CollectAllTasks(allTasks);
+        return allTasks;
+    }
+
+    /// <summary>
+    /// Recursively collects this task and all descendants into the provided list.
+    /// </summary>
+    private void CollectAllTasks(List<ExecutionTask> destination)
+    {
+        destination.Add(this);
+        foreach (ExecutionTask child in _children)
+        {
+            child.CollectAllTasks(destination);
+        }
+    }
+
+    /// <summary>
     /// Returns this task's id plus every descendant id beneath it in the execution tree.
     /// </summary>
-    internal IReadOnlyList<ExecutionTaskId> GetSubtreeIds(ExecutionSession session)
+    internal IReadOnlyList<ExecutionTaskId> GetSubtreeIds()
     {
         List<ExecutionTaskId> subtreeIds = new() { Id };
-        CollectDescendantIds(session, subtreeIds);
+        CollectDescendantIds(subtreeIds);
         return subtreeIds;
     }
 
     /// <summary>
     /// Recursively collects all descendant task ids beneath this task into the provided collection.
     /// </summary>
-    private void CollectDescendantIds(ExecutionSession session, ICollection<ExecutionTaskId> descendantTaskIds)
+    private void CollectDescendantIds(ICollection<ExecutionTaskId> descendantTaskIds)
     {
-        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        foreach (ExecutionTask child in _children)
         {
-            descendantTaskIds.Add(childTaskId);
-            session.GetTask(childTaskId).CollectDescendantIds(session, descendantTaskIds);
+            descendantTaskIds.Add(child.Id);
+            child.CollectDescendantIds(descendantTaskIds);
         }
     }
 
@@ -773,16 +852,14 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Builds a human-readable task path from the current live parent chain so logs can identify this task by its visible
     /// location in the execution tree instead of only by its generated id.
     /// </summary>
-    internal string GetDisplayPath(ExecutionSession session)
+    internal string GetDisplayPath()
     {
         List<string> segments = new();
         ExecutionTask? currentTask = this;
         while (currentTask != null)
         {
             segments.Add(currentTask.Title);
-            currentTask = currentTask.ParentId is ExecutionTaskId parentId
-                ? session.GetTask(parentId)
-                : null;
+            currentTask = currentTask._parent;
         }
 
         segments.Reverse();
@@ -827,7 +904,11 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Guards lifecycle transitions so tasks with direct execution move monotonically while parent tasks may return from
     /// Running to Pending when all active descendants stop and later descendants are still queued.
     /// </summary>
-    internal void ValidateStateTransition(ExecutionSession session, ExecutionTaskState nextState)
+    /// <summary>
+    /// Guards lifecycle transitions so tasks with direct execution move monotonically while parent tasks may return from
+    /// Running to Pending when all active descendants stop and later descendants are still queued.
+    /// </summary>
+    internal void ValidateStateTransition(ExecutionTaskState nextState)
     {
         if (State == ExecutionTaskState.Completed && nextState != ExecutionTaskState.Completed)
         {
@@ -838,7 +919,7 @@ public class ExecutionTask : INotifyPropertyChanged
         {
             /* Parent tasks may return from Running to Pending when all active descendants finish and later descendants
                are still queued. This is only valid for container tasks whose subtree is not actively running. */
-            if (GetChildTaskIds().Count > 0 && GetTaskStartState(session) != TaskStartState.Running && nextState == ExecutionTaskState.Pending)
+            if (_children.Count > 0 && GetTaskStartState() != TaskStartState.Running && nextState == ExecutionTaskState.Pending)
             {
                 return;
             }
@@ -904,19 +985,19 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Guards terminal assignments so untouched-only outcomes cannot be applied after a task or subtree has started real
     /// execution.
     /// </summary>
-    internal void ValidateTerminalAssignment(ExecutionSession session, ExecutionTaskOutcome outcome)
+    internal void ValidateTerminalAssignment(ExecutionTaskOutcome outcome)
     {
-        if (outcome == ExecutionTaskOutcome.Completed && HasNonTerminalDescendants(session))
+        if (outcome == ExecutionTaskOutcome.Completed && HasNonTerminalDescendants())
         {
             throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot complete successfully while it still has non-terminal descendants.");
         }
 
-        if (outcome == ExecutionTaskOutcome.Skipped && HasStartedWorkInSubtree(session))
+        if (outcome == ExecutionTaskOutcome.Skipped && HasStartedWorkInSubtree())
         {
             throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot be marked skipped after execution has started in its subtree.");
         }
 
-        if (outcome == ExecutionTaskOutcome.Interrupted && !HasStartedWorkInSubtree(session))
+        if (outcome == ExecutionTaskOutcome.Interrupted && !HasStartedWorkInSubtree())
         {
             throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot be marked interrupted before execution has started in its subtree.");
         }
@@ -925,26 +1006,22 @@ public class ExecutionTask : INotifyPropertyChanged
     /// <summary>
     /// Returns whether any task in this subtree has already transitioned out of its untouched planned or pending state.
     /// </summary>
-    internal bool HasStartedWorkInSubtree(ExecutionSession session)
+    internal bool HasStartedWorkInSubtree()
     {
         if (HasStarted)
         {
             return true;
         }
 
-        return GetChildTaskIds().Any(childTaskId => session.GetTask(childTaskId).HasStartedWorkInSubtree(session));
+        return _children.Any(child => child.HasStartedWorkInSubtree());
     }
 
     /// <summary>
     /// Returns whether any descendant beneath this task is still pending or running.
     /// </summary>
-    internal bool HasNonTerminalDescendants(ExecutionSession session)
+    internal bool HasNonTerminalDescendants()
     {
-        return GetChildTaskIds().Any(childTaskId =>
-        {
-            ExecutionTask childTask = session.GetTask(childTaskId);
-            return !childTask.IsTerminal || childTask.HasNonTerminalDescendants(session);
-        });
+        return _children.Any(child => !child.IsTerminal || child.HasNonTerminalDescendants());
     }
 
     /// <summary>
@@ -971,31 +1048,46 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Fires the task-changed notification through the callback wired during runtime initialization. This decouples
+    /// mutation methods from the session so they operate on the task's own state and notify observers without needing
+    /// a direct session reference.
+    /// </summary>
+    private void RaiseTaskChanged()
+    {
+        if (_onTaskChanged == null)
+        {
+            throw new InvalidOperationException($"Task '{Id}' has no task-changed callback. Was InitializeRuntimeState called?");
+        }
+
+        _onTaskChanged(Id);
+    }
+
+    /// <summary>
     /// Skips every unfinished task in this subtree without disturbing tasks that already reached terminal states. Each
     /// skipped task validates its terminal assignment, transitions to completed, propagates to its own descendants, and
-    /// notifies the session so events fire from the authoritative event surface.
+    /// raises the task-changed notification so events fire from the authoritative event surface.
     /// </summary>
-    internal void SkipUnfinishedSubtree(ExecutionSession session, string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
+    internal void SkipUnfinishedSubtree(string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
     {
         if (State is ExecutionTaskState.Planned or ExecutionTaskState.Pending)
         {
-            CompleteWithOutcome(session, skippedOutcome, reason);
+            CompleteWithOutcome(skippedOutcome, reason);
         }
 
-        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        foreach (ExecutionTask child in _children)
         {
-            session.GetTask(childTaskId).SkipUnfinishedSubtree(session, reason, skippedOutcome);
+            child.SkipUnfinishedSubtree(reason, skippedOutcome);
         }
     }
 
     /// <summary>
     /// Skips every unfinished descendant beneath this task by walking each direct child subtree.
     /// </summary>
-    internal void SkipUnfinishedDescendants(ExecutionSession session, string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
+    internal void SkipUnfinishedDescendants(string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
     {
-        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        foreach (ExecutionTask child in _children)
         {
-            session.GetTask(childTaskId).SkipUnfinishedSubtree(session, reason, skippedOutcome);
+            child.SkipUnfinishedSubtree(reason, skippedOutcome);
         }
     }
 
@@ -1003,7 +1095,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Marks one started subtree as interrupted after sibling failure. Started nodes keep their current lifecycle so any
     /// active descendant work can finish unwinding, while untouched nodes become skipped because they never ran.
     /// </summary>
-    internal void MarkSubtreeInterrupted(ExecutionSession session, string? reason)
+    internal void MarkSubtreeInterrupted(string? reason)
     {
         if (State != ExecutionTaskState.Completed)
         {
@@ -1012,17 +1104,17 @@ public class ExecutionTask : INotifyPropertyChanged
                 /* Started tasks receive an interrupted outcome without forcing lifecycle completion so any active
                    descendant work can finish unwinding naturally. */
                 TransitionOutcome(ExecutionTaskOutcome.Interrupted, reason);
-                session.NotifyTaskChanged(Id);
+                RaiseTaskChanged();
             }
             else
             {
-                CompleteWithOutcome(session, ExecutionTaskOutcome.Skipped, reason);
+                CompleteWithOutcome(ExecutionTaskOutcome.Skipped, reason);
             }
         }
 
-        foreach (ExecutionTaskId childTaskId in GetChildTaskIds())
+        foreach (ExecutionTask child in _children)
         {
-            session.GetTask(childTaskId).MarkSubtreeInterrupted(session, reason);
+            child.MarkSubtreeInterrupted(reason);
         }
     }
 
@@ -1030,27 +1122,27 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Interrupts one sibling subtree after a different sibling has failed. Subtrees that already started work surface as
     /// Interrupted, while untouched subtrees remain Skipped.
     /// </summary>
-    internal void InterruptSiblingSubtree(ExecutionSession session, ExecutionTaskId failedSiblingRootId)
+    internal void InterruptSiblingSubtree(ExecutionTaskId failedSiblingRootId)
     {
-        bool subtreeStarted = HasStartedWorkInSubtree(session);
+        bool subtreeStarted = HasStartedWorkInSubtree();
         string reason = subtreeStarted
             ? $"Interrupted because sibling task '{failedSiblingRootId}' failed."
             : $"Skipped because sibling task '{failedSiblingRootId}' failed.";
 
         if (subtreeStarted)
         {
-            MarkSubtreeInterrupted(session, reason);
+            MarkSubtreeInterrupted(reason);
             return;
         }
 
-        SkipUnfinishedSubtree(session, reason, ExecutionTaskOutcome.Skipped);
+        SkipUnfinishedSubtree(reason, ExecutionTaskOutcome.Skipped);
     }
 
     /// <summary>
     /// Propagates a terminal outcome to untouched descendants so tasks that never started inherit a completed lifecycle
     /// plus the semantic outcome that explains why they will never run.
     /// </summary>
-    internal void PropagateTerminalOutcomeToUntouchedDescendants(ExecutionSession session, ExecutionTaskOutcome outcome, string? statusReason)
+    internal void PropagateTerminalOutcomeToUntouchedDescendants(ExecutionTaskOutcome outcome, string? statusReason)
     {
         /* Descendants that never started inherit a completed lifecycle plus the semantic outcome that explains why they
            will never run. */
@@ -1069,20 +1161,20 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         string? descendantReason = BuildInheritedDescendantReason(outcome, statusReason);
-        SkipUnfinishedDescendants(session, descendantReason, descendantOutcome);
+        SkipUnfinishedDescendants(descendantReason, descendantOutcome);
     }
 
     /// <summary>
     /// Completes this task's lifecycle and assigns its semantic outcome, then propagates to untouched descendants. The
-    /// session fires the externally visible state-changed event after each mutation. Ancestor refresh is handled by the
-    /// session-level caller since it requires cross-branch coordination.
+    /// task-changed callback fires so the externally visible event surface stays consistent. Ancestor refresh is handled
+    /// by the session-level caller since it requires cross-branch coordination.
     /// </summary>
-    internal void CompleteWithOutcome(ExecutionSession session, ExecutionTaskOutcome outcome, string? statusReason = null)
+    internal void CompleteWithOutcome(ExecutionTaskOutcome outcome, string? statusReason = null)
     {
-        ValidateTerminalAssignment(session, outcome);
-        TransitionSnapshot(session, ExecutionTaskState.Completed, outcome, statusReason);
-        session.NotifyTaskChanged(Id);
-        PropagateTerminalOutcomeToUntouchedDescendants(session, outcome, statusReason);
+        ValidateTerminalAssignment(outcome);
+        TransitionSnapshot(ExecutionTaskState.Completed, outcome, statusReason);
+        RaiseTaskChanged();
+        PropagateTerminalOutcomeToUntouchedDescendants(outcome, statusReason);
     }
 
     /// <summary>
@@ -1090,20 +1182,20 @@ public class ExecutionTask : INotifyPropertyChanged
     /// interrupted) that was recorded while descendant work was still unwinding. When no doomed outcome exists, the
     /// provided success outcome is used instead.
     /// </summary>
-    internal void CompleteLifecycle(ExecutionSession session, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
+    internal void CompleteLifecycle(ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
     {
         ExecutionTaskOutcome finalOutcome = Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted
             ? Outcome.Value
             : successOutcome;
         string? finalReason = finalOutcome == successOutcome ? statusReason : StatusReason;
-        CompleteWithOutcome(session, finalOutcome, finalReason);
+        CompleteWithOutcome(finalOutcome, finalReason);
     }
 
     /// <summary>
     /// Marks this task as semantically interrupted without forcing lifecycle completion, so any active descendant work
     /// can finish unwinding naturally. Ancestor refresh is handled by the session-level caller.
     /// </summary>
-    internal void Interrupt(ExecutionSession session, string? statusReason = null)
+    internal void Interrupt(string? statusReason = null)
     {
         if (State == ExecutionTaskState.Completed)
         {
@@ -1116,14 +1208,14 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         TransitionOutcome(ExecutionTaskOutcome.Interrupted, statusReason);
-        session.NotifyTaskChanged(Id);
+        RaiseTaskChanged();
     }
 
     /// <summary>
     /// Validates and applies a lifecycle state transition on this task. Returns false when the transition is a no-op
     /// because the task already has the requested state and reason.
     /// </summary>
-    internal bool TransitionState(ExecutionSession session, ExecutionTaskState state, string? statusReason)
+    internal bool TransitionState(ExecutionTaskState state, string? statusReason)
     {
         string normalizedReason = statusReason ?? string.Empty;
         if (State == state && string.Equals(StatusReason, normalizedReason, StringComparison.Ordinal))
@@ -1131,7 +1223,7 @@ public class ExecutionTask : INotifyPropertyChanged
             return false;
         }
 
-        ValidateStateTransition(session, state);
+        ValidateStateTransition(state);
         ValidateObservedState(state, Outcome);
         (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(state);
         ApplyRuntimeState(state, normalizedReason, Outcome, startedAt, finishedAt);
@@ -1160,7 +1252,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Validates and applies a combined lifecycle state and semantic outcome transition as a single atomic update so
     /// observers never see torn state between lifecycle and outcome fields. Returns false when the transition is a no-op.
     /// </summary>
-    internal bool TransitionSnapshot(ExecutionSession session, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    internal bool TransitionSnapshot(ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
         string normalizedReason = statusReason ?? string.Empty;
         if (State == state && Outcome == outcome && string.Equals(StatusReason, normalizedReason, StringComparison.Ordinal))
@@ -1168,7 +1260,7 @@ public class ExecutionTask : INotifyPropertyChanged
             return false;
         }
 
-        ValidateStateTransition(session, state);
+        ValidateStateTransition(state);
         ValidateOutcomeTransition(outcome);
         ValidateObservedState(state, outcome);
         (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(state);

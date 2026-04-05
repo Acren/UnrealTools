@@ -34,16 +34,6 @@ internal sealed class ExecutionTaskRuntimeServices
         _session.SetTaskState(taskId, state);
     }
 
-    internal bool AreTaskReadyToStart(ExecutionTask task)
-    {
-        return task.GetTaskStartState(_session) == TaskStartState.Ready;
-    }
-
-    internal bool CanTaskStartOwnWork(ExecutionTask task)
-    {
-        return task.CanStartOwnWork(_session);
-    }
-
     internal ExecutionSessionId SessionId => _session.Id;
 
     internal Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext)
@@ -178,7 +168,8 @@ public sealed class ExecutionTaskContext
     }
 
     /// <summary>
-    /// Tries to read one previously stored state value from the current task or any ancestor task.
+    /// Tries to read one previously stored state value from the current task or any ancestor task. Walks the parent chain
+    /// using direct object references instead of session-based ID lookups.
     /// </summary>
     public bool TryGetState<T>(out T? value) where T : class
     {
@@ -196,9 +187,7 @@ public sealed class ExecutionTaskContext
                 return true;
             }
 
-            currentTask = currentTask.ParentId is ExecutionTaskId parentId
-                ? _runtime.GetTask(parentId)
-                : null;
+            currentTask = currentTask.Parent;
         }
 
         value = null;
@@ -219,7 +208,8 @@ public sealed class ExecutionTaskContext
     }
 
     /// <summary>
-    /// Returns the nearest ancestor task that represents the root of the current nested operation.
+    /// Returns the nearest ancestor task that represents the root of the current nested operation. Walks the parent
+    /// chain using direct object references.
     /// </summary>
     private ExecutionTask GetRequiredOperationRootTask()
     {
@@ -231,9 +221,7 @@ public sealed class ExecutionTaskContext
                 return currentTask;
             }
 
-            currentTask = currentTask.ParentId is ExecutionTaskId parentId
-                ? GetRequiredRuntime().GetTask(parentId)
-                : null;
+            currentTask = currentTask.Parent;
         }
 
         throw new InvalidOperationException($"Task '{Title}' is not contained within any operation root.");

@@ -18,8 +18,7 @@ namespace LocalAutomation.Runtime;
 public sealed class ExecutionSession
 {
     private readonly TaskCompletionSource<bool> _completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly List<ExecutionTask> _tasks = new();
-    private readonly Dictionary<ExecutionTaskId, ExecutionTask> _tasksById = new();
+    private ExecutionTask? _rootTask;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly Operation _operation;
     private readonly OperationParameters _operationParameters;
@@ -70,7 +69,7 @@ public sealed class ExecutionSession
     /// Gets the live session-owned task graph. Sessions clone plan tasks when they start so runtime mutations never
     /// modify preview plan objects.
     /// </summary>
-    public IReadOnlyList<ExecutionTask> Tasks => new ReadOnlyCollection<ExecutionTask>(_tasks);
+    public IReadOnlyList<ExecutionTask> Tasks => _rootTask?.GetAllTasks() ?? Array.Empty<ExecutionTask>();
 
     public DateTimeOffset StartedAt { get; }
 
@@ -90,7 +89,7 @@ public sealed class ExecutionSession
     /// <summary>
     /// Gets the semantic result of the root task, which is the semantic result of the overall session.
     /// </summary>
-    public ExecutionTaskOutcome? Outcome => _tasks.Count == 0 ? null : RootTask.Outcome;
+    public ExecutionTaskOutcome? Outcome => _rootTask == null ? null : RootTask.Outcome;
 
     public bool? Success
     {
@@ -143,7 +142,7 @@ public sealed class ExecutionSession
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.Run")
             .SetTag("operation.name", _operation.OperationName)
             .SetTag("session.id", Id.Value)
-            .SetTag("task.count", _tasks.Count);
+            .SetTag("task.count", Tasks.Count);
         using IDisposable operationTimingScope = eventLogger.BeginSection(_operation.OperationName);
         _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, this).ExecuteAsync(_cancellationTokenSource.Token));
         try
@@ -184,11 +183,11 @@ public sealed class ExecutionSession
     /// <summary>
     /// Gets the single root task that represents the overall task graph for this session.
     /// </summary>
-    public ExecutionTask RootTask => _tasks.Single(task => task.ParentId == null);
+    public ExecutionTask RootTask => _rootTask ?? throw new InvalidOperationException("Session has no root task.");
 
     public IReadOnlyList<ExecutionTaskId> GetTaskSubtreeIds(ExecutionTaskId taskId)
     {
-        return GetTask(taskId).GetSubtreeIds(this);
+        return GetTask(taskId).GetSubtreeIds();
     }
 
     public ExecutionTaskMetrics GetTaskMetrics(ExecutionTaskId? taskId, DateTimeOffset? now = null)
@@ -276,7 +275,9 @@ public sealed class ExecutionSession
             return null;
         }
 
-        return _tasksById.TryGetValue(taskId.Value, out ExecutionTask? task) ? task.LogStream : null;
+        /* Tree-walk lookup is acceptable here because this method is called infrequently for UI-driven log panel
+           selection, not on the scheduler hot path. */
+        return _rootTask?.FindTask(taskId.Value)?.LogStream;
     }
 
     public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
@@ -299,26 +300,25 @@ public sealed class ExecutionSession
            marked Interrupted while still allowing active descendant work to unwind. */
         ExecutionTask failedTask = GetTask(failedTaskId);
         CompleteTaskWithOutcome(failedTaskId, ExecutionTaskOutcome.Failed, statusReason);
-        failedTask.SkipUnfinishedDescendants(this, failedTask.BuildInheritedDescendantReason(ExecutionTaskOutcome.Failed, statusReason));
+        failedTask.SkipUnfinishedDescendants(failedTask.BuildInheritedDescendantReason(ExecutionTaskOutcome.Failed, statusReason));
 
+        ExecutionTask currentAncestor = failedTask;
         ExecutionTaskId failedSiblingRootId = failedTaskId;
-        ExecutionTaskId? currentAncestorId = failedTask.ParentId;
-        while (currentAncestorId != null)
+        while (currentAncestor.Parent != null)
         {
-            ExecutionTask ancestorTask = GetTask(currentAncestorId.Value);
-            foreach (ExecutionTaskId childTaskId in ancestorTask.GetChildTaskIds())
+            currentAncestor = currentAncestor.Parent;
+            foreach (ExecutionTask child in currentAncestor.Children)
             {
-                if (childTaskId == failedSiblingRootId)
+                if (child.Id == failedSiblingRootId)
                 {
                     continue;
                 }
 
-                GetTask(childTaskId).InterruptSiblingSubtree(this, failedSiblingRootId);
+                child.InterruptSiblingSubtree(failedSiblingRootId);
             }
 
-            CompleteTaskWithOutcome(currentAncestorId.Value, ExecutionTaskOutcome.Failed, statusReason);
-            failedSiblingRootId = currentAncestorId.Value;
-            currentAncestorId = ancestorTask.ParentId;
+            CompleteTaskWithOutcome(currentAncestor.Id, ExecutionTaskOutcome.Failed, statusReason);
+            failedSiblingRootId = currentAncestor.Id;
         }
     }
 
@@ -532,9 +532,9 @@ public sealed class ExecutionSession
     /// </summary>
     internal IReadOnlyList<ExecutionTask> GetSchedulerReadyTasks()
     {
-        return _tasks
-            .Where(task => task.GetTaskStartState(this) == TaskStartState.Ready)
-            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState(this) != TaskStartState.Ready)
+        return Tasks
+            .Where(task => task.GetTaskStartState() == TaskStartState.Ready)
+            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState() != TaskStartState.Ready)
             .ToList();
     }
 
@@ -543,7 +543,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal void RefreshSchedulerPendingReasons()
     {
-        foreach (ExecutionTask task in _tasks)
+        foreach (ExecutionTask task in Tasks)
         {
             ExecutionTaskState currentState = task.State;
             if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running)
@@ -556,8 +556,8 @@ public sealed class ExecutionSession
                 throw new InvalidOperationException($"Task '{task.Id}' cannot return to pending readiness while it already has semantic outcome '{task.Outcome}'.");
             }
 
-            string? waitingReason = task.GetSchedulingPendingReason(this);
-            if (task.GetTaskStartState(this) == TaskStartState.NoStartableWork)
+            string? waitingReason = task.GetSchedulingPendingReason();
+            if (task.GetTaskStartState() == TaskStartState.NoStartableWork)
             {
                 continue;
             }
@@ -572,9 +572,9 @@ public sealed class ExecutionSession
     /// </summary>
     internal IReadOnlyList<ExecutionTaskId> GetIncompleteSchedulableTaskIds()
     {
-        return _tasks
-            .Where(task => task.GetTaskStartState(this) != TaskStartState.NoStartableWork)
-            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState(this) == TaskStartState.NoStartableWork)
+        return Tasks
+            .Where(task => task.GetTaskStartState() != TaskStartState.NoStartableWork)
+            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork)
             .Select(task => task.Id)
             .Where(taskId => !IsTaskTerminal(taskId))
             .ToList();
@@ -595,8 +595,8 @@ public sealed class ExecutionSession
             throw new ArgumentNullException(nameof(isTaskTrackedAsRunning));
         }
 
-        foreach (ExecutionTask task in _tasks.Where(task => task.GetTaskStartState(this) != TaskStartState.NoStartableWork)
-            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState(this) == TaskStartState.NoStartableWork))
+        foreach (ExecutionTask task in Tasks.Where(task => task.GetTaskStartState() != TaskStartState.NoStartableWork)
+            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork))
         {
             if (task.State == ExecutionTaskState.Completed)
             {
@@ -643,7 +643,7 @@ public sealed class ExecutionSession
     /// </summary>
     private void CompleteRootTaskIfNeeded(ExecutionTaskOutcome outcome, string? statusReason = null)
     {
-        if (_tasks.Count == 0)
+        if (_rootTask == null)
         {
             return;
         }
@@ -989,11 +989,13 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Returns the current live task definition for one task id.
+    /// Returns the current live task definition for one task id. Walks the task tree from the root to find the matching
+    /// node. O(n) per lookup is acceptable for execution trees of 10-100 nodes where simplicity outweighs index overhead.
     /// </summary>
     public ExecutionTask GetTask(ExecutionTaskId taskId)
     {
-        if (!_tasksById.TryGetValue(taskId, out ExecutionTask? task))
+        ExecutionTask? task = _rootTask?.FindTask(taskId);
+        if (task == null)
         {
             throw new InvalidOperationException($"Execution session does not contain task '{taskId}'.");
         }
@@ -1007,7 +1009,7 @@ public sealed class ExecutionSession
     /// </summary>
     public string GetTaskDisplayPath(ExecutionTaskId taskId)
     {
-        return GetTask(taskId).GetDisplayPath(this);
+        return GetTask(taskId).GetDisplayPath();
     }
 
     /// <summary>
@@ -1021,7 +1023,7 @@ public sealed class ExecutionSession
     private void SetTaskStateCore(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason)
     {
         ExecutionTask task = GetTask(taskId);
-        if (task.TransitionState(this, state, statusReason))
+        if (task.TransitionState(state, statusReason))
         {
             TaskStateChanged?.Invoke(taskId, state, task.Outcome, statusReason);
         }
@@ -1047,7 +1049,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal void InterruptTask(ExecutionTaskId taskId, string? statusReason = null)
     {
-        GetTask(taskId).Interrupt(this, statusReason);
+        GetTask(taskId).Interrupt(statusReason);
         RefreshAncestorTaskStates(taskId);
     }
 
@@ -1057,7 +1059,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal void CompleteTaskLifecycle(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
     {
-        GetTask(taskId).CompleteLifecycle(this, successOutcome, statusReason);
+        GetTask(taskId).CompleteLifecycle(successOutcome, statusReason);
         RefreshAncestorTaskStates(taskId);
     }
 
@@ -1068,7 +1070,7 @@ public sealed class ExecutionSession
     private void SetTaskSnapshot(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
         ExecutionTask task = GetTask(taskId);
-        if (task.TransitionSnapshot(this, state, outcome, statusReason))
+        if (task.TransitionSnapshot(state, outcome, statusReason))
         {
             TaskStateChanged?.Invoke(taskId, state, outcome, statusReason);
         }
@@ -1092,7 +1094,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal void CompleteTaskWithOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome outcome, string? statusReason = null)
     {
-        GetTask(taskId).CompleteWithOutcome(this, outcome, statusReason);
+        GetTask(taskId).CompleteWithOutcome(outcome, statusReason);
         RefreshAncestorTaskStates(taskId);
     }
 
@@ -1114,26 +1116,23 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Derives lifecycle and semantic outcome for parent tasks from their child-task progress.
+    /// Derives lifecycle and semantic outcome for parent tasks from their child-task progress. Walks the parent chain
+    /// using direct object references and reads children directly from each parent task.
     /// </summary>
     private void RefreshAncestorTaskStates(ExecutionTaskId taskId)
     {
-        ExecutionTaskId? currentParentId = GetTask(taskId).ParentId;
-        while (currentParentId != null)
+        ExecutionTask? currentParent = GetTask(taskId).Parent;
+        while (currentParent != null)
         {
-            ExecutionTask parentTask = GetTask(currentParentId.Value);
-            if (parentTask.GetChildTaskIds().Count == 0)
+            IReadOnlyList<ExecutionTask> childTasks = currentParent.Children;
+            if (childTasks.Count == 0)
             {
-                currentParentId = parentTask.ParentId;
+                currentParent = currentParent.Parent;
                 continue;
             }
 
-            IReadOnlyList<ExecutionTask> childTasks = parentTask.GetChildTaskIds()
-                .Select(GetTask)
-                .ToList();
-
-            TaskStartState parentStartState = parentTask.GetTaskStartState(this);
-            bool ownTaskIsRunning = parentTask.State == ExecutionTaskState.Running && parentStartState == TaskStartState.Running;
+            TaskStartState parentStartState = currentParent.GetTaskStartState();
+            bool ownTaskIsRunning = currentParent.State == ExecutionTaskState.Running && parentStartState == TaskStartState.Running;
             bool ownTaskIsQueued = parentStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
             bool anyChildRunning = childTasks.Any(task => task.State == ExecutionTaskState.Running);
             bool anyPending = childTasks.Any(task => task.State is ExecutionTaskState.Pending or ExecutionTaskState.Planned);
@@ -1144,7 +1143,7 @@ public sealed class ExecutionSession
             bool allDisabled = childTasks.All(task => task.Outcome == ExecutionTaskOutcome.Disabled);
 
             ExecutionTaskState parentState;
-            if (parentTask.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped)
+            if (currentParent.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped)
             {
                 parentState = ExecutionTaskState.Completed;
             }
@@ -1163,8 +1162,8 @@ public sealed class ExecutionSession
                 parentState = ExecutionTaskState.Completed;
             }
 
-            ExecutionTaskOutcome? parentOutcome = parentTask.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped
-                ? parentTask.Outcome
+            ExecutionTaskOutcome? parentOutcome = currentParent.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped
+                ? currentParent.Outcome
                 : ownTaskIsRunning || ownTaskIsQueued || anyPending || anyChildRunning
                     ? null
                     : failedTask != null
@@ -1189,11 +1188,11 @@ public sealed class ExecutionSession
 
             if (parentOutcome == ExecutionTaskOutcome.Completed && childTasks.Any(childTask => childTask.State != ExecutionTaskState.Completed))
             {
-                throw new InvalidOperationException($"Task '{currentParentId.Value}' cannot roll up to completed while child work is still non-terminal.");
+                throw new InvalidOperationException($"Task '{currentParent.Id}' cannot roll up to completed while child work is still non-terminal.");
             }
 
-            SetTaskSnapshot(currentParentId.Value, parentState, parentOutcome, parentReason);
-            currentParentId = parentTask.ParentId;
+            SetTaskSnapshot(currentParent.Id, parentState, parentOutcome, parentReason);
+            currentParent = currentParent.Parent;
         }
     }
 
@@ -1210,22 +1209,48 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Registers one task in the live session graph and initializes its task-owned runtime state.
+    /// Registers one task in the live session graph, wires parent-child object references, resolves dependency IDs to
+    /// live object references, and initializes task-owned runtime state. Prerequisites always exist in the tree before
+    /// their followers because the plan's task list is topologically ordered, so dependencies can be resolved immediately
+    /// during insertion rather than requiring a separate pass.
     /// </summary>
     private void AddTask(ExecutionTask task)
     {
-        if (!_tasksById.TryAdd(task.Id, task))
+        /* Duplicate detection walks the tree instead of checking a dictionary index. This is only called during plan
+           initialization and child-task merging, not on the scheduler hot path. */
+        if (_rootTask?.FindTask(task.Id) != null)
         {
             throw new InvalidOperationException($"Execution session already contains task '{task.Id}'.");
         }
 
-        _tasks.Add(task);
-        task.InitializeRuntimeState(_hasBegunExecution);
+        task.InitializeRuntimeState(_hasBegunExecution, NotifyTaskChanged);
 
         if (task.ParentId is ExecutionTaskId parentId)
         {
-            GetTask(parentId).AddChild(task.Id);
+            /* Wire the parent-child object reference. GetTask walks the existing tree to find the parent, then
+               AddChild sets the child's _parent back-reference and adds it to the parent's _children list. */
+            GetTask(parentId).AddChild(task);
         }
+        else
+        {
+            /* First task without a parent becomes the session root. Sessions always have exactly one root task. */
+            if (_rootTask != null)
+            {
+                throw new InvalidOperationException($"Execution session already has a root task '{_rootTask.Id}'. Cannot add second root '{task.Id}'.");
+            }
+
+            _rootTask = task;
+        }
+
+        /* Resolve dependency IDs to live object references immediately. The plan's topological ordering guarantees that
+           every prerequisite task is already in the tree by the time its follower is added. */
+        List<ExecutionTask> resolvedDependencies = new(task.DependsOn.Count);
+        foreach (ExecutionTaskId dependencyId in task.DependsOn)
+        {
+            resolvedDependencies.Add(GetTask(dependencyId));
+        }
+
+        task.SetResolvedDependencies(resolvedDependencies);
     }
 }
 
