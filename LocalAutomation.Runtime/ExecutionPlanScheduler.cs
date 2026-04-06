@@ -309,7 +309,7 @@ public sealed class ExecutionPlanScheduler
         {
             passCount += 1;
             bool startedThisPass = false;
-            IReadOnlyList<ExecutionTask> readyTasks = _session.GetSchedulerReadyTasks();
+            IReadOnlyList<ExecutionTask> readyTasks = OrderReadyTasksByDownstreamWork(_session.GetSchedulerReadyTasks());
             if (passCount == 1)
             {
                 readyActivity.SetTag("ready.count", readyTasks.Count);
@@ -391,6 +391,77 @@ public sealed class ExecutionPlanScheduler
         readyActivity.SetTag("pass.count", passCount);
         return startedAny;
     }
+
+    /// <summary>
+    /// Orders every ready branch by how much unfinished downstream work it can unlock after the next runnable task in that
+    /// branch starts and completes. Ties keep the scheduler's original ready order for determinism.
+    /// </summary>
+    private IReadOnlyList<ExecutionTask> OrderReadyTasksByDownstreamWork(IReadOnlyList<ExecutionTask> readyTasks)
+    {
+        if (readyTasks == null)
+        {
+            throw new ArgumentNullException(nameof(readyTasks));
+        }
+
+        return readyTasks
+            .Select((task, index) =>
+            {
+                ExecutionTask nextStartTask = task.GetNextStartableTask();
+                return new OrderedReadyTask(
+                    task,
+                    index,
+                    CountDownstreamWork(nextStartTask));
+            })
+            .OrderByDescending(item => item.DownstreamWorkCount)
+            .ThenBy(item => item.OriginalIndex)
+            .Select(item => item.Task)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Counts the unfinished tasks that are transitively downstream of the concrete next-running task and each of its
+    /// ancestors. Summing the full ancestor chain keeps nested child-operation work attached to the outer runtime branch
+    /// that will continue unlocking work after the current runnable task completes.
+    /// </summary>
+    private int CountDownstreamWork(ExecutionTask task)
+    {
+        HashSet<ExecutionTaskId> visitedTaskIds = new();
+        ExecutionTask? currentTask = task;
+        while (currentTask != null)
+        {
+            CollectDownstreamDependentTasks(currentTask.Id, visitedTaskIds);
+            currentTask = currentTask.Parent;
+        }
+
+        return visitedTaskIds.Count;
+    }
+
+    /// <summary>
+    /// Walks unfinished dependency edges outward from one task id and accumulates every transitively dependent task into
+    /// the provided visited set.
+    /// </summary>
+    private void CollectDownstreamDependentTasks(ExecutionTaskId taskId, HashSet<ExecutionTaskId> visitedTaskIds)
+    {
+        Queue<ExecutionTaskId> pendingTaskIds = new();
+        pendingTaskIds.Enqueue(taskId);
+
+        while (pendingTaskIds.Count > 0)
+        {
+            ExecutionTaskId currentTaskId = pendingTaskIds.Dequeue();
+            foreach (ExecutionTask dependentTask in _session.Tasks.Where(candidate => candidate.Outcome == null && candidate.Dependencies.Contains(currentTaskId)))
+            {
+                if (visitedTaskIds.Add(dependentTask.Id))
+                {
+                    pendingTaskIds.Enqueue(dependentTask.Id);
+                }
+            }
+        }
+    }
+
+    private sealed record OrderedReadyTask(
+        ExecutionTask Task,
+        int OriginalIndex,
+        int DownstreamWorkCount);
 
     /// <summary>
     /// Enforces that one scheduler pass reaches a fixpoint. If executable work is still ready after the pass ends, the

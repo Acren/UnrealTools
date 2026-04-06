@@ -392,27 +392,43 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns the execution locks required for the next startable work item in this task subtree.
+    /// Resolves the concrete task that would enter Running next for this ready branch by following the same child-first
+    /// traversal the scheduler uses to start work.
     /// </summary>
-    /// <summary>
-    /// Returns the execution locks required for the next startable work item in this task subtree.
-    /// </summary>
-    internal IReadOnlyList<ExecutionLock> GetExecutionLocksForNextStart()
+    internal ExecutionTask? TryGetNextStartableTask()
     {
         foreach (ExecutionTask child in _children)
         {
             if (child.GetTaskStartState() == TaskStartState.Ready)
             {
-                return child.GetExecutionLocksForNextStart();
+                return child.TryGetNextStartableTask();
             }
         }
 
-        if (CanStartOwnWork())
+        return CanStartOwnWork() ? this : null;
+    }
+
+    /// <summary>
+    /// Returns the concrete task that would enter Running next for this ready branch.
+    /// </summary>
+    internal ExecutionTask GetNextStartableTask()
+    {
+        return TryGetNextStartableTask()
+            ?? throw new InvalidOperationException($"Task '{Id}' does not have any work ready to start.");
+    }
+
+    /// <summary>
+    /// Returns the execution locks required for the next startable work item in this task subtree.
+    /// </summary>
+    internal IReadOnlyList<ExecutionLock> GetExecutionLocksForNextStart()
+    {
+        ExecutionTask? nextStartTask = TryGetNextStartableTask();
+        if (nextStartTask == null)
         {
-            return Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(Title, OperationParameters, DeclaredOptionTypes));
+            return Array.Empty<ExecutionLock>();
         }
 
-        return Array.Empty<ExecutionLock>();
+        return nextStartTask.Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(nextStartTask.Title, nextStartTask.OperationParameters, nextStartTask.DeclaredOptionTypes));
     }
 
     /// <summary>
@@ -426,23 +442,10 @@ public class ExecutionTask : INotifyPropertyChanged
             throw new ArgumentNullException(nameof(context));
         }
 
-        ExecutionTaskRuntimeServices runtime = context.GetRequiredRuntime();
-
-        foreach (ExecutionTask child in _children)
-        {
-            if (child.GetTaskStartState() == TaskStartState.Ready)
-            {
-                return child.StartAsync(context.CreateForTask(child));
-            }
-        }
-
-        if (!CanStartOwnWork())
-        {
-            throw new InvalidOperationException($"Task '{Id}' does not have any work ready to start.");
-        }
-
-        runtime.SetTaskState(Id, ExecutionTaskState.Running);
-        return new TaskStartResult(this, _spec.ExecuteAsync!(context));
+        ExecutionTask nextStartTask = GetNextStartableTask();
+        ExecutionTaskContext startContext = nextStartTask.Id == Id ? context : context.CreateForTask(nextStartTask);
+        startContext.GetRequiredRuntime().SetTaskState(nextStartTask.Id, ExecutionTaskState.Running);
+        return new TaskStartResult(nextStartTask, nextStartTask._spec.ExecuteAsync!(startContext));
     }
 
     /// <summary>
