@@ -7,7 +7,7 @@ using Xunit;
 
 namespace LocalAutomation.Runtime.Tests;
 
-public sealed class ExecutionPlanSiblingFairnessTests
+public sealed class ExecutionPlanInsertedChildSchedulingTests
 {
     /// <summary>
     /// Confirms that when two sibling branches become ready together, a lock-blocked inserted child operation beneath the
