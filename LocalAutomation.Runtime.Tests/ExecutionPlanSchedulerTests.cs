@@ -279,6 +279,74 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
+    /// Confirms that when multiple ready tasks are blocked on the same execution lock, the scheduler should prefer the
+    /// task that unlocks more downstream dependent work after it completes.
+    /// </summary>
+    [Fact]
+    public async Task LockReleasePrefersTaskWithMoreDownstreamDependents()
+    {
+        // Arrange: a lock holder runs first, then two equally ready contenders wait on the same lock. The declared-first
+        // contender has no downstream dependents, while the declared-second contender unlocks one extra dependent task.
+        // The expected policy should therefore choose the declared-second contender once the lock becomes available.
+        ExecutionLock sharedLock = new("dependent-priority-lock");
+        TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<string> contenderWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Lock Holder").Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder));
+
+                scope.Task("Sequence")
+                    .Children(sequence =>
+                    {
+                        sequence.Task("Prepare")
+                            .Run(() => Task.CompletedTask);
+
+                        sequence.Task("Parallel")
+                            .Children(ExecutionChildMode.Parallel, parallel =>
+                            {
+                                parallel.Task("Branch A")
+                                    .Run(async _ =>
+                                    {
+                                        contenderWinner.TrySetResult("Branch A");
+                                        await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                        return OperationResult.Succeeded();
+                                    });
+
+                                parallel.Task("Branch B")
+                                    .Run(async _ =>
+                                    {
+                                        contenderWinner.TrySetResult("Branch B");
+                                        await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                        return OperationResult.Succeeded();
+                                    })
+                                    .Then("Branch B Dependent")
+                                    .Run(() => Task.CompletedTask);
+                            });
+                    });
+            });
+        }, sharedLock);
+
+        // Act: wait until the lock holder definitely owns the shared lock, then release it and capture which waiting
+        // contender starts first once the shared lock becomes available.
+        (ExecutionPlan _, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        releaseLockHolder.TrySetResult(true);
+        string winner = await contenderWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        releaseWinner.TrySetResult(true);
+        OperationResult result = await executeTask;
+
+        // Assert: the contender with more downstream dependent work should win the lock once it is released.
+        Assert.Equal("Branch B", winner);
+        Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+    }
+
+    /// <summary>
     /// Confirms that interleaved body and child declarations execute in the same explicit order they were authored on the
     /// parent task.
     /// </summary>
