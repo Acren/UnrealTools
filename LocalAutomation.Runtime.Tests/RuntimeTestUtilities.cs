@@ -4,18 +4,30 @@ using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging.Abstractions;
+using TestUtilities;
 
 namespace LocalAutomation.Runtime.Tests;
 
 internal static class RuntimeTestUtilities
 {
     /// <summary>
+    /// Wraps the shared execution-test inline operation with the runtime test suite's fixed default operation name.
+    /// </summary>
+    internal sealed class InlineOperation : ExecutionTestCommon.InlineOperation
+    {
+        public InlineOperation(Action<ExecutionTaskBuilder> buildPlan, params ExecutionLock[] executionLocks)
+            : base(buildPlan, "Scheduler Test Operation", null, executionLocks)
+        {
+        }
+    }
+
+    /// <summary>
     /// Builds a runtime execution plan through the same public operation pipeline the application uses.
     /// </summary>
     public static ExecutionPlan BuildPlan(Operation operation)
     {
         OperationParameters parameters = operation.CreateParameters();
-        parameters.Target = new TestTarget();
+        parameters.Target = new ExecutionTestCommon.TestTarget();
         return ExecutionPlanFactory.BuildPlan(operation, parameters)
             ?? throw new InvalidOperationException("The test operation did not produce an execution plan.");
     }
@@ -83,66 +95,4 @@ internal static class RuntimeTestUtilities
         };
     }
 
-    /// <summary>
-    /// Minimal inline operation wrapper that lets tests define plan shape through the normal runtime operation pipeline.
-    /// </summary>
-    internal class InlineOperation : Operation<TestTarget>
-    {
-        private readonly Action<ExecutionTaskBuilder> _buildPlan;
-        private readonly IReadOnlyList<ExecutionLock> _executionLocks;
-
-        public InlineOperation(Action<ExecutionTaskBuilder> buildPlan, params ExecutionLock[] executionLocks)
-        {
-            _buildPlan = buildPlan;
-            _executionLocks = executionLocks ?? Array.Empty<ExecutionLock>();
-        }
-
-        /// <summary>
-        /// Keeps the generated task paths stable across tests.
-        /// </summary>
-        protected override string GetOperationName()
-        {
-            return "Scheduler Test Operation";
-        }
-
-        /// <summary>
-        /// Delegates plan construction to the test-provided builder action.
-        /// </summary>
-        protected internal override void DescribeExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
-        {
-            _buildPlan(root);
-        }
-
-        /// <summary>
-        /// Declares the same execution locks for every task body in this test operation so scheduler tests can focus on
-        /// graph semantics instead of duplicating lock plumbing across helper types.
-        /// </summary>
-        protected override IEnumerable<ExecutionLock> GetExecutionLocks(ValidatedOperationParameters operationParameters)
-        {
-            return _executionLocks;
-        }
-    }
-
-    /// <summary>
-    /// Minimal valid target used by the runtime plan builder in tests.
-    /// </summary>
-    internal sealed class TestTarget : OperationTarget
-    {
-        public TestTarget()
-        {
-            TargetPath = AppContext.BaseDirectory;
-        }
-
-        /// <summary>
-        /// Uses one stable display name for deterministic task paths in the tests.
-        /// </summary>
-        public override string Name => "TestTarget";
-
-        /// <summary>
-        /// The test target has no descriptor-backed state to load.
-        /// </summary>
-        public override void LoadDescriptor()
-        {
-        }
-    }
 }

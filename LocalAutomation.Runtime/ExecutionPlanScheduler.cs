@@ -432,15 +432,22 @@ public sealed class ExecutionPlanScheduler
         using PerformanceActivityScope completionActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.HandleCompletedTask")
             .SetTag("task.id", completedTaskId.Value);
 
+        /* Separate task-body failures from runtime state-application failures. If the completed task returned normally
+           but applying its result violates a task-state invariant, that indicates a framework bug and should surface
+           directly instead of being converted into a synthetic task failure on an already-completed task. */
+        OperationResult result;
         try
         {
-            OperationResult result = await completedTask.ConfigureAwait(false);
+            result = await completedTask.ConfigureAwait(false);
             completionActivity.SetTag("task.outcome", result.Outcome.ToString());
-            ApplyTaskCompletionResult(completedTaskId, result);
         }
         catch (OperationCanceledException)
         {
             ApplyCancelledTaskCompletion(completedTaskId);
+            _session.RefreshSchedulerPendingReasons();
+            _lastCompletedTaskId = completedTaskId;
+            _lastCompletionHandledAtUtc = DateTime.UtcNow;
+            return;
         }
         catch (Exception ex)
         {
@@ -448,7 +455,13 @@ public sealed class ExecutionPlanScheduler
                 .SetTag("exception.type", ex.GetBaseException().GetType().FullName ?? ex.GetBaseException().GetType().Name)
                 .SetTag("exception.message", ex.GetBaseException().Message);
             ApplyTaskCompletionFailure(completedTaskId, ex);
+            _session.RefreshSchedulerPendingReasons();
+            _lastCompletedTaskId = completedTaskId;
+            _lastCompletionHandledAtUtc = DateTime.UtcNow;
+            return;
         }
+
+        ApplyTaskCompletionResult(completedTaskId, result);
 
         _session.RefreshSchedulerPendingReasons();
         _lastCompletedTaskId = completedTaskId;

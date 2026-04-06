@@ -28,6 +28,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnrealCommander.Avalonia", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalAutomation.Runtime.Tests", "LocalAutomation.Runtime.Tests\LocalAutomation.Runtime.Tests.csproj", "{3D140F2B-8BDF-408A-A769-077154EB1442}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LocalAutomation.Application.Tests", "LocalAutomation.Application.Tests\LocalAutomation.Application.Tests.csproj", "{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -221,6 +223,24 @@ Global
 		{3D140F2B-8BDF-408A-A769-077154EB1442}.Release|x64.Build.0 = Release|Any CPU
 		{3D140F2B-8BDF-408A-A769-077154EB1442}.Release|x86.ActiveCfg = Release|Any CPU
 		{3D140F2B-8BDF-408A-A769-077154EB1442}.Release|x86.Build.0 = Release|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Debug|x64.Build.0 = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Debug|x86.Build.0 = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Development|Any CPU.ActiveCfg = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Development|Any CPU.Build.0 = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Development|x64.ActiveCfg = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Development|x64.Build.0 = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Development|x86.ActiveCfg = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Development|x86.Build.0 = Debug|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Release|Any CPU.Build.0 = Release|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Release|x64.ActiveCfg = Release|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Release|x64.Build.0 = Release|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Release|x86.ActiveCfg = Release|Any CPU
+		{27D82BF0-DA5F-41CB-A1DF-31B61B048D74}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

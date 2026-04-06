@@ -350,9 +350,18 @@ public abstract class Operation
     }
 
     /// <summary>
+    /// Gives the framework one internal entrypoint for plan authoring while keeping the override surface purely
+    /// protected for derived operations. This avoids leaking framework invocation visibility into external subclasses.
+    /// </summary>
+    internal void AuthorExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
+    {
+        DescribeExecutionPlan(operationParameters, root);
+    }
+
+    /// <summary>
     /// Lets derived operations describe child tasks beneath the framework-owned root task.
     /// </summary>
-    protected internal virtual void DescribeExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
+    protected virtual void DescribeExecutionPlan(ValidatedOperationParameters operationParameters, ExecutionTaskBuilder root)
     {
         throw new NotSupportedException($"Operation '{OperationName}' must override {nameof(DescribeExecutionPlan)}.");
     }

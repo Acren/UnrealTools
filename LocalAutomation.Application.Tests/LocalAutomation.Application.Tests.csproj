@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\LocalAutomation.Application\LocalAutomation.Application.csproj" />
     <ProjectReference Include="..\LocalAutomation.Core\LocalAutomation.Core.csproj" />
     <ProjectReference Include="..\LocalAutomation.Runtime\LocalAutomation.Runtime.csproj" />
   </ItemGroup>

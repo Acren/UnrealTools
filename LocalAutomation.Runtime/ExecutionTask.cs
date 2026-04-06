@@ -908,12 +908,10 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Guards lifecycle transitions so tasks with direct execution move monotonically while parent tasks may return from
-    /// Running to Pending when all active descendants stop and later descendants are still queued.
+    /// Guards lifecycle transitions so execution state stays monotonic once a task or container subtree has started.
     /// </summary>
     /// <summary>
-    /// Guards lifecycle transitions so tasks with direct execution move monotonically while parent tasks may return from
-    /// Running to Pending when all active descendants stop and later descendants are still queued.
+    /// Guards lifecycle transitions so execution state stays monotonic once a task or container subtree has started.
     /// </summary>
     internal void ValidateStateTransition(ExecutionTaskState nextState)
     {
@@ -924,14 +922,10 @@ public class ExecutionTask : INotifyPropertyChanged
 
         if (State == ExecutionTaskState.Running && nextState is ExecutionTaskState.Pending or ExecutionTaskState.Planned)
         {
-            /* Parent tasks may return from Running to Pending when all active descendants finish and later descendants
-               are still queued. This is only valid for container tasks whose subtree is not actively running. */
-            if (_children.Count > 0 && GetTaskStartState() != TaskStartState.Running && nextState == ExecutionTaskState.Pending)
-            {
-                return;
-            }
-
-            throw new InvalidOperationException($"Task '{Id}' cannot transition from running to '{nextState}'.");
+            /* Once a task or any descendant in its subtree has started, queued states are no longer legal. Container
+               scopes must remain Running until they complete or fail, even if later descendant work is only waiting on
+               dependencies or parent readiness. */
+            throw new InvalidOperationException($"Task '{Id}' cannot transition from running back to queued state '{nextState}'.");
         }
     }
 

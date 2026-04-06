@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 using LocalAutomation.Runtime;
+using Microsoft.Extensions.Logging;
 using RuntimeExecutionSessionId = LocalAutomation.Runtime.ExecutionSessionId;
 
 namespace LocalAutomation.Application;
@@ -93,6 +94,10 @@ public sealed class ExecutionSessionService
         }
         catch (Exception ex)
         {
+            /* Background execution failures must reach the process-wide application log because no caller is awaiting
+               this fire-and-forget task directly. The app log is the only durable surface that consistently exposes
+               unexpected runtime failures to the shell. */
+            ApplicationLogger.Logger.LogError(ex, "Execution session '{SessionId}' failed for '{OperationName}'.", session.Id.Value, session.OperationName);
             activity.SetTag("runtime.result", "Exception")
                 .SetTag("session.outcome", session.Outcome.ToString())
                 .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name);

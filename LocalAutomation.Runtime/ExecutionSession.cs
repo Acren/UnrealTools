@@ -1154,9 +1154,12 @@ public sealed class ExecutionSession
             }
             else if (ownTaskIsQueued || anyPending)
             {
-                /* Parent tasks report Running only while some internal step is truly executing. Once no internal work is
-                   running, the task returns to Pending until more descendant work can actually start. */
-                parentState = ExecutionTaskState.Pending;
+                /* Pending is reserved for scopes whose subtree has not started yet. Once a scope or any descendant has
+                   started, the scope remains Running until the entire subtree reaches a terminal outcome, even if more
+                   descendant work is temporarily blocked on dependencies or parent readiness. */
+                parentState = currentParent.State == ExecutionTaskState.Running || currentParent.Outcome != null
+                    ? ExecutionTaskState.Running
+                    : ExecutionTaskState.Pending;
             }
             else
             {

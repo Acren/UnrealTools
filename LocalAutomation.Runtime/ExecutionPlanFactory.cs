@@ -70,7 +70,7 @@ public static class ExecutionPlanFactory
         builder.SetBuilderOperationParameters(operationParameters);
         builder.SetDeclaredOptionTypes(operation.GetRequiredOptionSetTypes(operationParameters.Target));
         ExecutionTaskBuilder root = builder.Task(operation.OperationName, operationParameters.Target.DisplayName, default);
-        operation.DescribeExecutionPlan(operation.ValidateParameters(operationParameters), root);
+        operation.AuthorExecutionPlan(operation.ValidateParameters(operationParameters), root);
         return builder.BuildPlan();
     }
 }
