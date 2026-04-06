@@ -168,8 +168,7 @@ public sealed class ExecutionTaskContext
     }
 
     /// <summary>
-    /// Tries to read one previously stored state value from the current task or any ancestor task. Walks the parent chain
-    /// using direct object references instead of session-based ID lookups.
+    /// Tries to read one previously stored state value from the current task or any ancestor task.
     /// </summary>
     public bool TryGetState<T>(out T? value) where T : class
     {
@@ -208,8 +207,7 @@ public sealed class ExecutionTaskContext
     }
 
     /// <summary>
-    /// Returns the nearest ancestor task that represents the root of the current nested operation. Walks the parent
-    /// chain using direct object references.
+    /// Returns the nearest ancestor task that represents the root of the current nested operation.
     /// </summary>
     private ExecutionTask GetRequiredOperationRootTask()
     {

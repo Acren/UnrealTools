@@ -34,112 +34,120 @@ internal sealed class TaskStartResult
 }
 
 /// <summary>
+/// Immutable authored specification for one execution task. Captures identity, behavior, and graph structure as
+/// authored during plan building. Runtime lifecycle state (execution progress, timing, outcome) is not included.
+/// The record's <c>with</c> syntax provides type-safe selective overrides for cloning and child-plan import without
+/// manually enumerating every property.
+/// </summary>
+internal record TaskSpec(
+    ExecutionTaskId Id,
+    string Title,
+    Operation Operation,
+    string Description,
+    ExecutionTaskId? ParentId,
+    IReadOnlyList<ExecutionTaskId> Dependencies,
+    bool Enabled,
+    string DisabledReason,
+    OperationParameters OperationParameters,
+    IReadOnlyList<Type> DeclaredOptionTypes,
+    Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync,
+    bool IsOperationRoot,
+    bool IsHiddenInGraph);
+
+/// <summary>
 /// Represents one execution-graph node. Authored plans and live sessions share this type, but runtime sessions own their
 /// own cloned task instances so mutable graph state, runtime state, and task-scoped logs never leak back into preview
 /// plan objects.
 /// </summary>
 public class ExecutionTask : INotifyPropertyChanged
 {
-    private ExecutionTaskId? _parentId;
+    /* Authored specification bundled into one record so cloning uses `with` syntax instead of manual property
+       enumeration. Builder setters update this field via `_spec = _spec with { ... }`. */
+    private TaskSpec _spec;
+
+    /* Runtime-mutable fields that are not part of the authored specification. These track live execution progress
+       and are reset independently when sessions clone tasks or reinitialize for a new run. */
     private ExecutionTask? _parent;
-    private string _description;
     private ExecutionTaskState _state;
     private string _statusReason;
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _finishedAt;
     private ExecutionTaskOutcome? _outcome;
-    private bool _enabled;
-    private string _disabledReason;
-    private OperationParameters _operationParameters;
-    private IReadOnlyList<Type> _declaredOptionTypes;
-    private readonly Func<ExecutionTaskContext, Task<OperationResult>>? _executeAsync;
-    private bool _isOperationRoot;
-    private bool _isHiddenInGraph;
     private readonly Dictionary<Type, object> _stateByType = new();
     private readonly object _stateWaitSyncRoot = new();
     private readonly HashSet<ExecutionTaskState> _reachedStates = new();
     private readonly Dictionary<ExecutionTaskState, List<TaskCompletionSource<bool>>> _stateWaiters = new();
 
     /// <summary>
-    /// Creates one execution task from authored metadata. Sessions later clone these tasks into live nodes and initialize
-    /// their mutable runtime state independently.
+    /// Creates one execution task from an authored specification record. Sessions later clone these tasks into live
+    /// nodes and initialize their mutable runtime state independently.
     /// </summary>
-    public ExecutionTask(
-        ExecutionTaskId id,
-        string title,
-        Operation operation,
-        string? description = null,
-        ExecutionTaskId? parentId = null,
-        IEnumerable<ExecutionTaskId>? dependsOn = null,
-        bool enabled = true,
-        string? disabledReason = null,
-        OperationParameters? operationParameters = null,
-        IEnumerable<Type>? declaredOptionTypes = null,
-        Func<ExecutionTaskContext, Task<OperationResult>>? executeAsync = null,
-        ExecutionTaskOutcome? outcome = null,
-        bool isOperationRoot = false,
-        bool isHiddenInGraph = false)
+    internal ExecutionTask(TaskSpec spec)
     {
-        Id = id;
-        Title = string.IsNullOrWhiteSpace(title)
-            ? throw new ArgumentException("Execution task title is required.", nameof(title))
-            : title;
-        Operation = operation ?? throw new ArgumentNullException(nameof(operation));
-        _description = description ?? string.Empty;
-        _parentId = parentId;
-        _dependsOn = new List<ExecutionTaskId>((dependsOn ?? Array.Empty<ExecutionTaskId>()));
-        DependsOn = new ReadOnlyCollection<ExecutionTaskId>(_dependsOn);
-        _enabled = enabled;
-        _disabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
-        _operationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
-        _declaredOptionTypes = (declaredOptionTypes ?? Array.Empty<Type>()).ToList().AsReadOnly();
-        _executeAsync = executeAsync;
+        if (string.IsNullOrWhiteSpace(spec.Title))
+        {
+            throw new ArgumentException("Execution task title is required.", nameof(spec));
+        }
+
+        _ = spec.Operation ?? throw new ArgumentNullException(nameof(spec));
+        _spec = spec;
         _children = new List<ExecutionTask>();
-        Outcome = outcome;
-        _isOperationRoot = isOperationRoot;
-        _isHiddenInGraph = isHiddenInGraph;
         LogStream = new BufferedLogStream();
 
         /* Runtime lifecycle and semantic outcome are tracked separately. Disabled tasks start in a completed lifecycle
            state because no scheduler work remains for them, while their semantic outcome still reports Disabled. */
-        _state = enabled ? ExecutionTaskState.Planned : ExecutionTaskState.Completed;
-        _statusReason = enabled ? string.Empty : DisabledReason;
-        _outcome = enabled ? outcome : ExecutionTaskOutcome.Disabled;
+        _state = spec.Enabled ? ExecutionTaskState.Planned : ExecutionTaskState.Completed;
+        _statusReason = spec.Enabled ? string.Empty : spec.DisabledReason;
+        _outcome = spec.Enabled ? null : ExecutionTaskOutcome.Disabled;
         ResetReachedStates(_state);
     }
 
-    private readonly List<ExecutionTaskId> _dependsOn;
     private readonly List<ExecutionTask> _children;
-    private List<ExecutionTask>? _resolvedDependencies;
     private Action<ExecutionTaskId>? _onTaskChanged;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public ExecutionTaskId Id { get; }
+    /// <summary>
+    /// Exposes the authored specification so builders and clone operations can read and override individual properties
+    /// via <c>with</c> syntax without manually enumerating every field.
+    /// </summary>
+    internal TaskSpec Spec => _spec;
 
-    public string Title { get; }
+    public ExecutionTaskId Id => _spec.Id;
 
-    public Operation Operation { get; }
+    public string Title => _spec.Title;
 
-    public string Description => _description;
+    public Operation Operation => _spec.Operation;
+
+    public string Description => _spec.Description;
 
     public ExecutionTaskId? ParentId
     {
-        get => _parent?.Id ?? _parentId;
-        internal set => SetProperty(ref _parentId, value);
+        get => _parent?.Id ?? _spec.ParentId;
+        internal set
+        {
+            if (Equals(_spec.ParentId, value))
+            {
+                return;
+            }
+
+            _spec = _spec with { ParentId = value };
+            RaisePropertyChanged();
+        }
     }
 
     /// <summary>
-    /// Gets the direct parent task in the execution tree. Null for the root task. Set during session initialization when
-    /// the tree is wired from authored plan IDs into live object references.
+    /// Gets the direct parent task in the execution tree. Null for the root task.
     /// </summary>
     public ExecutionTask? Parent => _parent;
 
-    public IReadOnlyList<ExecutionTaskId> DependsOn { get; }
+    /// <summary>
+    /// Gets the IDs of direct dependency tasks that must complete before this task can start.
+    /// </summary>
+    public IReadOnlyList<ExecutionTaskId> Dependencies => _spec.Dependencies;
 
     /// <summary>
-    /// Gets the IDs of direct child tasks. Derived from the live children list so the public API stays stable while the
-    /// internal storage uses direct object references.
+    /// Gets the IDs of direct child tasks.
     /// </summary>
     public IReadOnlyList<ExecutionTaskId> ChildTaskIds => _children.Select(child => child.Id).ToList().AsReadOnly();
 
@@ -149,13 +157,13 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     public IReadOnlyList<ExecutionTask> Children => _children.AsReadOnly();
 
-    public bool Enabled => _enabled;
+    public bool Enabled => _spec.Enabled;
 
-    public string DisabledReason => _disabledReason;
+    public string DisabledReason => _spec.DisabledReason;
 
-    public OperationParameters OperationParameters => _operationParameters;
+    public OperationParameters OperationParameters => _spec.OperationParameters;
 
-    public IReadOnlyList<Type> DeclaredOptionTypes => _declaredOptionTypes;
+    public IReadOnlyList<Type> DeclaredOptionTypes => _spec.DeclaredOptionTypes;
 
     /// <summary>
     /// Gets the current execution lifecycle status for this task scope.
@@ -198,13 +206,13 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Gets whether this task is the root container for one operation subtree. Operation-scoped context walks upward to
     /// the nearest task with this marker so nested child operations keep independent state scopes.
     /// </summary>
-    public bool IsOperationRoot => _isOperationRoot;
+    public bool IsOperationRoot => _spec.IsOperationRoot;
 
     /// <summary>
     /// Gets whether this task should be collapsed out of the graph projection unless the UI is configured to reveal
     /// hidden tasks.
     /// </summary>
-    public bool IsHiddenInGraph => _isHiddenInGraph;
+    public bool IsHiddenInGraph => _spec.IsHiddenInGraph;
 
     public BufferedLogStream LogStream { get; }
 
@@ -280,33 +288,22 @@ public class ExecutionTask : INotifyPropertyChanged
         return WaitForStateAsync(ExecutionTaskState.Completed, cancellationToken);
     }
 
+    /// <summary>
+    /// Clones this task for a live session by preserving the full authored specification, including dependency IDs.
+    /// </summary>
     internal ExecutionTask CloneForSession()
     {
-        /* Session-owned clones preserve graph visibility metadata so preview and runtime tabs collapse the same authored
-           internal tasks unless the user explicitly reveals hidden nodes in the UI. */
-        return CreateClone(ParentId, Title, Description, IsHiddenInGraph, Outcome);
+        return CloneWith(_spec);
     }
 
     /// <summary>
-    /// Creates one task clone while preserving any internal runnable work and authored graph metadata.
+    /// Creates one task clone from a (potentially overridden) specification. Callers use <c>with</c> syntax on
+    /// <see cref="Spec"/> to override individual properties:
+    /// <c>task.CloneWith(task.Spec with { ParentId = newParent, Title = newTitle })</c>.
     /// </summary>
-    internal ExecutionTask CreateClone(ExecutionTaskId? parentId, string title, string description, bool isHiddenInGraph, ExecutionTaskOutcome? outcome = null)
+    internal ExecutionTask CloneWith(TaskSpec spec)
     {
-        return new ExecutionTask(
-            Id,
-            title,
-            Operation,
-            description,
-            parentId,
-            DependsOn,
-            Enabled,
-            DisabledReason,
-            OperationParameters,
-            DeclaredOptionTypes,
-            _executeAsync,
-            outcome,
-            IsOperationRoot,
-            isHiddenInGraph);
+        return new ExecutionTask(spec);
     }
 
     /// <summary>
@@ -330,12 +327,12 @@ public class ExecutionTask : INotifyPropertyChanged
             return TaskStartState.Ready;
         }
 
-        if ((_executeAsync != null && State == ExecutionTaskState.Running) || _children.Any(child => child.GetTaskStartState() == TaskStartState.Running))
+        if ((_spec.ExecuteAsync != null && State == ExecutionTaskState.Running) || _children.Any(child => child.GetTaskStartState() == TaskStartState.Running))
         {
             return TaskStartState.Running;
         }
 
-        if (_executeAsync != null && State == ExecutionTaskState.Pending)
+        if (_spec.ExecuteAsync != null && State == ExecutionTaskState.Pending)
         {
             if (!AreDependenciesSatisfied())
             {
@@ -412,7 +409,7 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         runtime.SetTaskState(Id, ExecutionTaskState.Running);
-        return new TaskStartResult(this, _executeAsync!(context));
+        return new TaskStartResult(this, _spec.ExecuteAsync!(context));
     }
 
     /// <summary>
@@ -454,15 +451,21 @@ public class ExecutionTask : INotifyPropertyChanged
         ResetReachedStates(initialState);
     }
 
-    internal void AddDependency(ExecutionTaskId dependencyTaskId)
+    /// <summary>
+    /// Adds one dependency on another task that must complete before this task can start. Deduplicates by task identity.
+    /// Called during plan authoring when the builder wires sequencing frontiers.
+    /// </summary>
+    internal void AddDependency(ExecutionTaskId dependencyId)
     {
-        if (_dependsOn.Contains(dependencyTaskId))
+        if (Dependencies.Contains(dependencyId))
         {
             return;
         }
 
-        _dependsOn.Add(dependencyTaskId);
-        RaisePropertyChanged(nameof(DependsOn));
+        List<ExecutionTaskId> dependencies = Dependencies.ToList();
+        dependencies.Add(dependencyId);
+        _spec = _spec with { Dependencies = dependencies.AsReadOnly() };
+        RaisePropertyChanged(nameof(Dependencies));
     }
 
     /// <summary>
@@ -470,7 +473,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal void SetDescription(string description)
     {
-        _description = description ?? string.Empty;
+        _spec = _spec with { Description = description ?? string.Empty };
     }
 
     /// <summary>
@@ -478,25 +481,23 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal void SetCondition(bool enabled, string? disabledReason)
     {
-        _enabled = enabled;
-        _disabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty);
+        _spec = _spec with
+        {
+            Enabled = enabled,
+            DisabledReason = enabled ? string.Empty : (disabledReason ?? string.Empty)
+        };
     }
 
     /// <summary>
     /// Assigns the validated parameter context that builder-authored execution will use at runtime.
     /// </summary>
-    internal void SetOperationParameters(OperationParameters operationParameters, IEnumerable<Type> declaredOptionTypes)
+    internal void SetOperationParameters(OperationParameters operationParameters, IReadOnlyList<Type> declaredOptionTypes)
     {
-        _operationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
-        _declaredOptionTypes = (declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))).ToList().AsReadOnly();
-    }
-
-    /// <summary>
-    /// Marks whether this authored task should be treated as an operation root for scoped runtime state.
-    /// </summary>
-    internal void SetOperationRoot(bool isOperationRoot)
-    {
-        _isOperationRoot = isOperationRoot;
+        _spec = _spec with
+        {
+            OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters)),
+            DeclaredOptionTypes = declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))
+        };
     }
 
     /// <summary>
@@ -504,7 +505,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal void SetHiddenInGraph(bool isHiddenInGraph)
     {
-        _isHiddenInGraph = isHiddenInGraph;
+        _spec = _spec with { IsHiddenInGraph = isHiddenInGraph };
     }
 
     internal void SetState<T>(T value) where T : class
@@ -666,35 +667,31 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Accepts pre-resolved dependency references from the session after the full tree has been assembled. The session
-    /// resolves dependency IDs to live objects because it owns the tree and can look up tasks directly, keeping the task
-    /// free of tree-walking logic for dependency wiring.
-    /// </summary>
-    internal void SetResolvedDependencies(List<ExecutionTask> resolvedDependencies)
-    {
-        _resolvedDependencies = resolvedDependencies ?? throw new ArgumentNullException(nameof(resolvedDependencies));
-    }
-
-    /// <summary>
     /// Returns whether all direct dependencies for this task are satisfied strongly enough for downstream work to start.
-    /// Uses resolved object references instead of session-based ID lookups.
+    /// Resolves dependency IDs by walking the tree from the root. The O(n) walk per dependency is acceptable for trees
+    /// of 10-100 nodes and keeps dependency storage in authored task specs instead of maintaining cached object
+    /// references.
     /// </summary>
     internal bool AreDependenciesSatisfied()
     {
-        if (_resolvedDependencies == null)
+        if (Dependencies.Count == 0)
         {
-            throw new InvalidOperationException($"Task '{Id}' has not resolved its dependencies. Call ResolveDependencies() after building the tree.");
+            return true;
         }
 
-        return _resolvedDependencies.All(IsDependencySatisfied);
+        ExecutionTask root = GetTreeRoot();
+        return Dependencies.All(id => IsDependencySatisfied(root, id));
     }
 
     /// <summary>
     /// Returns whether one dependency task is satisfied strongly enough for downstream work to start. Disabled
     /// dependencies are treated as satisfied when their own transitive dependencies are also satisfied.
     /// </summary>
-    private static bool IsDependencySatisfied(ExecutionTask dependencyTask)
+    private static bool IsDependencySatisfied(ExecutionTask root, ExecutionTaskId dependencyId)
     {
+        ExecutionTask dependencyTask = root.FindTask(dependencyId)
+            ?? throw new InvalidOperationException($"Dependency task '{dependencyId}' not found in the execution tree.");
+
         if (dependencyTask.Outcome == ExecutionTaskOutcome.Completed)
         {
             return true;
@@ -705,14 +702,9 @@ public class ExecutionTask : INotifyPropertyChanged
             return false;
         }
 
-        /* Disabled dependencies pass through to their own resolved dependencies so the scheduler treats a chain of
-           disabled tasks as satisfied only when the entire transitive chain has completed or is disabled-through. */
-        if (dependencyTask._resolvedDependencies == null)
-        {
-            throw new InvalidOperationException($"Task '{dependencyTask.Id}' has not resolved its dependencies. Call ResolveDependencies() after building the tree.");
-        }
-
-        return dependencyTask._resolvedDependencies.All(IsDependencySatisfied);
+        /* Disabled dependencies pass through to their own dependencies so the scheduler treats a chain of disabled
+           tasks as satisfied only when the entire transitive chain has completed or is disabled-through. */
+        return dependencyTask.Dependencies.All(id => IsDependencySatisfied(root, id));
     }
 
     /// <summary>
@@ -720,7 +712,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal bool CanStartOwnWork()
     {
-        return _executeAsync != null
+        return _spec.ExecuteAsync != null
             && State == ExecutionTaskState.Pending
             && AreDependenciesSatisfied()
             && AreAncestorsOpen();
@@ -779,6 +771,21 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Returns whether this task has reached a terminal runtime state.
     /// </summary>
     internal bool IsTerminal => State == ExecutionTaskState.Completed;
+
+    /// <summary>
+    /// Walks up the parent chain to find the root of the execution tree. Used by dependency resolution to locate
+    /// sibling and cousin tasks by ID without needing an external session reference.
+    /// </summary>
+    private ExecutionTask GetTreeRoot()
+    {
+        ExecutionTask current = this;
+        while (current._parent != null)
+        {
+            current = current._parent;
+        }
+
+        return current;
+    }
 
     /// <summary>
     /// Searches this task and its entire subtree for a task with the given id. Returns null when no match exists beneath

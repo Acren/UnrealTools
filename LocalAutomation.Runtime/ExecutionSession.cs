@@ -345,6 +345,8 @@ public sealed class ExecutionSession
         List<ExecutionTaskId> insertedTaskIds = new();
         using (PerformanceActivityScope addTasksActivity = PerformanceTelemetry.StartActivity("ExecutionSession.MergeChildTasks.AddTasks"))
         {
+            /* Dependency IDs copy through cloning as value types, so inserted tasks already carry the correct
+               dependency set from the child plan — no re-wiring needed. */
             foreach (ExecutionTask insertedTask in insertedTasks.Tasks)
             {
                 AddTask(insertedTask);
@@ -1116,8 +1118,7 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Derives lifecycle and semantic outcome for parent tasks from their child-task progress. Walks the parent chain
-    /// using direct object references and reads children directly from each parent task.
+    /// Derives lifecycle and semantic outcome for parent tasks from their child-task progress.
     /// </summary>
     private void RefreshAncestorTaskStates(ExecutionTaskId taskId)
     {
@@ -1202,6 +1203,8 @@ public sealed class ExecutionSession
     /// </summary>
     private void InitializeFromPlan(ExecutionPlan plan)
     {
+        /* Authored task specs already contain dependency IDs, so a single clone pass is sufficient to seed the live
+           session graph. */
         foreach (ExecutionTask task in plan.Tasks)
         {
             AddTask(task.CloneForSession());
@@ -1209,10 +1212,9 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Registers one task in the live session graph, wires parent-child object references, resolves dependency IDs to
-    /// live object references, and initializes task-owned runtime state. Prerequisites always exist in the tree before
-    /// their followers because the plan's task list is topologically ordered, so dependencies can be resolved immediately
-    /// during insertion rather than requiring a separate pass.
+    /// Registers one task in the live session graph, wires parent-child object references, and initializes task-owned
+    /// runtime state. Dependency IDs are already part of each cloned task's authored spec, so only parent-child object
+    /// references need wiring here.
     /// </summary>
     private void AddTask(ExecutionTask task)
     {
@@ -1241,16 +1243,6 @@ public sealed class ExecutionSession
 
             _rootTask = task;
         }
-
-        /* Resolve dependency IDs to live object references immediately. The plan's topological ordering guarantees that
-           every prerequisite task is already in the tree by the time its follower is added. */
-        List<ExecutionTask> resolvedDependencies = new(task.DependsOn.Count);
-        foreach (ExecutionTaskId dependencyId in task.DependsOn)
-        {
-            resolvedDependencies.Add(GetTask(dependencyId));
-        }
-
-        task.SetResolvedDependencies(resolvedDependencies);
     }
 }
 

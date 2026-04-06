@@ -454,7 +454,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> siblingOwnerByTaskId = BuildSiblingOwnerMap(children);
         Dictionary<RuntimeExecutionTaskId, HashSet<RuntimeExecutionTaskId>> remainingDependencies = children.ToDictionary(
             child => child.Id,
-            child => child.Task.Task.DependsOn
+            child => child.Task.Task.Dependencies
                 .Select(dependencyId => siblingOwnerByTaskId.TryGetValue(dependencyId, out RuntimeExecutionTaskId ownerId) ? ownerId : default)
                 .Where(ownerId => ownerId != default && ownerId != child.Id && childrenById.ContainsKey(ownerId))
                 .ToHashSet());
@@ -806,7 +806,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         List<ExecutionEdgeViewModel> edges = new();
         foreach (ExecutionNodeViewModel target in _nodes)
         {
-            foreach (RuntimeExecutionTaskId dependencyId in target.Task.Task.DependsOn)
+            foreach (RuntimeExecutionTaskId dependencyId in target.Task.Task.Dependencies)
             {
                 RuntimeExecutionTaskId? visibleDependencyId = GetVisibleTaskId(dependencyId);
                 if (visibleDependencyId == null || visibleDependencyId == target.Id)

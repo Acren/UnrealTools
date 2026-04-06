@@ -7,15 +7,15 @@ using LocalAutomation.Core;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Represents the authored execution DAG for an operation, including task hierarchy, dependencies, and executable task
-/// bodies.
+/// Represents the authored execution plan for an operation, including the plan title and the tasks that make up the
+/// operation's work.
 /// </summary>
 public sealed class ExecutionPlan
 {
     /// <summary>
-    /// Creates an execution plan from the provided metadata, tasks, and dependencies.
+    /// Creates an execution plan from the provided metadata and tasks.
     /// </summary>
-    public ExecutionPlan(ExecutionPlanId id, string title, IEnumerable<ExecutionTask> tasks, IEnumerable<ExecutionDependency>? dependencies = null)
+    public ExecutionPlan(ExecutionPlanId id, string title, IEnumerable<ExecutionTask> tasks)
     {
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -25,10 +25,8 @@ public sealed class ExecutionPlan
         Id = id;
         Title = title;
         List<ExecutionTask> materializedTasks = (tasks ?? throw new ArgumentNullException(nameof(tasks))).ToList();
-        List<ExecutionDependency> materializedDependencies = (dependencies ?? Array.Empty<ExecutionDependency>()).ToList();
-        Validate(materializedTasks, materializedDependencies);
+        Validate(materializedTasks);
         Tasks = new ReadOnlyCollection<ExecutionTask>(materializedTasks);
-        Dependencies = new ReadOnlyCollection<ExecutionDependency>(materializedDependencies);
     }
 
     /// <summary>
@@ -47,11 +45,6 @@ public sealed class ExecutionPlan
     public IReadOnlyList<ExecutionTask> Tasks { get; }
 
     /// <summary>
-    /// Gets the dependencies contained in the plan.
-    /// </summary>
-    public IReadOnlyList<ExecutionDependency> Dependencies { get; }
-
-    /// <summary>
     /// Returns the task with the provided identifier when it exists.
     /// </summary>
     public ExecutionTask? GetTask(ExecutionTaskId? taskId)
@@ -65,31 +58,20 @@ public sealed class ExecutionPlan
     }
 
     /// <summary>
-    /// Returns the task identifiers that must complete before the provided task can run.
+    /// Returns the task identifiers that must complete before the provided task can run. Dependencies are stored
+    /// directly on each task as ID values.
     /// </summary>
     public IReadOnlyList<ExecutionTaskId> GetTaskDependencies(ExecutionTaskId taskId)
     {
-        return Dependencies
-            .Where(dependency => dependency.TargetTaskId == taskId)
-            .Select(dependency => dependency.SourceTaskId)
-            .ToList();
+        return Tasks.Single(task => task.Id == taskId).Dependencies;
     }
 
     /// <summary>
-    /// Returns the task identifiers that directly depend on the provided task.
+    /// Validates the supplied task set so hosts can trust that the plan is a well-formed DAG. Dependency integrity
+    /// is guaranteed structurally because dependencies are authored as task identifiers that must resolve within the
+    /// same plan.
     /// </summary>
-    public IReadOnlyList<ExecutionTaskId> GetDependentTasks(ExecutionTaskId taskId)
-    {
-        return Dependencies
-            .Where(dependency => dependency.SourceTaskId == taskId)
-            .Select(dependency => dependency.TargetTaskId)
-            .ToList();
-    }
-
-    /// <summary>
-    /// Validates the supplied task and dependency set so hosts can trust that the plan is a well-formed DAG.
-    /// </summary>
-    private static void Validate(IReadOnlyList<ExecutionTask> tasks, IReadOnlyList<ExecutionDependency> dependencies)
+    private static void Validate(IReadOnlyList<ExecutionTask> tasks)
     {
         if (tasks.Count == 0)
         {
@@ -119,19 +101,6 @@ public sealed class ExecutionPlan
             throw new InvalidOperationException(rootTaskCount == 0
                 ? "Execution plans must contain exactly one root task, but none were found."
                 : $"Execution plans must contain exactly one root task, but found {rootTaskCount}.");
-        }
-
-        foreach (ExecutionDependency dependency in dependencies)
-        {
-            if (!tasksById.ContainsKey(dependency.SourceTaskId))
-            {
-                throw new InvalidOperationException($"Execution dependency references missing source task '{dependency.SourceTaskId}'.");
-            }
-
-            if (!tasksById.ContainsKey(dependency.TargetTaskId))
-            {
-                throw new InvalidOperationException($"Execution dependency references missing target task '{dependency.TargetTaskId}'.");
-            }
         }
     }
 }

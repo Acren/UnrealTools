@@ -17,7 +17,7 @@ public sealed class ExecutionPlanBuilder
     private readonly List<ExecutionTask> _items = new();
     private readonly Dictionary<ExecutionTaskId, ParentBuildState> _parentStateByTaskId = new();
     private readonly Func<Operation, OperationParameters, ExecutionPlan?> _buildChildPlan;
-    private IReadOnlyCollection<Type> _declaredOptionTypes = Array.Empty<Type>();
+    private IReadOnlyList<Type> _declaredOptionTypes = Array.Empty<Type>();
     private Operation _operation = null!;
 
     internal OperationParameters OperationParameters { get; private set; } = null!;
@@ -60,11 +60,10 @@ public sealed class ExecutionPlanBuilder
     /// </summary>
     public ExecutionPlan BuildPlan()
     {
+        /* Tasks carry their own authored dependency-id lists, so the plan only needs the flat task list — no separate
+           dependency edge collection. */
         List<ExecutionTask> tasks = _items.ToList();
-        List<ExecutionDependency> dependencies = _items
-            .SelectMany(item => item.DependsOn.Select(dependencyId => new ExecutionDependency(dependencyId, item.Id)))
-            .ToList();
-        return new ExecutionPlan(_planId, _title, tasks, dependencies);
+        return new ExecutionPlan(_planId, _title, tasks);
     }
 
     internal void SetBuilderOperationParameters(OperationParameters operationParameters)
@@ -79,7 +78,7 @@ public sealed class ExecutionPlanBuilder
 
     internal void SetDeclaredOptionTypes(IEnumerable<Type> declaredOptionTypes)
     {
-        _declaredOptionTypes = (declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))).ToList();
+        _declaredOptionTypes = (declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))).ToList().AsReadOnly();
     }
 
     /// <summary>
@@ -178,7 +177,8 @@ public sealed class ExecutionPlanBuilder
 
     /// <summary>
     /// Attaches one hidden body task beneath the provided parent task and immediately advances the parent's completion
-    /// frontier to that body task.
+    /// frontier to that body task. The body task inherits the parent's authored specification with overrides for
+    /// identity, title, execution delegate, and graph visibility.
     /// </summary>
     internal ExecutionTaskId AttachBodyTask(ExecutionTask parentTask, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
@@ -188,20 +188,16 @@ public sealed class ExecutionPlanBuilder
         ParentBuildState parentState = GetParentState(parentTask.Id);
         parentState.BodyCount += 1;
 
-        ExecutionTask bodyTask = new ExecutionTask(
-            GenerateTaskId(),
-            CreateBodyTaskTitle(parentTask, parentState.BodyCount),
-            parentTask.Operation,
-            parentTask.Description,
-            parentTask.Id,
-            enabled: parentTask.Enabled,
-            disabledReason: parentTask.DisabledReason,
-            operationParameters: parentTask.OperationParameters,
-            declaredOptionTypes: parentTask.DeclaredOptionTypes,
-            executeAsync: resolvedExecuteAsync,
-            outcome: null,
-            isOperationRoot: false,
-            isHiddenInGraph: true);
+        ExecutionTask bodyTask = new ExecutionTask(parentTask.Spec with
+        {
+            Id = GenerateTaskId(),
+            Title = CreateBodyTaskTitle(parentTask, parentState.BodyCount),
+            ParentId = parentTask.Id,
+            Dependencies = Array.Empty<ExecutionTaskId>(),
+            ExecuteAsync = resolvedExecuteAsync,
+            IsOperationRoot = false,
+            IsHiddenInGraph = true
+        });
 
         AddTaskDefinition(bodyTask);
         WireDependencies(bodyTask, parentState.CompletionFrontier);
@@ -280,19 +276,26 @@ public sealed class ExecutionPlanBuilder
     /// </summary>
     private ExecutionTask CreateItem(ExecutionTaskId id, string title, string? description, ExecutionTaskId? parentId)
     {
-        return new ExecutionTask(
-            id: id,
-            title: string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Execution item title is required.", nameof(title)) : title,
-            operation: _operation,
-            description: description ?? string.Empty,
-            parentId: parentId,
-            enabled: true,
-            disabledReason: string.Empty,
-            operationParameters: OperationParameters,
-            declaredOptionTypes: _declaredOptionTypes,
-            outcome: null,
-            isOperationRoot: parentId == null,
-            isHiddenInGraph: false);
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            throw new ArgumentException("Execution item title is required.", nameof(title));
+        }
+
+        TaskSpec spec = new TaskSpec(
+            Id: id,
+            Title: title,
+            Operation: _operation,
+            Description: description ?? string.Empty,
+            ParentId: parentId,
+            Dependencies: Array.Empty<ExecutionTaskId>(),
+            Enabled: true,
+            DisabledReason: string.Empty,
+            OperationParameters: OperationParameters,
+            DeclaredOptionTypes: _declaredOptionTypes,
+            ExecuteAsync: null,
+            IsOperationRoot: parentId == null,
+            IsHiddenInGraph: false);
+        return new ExecutionTask(spec);
     }
 
     /// <summary>
@@ -460,12 +463,13 @@ internal static class ExecutionTaskInsertion
     /// </summary>
     private static ExecutionTask CreateImportedTask(ExecutionTask childTask, ExecutionTaskId? parentId, ChildOperationRootOverrides? rootOverrides)
     {
-        return childTask.CreateClone(
-            parentId,
-            rootOverrides?.Title ?? childTask.Title,
-            rootOverrides?.Description ?? childTask.Description,
-            childTask.IsHiddenInGraph || (rootOverrides?.IsHiddenInGraph ?? false),
-            outcome: null);
+        return childTask.CloneWith(childTask.Spec with
+        {
+            ParentId = parentId,
+            Title = rootOverrides?.Title ?? childTask.Title,
+            Description = rootOverrides?.Description ?? childTask.Description,
+            IsHiddenInGraph = childTask.IsHiddenInGraph || (rootOverrides?.IsHiddenInGraph ?? false)
+        });
     }
 }
 
