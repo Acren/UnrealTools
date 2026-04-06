@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using TestUtilities;
 using Xunit;
 
 namespace LocalAutomation.Runtime.Tests;
@@ -343,6 +345,134 @@ public sealed class ExecutionPlanSchedulerTests
 
         // Assert: the contender with more downstream dependent work should win the lock once it is released.
         Assert.Equal("Branch B", winner);
+        Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+    }
+
+    /// <summary>
+    /// Confirms that lock priority still follows the outer runtime branch's downstream chain when each contender is
+    /// currently blocked inside an inserted child operation.
+    /// </summary>
+    [Fact]
+    public async Task LockReleasePrefersOuterBranchWithMoreDownstreamDependentsAcrossInsertedChildOperations()
+    {
+        /* Hold the shared lock with a separate child operation first so both branch bodies can insert their own child
+           operations and block on the same lock before the scheduler has to choose one winner. */
+        ExecutionLock sharedLock = new("inserted-child-dependent-priority-lock");
+        TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<string> contenderWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Lock Holder")
+                    .Run(async context =>
+                    {
+                        /* The lock-holder child operation owns the shared lock while the real contenders expand beneath
+                           their outer branch tasks. */
+                        Operation lockHolderOperation = new ExecutionTestCommon.InlineOperation(
+                            lockHolderRoot =>
+                            {
+                                lockHolderRoot.Run(async _ =>
+                                {
+                                    lockHolderStarted.TrySetResult(true);
+                                    await releaseLockHolder.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                });
+                            },
+                            operationName: "Lock Holder Child Operation",
+                            executionLocks: new[] { sharedLock });
+
+                        OperationParameters lockHolderParameters = lockHolderOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                        OperationResult lockHolderResult = await context.RunChildOperationAsync(lockHolderOperation, lockHolderParameters);
+                        if (!lockHolderResult.Success)
+                        {
+                            throw new InvalidOperationException(lockHolderResult.FailureReason ?? "Lock holder child operation failed.");
+                        }
+                    });
+
+                scope.Task("Parallel Work")
+                    .Children(ExecutionChildMode.Parallel, parallel =>
+                    {
+                        parallel.Task("Short Branch")
+                            .Run(async context =>
+                            {
+                                /* This branch has no outer follow-up work after its inserted child operation completes. */
+                                Operation shortChildOperation = new ExecutionTestCommon.InlineOperation(
+                                    shortChildRoot =>
+                                    {
+                                        shortChildRoot.Run(async _ =>
+                                        {
+                                            contenderWinner.TrySetResult("Short Branch");
+                                            await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                        });
+                                    },
+                                    operationName: "Short Child Operation",
+                                    executionLocks: new[] { sharedLock });
+
+                                OperationParameters shortChildParameters = shortChildOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                                OperationResult shortChildResult = await context.RunChildOperationAsync(shortChildOperation, shortChildParameters);
+                                if (!shortChildResult.Success)
+                                {
+                                    throw new InvalidOperationException(shortChildResult.FailureReason ?? "Short child operation failed.");
+                                }
+                            });
+
+                        parallel.Task("Long Branch")
+                            .Run(async context =>
+                            {
+                                /* This branch should win because its visible outer task unlocks additional runtime work
+                                   after the inserted child operation completes. */
+                                Operation longChildOperation = new ExecutionTestCommon.InlineOperation(
+                                    longChildRoot =>
+                                    {
+                                        longChildRoot.Run(async _ =>
+                                        {
+                                            contenderWinner.TrySetResult("Long Branch");
+                                            await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                        });
+                                    },
+                                    operationName: "Long Child Operation",
+                                    executionLocks: new[] { sharedLock });
+
+                                OperationParameters longChildParameters = longChildOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                                OperationResult longChildResult = await context.RunChildOperationAsync(longChildOperation, longChildParameters);
+                                if (!longChildResult.Success)
+                                {
+                                    throw new InvalidOperationException(longChildResult.FailureReason ?? "Long child operation failed.");
+                                }
+                            })
+                            .Then("Long Branch Follow-up")
+                            .Run(() => Task.CompletedTask);
+                    });
+            });
+        });
+
+        /* Wait until both inserted child-operation roots exist while the separate lock holder still owns the shared lock.
+           That isolates the arbitration point to the scheduler's next winner choice after release. */
+        (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline
+            && (!session.Tasks.Any(task => task.Title == "Short Child Operation")
+                || !session.Tasks.Any(task => task.Title == "Long Child Operation")))
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(session.Tasks.Any(task => task.Title == "Short Child Operation"), "Short branch never inserted its child operation.");
+        Assert.True(session.Tasks.Any(task => task.Title == "Long Child Operation"), "Long branch never inserted its child operation.");
+
+        releaseLockHolder.TrySetResult(true);
+        string winner = await contenderWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        releaseWinner.TrySetResult(true);
+        OperationResult result = await executeTask;
+
+        /* The outer long branch should win even though the concrete lock contender is the inserted child operation body. */
+        Assert.Equal("Long Branch", winner);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
     }
 
