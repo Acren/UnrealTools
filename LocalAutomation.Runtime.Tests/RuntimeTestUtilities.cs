@@ -95,4 +95,23 @@ internal static class RuntimeTestUtilities
         };
     }
 
+    /// <summary>
+    /// Waits until the supplied condition becomes true or throws after the provided timeout.
+    /// </summary>
+    public static async Task WaitForConditionAsync(Func<bool> predicate, TimeSpan timeout, string timeoutMessage = "Timed out waiting for the expected runtime condition.")
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (predicate())
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        throw new TimeoutException(timeoutMessage);
+    }
+
 }

@@ -107,9 +107,10 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
         try
         {
             await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await WaitForTaskAsync(
+            await RuntimeTestUtilities.WaitForConditionAsync(
                 () => insertedChildRootTaskId != default && session.Tasks.Any(task => task.Id == insertedChildRootTaskId),
-                TimeSpan.FromSeconds(5));
+                TimeSpan.FromSeconds(5),
+                "Timed out waiting for the expected runtime task shape.");
 
             ExecutionTask secondSiblingTask = session.GetTask(secondSiblingVisibleTaskId);
             Assert.Equal(ExecutionTaskState.Running, secondSiblingTask.State);
@@ -125,24 +126,5 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
         OperationResult result = await executeTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
         Assert.True(secondSiblingStarted.Task.IsCompleted, "The independently ready sibling never started during execution.");
-    }
-
-    /// <summary>
-    /// Waits until the supplied condition becomes true or throws after the provided timeout.
-    /// </summary>
-    private static async Task WaitForTaskAsync(Func<bool> predicate, TimeSpan timeout)
-    {
-        DateTime deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            if (predicate())
-            {
-                return;
-            }
-
-            await Task.Delay(10);
-        }
-
-        throw new TimeoutException("Timed out waiting for the expected runtime task shape.");
     }
 }

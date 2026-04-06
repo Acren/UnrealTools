@@ -361,6 +361,80 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
+    /// Confirms that when multiple runtime-parallel tasks become ready together, the scheduler should start the task whose
+    /// completion unlocks the longest downstream dependent chain before shorter sibling branches.
+    /// </summary>
+    [Fact]
+    public async Task ReadyParallelTasksPreferLongestFollowerChainFirst()
+    {
+        /* Keep the winning body task open so the first Running transition captured from the live session reflects the
+           scheduler's actual start choice instead of a race between very short async bodies. */
+        TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId shortBranchTaskId = default;
+        ExecutionTaskId longBranchTaskId = default;
+        ExecutionTaskId firstStartedTaskId = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Short Branch")
+                    .Run(async _ =>
+                    {
+                        await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        return OperationResult.Succeeded();
+                    }, out shortBranchTaskId);
+
+                scope.Task("Long Branch")
+                    .Run(async _ =>
+                    {
+                        await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        return OperationResult.Succeeded();
+                    }, out longBranchTaskId)
+                    .Then("Long Branch Follow-up 1")
+                    .Run(() => Task.CompletedTask)
+                    .Then("Long Branch Follow-up 2")
+                    .Run(() => Task.CompletedTask);
+            });
+        });
+
+        /* Capture the first body task that transitions to Running among the two parallel contenders. The scheduler sets
+           Running synchronously when it chooses a task, so this observes start order directly without relying on titles. */
+        (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        session.TaskStateChanged += OnTaskStateChanged;
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        try
+        {
+            await RuntimeTestUtilities.WaitForConditionAsync(() => firstStartedTaskId != default, TimeSpan.FromSeconds(1));
+        }
+        finally
+        {
+            session.TaskStateChanged -= OnTaskStateChanged;
+            releaseWinner.TrySetResult(true);
+        }
+
+        OperationResult result = await executeTask;
+
+        Assert.NotEqual(default, shortBranchTaskId);
+        Assert.NotEqual(default, longBranchTaskId);
+        Assert.Equal(longBranchTaskId, firstStartedTaskId);
+        Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+
+        void OnTaskStateChanged(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? _, string? __)
+        {
+            if (state != ExecutionTaskState.Running || firstStartedTaskId != default)
+            {
+                return;
+            }
+
+            if (taskId == shortBranchTaskId || taskId == longBranchTaskId)
+            {
+                firstStartedTaskId = taskId;
+            }
+        }
+    }
+
+    /// <summary>
     /// Confirms that lock priority still follows the outer runtime branch's downstream chain when each contender is
     /// currently blocked inside an inserted child operation.
     /// </summary>
