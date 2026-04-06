@@ -24,6 +24,7 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
         TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> secondSiblingStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ExecutionTaskId secondSiblingVisibleTaskId = default;
+        ExecutionTaskId insertedChildRootTaskId = default;
 
         var operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
@@ -72,6 +73,7 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
                                         var childOperation = new ExecutionTestCommon.InlineOperation(
                                             childRoot =>
                                             {
+                                                insertedChildRootTaskId = childRoot.Id;
                                                 childRoot.Run(() => Task.CompletedTask);
                                             },
                                             operationName: "Inserted Child Operation",
@@ -106,7 +108,7 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
         {
             await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await WaitForTaskAsync(
-                () => session.Tasks.Any(task => task.Title == "Inserted Child Operation"),
+                () => insertedChildRootTaskId != default && session.Tasks.Any(task => task.Id == insertedChildRootTaskId),
                 TimeSpan.FromSeconds(5));
 
             ExecutionTask secondSiblingTask = session.GetTask(secondSiblingVisibleTaskId);

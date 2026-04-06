@@ -200,37 +200,41 @@ public sealed class ExecutionPlanSchedulerTests
     {
         // Arrange: first and second are equally ready, but a shared lock means only one body can actually start first.
         ExecutionLock sharedLock = new("declared-order-lock");
-        TaskCompletionSource<string> firstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ExecutionTaskId> firstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId firstTaskId = default;
+        ExecutionTaskId secondTaskId = default;
 
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
             root.Children(ExecutionChildMode.Parallel, scope =>
             {
-                scope.Task("First").Run(async _ =>
+                scope.Task("First").Run(async context =>
                 {
-                    firstStarted.TrySetResult("First");
+                    firstStarted.TrySetResult(context.TaskId);
                     await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     return OperationResult.Succeeded();
-                });
-                scope.Task("Second").Run(async _ =>
+                }, out firstTaskId);
+                scope.Task("Second").Run(async context =>
                 {
-                    firstStarted.TrySetResult("Second");
+                    firstStarted.TrySetResult(context.TaskId);
                     await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     return OperationResult.Succeeded();
-                });
+                }, out secondTaskId);
             });
         }, sharedLock);
 
         // Act: execute once and capture whichever sibling body actually started first.
         (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
-        string winner = await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        ExecutionTaskId winnerTaskId = await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         releaseWinner.TrySetResult(true);
         OperationResult result = await executeTask;
 
         // Assert: declared-first work should win the shared lock and the overall run still completes successfully.
-        Assert.Equal("First", winner);
+        Assert.NotEqual(default, firstTaskId);
+        Assert.NotEqual(default, secondTaskId);
+        Assert.Equal(firstTaskId, winnerTaskId);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
     }
 
@@ -245,37 +249,41 @@ public sealed class ExecutionPlanSchedulerTests
         for (int runIndex = 0; runIndex < 10; runIndex += 1)
         {
             ExecutionLock sharedLock = new($"determinism-lock-{runIndex}");
-            TaskCompletionSource<string> winnerSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<ExecutionTaskId> winnerSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ExecutionTaskId firstTaskId = default;
+            ExecutionTaskId secondTaskId = default;
 
             Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
             {
                 root.Children(ExecutionChildMode.Parallel, scope =>
                 {
-                    scope.Task("First").Run(async _ =>
+                    scope.Task("First").Run(async context =>
                     {
-                        winnerSource.TrySetResult("First");
+                        winnerSource.TrySetResult(context.TaskId);
                         await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                         return OperationResult.Succeeded();
-                    });
-                    scope.Task("Second").Run(async _ =>
+                    }, out firstTaskId);
+                    scope.Task("Second").Run(async context =>
                     {
-                        winnerSource.TrySetResult("Second");
+                        winnerSource.TrySetResult(context.TaskId);
                         await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                         return OperationResult.Succeeded();
-                    });
+                    }, out secondTaskId);
                 });
             }, sharedLock);
 
             // Act: rebuild and run the same authored shape repeatedly, recording the first-starting sibling each time.
             (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
             Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
-            string winner = await winnerSource.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            ExecutionTaskId winnerTaskId = await winnerSource.Task.WaitAsync(TimeSpan.FromSeconds(1));
             releaseWinner.TrySetResult(true);
             OperationResult result = await executeTask;
 
             // Assert: every fresh plan build should still prefer the declared-first sibling.
-            Assert.Equal("First", winner);
+            Assert.NotEqual(default, firstTaskId);
+            Assert.NotEqual(default, secondTaskId);
+            Assert.Equal(firstTaskId, winnerTaskId);
             Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
         }
     }
@@ -293,8 +301,10 @@ public sealed class ExecutionPlanSchedulerTests
         ExecutionLock sharedLock = new("dependent-priority-lock");
         TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource<string> contenderWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ExecutionTaskId> contenderWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId branchATaskId = default;
+        ExecutionTaskId branchBTaskId = default;
 
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
@@ -312,20 +322,20 @@ public sealed class ExecutionPlanSchedulerTests
                             .Children(ExecutionChildMode.Parallel, parallel =>
                             {
                                 parallel.Task("Branch A")
-                                    .Run(async _ =>
+                                    .Run(async context =>
                                     {
-                                        contenderWinner.TrySetResult("Branch A");
+                                        contenderWinner.TrySetResult(context.TaskId);
                                         await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                                         return OperationResult.Succeeded();
-                                    });
+                                    }, out branchATaskId);
 
                                 parallel.Task("Branch B")
-                                    .Run(async _ =>
+                                    .Run(async context =>
                                     {
-                                        contenderWinner.TrySetResult("Branch B");
+                                        contenderWinner.TrySetResult(context.TaskId);
                                         await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                                         return OperationResult.Succeeded();
-                                    })
+                                    }, out branchBTaskId)
                                     .Then("Branch B Dependent")
                                     .Run(() => Task.CompletedTask);
                             });
@@ -339,12 +349,14 @@ public sealed class ExecutionPlanSchedulerTests
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         releaseLockHolder.TrySetResult(true);
-        string winner = await contenderWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        ExecutionTaskId winnerTaskId = await contenderWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
         releaseWinner.TrySetResult(true);
         OperationResult result = await executeTask;
 
         // Assert: the contender with more downstream dependent work should win the lock once it is released.
-        Assert.Equal("Branch B", winner);
+        Assert.NotEqual(default, branchATaskId);
+        Assert.NotEqual(default, branchBTaskId);
+        Assert.Equal(branchBTaskId, winnerTaskId);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
     }
 
@@ -360,8 +372,12 @@ public sealed class ExecutionPlanSchedulerTests
         ExecutionLock sharedLock = new("inserted-child-dependent-priority-lock");
         TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource<string> contenderWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ExecutionTaskId> contenderWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId shortChildRootTaskId = default;
+        ExecutionTaskId shortChildBodyTaskId = default;
+        ExecutionTaskId longChildRootTaskId = default;
+        ExecutionTaskId longChildBodyTaskId = default;
 
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
@@ -402,11 +418,12 @@ public sealed class ExecutionPlanSchedulerTests
                                 Operation shortChildOperation = new ExecutionTestCommon.InlineOperation(
                                     shortChildRoot =>
                                     {
-                                        shortChildRoot.Run(async _ =>
+                                        shortChildRootTaskId = shortChildRoot.Id;
+                                        shortChildRoot.Run(async childContext =>
                                         {
-                                            contenderWinner.TrySetResult("Short Branch");
+                                            contenderWinner.TrySetResult(childContext.TaskId);
                                             await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
-                                        });
+                                        }, out shortChildBodyTaskId);
                                     },
                                     operationName: "Short Child Operation",
                                     executionLocks: new[] { sharedLock });
@@ -427,11 +444,12 @@ public sealed class ExecutionPlanSchedulerTests
                                 Operation longChildOperation = new ExecutionTestCommon.InlineOperation(
                                     longChildRoot =>
                                     {
-                                        longChildRoot.Run(async _ =>
+                                        longChildRootTaskId = longChildRoot.Id;
+                                        longChildRoot.Run(async childContext =>
                                         {
-                                            contenderWinner.TrySetResult("Long Branch");
+                                            contenderWinner.TrySetResult(childContext.TaskId);
                                             await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
-                                        });
+                                        }, out longChildBodyTaskId);
                                     },
                                     operationName: "Long Child Operation",
                                     executionLocks: new[] { sharedLock });
@@ -457,22 +475,26 @@ public sealed class ExecutionPlanSchedulerTests
 
         DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
         while (DateTime.UtcNow < deadline
-            && (!session.Tasks.Any(task => task.Title == "Short Child Operation")
-                || !session.Tasks.Any(task => task.Title == "Long Child Operation")))
+            && (!session.Tasks.Any(task => task.Id == shortChildRootTaskId)
+                || !session.Tasks.Any(task => task.Id == longChildRootTaskId)))
         {
             await Task.Delay(10);
         }
 
-        Assert.True(session.Tasks.Any(task => task.Title == "Short Child Operation"), "Short branch never inserted its child operation.");
-        Assert.True(session.Tasks.Any(task => task.Title == "Long Child Operation"), "Long branch never inserted its child operation.");
+        Assert.NotEqual(default, shortChildRootTaskId);
+        Assert.NotEqual(default, shortChildBodyTaskId);
+        Assert.NotEqual(default, longChildRootTaskId);
+        Assert.NotEqual(default, longChildBodyTaskId);
+        Assert.True(session.Tasks.Any(task => task.Id == shortChildRootTaskId), "Short branch never inserted its child operation.");
+        Assert.True(session.Tasks.Any(task => task.Id == longChildRootTaskId), "Long branch never inserted its child operation.");
 
         releaseLockHolder.TrySetResult(true);
-        string winner = await contenderWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        ExecutionTaskId winnerTaskId = await contenderWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
         releaseWinner.TrySetResult(true);
         OperationResult result = await executeTask;
 
         /* The outer long branch should win even though the concrete lock contender is the inserted child operation body. */
-        Assert.Equal("Long Branch", winner);
+        Assert.Equal(longChildBodyTaskId, winnerTaskId);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
     }
 
