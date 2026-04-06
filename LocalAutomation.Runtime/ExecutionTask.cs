@@ -359,6 +359,39 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Returns the scheduler-ready branch roots beneath this task. A task with ready descendants contributes those
+    /// descendant branch roots directly instead of surfacing only itself, which keeps independently ready sibling
+    /// branches startable even when another sibling subtree has already inserted deeper ready work.
+    /// </summary>
+    internal IReadOnlyList<ExecutionTask> GetSchedulerReadyBranchRoots()
+    {
+        if (State == ExecutionTaskState.Completed)
+        {
+            return Array.Empty<ExecutionTask>();
+        }
+
+        List<ExecutionTask> readyChildBranches = _children
+            .SelectMany(child => child.GetSchedulerReadyBranchRoots())
+            .ToList();
+
+        if (CanStartOwnWork())
+        {
+            if (_children.Count == 0)
+            {
+                return new[] { this };
+            }
+
+            /* A task that can start its own body while also containing ready descendants still represents one scheduler
+               branch root. Starting the task body may itself produce more ready work, but that should not suppress the
+               descendant branch roots of sibling subtrees. */
+            readyChildBranches.Insert(0, this);
+            return readyChildBranches;
+        }
+
+        return readyChildBranches;
+    }
+
+    /// <summary>
     /// Returns the execution locks required for the next startable work item in this task subtree.
     /// </summary>
     /// <summary>

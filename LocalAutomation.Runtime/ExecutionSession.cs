@@ -534,10 +534,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal IReadOnlyList<ExecutionTask> GetSchedulerReadyTasks()
     {
-        return Tasks
-            .Where(task => task.GetTaskStartState() == TaskStartState.Ready)
-            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState() != TaskStartState.Ready)
-            .ToList();
+        return RootTask.GetSchedulerReadyBranchRoots();
     }
 
     /// <summary>
