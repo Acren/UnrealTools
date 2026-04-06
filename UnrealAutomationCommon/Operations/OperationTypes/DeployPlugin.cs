@@ -30,20 +30,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
     public class DeployPluginForEngine : UnrealOperation<Plugin>
     {
-        private sealed class DeploymentState
+        private sealed class DeploymentWorkspaceState
         {
-            public DeploymentState(Engine engine, Plugin sourcePlugin, Project hostProject, string workspacePath, Project workspaceProject, Plugin workspacePlugin, Plugin? stagingPlugin = null, Plugin? builtPlugin = null, Project? exampleProject = null, Package? demoPackage = null)
+            public DeploymentWorkspaceState(Engine engine, Plugin sourcePlugin, Project hostProject, string workspacePath, string workspaceProjectPath, string workspacePluginPath)
             {
                 Engine = engine ?? throw new ArgumentNullException(nameof(engine));
                 SourcePlugin = sourcePlugin ?? throw new ArgumentNullException(nameof(sourcePlugin));
                 HostProject = hostProject ?? throw new ArgumentNullException(nameof(hostProject));
                 WorkspacePath = workspacePath ?? throw new ArgumentNullException(nameof(workspacePath));
-                WorkspaceProject = workspaceProject ?? throw new ArgumentNullException(nameof(workspaceProject));
-                WorkspacePlugin = workspacePlugin ?? throw new ArgumentNullException(nameof(workspacePlugin));
-                StagingPlugin = stagingPlugin;
-                BuiltPlugin = builtPlugin;
-                ExampleProject = exampleProject;
-                DemoPackage = demoPackage;
+                WorkspaceProjectPath = workspaceProjectPath ?? throw new ArgumentNullException(nameof(workspaceProjectPath));
+                WorkspacePluginPath = workspacePluginPath ?? throw new ArgumentNullException(nameof(workspacePluginPath));
             }
 
             public Engine Engine { get; }
@@ -54,57 +50,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             public string WorkspacePath { get; }
 
-            public Project WorkspaceProject { get; }
+            public string WorkspaceProjectPath { get; }
 
-            public Plugin WorkspacePlugin { get; }
-
-            public Plugin? StagingPlugin { get; }
-
-            public Plugin? BuiltPlugin { get; }
-
-            public Project? ExampleProject { get; }
-
-            public Package? DemoPackage { get; }
-
-            public Plugin GetRequiredStagingPlugin()
-            {
-                return StagingPlugin ?? throw new InvalidOperationException("Staging plugin is not available yet.");
-            }
-
-            public Plugin GetRequiredBuiltPlugin()
-            {
-                return BuiltPlugin ?? throw new InvalidOperationException("Built plugin is not available yet.");
-            }
-
-            public Project GetRequiredExampleProject()
-            {
-                return ExampleProject ?? throw new InvalidOperationException("Example project is not available yet.");
-            }
-
-            public Package GetRequiredDemoPackage()
-            {
-                return DemoPackage ?? throw new InvalidOperationException("Demo package is not available yet.");
-            }
-
-            public DeploymentState WithStagingPlugin(Plugin stagingPlugin)
-            {
-                return new DeploymentState(Engine, SourcePlugin, HostProject, WorkspacePath, WorkspaceProject, WorkspacePlugin, stagingPlugin, BuiltPlugin, ExampleProject, DemoPackage);
-            }
-
-            public DeploymentState WithBuiltPlugin(Plugin builtPlugin)
-            {
-                return new DeploymentState(Engine, SourcePlugin, HostProject, WorkspacePath, WorkspaceProject, WorkspacePlugin, StagingPlugin, builtPlugin, ExampleProject, DemoPackage);
-            }
-
-            public DeploymentState WithExampleProject(Project exampleProject)
-            {
-                return new DeploymentState(Engine, SourcePlugin, HostProject, WorkspacePath, WorkspaceProject, WorkspacePlugin, StagingPlugin, BuiltPlugin, exampleProject, DemoPackage);
-            }
-
-            public DeploymentState WithDemoPackage(Package demoPackage)
-            {
-                return new DeploymentState(Engine, SourcePlugin, HostProject, WorkspacePath, WorkspaceProject, WorkspacePlugin, StagingPlugin, BuiltPlugin, ExampleProject, demoPackage);
-            }
+            public string WorkspacePluginPath { get; }
         }
 
         /// <summary>
@@ -126,7 +74,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return Path.Combine(GetWorkspacePath(workspaceRootPath, label), leafName);
         }
 
-        private void UpdatePluginDescriptorForArchive(DeploymentState state, Plugin plugin)
+        private void UpdatePluginDescriptorForArchive(DeploymentWorkspaceState state, Plugin plugin)
         {
             Engine engine = state.Engine;
             Plugin sourcePlugin = state.SourcePlugin;
@@ -149,7 +97,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
 
-        private void UpdateProjectDescriptorForArchive(DeploymentState state, Project project)
+        private void UpdateProjectDescriptorForArchive(DeploymentWorkspaceState state, Project project)
         {
             Engine engine = state.Engine;
             JObject projectDescriptor = JObject.Parse(File.ReadAllText(project.UProjectPath));
@@ -166,6 +114,195 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
+        /// Keeps every derived artifact path under the engine-specific workspace so later branch tasks can reconstruct the
+        /// same project, plugin, and package locations without mutating shared operation state.
+        /// </summary>
+        private static string GetWorkspaceProjectPath(DeploymentWorkspaceState state)
+        {
+            return state.WorkspaceProjectPath;
+        }
+
+        /// <summary>
+        /// Returns the materialized workspace plugin path created during the initial engine-specific workspace step.
+        /// </summary>
+        private static string GetWorkspacePluginPath(DeploymentWorkspaceState state)
+        {
+            return state.WorkspacePluginPath;
+        }
+
+        /// <summary>
+        /// Returns the staging plugin path used for the source-style archive and packaged plugin build input.
+        /// </summary>
+        private static string GetStagingPluginPath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "PluginStaging", state.SourcePlugin.Name);
+        }
+
+        /// <summary>
+        /// Returns the packaged plugin output path produced by the plugin-build step.
+        /// </summary>
+        private static string GetBuiltPluginPath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "PluginBuild", state.SourcePlugin.Name);
+        }
+
+        /// <summary>
+        /// Returns the prepared-and-built example project base that all later packaging variants clone.
+        /// </summary>
+        private static string GetExampleProjectBasePath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "ExampleProjectBase");
+        }
+
+        /// <summary>
+        /// Returns the full-copy project variant used for the project-plugin packaging branch.
+        /// </summary>
+        private static string GetProjectPluginVariantPath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "ProjectPluginVariant");
+        }
+
+        /// <summary>
+        /// Returns the full-copy project variant used for the engine-plugin packaging branch.
+        /// </summary>
+        private static string GetEnginePluginVariantPath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "EnginePluginVariant");
+        }
+
+        /// <summary>
+        /// Returns the full-copy project variant used only for the Clang validation branch.
+        /// </summary>
+        private static string GetClangVariantPath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "ClangVariant");
+        }
+
+        /// <summary>
+        /// Returns the full-copy project variant used for the blueprint packaging and demo packaging branch.
+        /// </summary>
+        private static string GetBlueprintDemoVariantPath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "BlueprintDemoVariant");
+        }
+
+        /// <summary>
+        /// Returns the project-plugin package output directory.
+        /// </summary>
+        private static string GetProjectPluginPackagePath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "ProjectPluginPackage");
+        }
+
+        /// <summary>
+        /// Returns the engine-plugin package output directory.
+        /// </summary>
+        private static string GetEnginePluginPackagePath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "EnginePluginPackage");
+        }
+
+        /// <summary>
+        /// Returns the blueprint-only package output directory.
+        /// </summary>
+        private static string GetBlueprintPackagePath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "BlueprintOnlyPackage");
+        }
+
+        /// <summary>
+        /// Returns the demo package output directory.
+        /// </summary>
+        private static string GetDemoPackageOutputPath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "DemoExe");
+        }
+
+        /// <summary>
+        /// Returns a dedicated workspace copy used only for the example-project archive so archive cleanup never mutates
+        /// the blueprint/demo variant used by packaging tasks.
+        /// </summary>
+        private static string GetExampleArchiveProjectPath(DeploymentWorkspaceState state)
+        {
+            return GetWorkspacePath(state.WorkspacePath, "ExampleProjectArchive");
+        }
+
+        /// <summary>
+        /// Returns the engine marketplace install path used by the engine-plugin validation branches.
+        /// </summary>
+        private static string GetInstalledEnginePluginPath(DeploymentWorkspaceState state)
+        {
+            return Path.Combine(state.Engine.TargetPath, @"Engine\Plugins\Marketplace", state.SourcePlugin.Name);
+        }
+
+        /// <summary>
+        /// Returns the packaged Windows build path for one package output root and validates that the expected executable
+        /// tree exists before later launch or archive steps proceed.
+        /// </summary>
+        private static string GetRequiredPackagePath(DeploymentWorkspaceState state, string packageOutputPath, string failureMessage)
+        {
+            string packagePath = Path.Combine(packageOutputPath, state.Engine.GetWindowsPlatformName());
+            if (!PackagePaths.Instance.IsTargetDirectory(packagePath))
+            {
+                throw new InvalidOperationException($"{failureMessage}: {packagePath}");
+            }
+
+            return packagePath;
+        }
+
+        /// <summary>
+        /// Creates one validated plugin target from a known workspace-relative plugin path.
+        /// </summary>
+        private static Plugin CreateRequiredPlugin(string pluginPath, string failureMessage)
+        {
+            if (!PluginPaths.Instance.IsTargetDirectory(pluginPath))
+            {
+                throw new InvalidOperationException($"{failureMessage}: {pluginPath}");
+            }
+
+            return new Plugin(pluginPath);
+        }
+
+        /// <summary>
+        /// Creates one validated project target from a known workspace-relative project path.
+        /// </summary>
+        private static Project CreateRequiredProject(string projectPath, string failureMessage)
+        {
+            if (!ProjectPaths.Instance.IsTargetDirectory(projectPath))
+            {
+                throw new InvalidOperationException($"{failureMessage}: {projectPath}");
+            }
+
+            return new Project(projectPath);
+        }
+
+        /// <summary>
+        /// Creates one validated packaged-build target from a known workspace-relative package output root.
+        /// </summary>
+        private static Package CreateRequiredPackage(DeploymentWorkspaceState state, string packageOutputPath, string failureMessage)
+        {
+            return new Package(GetRequiredPackagePath(state, packageOutputPath, failureMessage));
+        }
+
+        /// <summary>
+        /// Returns one archive zip path beneath the operation output archive folder.
+        /// </summary>
+        private string GetArchiveZipPath(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, string archivePrefix, string archiveFileName)
+        {
+            return Path.Combine(GetOutputPath(operationParameters), "Archives", archivePrefix + archiveFileName);
+        }
+
+        /// <summary>
+        /// Recreates one full project copy, including generated build outputs, so later branches can mutate or package an
+        /// isolated variant without racing the shared built example base.
+        /// </summary>
+        private static void CopyProjectVariant(string sourceProjectPath, string destinationProjectPath)
+        {
+            FileUtils.DeleteDirectoryIfExists(destinationProjectPath);
+            FileUtils.CopyDirectory(sourceProjectPath, destinationProjectPath);
+        }
+
+        /// <summary>
         /// Describes the per-engine deployment subtree beneath the framework-owned root task.
         /// </summary>
         protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
@@ -173,67 +310,143 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             AutomationOptions automationOptions = operationParameters.GetOptions<AutomationOptions>();
             PluginDeployOptions deployOptions = operationParameters.GetOptions<PluginDeployOptions>();
 
-            root.Children(steps => steps
-                .Task("Prepare Workspace")
+            /* The per-engine flow is authored as an explicit DAG so validation, packaging, and variant-preparation work can
+               widen where the filesystem inputs are independent. Visible task dependencies still wait for each authored
+               subtree to finish because joins target the visible task ids rather than hidden body-task ids. */
+            root.Children(global::LocalAutomation.Runtime.ExecutionChildMode.Parallel, steps =>
+            {
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareWorkspace = steps.Task("Prepare Workspace")
                     .Describe("Create the isolated engine-specific workspace from the prepared source")
-                    .Run(context => PrepareStepAsync(context))
-                .Then("Stage Plugin")
-                    .Describe("Create the staged plugin copy used for packaging and archiving")
-                    .Run(context => StagingStepAsync(context))
-                .Then("Build Editor")
+                    .Run(PrepareStepAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildEditor = steps.Task("Build Editor")
                     .Describe("Compile the host project editor before validation runs")
-                    .Run(context => BuildEditor(context))
-                .Then("Test Editor")
+                    .After(prepareWorkspace.Id)
+                    .Run(BuildEditor);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder stagePlugin = steps.Task("Stage Plugin")
+                    .Describe("Create the staged plugin copy used for packaging and archiving")
+                    .After(prepareWorkspace.Id)
+                    .Run(StagingStepAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testEditor = steps.Task("Test Editor")
                     .Describe("Run the editor automation validation pass")
+                    .After(buildEditor.Id)
                     .When(automationOptions.RunTests, "Run Tests is off.")
-                    .Run(context => TestEditor(context, automationOptions))
-                .Then("Test Standalone")
+                    .Run(context => TestEditor(context, automationOptions));
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testStandalone = steps.Task("Test Standalone")
                     .Describe("Run the standalone validation pass")
+                    .After(buildEditor.Id)
                     .When(automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Test Standalone is off." : "Run Tests is off.")
-                    .Run(context => TestStandalone(context, automationOptions))
-                .Then("Build Plugin")
+                    .Run(context => TestStandalone(context, automationOptions));
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildPlugin = steps.Task("Build Plugin")
                     .Describe("Package the staged plugin into a distributable build")
-                    .Run(context => BuildPlugin(context))
-                .Then("Prepare Example")
-                    .Describe("Assemble the example project used for packaging verification")
-                    .Run(context => PrepareExampleProject(context))
-                .Then("Clang Check")
-                    .Describe("Run the optional Clang validation against the packaged plugin")
+                    .After(stagePlugin.Id)
+                    .Run(BuildPlugin);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareExampleBase = steps.Task("Prepare Example Base")
+                    .Describe("Assemble the base example project used by every later packaging branch")
+                    .After(buildPlugin.Id)
+                    .Run(PrepareExampleProjectBaseAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildExampleBase = steps.Task("Build Example Base")
+                    .Describe("Compile the base example project before packaging branches clone it")
+                    .After(prepareExampleBase.Id)
+                    .Run(BuildCodeExampleProjectBaseAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareClangVariant = steps.Task("Prepare Clang Variant")
+                    .Describe("Create an isolated example-project copy for the optional Clang validation branch")
+                    .After(buildExampleBase.Id)
                     .When(deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.")
-                    .Run(context => RunClangCompileCheck(context))
-                .Then("Build Example")
-                    .Describe("Compile the example project before packaging verification")
-                    .Run(context => BuildCodeExampleProject(context))
-                .Then("Package Project Plugin")
+                    .Run(PrepareClangVariantAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder clangCheck = steps.Task("Clang Check")
+                    .Describe("Run the optional Clang validation against the packaged plugin")
+                    .After(prepareClangVariant.Id)
+                    .When(deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.")
+                    .Run(RunClangCompileCheck);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareProjectVariant = steps.Task("Prepare Project Variant")
+                    .Describe("Clone the built example project for project-plugin packaging")
+                    .After(buildExampleBase.Id)
+                    .Run(PrepareProjectPluginVariantAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageProjectPlugin = steps.Task("Package Project Plugin")
                     .Describe("Package the example project with the plugin installed at project level")
-                    .Run(context => PackageCodeExampleProjectWithProjectPluginAsync(context, automationOptions))
-                .Then("Test Project Plugin")
+                    .After(prepareProjectVariant.Id)
+                    .Run(PackageCodeExampleProjectWithProjectPluginAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testProjectPlugin = steps.Task("Test Project Plugin")
                     .Describe("Launch and validate the project-plugin package")
+                    .After(packageProjectPlugin.Id)
                     .When(automationOptions.RunTests && deployOptions.TestPackageWithProjectPlugin, automationOptions.RunTests ? "Test Package With Project Plugin is off." : "Run Tests is off.")
-                    .Run(context => TestCodeExampleProjectPackageWithProjectPluginAsync(context, automationOptions))
-                .Then("Install Engine Plugin")
-                    .Describe("Install the built plugin into the engine marketplace folder")
-                    .Run(context => PrepareEnginePluginInstallAsync(context))
-                .Then("Package Engine Plugin")
+                    .Run(context => TestCodeExampleProjectPackageWithProjectPluginAsync(context, automationOptions));
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder installEnginePlugin = steps.Task("Install Engine Plugin")
+                    .Describe("Install the built plugin into the engine marketplace folder once the project-plugin package is sealed")
+                    .After(packageProjectPlugin.Id)
+                    .Run(PrepareEnginePluginInstallAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareEngineVariant = steps.Task("Prepare Engine Variant")
+                    .Describe("Clone the built example project and remove the project-level plugin copy for engine-plugin packaging")
+                    .After(buildExampleBase.Id)
+                    .Run(PrepareEnginePluginVariantAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageEnginePlugin = steps.Task("Package Engine Plugin")
                     .Describe("Package the example project with the plugin installed to the engine")
-                    .Run(context => PackageCodeExampleProjectWithEnginePluginAsync(context, automationOptions))
-                .Then("Test Engine Plugin")
+                    .After(prepareEngineVariant.Id, installEnginePlugin.Id)
+                    .Run(PackageCodeExampleProjectWithEnginePluginAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testEnginePlugin = steps.Task("Test Engine Plugin")
                     .Describe("Launch and validate the engine-plugin package")
+                    .After(packageEnginePlugin.Id)
                     .When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.")
-                    .Run(context => TestCodeExampleProjectPackageWithEnginePluginAsync(context, automationOptions))
-                .Then("Package Blueprint")
+                    .Run(context => TestCodeExampleProjectPackageWithEnginePluginAsync(context, automationOptions));
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareBlueprintDemoVariant = steps.Task("Prepare Blueprint/Demo Variant")
+                    .Describe("Clone the built example project, convert it to blueprint-only, and prune plugins for blueprint and demo packaging")
+                    .After(buildExampleBase.Id)
+                    .Run(PrepareBlueprintDemoVariantAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageBlueprint = steps.Task("Package Blueprint")
                     .Describe("Package the blueprint-only project with the plugin installed to the engine")
-                    .Run(context => PackageBlueprintExampleProjectWithEnginePluginAsync(context, automationOptions))
-                .Then("Test Blueprint")
+                    .After(prepareBlueprintDemoVariant.Id, installEnginePlugin.Id)
+                    .Run(PackageBlueprintExampleProjectWithEnginePluginAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testBlueprint = steps.Task("Test Blueprint")
                     .Describe("Launch and validate the blueprint-only package")
+                    .After(packageBlueprint.Id)
                     .When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.")
-                    .Run(context => TestBlueprintExampleProjectPackageWithEnginePluginAsync(context, automationOptions))
-                .Then("Package Demo")
-                    .Describe("Package the demo executable build")
-                    .Run(context => PackageDemoExecutable(context))
-                .Then("Archive")
-                    .Describe("Archive the requested deployment artifacts")
-                    .Run(context => ArchiveArtifacts(context)));
+                    .Run(context => TestBlueprintExampleProjectPackageWithEnginePluginAsync(context, automationOptions));
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageDemo = steps.Task("Package Demo")
+                    .Describe("Package the demo executable build from the prepared blueprint/demo variant")
+                    .After(packageBlueprint.Id)
+                    .Run(PackageDemoExecutable);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder archivePluginSource = steps.Task("Archive Plugin Source")
+                    .Describe("Archive the staged plugin source payload as soon as the staging copy is ready")
+                    .After(stagePlugin.Id)
+                    .Run(ArchivePluginSourceAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder archivePluginBuild = steps.Task("Archive Plugin Build")
+                    .Describe("Archive the packaged plugin build as soon as the packaged plugin output is ready")
+                    .After(buildPlugin.Id)
+                    .Run(ArchivePluginBuildAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder archiveExampleProject = steps.Task("Archive Example Project")
+                    .Describe("Archive the example-project payload from a dedicated archive copy once the blueprint/demo variant is prepared")
+                    .After(prepareBlueprintDemoVariant.Id)
+                    .Run(ArchiveExampleProjectAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder archiveDemoPackage = steps.Task("Archive Demo Package")
+                    .Describe("Archive the demo package as soon as the packaged demo output exists")
+                    .After(packageDemo.Id)
+                    .Run(ArchiveDemoPackageAsync);
+
+            });
         }
 
         /// <summary>
@@ -251,12 +464,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 });
         }
 
+        /// <summary>
+        /// Compiles the copied workspace project so editor-driven validation can run against the engine-specific workspace.
+        /// </summary>
         private async Task BuildEditor(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Building host project editor");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for editor build");
             global::LocalAutomation.Runtime.OperationParameters buildEditorParams = CreateParameters();
-            buildEditorParams.Target = state.WorkspaceProject;
+            buildEditorParams.Target = workspaceProject;
             buildEditorParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "BuildEditorOutput");
             buildEditorParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
 
@@ -275,10 +492,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeployPreparedSourceState preparedSource = context.GetState<DeployPreparedSourceState>();
             Plugin plugin = preparedSource.SourcePlugin;
             Project hostProject = preparedSource.HostProject;
+            string workspacePath = GetEngineTempPath(context, engine);
+            string workspaceProjectPath = GetWorkspacePath(workspacePath, "HostProject");
+            string workspacePluginPath = Path.Combine(workspaceProjectPath, "Plugins", plugin.Name);
+            DeploymentWorkspaceState workspaceState = new(engine, plugin, hostProject, workspacePath, workspaceProjectPath, workspacePluginPath);
 
             context.Logger.LogInformation($"Engine version: {engine.Version}");
-            string workspacePath = GetEngineTempPath(context, engine);
-            string archivePrefix = BuildArchivePrefix(new DeploymentState(engine, plugin, hostProject, workspacePath, hostProject, plugin));
+            string archivePrefix = BuildArchivePrefix(workspaceState);
             context.Logger.LogInformation($"Archive name prefix is '{archivePrefix}'");
             context.Logger.LogInformation($"Source host project: {hostProject.ProjectPath}");
             context.Logger.LogInformation($"Source plugin: {plugin.PluginPath}");
@@ -296,13 +516,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             context.Logger.LogInformation($"Creating workspace root: {workspacePath}");
             Directory.CreateDirectory(workspacePath);
 
-            string workspaceProjectPath = GetWorkspacePath(workspacePath, "HostProject");
             context.Logger.LogInformation($"Copying host project to workspace: {workspaceProjectPath}");
             FileUtils.MaterializeDirectory(hostProject.ProjectPath, workspaceProjectPath, MaterializationSpecs.CreateProject(hostProject));
 
             string workspacePluginsPath = Path.Combine(workspaceProjectPath, "Plugins");
             Directory.CreateDirectory(workspacePluginsPath);
-            string workspacePluginPath = Path.Combine(workspacePluginsPath, plugin.Name);
             context.Logger.LogInformation($"Materializing target plugin into workspace: {workspacePluginPath}");
             FileUtils.MaterializeDirectory(plugin.PluginPath, workspacePluginPath, MaterializationSpecs.CreatePlugin(plugin));
             context.Logger.LogInformation($"Finished copying host project to workspace: {workspaceProjectPath}");
@@ -314,17 +532,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             context.Logger.LogInformation($"Workspace Plugins directory: {workspacePluginsPath}");
 
-            Project workspaceProject = new(workspaceProjectPath);
-            context.Logger.LogInformation($"Enumerating workspace plugins in: {workspacePluginsPath}");
-
-            Plugin workspacePlugin = workspaceProject.Plugins.SingleOrDefault(projectPlugin => projectPlugin.Name == plugin.Name)
-                ?? throw new Exception($"Could not find plugin '{plugin.Name}' inside engine workspace project");
+            using Project workspaceProject = CreateRequiredProject(workspaceProjectPath, "Workspace project copy is not valid after copy");
+            using Plugin workspacePlugin = CreateRequiredPlugin(workspacePluginPath, "Could not find the target plugin inside the workspace project");
             context.Logger.LogInformation($"Resolved workspace plugin: {workspacePlugin.PluginPath}");
 
-            UpdateProjectDescriptorForArchive(new DeploymentState(engine, plugin, hostProject, workspacePath, workspaceProject, workspacePlugin), workspaceProject);
+            UpdateProjectDescriptorForArchive(workspaceState, workspaceProject);
             context.Logger.LogInformation("Updated workspace project descriptor for archive output");
-            context.SetOperationState(new DeploymentState(engine, plugin, hostProject, workspacePath, workspaceProject, workspacePlugin));
-            context.Logger.LogInformation("Stored deployment state for engine workspace");
+            context.SetOperationState(workspaceState);
+            context.Logger.LogInformation("Stored workspace state for later deployment branches");
             await Task.CompletedTask;
         }
 
@@ -334,17 +549,20 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task StagingStepAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing plugin staging copy");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            string stagingPluginPath = GetWorkspacePath(state.WorkspacePath, "PluginStaging", state.SourcePlugin.Name);
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            string workspacePluginPath = GetWorkspacePluginPath(state);
+            string stagingPluginPath = GetStagingPluginPath(state);
             context.Logger.LogInformation($"Engine version: {state.Engine.Version}");
-            context.Logger.LogInformation($"Workspace plugin: {state.WorkspacePlugin.PluginPath}");
+            context.Logger.LogInformation($"Workspace plugin: {workspacePluginPath}");
             context.Logger.LogInformation($"Staging destination: {stagingPluginPath}");
             FileUtils.DeleteDirectoryIfExists(stagingPluginPath);
-            FileUtils.MaterializeDirectory(state.WorkspacePlugin.PluginPath, stagingPluginPath, MaterializationSpecs.CreatePlugin(state.WorkspacePlugin));
+
+            using Plugin workspacePlugin = CreateRequiredPlugin(workspacePluginPath, "Workspace plugin is not available for staging");
+            FileUtils.MaterializeDirectory(workspacePlugin.PluginPath, stagingPluginPath, MaterializationSpecs.CreatePlugin(workspacePlugin));
             context.Logger.LogInformation($"Copied plugin to staging destination: {stagingPluginPath}");
-            Plugin stagingPlugin = new(stagingPluginPath);
+
+            using Plugin stagingPlugin = CreateRequiredPlugin(stagingPluginPath, "Staged plugin was not created successfully");
             UpdatePluginDescriptorForArchive(state, stagingPlugin);
-            context.SetOperationState(state.WithStagingPlugin(stagingPlugin));
             context.Logger.LogInformation($"Updated plugin descriptor for staging: {stagingPlugin.PluginDescriptor.VersionName}");
             await Task.CompletedTask;
         }
@@ -352,7 +570,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// <summary>
         /// Builds the archive filename prefix for the active engine-specific execution scope.
         /// </summary>
-        private string BuildArchivePrefix(DeploymentState state)
+        private string BuildArchivePrefix(DeploymentWorkspaceState state)
         {
             Plugin plugin = state.SourcePlugin;
             PluginDescriptor pluginDescriptor = plugin.PluginDescriptor;
@@ -396,9 +614,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing host project editor");
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestEditor")
                 .SetTag("trigger", "StepTransition");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for editor test");
             global::LocalAutomation.Runtime.OperationParameters launchEditorParams = CreateParameters();
-            launchEditorParams.Target = state.WorkspaceProject;
+            launchEditorParams.Target = workspaceProject;
             launchEditorParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "LaunchEditorOutput");
             launchEditorParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             launchEditorParams.SetOptions(automationOptions);
@@ -412,9 +631,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing standalone");
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestStandalone")
                 .SetTag("trigger", "StepTransition");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for standalone test");
             global::LocalAutomation.Runtime.OperationParameters launchStandaloneParams = CreateParameters();
-            launchStandaloneParams.Target = state.WorkspaceProject;
+            launchStandaloneParams.Target = workspaceProject;
             launchStandaloneParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "LaunchStandaloneOutput");
             launchStandaloneParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             launchStandaloneParams.SetOptions(automationOptions);
@@ -427,9 +647,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task BuildPlugin(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Building plugin");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            Plugin stagingPlugin = state.GetRequiredStagingPlugin();
-            string pluginBuildPath = GetWorkspacePath(state.WorkspacePath, "PluginBuild", state.SourcePlugin.Name);
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            string stagingPluginPath = GetStagingPluginPath(state);
+            string pluginBuildPath = GetBuiltPluginPath(state);
             FileUtils.DeleteDirectoryIfExists(pluginBuildPath);
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin")
                 .SetTag("plugin.name", state.SourcePlugin.Name)
@@ -437,6 +657,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 .SetTag("output.path", pluginBuildPath)
                 .SetTag("trigger", "StepTransition");
 
+            using Plugin stagingPlugin = CreateRequiredPlugin(stagingPluginPath, "Staged plugin is not available for packaging");
             global::LocalAutomation.Runtime.OperationParameters buildPluginParams = CreateParameters();
             buildPluginParams.Target = stagingPlugin;
             buildPluginParams.OutputPathOverride = pluginBuildPath;
@@ -449,81 +670,145 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 childRunActivity.SetTag("child.operation", nameof(PackagePlugin));
             }
 
-            Plugin builtPlugin;
             using (PerformanceActivityScope materializeActivity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin.MaterializeBuiltPlugin"))
             {
                 materializeActivity.SetTag("plugin.path", pluginBuildPath);
-                builtPlugin = new(pluginBuildPath);
-            }
-
-            using (PerformanceActivityScope sharedStateActivity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin.StoreSharedState"))
-            {
-                context.SetOperationState(state.WithBuiltPlugin(builtPlugin));
+                using Plugin builtPlugin = CreateRequiredPlugin(pluginBuildPath, "Built plugin output is missing after packaging");
+                context.Logger.LogInformation($"Validated built plugin output: {builtPlugin.PluginPath}");
             }
 
             context.Logger.LogInformation("Plugin build complete");
         }
 
-        private async Task PrepareExampleProject(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        /// <summary>
+        /// Materializes the shared example-project base from the workspace project and overlays the packaged plugin build.
+        /// Later packaging branches clone this built base instead of mutating one shared project directory in place.
+        /// </summary>
+        private async Task PrepareExampleProjectBaseAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing host project");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            Project hostProject = state.WorkspaceProject;
-            Plugin plugin = state.SourcePlugin;
-            Plugin builtPlugin = state.GetRequiredBuiltPlugin();
-            Engine engine = state.Engine;
-            string uProjectFilename = Path.GetFileName(hostProject.UProjectPath);
-            string projectName = Path.GetFileNameWithoutExtension(hostProject.UProjectPath);
-
-            string exampleProjectPath = GetWorkspacePath(state.WorkspacePath, "ExampleProject");
-
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            string exampleProjectPath = GetExampleProjectBasePath(state);
             FileUtils.DeleteDirectoryIfExists(exampleProjectPath);
 
-            FileUtils.MaterializeDirectory(hostProject.ProjectPath, exampleProjectPath, MaterializationSpecs.CreateProject(hostProject));
+            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for example preparation");
+            using Plugin builtPlugin = CreateRequiredPlugin(GetBuiltPluginPath(state), "Built plugin is not available for example preparation");
+            FileUtils.MaterializeDirectory(workspaceProject.ProjectPath, exampleProjectPath, MaterializationSpecs.CreateProject(workspaceProject));
 
-            JObject uProjectContents = JObject.Parse(File.ReadAllText(hostProject.UProjectPath));
-            string exampleProjectBuildUProjectPath = Path.Combine(exampleProjectPath, uProjectFilename);
-            File.WriteAllText(exampleProjectBuildUProjectPath, uProjectContents.ToString());
-
-            Project exampleProject = new(exampleProjectPath);
-
+            using Project exampleProject = CreateRequiredProject(exampleProjectPath, "Example project base was not created successfully");
             UpdateProjectDescriptorForArchive(state, exampleProject);
-            context.Logger.LogInformation($"Updated project descriptor for archive: EngineAssociation = {engine.Version}");
+            context.Logger.LogInformation($"Updated project descriptor for archive: EngineAssociation = {state.Engine.Version}");
 
-            var sourcePlugins = hostProject.Plugins;
-            foreach (Plugin sourcePlugin in sourcePlugins)
+            /* The copied project starts without a Plugins directory because the materialization spec only preserves
+               author-maintained project inputs. Re-add sibling plugins by name, then overlay the packaged target plugin
+               so every branch starts from the same built plugin payload. */
+            foreach (Plugin workspacePlugin in workspaceProject.Plugins)
             {
-                if (!sourcePlugin.Equals(plugin))
+                if (!string.Equals(workspacePlugin.Name, state.SourcePlugin.Name, StringComparison.InvariantCultureIgnoreCase))
                 {
-                    exampleProject.AddPlugin(sourcePlugin);
+                    exampleProject.AddPlugin(workspacePlugin);
                 }
             }
 
             exampleProject.AddPlugin(builtPlugin);
-            string exampleProjectVersion = ProjectConfig.BuildVersionWithEnginePrefix(plugin.PluginDescriptor.VersionName, engine.Version);
+            string exampleProjectVersion = ProjectConfig.BuildVersionWithEnginePrefix(state.SourcePlugin.PluginDescriptor.VersionName, state.Engine.Version);
             exampleProject.SetProjectVersion(exampleProjectVersion, context.Logger);
-            context.SetOperationState(state.WithExampleProject(exampleProject));
             await Task.CompletedTask;
         }
 
-        private async Task BuildCodeExampleProject(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        /// <summary>
+        /// Builds the shared example-project base once so later packaging variants can reuse its editor binaries through
+        /// `-nocompileeditor` instead of recompiling the same code for every branch.
+        /// </summary>
+        private async Task BuildCodeExampleProjectBaseAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            context.Logger.LogInformation("Building example project with modules");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
+            using IDisposable nodeScope = context.Logger.BeginSection("Building example project base");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project exampleProject = CreateRequiredProject(GetExampleProjectBasePath(state), "Example project base is not available for build");
 
             global::LocalAutomation.Runtime.OperationParameters buildExampleProjectParams = CreateParameters();
-            buildExampleProjectParams.Target = state.GetRequiredExampleProject();
+            buildExampleProjectParams.Target = exampleProject;
             buildExampleProjectParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "BuildExampleOutput");
             buildExampleProjectParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             await RunChildOperationAsync<BuildEditor>(buildExampleProjectParams, context, required: true, failureMessage: "Failed to build example project with modules");
         }
 
-        // Reuse the example project's prebuilt editor binaries so the packaging validation passes do not spend time
-        // recompiling the editor target before cooking and staging.
-        private global::LocalAutomation.Runtime.OperationParameters CreateExampleProjectPackageParams(DeploymentState state, global::LocalAutomation.Runtime.ExecutionTaskContext context, string outputPath)
+        /// <summary>
+        /// Creates one isolated Clang-validation variant from the built example-project base.
+        /// </summary>
+        private async Task PrepareClangVariantAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Preparing Clang validation variant");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            string sourceProjectPath = GetExampleProjectBasePath(state);
+            string clangVariantPath = GetClangVariantPath(state);
+            CopyProjectVariant(sourceProjectPath, clangVariantPath);
+            using Project clangVariant = CreateRequiredProject(clangVariantPath, "Clang validation variant was not created successfully");
+            context.Logger.LogInformation($"Prepared Clang validation variant: {clangVariant.ProjectPath}");
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Creates one isolated project-plugin packaging variant from the built example-project base.
+        /// </summary>
+        private async Task PrepareProjectPluginVariantAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Preparing project-plugin variant");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            string sourceProjectPath = GetExampleProjectBasePath(state);
+            string projectVariantPath = GetProjectPluginVariantPath(state);
+            CopyProjectVariant(sourceProjectPath, projectVariantPath);
+            using Project projectVariant = CreateRequiredProject(projectVariantPath, "Project-plugin variant was not created successfully");
+            context.Logger.LogInformation($"Prepared project-plugin variant: {projectVariant.ProjectPath}");
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Creates one isolated engine-plugin packaging variant by cloning the built example-project base and removing the
+        /// project-level plugin copy before later packaging depends on the engine install.
+        /// </summary>
+        private async Task PrepareEnginePluginVariantAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Preparing engine-plugin variant");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            string sourceProjectPath = GetExampleProjectBasePath(state);
+            string engineVariantPath = GetEnginePluginVariantPath(state);
+            CopyProjectVariant(sourceProjectPath, engineVariantPath);
+
+            using Project engineVariant = CreateRequiredProject(engineVariantPath, "Engine-plugin variant was not created successfully");
+            engineVariant.RemovePlugin(state.SourcePlugin.Name);
+            context.Logger.LogInformation($"Prepared engine-plugin variant: {engineVariant.ProjectPath}");
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Creates one isolated blueprint/demo variant by cloning the built example-project base, removing the project-level
+        /// plugin copy, converting the project to blueprint-only, and pruning sibling plugins according to deploy options.
+        /// </summary>
+        private async Task PrepareBlueprintDemoVariantAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Preparing blueprint and demo variant");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            string sourceProjectPath = GetExampleProjectBasePath(state);
+            string blueprintVariantPath = GetBlueprintDemoVariantPath(state);
+            CopyProjectVariant(sourceProjectPath, blueprintVariantPath);
+
+            using Project blueprintVariant = CreateRequiredProject(blueprintVariantPath, "Blueprint/demo variant was not created successfully");
+            blueprintVariant.RemovePlugin(state.SourcePlugin.Name);
+            blueprintVariant.ConvertToBlueprintOnly();
+            PreparePluginsForProject(state, blueprintVariant, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>());
+            context.Logger.LogInformation($"Prepared blueprint/demo variant: {blueprintVariant.ProjectPath}");
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Reuses one already-built example-project variant for packaging by passing `-nocompileeditor` through the child
+        /// package-project operation.
+        /// </summary>
+        private global::LocalAutomation.Runtime.OperationParameters CreateExampleProjectPackageParams(Project project, DeploymentWorkspaceState state, string outputPath)
         {
             global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
-            parameters.Target = state.GetRequiredExampleProject();
+            parameters.Target = project;
             parameters.OutputPathOverride = outputPath;
             parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             parameters.GetOptions<AdditionalArgumentsOptions>().Arguments = "-nocompileeditor";
@@ -540,12 +825,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return parameters;
         }
 
-        private Task RunPackageProjectAsync(DeploymentState state, string outputPath, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
+        /// <summary>
+        /// Runs one package-project child operation against the provided example-project variant.
+        /// </summary>
+        private Task RunPackageProjectAsync(Project project, DeploymentWorkspaceState state, string outputPath, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
         {
             FileUtils.DeleteDirectoryIfExists(outputPath);
-            return RunChildOperationAsync<PackageProject>(CreateExampleProjectPackageParams(state, context, outputPath), context, required: true, failureMessage: failureMessage);
+            return RunChildOperationAsync<PackageProject>(CreateExampleProjectPackageParams(project, state, outputPath), context, required: true, failureMessage: failureMessage);
         }
 
+        /// <summary>
+        /// Runs one package-launch child operation against the already packaged build output for a branch.
+        /// </summary>
         private Task RunLaunchPackageAsync(Package package, Engine engine, AutomationOptions automationOptions, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage, string outputPath)
         {
             return RunChildOperationAsync<LaunchPackage>(CreatePackageLaunchParams(package, engine, automationOptions, outputPath), context, required: true, failureMessage: failureMessage);
@@ -555,18 +846,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task RunClangCompileCheck(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Running Clang compile check");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.RunClangCompileCheck")
                 .SetTag("plugin.name", state.SourcePlugin.Name)
                 .SetTag("engine.version", state.Engine.Version.ToString());
-            Project exampleProject = state.GetRequiredExampleProject();
-            Plugin builtPlugin = state.GetRequiredBuiltPlugin();
-            Plugin exampleProjectPlugin = exampleProject.Plugins.SingleOrDefault(plugin => plugin.Name == builtPlugin.Name);
-            if (exampleProjectPlugin == null)
-            {
-                activity.SetTag("plugin.present_in_example", false);
-                throw new Exception("Could not find packaged plugin inside example project for Clang validation");
-            }
+            string exampleProjectPluginPath = Path.Combine(GetClangVariantPath(state), "Plugins", state.SourcePlugin.Name);
+            using Plugin exampleProjectPlugin = CreateRequiredPlugin(exampleProjectPluginPath, "Could not find packaged plugin inside the Clang validation variant");
 
             activity.SetTag("plugin.present_in_example", true)
                 .SetTag("example.plugin.path", exampleProjectPlugin.PluginPath);
@@ -592,12 +877,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// <summary>
         /// Scheduler wrapper for packaging the code example project with the plugin installed at project level.
         /// </summary>
-        private async Task PackageCodeExampleProjectWithProjectPluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
+        private async Task PackageCodeExampleProjectWithProjectPluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging code example project with plugin inside project");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            string projectPluginPackagePath = GetWorkspacePath(state.WorkspacePath, "ProjectPluginPackage");
-            await RunPackageProjectAsync(state, projectPluginPackagePath, context, "Package project with included plugin failed");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project projectVariant = CreateRequiredProject(GetProjectPluginVariantPath(state), "Project-plugin variant is not available for packaging");
+            await RunPackageProjectAsync(projectVariant, state, GetProjectPluginPackagePath(state), context, "Package project with included plugin failed");
         }
 
         /// <summary>
@@ -606,9 +891,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestCodeExampleProjectPackageWithProjectPluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing code project package with project plugin");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            string projectPluginPackagePath = GetWorkspacePath(state.WorkspacePath, "ProjectPluginPackage");
-            Package projectPluginPackage = new(Path.Combine(projectPluginPackagePath, state.Engine.GetWindowsPlatformName()));
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            Package projectPluginPackage = CreateRequiredPackage(state, GetProjectPluginPackagePath(state), "Project-plugin package output is not available for launch");
             await RunLaunchPackageAsync(projectPluginPackage, state.Engine, automationOptions, context, "Launch and test with project plugin failed", GetWorkspacePath(state.WorkspacePath, "ProjectPluginLaunchOutput"));
         }
 
@@ -618,25 +902,24 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PrepareEnginePluginInstallAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Preparing to package example project with installed plugin");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            string enginePluginsMarketplacePath = Path.Combine(state.Engine.TargetPath, @"Engine\Plugins\Marketplace");
-            string enginePluginsMarketplacePluginPath = Path.Combine(enginePluginsMarketplacePath, state.SourcePlugin.Name);
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            string enginePluginsMarketplacePluginPath = GetInstalledEnginePluginPath(state);
             context.Logger.LogInformation($"Copying plugin to {enginePluginsMarketplacePluginPath}");
             FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath);
-            FileUtils.CopyDirectory(state.GetRequiredBuiltPlugin().PluginPath, enginePluginsMarketplacePluginPath);
+            using Plugin builtPlugin = CreateRequiredPlugin(GetBuiltPluginPath(state), "Built plugin is not available for engine installation");
+            FileUtils.CopyDirectory(builtPlugin.PluginPath, enginePluginsMarketplacePluginPath);
             await Task.CompletedTask;
         }
 
         /// <summary>
         /// Scheduler wrapper for packaging the code example project with the plugin installed to the engine.
         /// </summary>
-        private async Task PackageCodeExampleProjectWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
+        private async Task PackageCodeExampleProjectWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging code example project with installed plugin");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            state.GetRequiredExampleProject().RemovePlugin(state.SourcePlugin.Name);
-            string enginePluginPackagePath = GetWorkspacePath(state.WorkspacePath, "EnginePluginPackage");
-            await RunPackageProjectAsync(state, enginePluginPackagePath, context, "Package project with engine plugin failed");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project engineVariant = CreateRequiredProject(GetEnginePluginVariantPath(state), "Engine-plugin variant is not available for packaging");
+            await RunPackageProjectAsync(engineVariant, state, GetEnginePluginPackagePath(state), context, "Package project with engine plugin failed");
         }
 
         /// <summary>
@@ -645,23 +928,20 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestCodeExampleProjectPackageWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing code project package with installed plugin");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            string enginePluginPackagePath = GetWorkspacePath(state.WorkspacePath, "EnginePluginPackage");
-            Package enginePluginPackage = new(Path.Combine(enginePluginPackagePath, state.Engine.GetWindowsPlatformName()));
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            Package enginePluginPackage = CreateRequiredPackage(state, GetEnginePluginPackagePath(state), "Engine-plugin package output is not available for launch");
             await RunLaunchPackageAsync(enginePluginPackage, state.Engine, automationOptions, context, "Launch and test with installed plugin failed", GetWorkspacePath(state.WorkspacePath, "EnginePluginLaunchOutput"));
         }
 
         /// <summary>
         /// Scheduler wrapper for packaging the blueprint-only example project.
         /// </summary>
-        private async Task PackageBlueprintExampleProjectWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
+        private async Task PackageBlueprintExampleProjectWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging blueprint-only example project");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            state.GetRequiredExampleProject().ConvertToBlueprintOnly();
-            PreparePluginsForProject(state, state.GetRequiredExampleProject(), context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>());
-            string blueprintOnlyPackagePath = GetWorkspacePath(state.WorkspacePath, "BlueprintOnlyPackage");
-            await RunPackageProjectAsync(state, blueprintOnlyPackagePath, context, "Package blueprint-only project failed");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project blueprintVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for packaging");
+            await RunPackageProjectAsync(blueprintVariant, state, GetBlueprintPackagePath(state), context, "Package blueprint-only project failed");
         }
 
         /// <summary>
@@ -670,60 +950,36 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task TestBlueprintExampleProjectPackageWithEnginePluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing blueprint project package with installed plugin");
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            string blueprintOnlyPackagePath = GetWorkspacePath(state.WorkspacePath, "BlueprintOnlyPackage");
-            Package package = new(Path.Combine(blueprintOnlyPackagePath, state.Engine.GetWindowsPlatformName()));
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            Package package = CreateRequiredPackage(state, GetBlueprintPackagePath(state), "Blueprint package output is not available for launch");
             await RunLaunchPackageAsync(package, state.Engine, automationOptions, context, "Launch and test blueprint project with installed plugin failed", GetWorkspacePath(state.WorkspacePath, "BlueprintLaunchOutput"));
         }
 
+        /// <summary>
+        /// Packages the shipping demo from the prepared blueprint/demo variant so the demo artifact no longer depends on a
+        /// mutable shared example-project instance.
+        /// </summary>
         private async Task PackageDemoExecutable(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            DeploymentState state = context.GetOperationState<DeploymentState>();
-            Engine engine = state.Engine;
-            Plugin plugin = state.SourcePlugin;
-            Plugin builtPlugin = state.GetRequiredBuiltPlugin();
-            Project exampleProject = state.GetRequiredExampleProject();
-            // If true, the demo executable will be packaged with the plugin installed to the project
-            // This is currently disabled because in 5.3 blueprint-only projects will fail to load plugins that are installed to the project
-            bool packageDemoExecutableWithProjectPlugin = false;
-
-            if (packageDemoExecutableWithProjectPlugin)
-            {
-                // Uninstall plugin from engine because test has completed
-                // Now we'll be using the plugin in the project directory instead
-
-                context.Logger.LogInformation("Uninstall from Engine/Plugins/Marketplace");
-
-                engine.UninstallPlugin(plugin.Name);
-
-                // Copy plugin to example project to prepare the demo package
-                string exampleProjectPluginPath = Path.Combine(exampleProject.ProjectPath, "Plugins", Path.GetFileName(plugin.PluginPath));
-                FileUtils.CopyDirectory(builtPlugin.PluginPath, exampleProjectPluginPath);
-            }
-
-            // Package demo executable
-
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging host project for demo");
-            string demoPackagePath = GetWorkspacePath(state.WorkspacePath, "DemoExe");
-
+            string demoPackagePath = GetDemoPackageOutputPath(state);
             FileUtils.DeleteDirectoryIfExists(demoPackagePath);
 
-            global::LocalAutomation.Runtime.OperationParameters demoPackageParams = CreateExampleProjectPackageParams(state, context, demoPackagePath);
+            using Project demoVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for demo packaging");
+            global::LocalAutomation.Runtime.OperationParameters demoPackageParams = CreateExampleProjectPackageParams(demoVariant, state, demoPackagePath);
 
             demoPackageParams.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
             demoPackageParams.GetOptions<PackageOptions>().NoDebugInfo = true;
 
-            global::LocalAutomation.Runtime.OperationResult demoExePackageOperationResult = await RunChildOperationAsync<PackageProject>(demoPackageParams, context);
-
-            if (!demoExePackageOperationResult.Success)
-            {
-                throw new Exception("Example project build failed");
-            }
-
-            context.SetOperationState(state.WithDemoPackage(new Package(Path.Combine(demoPackagePath, engine.GetWindowsPlatformName()))));
+            await RunChildOperationAsync<PackageProject>(demoPackageParams, context, required: true, failureMessage: "Example project build failed");
         }
 
-        private void PreparePluginsForProject(DeploymentState state, Project targetProject, PluginDeployOptions deployOptions)
+        /// <summary>
+        /// Prunes sibling plugins for archive and blueprint/demo preparation so the project variant only contains the
+        /// plugins the deploy options allow and each retained plugin sheds generated intermediates.
+        /// </summary>
+        private void PreparePluginsForProject(DeploymentWorkspaceState state, Project targetProject, PluginDeployOptions deployOptions)
         {
             Plugin plugin = state.SourcePlugin;
             var exampleProjectPlugins = targetProject.Plugins;
@@ -745,109 +1001,148 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
         }
 
-        private async Task ArchiveArtifacts(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        /// <summary>
+        /// Returns one archive zip path that must already exist before the final copy stage runs.
+        /// </summary>
+        private static string GetRequiredArchiveFile(string archiveZipPath, string failureMessage)
         {
-            using IDisposable nodeScope = context.Logger.BeginSection("Archiving");
+            if (!File.Exists(archiveZipPath))
+            {
+                throw new FileNotFoundException(failureMessage, archiveZipPath);
+            }
+
+            return archiveZipPath;
+        }
+
+        /// <summary>
+        /// Copies one produced archive zip to the configured archive output directory when the deploy options request an
+        /// external archive location.
+        /// </summary>
+        private static void CopyArchiveToOutputIfConfigured(global::LocalAutomation.Runtime.ExecutionTaskContext context, string archiveZipPath)
+        {
             PluginDeployOptions deployOptions = context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>();
-            DeploymentState state = context.GetOperationState<DeploymentState>();
+            string archiveOutputPath = deployOptions.ArchivePath;
+            if (string.IsNullOrEmpty(archiveOutputPath))
+            {
+                return;
+            }
+
+            context.Logger.LogInformation($"Copying archive to output path: {archiveOutputPath}");
+            Directory.CreateDirectory(archiveOutputPath);
+            if (!Directory.Exists(archiveOutputPath))
+            {
+                throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
+            }
+
+            FileUtils.CopyFile(GetRequiredArchiveFile(archiveZipPath, $"Archive zip is missing: {Path.GetFileName(archiveZipPath)}"), archiveOutputPath, true, true);
+        }
+
+        /// <summary>
+        /// Archives the staged plugin source payload as soon as the staging step has produced the archive-ready copy.
+        /// </summary>
+        private async Task ArchivePluginSourceAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Archiving plugin source");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             Plugin plugin = state.SourcePlugin;
-            Plugin builtPlugin = state.GetRequiredBuiltPlugin();
-            Project exampleProject = state.GetRequiredExampleProject();
-            Package demoPackage = state.GetRequiredDemoPackage();
-            Plugin stagingPlugin = state.GetRequiredStagingPlugin();
+            using Plugin stagingPlugin = CreateRequiredPlugin(GetStagingPluginPath(state), "Staged plugin is not available for source archiving");
             string archivePrefix = BuildArchivePrefix(state);
             string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
+            string pluginSourcePath = GetWorkspacePath(state.WorkspacePath, "PluginSource", plugin.Name);
+            string pluginSourceArchiveZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "PluginSource.zip");
 
             Directory.CreateDirectory(archivePath);
-
-            // Archive plugin build
-
-            string pluginBuildZipPath = Path.Combine(archivePath, archivePrefix + "PluginBuild.zip");
-            bool archivePluginBuild = deployOptions.ArchivePluginBuild;
-            if (archivePluginBuild)
-            {
-                context.Logger.LogInformation("Archiving plugin build");
-                FileUtils.DeleteFileIfExists(pluginBuildZipPath);
-                ZipFile.CreateFromDirectory(builtPlugin.PluginPath, pluginBuildZipPath, CompressionLevel.Optimal, true);
-            }
-
-            // Archive demo exe
-
-            string demoPackageZipPath = Path.Combine(archivePath, archivePrefix + "DemoPackage.zip");
-            bool archiveDemoPackage = deployOptions.ArchiveDemoPackage;
-            if (archiveDemoPackage)
-            {
-                context.Logger.LogInformation("Archiving demo");
-
-                FileUtils.DeleteFileIfExists(demoPackageZipPath);
-                ZipFile.CreateFromDirectory(demoPackage.TargetPath, demoPackageZipPath);
-            }
-
-            // Archive example project
-
-            string exampleProjectZipPath = Path.Combine(archivePath, archivePrefix + "ExampleProject.zip");
-            bool archiveExampleProject = deployOptions.ArchiveExampleProject;
-
-            if (archiveExampleProject)
-            {
-                context.Logger.LogInformation("Archiving example project");
-
-                // First delete any extra directories
-                string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
-                FileUtils.DeleteOtherSubdirectories(exampleProject.ProjectPath, allowedExampleProjectSubDirectoryNames);
-
-                PreparePluginsForProject(state, exampleProject, deployOptions);
-
-                // Delete debug files recursive
-                FileUtils.DeleteFilesWithExtension(exampleProject.ProjectPath, new[] { ".pdb" }, SearchOption.AllDirectories);
-
-                FileUtils.DeleteFileIfExists(exampleProjectZipPath);
-                ZipFile.CreateFromDirectory(exampleProject.ProjectPath, exampleProjectZipPath);
-            }
-
-            // Archive plugin source for submission
-
-            context.Logger.LogInformation("Archiving plugin source");
-
-            // Use staging plugin which already has updated descriptor
-            string pluginSourcePath = GetWorkspacePath(state.WorkspacePath, "PluginSource", plugin.Name);
             FileUtils.DeleteDirectoryIfExists(pluginSourcePath);
             FileUtils.MaterializeDirectory(stagingPlugin.PluginPath, pluginSourcePath, MaterializationSpecs.CreatePlugin(stagingPlugin));
-
-            string pluginSourceArchiveZipPath = Path.Combine(archivePath, archivePrefix + "PluginSource.zip");
             FileUtils.DeleteFileIfExists(pluginSourceArchiveZipPath);
             ZipFile.CreateFromDirectory(pluginSourcePath, pluginSourceArchiveZipPath, CompressionLevel.Optimal, true);
+            CopyArchiveToOutputIfConfigured(context, pluginSourceArchiveZipPath);
+            await Task.CompletedTask;
+        }
 
-            string archiveOutputPath = deployOptions.ArchivePath;
-            if (!string.IsNullOrEmpty(archiveOutputPath))
+        /// <summary>
+        /// Archives the packaged plugin build as soon as the packaged plugin output exists.
+        /// </summary>
+        private async Task ArchivePluginBuildAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Archiving plugin build");
+            PluginDeployOptions deployOptions = context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>();
+            if (!deployOptions.ArchivePluginBuild)
             {
-                context.Logger.LogInformation("Copying to archive output path");
-                Directory.CreateDirectory(archiveOutputPath);
-                if (!Directory.Exists(archiveOutputPath))
-                {
-                    throw new Exception($"Could not resolve archive output: {archiveOutputPath}");
-                }
-
-                FileUtils.CopyFile(pluginSourceArchiveZipPath, archiveOutputPath, true, true);
-
-                if (archivePluginBuild)
-                {
-                    FileUtils.CopyFile(pluginBuildZipPath, archiveOutputPath, true, true);
-                }
-
-                if (archiveExampleProject)
-                {
-                    FileUtils.CopyFile(exampleProjectZipPath, archiveOutputPath, true, true);
-                }
-
-                if (archiveDemoPackage)
-                {
-                    FileUtils.CopyFile(demoPackageZipPath, archiveOutputPath, true, true);
-                }
-
+                await Task.CompletedTask;
+                return;
             }
 
-            context.Logger.LogInformation("Finished archiving");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Plugin builtPlugin = CreateRequiredPlugin(GetBuiltPluginPath(state), "Built plugin is not available for archiving");
+            string archivePrefix = BuildArchivePrefix(state);
+            string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
+            string pluginBuildZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "PluginBuild.zip");
+
+            Directory.CreateDirectory(archivePath);
+            FileUtils.DeleteFileIfExists(pluginBuildZipPath);
+            ZipFile.CreateFromDirectory(builtPlugin.PluginPath, pluginBuildZipPath, CompressionLevel.Optimal, true);
+            CopyArchiveToOutputIfConfigured(context, pluginBuildZipPath);
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Archives the example-project payload from a dedicated archive copy so archive pruning never mutates the live
+        /// blueprint/demo variant used by package tasks.
+        /// </summary>
+        private async Task ArchiveExampleProjectAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Archiving example project");
+            PluginDeployOptions deployOptions = context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>();
+            if (!deployOptions.ArchiveExampleProject)
+            {
+                await Task.CompletedTask;
+                return;
+            }
+
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            string archiveProjectPath = GetExampleArchiveProjectPath(state);
+            string archivePrefix = BuildArchivePrefix(state);
+            string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
+            string exampleProjectZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "ExampleProject.zip");
+
+            Directory.CreateDirectory(archivePath);
+            CopyProjectVariant(GetBlueprintDemoVariantPath(state), archiveProjectPath);
+
+            using Project archiveProject = CreateRequiredProject(archiveProjectPath, "Example-project archive copy is not available");
+            string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
+            FileUtils.DeleteOtherSubdirectories(archiveProject.ProjectPath, allowedExampleProjectSubDirectoryNames);
+            PreparePluginsForProject(state, archiveProject, deployOptions);
+            FileUtils.DeleteFilesWithExtension(archiveProject.ProjectPath, new[] { ".pdb" }, SearchOption.AllDirectories);
+            FileUtils.DeleteFileIfExists(exampleProjectZipPath);
+            ZipFile.CreateFromDirectory(archiveProject.ProjectPath, exampleProjectZipPath);
+            CopyArchiveToOutputIfConfigured(context, exampleProjectZipPath);
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Archives the demo package as soon as the packaged demo output exists.
+        /// </summary>
+        private async Task ArchiveDemoPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Archiving demo package");
+            PluginDeployOptions deployOptions = context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>();
+            if (!deployOptions.ArchiveDemoPackage)
+            {
+                await Task.CompletedTask;
+                return;
+            }
+
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            Package demoPackage = CreateRequiredPackage(state, GetDemoPackageOutputPath(state), "Demo package output is not available for archiving");
+            string archivePrefix = BuildArchivePrefix(state);
+            string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
+            string demoPackageZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "DemoPackage.zip");
+
+            Directory.CreateDirectory(archivePath);
+            FileUtils.DeleteFileIfExists(demoPackageZipPath);
+            ZipFile.CreateFromDirectory(demoPackage.TargetPath, demoPackageZipPath);
+            CopyArchiveToOutputIfConfigured(context, demoPackageZipPath);
             await Task.CompletedTask;
         }
     }
