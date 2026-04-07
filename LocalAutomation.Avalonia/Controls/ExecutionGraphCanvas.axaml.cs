@@ -33,13 +33,17 @@ public partial class ExecutionGraphCanvas : UserControl
     private const double ZoomStep = 1.15;
     private const double ViewportRecoveryMargin = 40;
     private const double EdgeHitThickness = 10;
+    private const int ReconciliationInstrumentationInterval = 10;
 
-    private Canvas? _graphCanvas;
+    private Canvas? _groupCanvas;
+    private Canvas? _edgeCanvas;
+    private Canvas? _taskCanvas;
     private Canvas? _measurementCanvas;
     private Border? _viewportHost;
     private Border? _graphContentRoot;
     private ExecutionGraphViewModel? _observedGraph;
-    private readonly Dictionary<RuntimeExecutionTaskId, Control> _renderedNodeControls = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, ExecutionGroupContainer> _renderedGroupControls = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, ExecutionTaskCard> _renderedTaskControls = new();
     private readonly Dictionary<RuntimeExecutionTaskId, Control> _measurementNodeControls = new();
     private bool _isPanning;
     private bool _pendingRender;
@@ -53,6 +57,7 @@ public partial class ExecutionGraphCanvas : UserControl
     private double _panX;
     private double _panY;
     private bool _hasViewportState;
+    private int _reconciliationCount;
 
     /// <summary>
     /// Initializes the execution graph canvas.
@@ -176,7 +181,9 @@ public partial class ExecutionGraphCanvas : UserControl
         AvaloniaXamlLoader.Load(this);
         _viewportHost = this.FindControl<Border>("ViewportHost");
         _graphContentRoot = this.FindControl<Border>("GraphContentRoot");
-        _graphCanvas = this.FindControl<Canvas>("GraphCanvas");
+        _groupCanvas = this.FindControl<Canvas>("GroupCanvas");
+        _edgeCanvas = this.FindControl<Canvas>("EdgeCanvas");
+        _taskCanvas = this.FindControl<Canvas>("TaskCanvas");
         _measurementCanvas = this.FindControl<Canvas>("MeasurementCanvas");
         if (_viewportHost != null)
         {
@@ -189,6 +196,12 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void HandleDataContextChanged(object? sender, EventArgs e)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.HandleDataContextChanged")
+            .SetTag("previous.graph.hash", _observedGraph?.GetHashCode() ?? 0)
+            .SetTag("next.graph.hash", (DataContext as ExecutionGraphViewModel)?.GetHashCode() ?? 0)
+            .SetTag("pending.render", _pendingRender)
+            .SetTag("measurement.pending", _measurementRefreshPending);
+
         if (_observedGraph != null)
         {
             _observedGraph.Nodes.CollectionChanged -= HandleGraphCollectionChanged;
@@ -197,6 +210,7 @@ public partial class ExecutionGraphCanvas : UserControl
         }
 
         _observedGraph = DataContext as ExecutionGraphViewModel;
+        activity.SetTag("graph.present", _observedGraph != null);
         if (_observedGraph != null)
         {
             _observedGraph.Nodes.CollectionChanged += HandleGraphCollectionChanged;
@@ -209,10 +223,14 @@ public partial class ExecutionGraphCanvas : UserControl
            of view. Defer the actual fit/recovery until the next real viewport layout pass so tab switches do not reuse
            stale bounds from the previously visible workspace mode. */
         _pendingViewportAdjustment = true;
-        RenderGraph(trigger: "DataContextChanged");
+        using (PerformanceActivityScope renderActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.HandleDataContextChanged.RenderGraph"))
+        {
+            RenderGraph(trigger: "DataContextChanged");
+        }
 
         if (_viewportHost != null && _viewportHost.Bounds.Width > 0 && _viewportHost.Bounds.Height > 0)
         {
+            using PerformanceActivityScope postViewportAdjustmentActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.HandleDataContextChanged.PostViewportAdjustment");
             Dispatcher.UIThread.Post(ApplyPendingViewportAdjustment, DispatcherPriority.Render);
         }
     }
@@ -331,7 +349,7 @@ public partial class ExecutionGraphCanvas : UserControl
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RenderGraph")
             .SetTag("trigger", trigger);
 
-        if (_graphCanvas == null || _measurementCanvas == null)
+        if (_groupCanvas == null || _edgeCanvas == null || _taskCanvas == null || _measurementCanvas == null)
         {
             activity.SetTag("render.skipped", "MissingCanvas");
             return;
@@ -358,15 +376,78 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void BeginMeasuredRefresh(string trigger)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.BeginMeasuredRefresh")
+            .SetTag("trigger", trigger);
         if (_observedGraph == null || _measurementCanvas == null)
         {
+            activity.SetTag("refresh.skipped", "MissingGraphOrMeasurementCanvas");
+            return;
+        }
+
+        /* Structural graph refreshes often insert only a few new child-operation nodes while the rest of the graph keeps
+           the same measured widths. When every visible node already has cached width data, skip the hidden measurement
+           host entirely and rebuild the visible canvas directly from the settled layout. */
+        int measuredNodeCount = 0;
+        int measuredGroupCount = 0;
+        int measuredLeafCount = 0;
+        using (PerformanceActivityScope checkMeasurementNeedActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CheckMeasurementNeed"))
+        {
+            foreach (ExecutionNodeViewModel node in _observedGraph.Nodes)
+            {
+                if (!_observedGraph.NeedsMeasuredNodeWidth(node.Id))
+                {
+                    continue;
+                }
+
+                measuredNodeCount++;
+                if (node.IsContainer)
+                {
+                    measuredGroupCount++;
+                }
+                else
+                {
+                    measuredLeafCount++;
+                }
+            }
+
+            checkMeasurementNeedActivity.SetTag("measured.node.count", measuredNodeCount)
+                .SetTag("measured.group.count", measuredGroupCount)
+                .SetTag("measured.leaf.count", measuredLeafCount)
+                .SetTag("visible.node.count", _observedGraph.Nodes.Count);
+        }
+
+        activity.SetTag("measured.node.count", measuredNodeCount)
+            .SetTag("measured.group.count", measuredGroupCount)
+            .SetTag("measured.leaf.count", measuredLeafCount)
+            .SetTag("visible.node.count", _observedGraph.Nodes.Count);
+
+        if (measuredNodeCount == 0)
+        {
+            _measurementRefreshPending = false;
+            _pendingMeasurementTrigger = trigger;
+            using (PerformanceActivityScope inlineCompleteActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CompleteMeasuredRefreshInline"))
+            {
+                CompleteMeasuredRefresh();
+            }
+
             return;
         }
 
         _measurementRefreshPending = true;
         _pendingMeasurementTrigger = trigger;
-        PopulateMeasurementHost(_observedGraph, _measurementCanvas);
-        Dispatcher.UIThread.Post(CompleteMeasuredRefresh, DispatcherPriority.Render);
+        using (PerformanceActivityScope populateMeasurementHostActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.PopulateMeasurementHost"))
+        {
+            PopulateMeasurementHost(_observedGraph, _measurementCanvas);
+            populateMeasurementHostActivity.SetTag("measured.node.count", measuredNodeCount)
+                .SetTag("measured.group.count", measuredGroupCount)
+                .SetTag("measured.leaf.count", measuredLeafCount)
+                .SetTag("measurement.control.count", _measurementNodeControls.Count);
+        }
+
+        using (PerformanceActivityScope postMeasurementRefreshActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.PostMeasurementRefresh"))
+        {
+            Dispatcher.UIThread.Post(CompleteMeasuredRefresh, DispatcherPriority.Render);
+        }
     }
 
     /// <summary>
@@ -375,13 +456,13 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void CompleteMeasuredRefresh()
     {
-        if (!_measurementRefreshPending)
+        if (!_measurementRefreshPending && string.IsNullOrWhiteSpace(_pendingMeasurementTrigger))
         {
             return;
         }
 
         _measurementRefreshPending = false;
-        if (_observedGraph == null || _graphCanvas == null || _measurementCanvas == null)
+        if (_observedGraph == null || _groupCanvas == null || _edgeCanvas == null || _taskCanvas == null || _measurementCanvas == null)
         {
             return;
         }
@@ -389,12 +470,22 @@ public partial class ExecutionGraphCanvas : UserControl
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CompleteMeasuredRefresh")
             .SetTag("trigger", _pendingMeasurementTrigger);
 
-        bool widthsChanged = ApplyMeasuredNodeWidths(_observedGraph);
-        activity.SetTag("widths.changed", widthsChanged);
-        ClearMeasurementHost(_measurementCanvas);
+        bool widthsChanged;
+        using (PerformanceActivityScope widthActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ApplyMeasuredNodeWidths"))
+        {
+            widthsChanged = ApplyMeasuredNodeWidths(_observedGraph);
+            widthActivity.SetTag("widths.changed", widthsChanged);
+        }
 
-        _graphCanvas.Children.Clear();
-        _renderedNodeControls.Clear();
+        activity.SetTag("widths.changed", widthsChanged);
+
+        using (PerformanceActivityScope clearMeasurementActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ClearMeasurementHost"))
+        {
+            ClearMeasurementHost(_measurementCanvas);
+            clearMeasurementActivity.SetTag("measured.node.count", _measurementNodeControls.Count);
+        }
+
+        _pendingMeasurementTrigger = string.Empty;
 
         int groupCount = _observedGraph.Nodes.Count(node => node.IsContainer);
         int leafCount = _observedGraph.Nodes.Count - groupCount;
@@ -402,33 +493,245 @@ public partial class ExecutionGraphCanvas : UserControl
             .SetTag("leaf.count", leafCount)
             .SetTag("edge.count", _observedGraph.Edges.Count);
 
-        foreach (ExecutionNodeViewModel group in _observedGraph.Nodes.Where(node => node.IsContainer).OrderByDescending(node => node.Width * node.Height))
+        using (PerformanceActivityScope reconcileActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ReconcileVisibleGraphLayers"))
         {
-            Control groupControl = CreateGroupControl(group);
-            _renderedNodeControls[group.Id] = groupControl;
-            _graphCanvas.Children.Add(groupControl);
+            ReconcileVisibleGraphLayers(_observedGraph, activity, reconcileActivity);
         }
 
-        foreach (ExecutionEdgeViewModel edge in _observedGraph.Edges)
+        using (PerformanceActivityScope transformActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ApplyViewportTransform"))
+        {
+            ApplyViewportTransform();
+            transformActivity.SetTag("zoom", _zoom.ToString("0.###"))
+                .SetTag("pan.x", _panX.ToString("0.###"))
+                .SetTag("pan.y", _panY.ToString("0.###"));
+        }
+
+        activity.SetTag("render.child.count", _groupCanvas.Children.Count + _edgeCanvas.Children.Count + _taskCanvas.Children.Count);
+
+        using (PerformanceActivityScope viewportAdjustmentActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ApplyPendingViewportAdjustment"))
+        {
+            ApplyPendingViewportAdjustment();
+            viewportAdjustmentActivity.SetTag("pending.adjustment", _pendingViewportAdjustment)
+                .SetTag("has.viewport_state", _hasViewportState);
+        }
+    }
+
+    /// <summary>
+    /// Reconciles retained group/task controls and rebuilds the edge layer from the current graph snapshot.
+    /// </summary>
+    private void ReconcileVisibleGraphLayers(ExecutionGraphViewModel graph, PerformanceActivityScope activity, PerformanceActivityScope parentActivity)
+    {
+        int reconciliationSequence = System.Threading.Interlocked.Increment(ref _reconciliationCount);
+        using PerformanceActivityScope sampledReconciliationActivity = reconciliationSequence % ReconciliationInstrumentationInterval == 0
+            ? PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ReconcileLayers")
+                .SetTag("sequence", reconciliationSequence)
+                .SetTag("group.count", graph.Nodes.Count(node => node.IsContainer))
+                .SetTag("leaf.count", graph.Nodes.Count(node => !node.IsContainer))
+                .SetTag("edge.count", graph.Edges.Count)
+            : default;
+
+        (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount, int reorderedCount) groupStats;
+        using (PerformanceActivityScope groupActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ReconcileGroupControls"))
+        {
+            groupStats = ReconcileGroupControls(graph);
+            groupActivity.SetTag("retained.group.count", groupStats.retainedCount)
+                .SetTag("created.group.count", groupStats.createdCount)
+                .SetTag("removed.group.count", groupStats.removedCount)
+                .SetTag("recreated.group.kind_change.count", groupStats.recreatedForRoleChangeCount)
+                .SetTag("reordered.group.count", groupStats.reorderedCount);
+        }
+
+        (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount, int reorderedCount) taskStats;
+        using (PerformanceActivityScope taskActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ReconcileTaskControls"))
+        {
+            taskStats = ReconcileTaskControls(graph);
+            taskActivity.SetTag("retained.task.count", taskStats.retainedCount)
+                .SetTag("created.task.count", taskStats.createdCount)
+                .SetTag("removed.task.count", taskStats.removedCount)
+                .SetTag("recreated.task.kind_change.count", taskStats.recreatedForRoleChangeCount)
+                .SetTag("reordered.task.count", taskStats.reorderedCount);
+        }
+
+        int edgePathCount;
+        using (PerformanceActivityScope edgeActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RebuildEdgeLayer"))
+        {
+            edgePathCount = RebuildEdgeLayer(graph);
+            edgeActivity.SetTag("edge.path.count", edgePathCount);
+        }
+
+        parentActivity.SetTag("retained.group.count", groupStats.retainedCount)
+            .SetTag("created.group.count", groupStats.createdCount)
+            .SetTag("removed.group.count", groupStats.removedCount)
+            .SetTag("recreated.group.kind_change.count", groupStats.recreatedForRoleChangeCount)
+            .SetTag("reordered.group.count", groupStats.reorderedCount)
+            .SetTag("retained.task.count", taskStats.retainedCount)
+            .SetTag("created.task.count", taskStats.createdCount)
+            .SetTag("removed.task.count", taskStats.removedCount)
+            .SetTag("recreated.task.kind_change.count", taskStats.recreatedForRoleChangeCount)
+            .SetTag("reordered.task.count", taskStats.reorderedCount)
+            .SetTag("edge.path.count", edgePathCount);
+
+        activity.SetTag("retained.group.count", groupStats.retainedCount)
+            .SetTag("created.group.count", groupStats.createdCount)
+            .SetTag("removed.group.count", groupStats.removedCount)
+            .SetTag("recreated.group.kind_change.count", groupStats.recreatedForRoleChangeCount)
+            .SetTag("reordered.group.count", groupStats.reorderedCount)
+            .SetTag("retained.task.count", taskStats.retainedCount)
+            .SetTag("created.task.count", taskStats.createdCount)
+            .SetTag("removed.task.count", taskStats.removedCount)
+            .SetTag("recreated.task.kind_change.count", taskStats.recreatedForRoleChangeCount)
+            .SetTag("reordered.task.count", taskStats.reorderedCount)
+            .SetTag("edge.path.count", edgePathCount);
+
+        sampledReconciliationActivity.SetTag("retained.group.count", groupStats.retainedCount)
+            .SetTag("created.group.count", groupStats.createdCount)
+            .SetTag("removed.group.count", groupStats.removedCount)
+            .SetTag("recreated.group.kind_change.count", groupStats.recreatedForRoleChangeCount)
+            .SetTag("reordered.group.count", groupStats.reorderedCount)
+            .SetTag("retained.task.count", taskStats.retainedCount)
+            .SetTag("created.task.count", taskStats.createdCount)
+            .SetTag("removed.task.count", taskStats.removedCount)
+            .SetTag("recreated.task.kind_change.count", taskStats.recreatedForRoleChangeCount)
+            .SetTag("reordered.task.count", taskStats.reorderedCount)
+            .SetTag("edge.path.count", edgePathCount);
+    }
+
+    /// <summary>
+    /// Reconciles retained group-container controls for nodes that currently act as containers.
+    /// </summary>
+    private (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount, int reorderedCount) ReconcileGroupControls(ExecutionGraphViewModel graph)
+    {
+        if (_groupCanvas == null)
+        {
+            return default;
+        }
+
+        int retainedCount = 0;
+        int createdCount = 0;
+        int removedCount = 0;
+        int recreatedForRoleChangeCount = 0;
+        int reorderedCount = 0;
+        List<ExecutionNodeViewModel> groups = graph.Nodes.Where(node => node.IsContainer).OrderByDescending(node => node.Width * node.Height).ToList();
+        HashSet<RuntimeExecutionTaskId> groupIds = groups.Select(group => group.Id).ToHashSet();
+
+        foreach ((RuntimeExecutionTaskId taskId, ExecutionGroupContainer groupControl) in _renderedGroupControls.ToList())
+        {
+            if (groupIds.Contains(taskId))
+            {
+                continue;
+            }
+
+            _groupCanvas.Children.Remove(groupControl);
+            _renderedGroupControls.Remove(taskId);
+            removedCount++;
+        }
+
+        foreach (ExecutionNodeViewModel group in groups)
+        {
+            if (_renderedTaskControls.Remove(group.Id, out ExecutionTaskCard? staleTaskControl))
+            {
+                _taskCanvas?.Children.Remove(staleTaskControl);
+                recreatedForRoleChangeCount++;
+            }
+
+            if (_renderedGroupControls.TryGetValue(group.Id, out ExecutionGroupContainer? existingGroupControl))
+            {
+                UpdateGroupControl(existingGroupControl, group);
+                retainedCount++;
+                continue;
+            }
+
+            ExecutionGroupContainer groupControl = CreateGroupControl(group, useMeasuredWidth: false);
+            _renderedGroupControls[group.Id] = groupControl;
+            _groupCanvas.Children.Add(groupControl);
+            createdCount++;
+        }
+
+        reorderedCount = ReorderCanvasChildren(_groupCanvas, groups.Select(group => (Control)_renderedGroupControls[group.Id]));
+        return (retainedCount, createdCount, removedCount, recreatedForRoleChangeCount, reorderedCount);
+    }
+
+    /// <summary>
+    /// Reconciles retained task-card controls for nodes that currently render as leaves.
+    /// </summary>
+    private (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount, int reorderedCount) ReconcileTaskControls(ExecutionGraphViewModel graph)
+    {
+        if (_taskCanvas == null)
+        {
+            return default;
+        }
+
+        int retainedCount = 0;
+        int createdCount = 0;
+        int removedCount = 0;
+        int recreatedForRoleChangeCount = 0;
+        int reorderedCount = 0;
+        List<ExecutionNodeViewModel> leaves = graph.Nodes.Where(node => !node.IsContainer).ToList();
+        HashSet<RuntimeExecutionTaskId> leafIds = leaves.Select(node => node.Id).ToHashSet();
+
+        foreach ((RuntimeExecutionTaskId taskId, ExecutionTaskCard taskControl) in _renderedTaskControls.ToList())
+        {
+            if (leafIds.Contains(taskId))
+            {
+                continue;
+            }
+
+            _taskCanvas.Children.Remove(taskControl);
+            _renderedTaskControls.Remove(taskId);
+            removedCount++;
+        }
+
+        foreach (ExecutionNodeViewModel leaf in leaves)
+        {
+            if (_renderedGroupControls.Remove(leaf.Id, out ExecutionGroupContainer? staleGroupControl))
+            {
+                _groupCanvas?.Children.Remove(staleGroupControl);
+                recreatedForRoleChangeCount++;
+            }
+
+            if (_renderedTaskControls.TryGetValue(leaf.Id, out ExecutionTaskCard? existingTaskControl))
+            {
+                UpdateTaskControl(existingTaskControl, leaf);
+                retainedCount++;
+                continue;
+            }
+
+            ExecutionTaskCard taskControl = CreateTaskControl(leaf);
+            _renderedTaskControls[leaf.Id] = taskControl;
+            _taskCanvas.Children.Add(taskControl);
+            createdCount++;
+        }
+
+        /* Leaf task cards do not visually stack on top of each other the way nested group containers do, so preserving
+           exact child order in the task layer only creates expensive detach/re-add churn without changing what the user
+           sees. Keep cards mounted in their existing order and only add/remove cards when the visible leaf set changes. */
+        return (retainedCount, createdCount, removedCount, recreatedForRoleChangeCount, reorderedCount);
+    }
+
+    /// <summary>
+    /// Rebuilds the edge layer while leaving retained node controls untouched.
+    /// </summary>
+    private int RebuildEdgeLayer(ExecutionGraphViewModel graph)
+    {
+        if (_edgeCanvas == null)
+        {
+            return 0;
+        }
+
+        _edgeCanvas.Children.Clear();
+        int edgePathCount = 0;
+        foreach (ExecutionEdgeViewModel edge in graph.Edges)
         {
             /* Each rendered edge gets a visible path plus a wider transparent hit target so hover affordances are usable
                without forcing the user to land precisely on a two-pixel line. */
             foreach (ShapePath edgePath in CreateEdgeControls(edge))
             {
-                _graphCanvas.Children.Add(edgePath);
+                _edgeCanvas.Children.Add(edgePath);
+                edgePathCount++;
             }
         }
 
-        foreach (ExecutionNodeViewModel node in _observedGraph.Nodes.Where(node => !node.IsContainer))
-        {
-            Control taskControl = CreateTaskControl(node);
-            _renderedNodeControls[node.Id] = taskControl;
-            _graphCanvas.Children.Add(taskControl);
-        }
-
-        ApplyViewportTransform();
-        activity.SetTag("render.child.count", _graphCanvas.Children.Count);
-        ApplyPendingViewportAdjustment();
+        return edgePathCount;
     }
 
     /// <summary>
@@ -476,6 +779,11 @@ public partial class ExecutionGraphCanvas : UserControl
 
         foreach (ExecutionNodeViewModel node in graph.Nodes)
         {
+            if (!graph.NeedsMeasuredNodeWidth(node.Id))
+            {
+                continue;
+            }
+
             Control control = node.IsContainer
                 ? CreateGroupControl(node, useMeasuredWidth: true)
                 : CreateTaskControl(node);
@@ -534,6 +842,39 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
+    /// Reorders one layer so retained controls follow the same deterministic order as a fresh rebuild.
+    /// </summary>
+    private static int ReorderCanvasChildren(Canvas canvas, IEnumerable<Control> orderedControls)
+    {
+        List<Control> desiredControls = orderedControls.ToList();
+        if (canvas.Children.Count == desiredControls.Count)
+        {
+            bool orderMatches = true;
+            for (int index = 0; index < desiredControls.Count; index++)
+            {
+                if (!ReferenceEquals(canvas.Children[index], desiredControls[index]))
+                {
+                    orderMatches = false;
+                    break;
+                }
+            }
+
+            if (orderMatches)
+            {
+                return 0;
+            }
+        }
+
+        canvas.Children.Clear();
+        foreach (Control control in desiredControls)
+        {
+            canvas.Children.Add(control);
+        }
+
+        return desiredControls.Count;
+    }
+
+    /// <summary>
     /// Reads the natural width of one attached control from the hidden measurement host so final graph layout matches the
     /// actual control width that Avalonia produced from the XAML-owned node layout.
     /// </summary>
@@ -545,7 +886,7 @@ public partial class ExecutionGraphCanvas : UserControl
     /// <summary>
     /// Creates one XAML-backed group control and positions it on the graph canvas.
     /// </summary>
-    private Control CreateGroupControl(ExecutionNodeViewModel group, bool useMeasuredWidth = false)
+    private ExecutionGroupContainer CreateGroupControl(ExecutionNodeViewModel group, bool useMeasuredWidth = false)
     {
         ExecutionGroupContainer container = new()
         {
@@ -563,9 +904,22 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
+    /// Updates a retained group control from the latest node bounds and view model instance.
+    /// </summary>
+    private static void UpdateGroupControl(ExecutionGroupContainer container, ExecutionNodeViewModel group)
+    {
+        container.DataContext = group;
+        container.GroupWidth = group.Width;
+        container.GroupHeight = group.Height;
+        container.HeaderHeight = ExecutionGraphViewModel.GroupHeaderHeight;
+        Canvas.SetLeft(container, group.X);
+        Canvas.SetTop(container, group.Y);
+    }
+
+    /// <summary>
     /// Creates one XAML-backed task-card control and positions it on the graph canvas.
     /// </summary>
-    private Control CreateTaskControl(ExecutionNodeViewModel node)
+    private ExecutionTaskCard CreateTaskControl(ExecutionNodeViewModel node)
     {
         ExecutionTaskCard card = new()
         {
@@ -578,6 +932,17 @@ public partial class ExecutionGraphCanvas : UserControl
         Canvas.SetLeft(card, node.X);
         Canvas.SetTop(card, node.Y);
         return card;
+    }
+
+    /// <summary>
+    /// Updates a retained task-card control from the latest node bounds and view model instance.
+    /// </summary>
+    private static void UpdateTaskControl(ExecutionTaskCard card, ExecutionNodeViewModel node)
+    {
+        card.DataContext = node;
+        card.CardHeight = node.Height;
+        Canvas.SetLeft(card, node.X);
+        Canvas.SetTop(card, node.Y);
     }
 
     /// <summary>

@@ -18,7 +18,9 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
 {
+    private const int PropertyChangeInstrumentationInterval = 250;
     private int _uiPostCount;
+    private int _propertyChangeCount;
     private bool _isDisposed;
 
     /// <summary>
@@ -131,8 +133,17 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void HandleTaskPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        int propertyChangeSequence = Interlocked.Increment(ref _propertyChangeCount);
         if (Dispatcher.UIThread.CheckAccess())
         {
+            using PerformanceActivityScope inlineActivity = propertyChangeSequence % PropertyChangeInstrumentationInterval == 0
+                ? PerformanceTelemetry.StartActivity("ExecutionTaskViewModel.Task.PropertyChanged")
+                    .SetTag("task.id", Task.Id.Value)
+                    .SetTag("task.title", Task.Title)
+                    .SetTag("property.name", e.PropertyName ?? string.Empty)
+                    .SetTag("change.sequence", propertyChangeSequence)
+                    .SetTag("dispatch.mode", "inline")
+                : default;
             RaiseTaskProperties(e.PropertyName);
             return;
         }
@@ -141,10 +152,12 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
         DateTime postedAtUtc = DateTime.UtcNow;
         Dispatcher.UIThread.Post(() =>
         {
-            using PerformanceActivityScope activity = postSequence % 250 == 0
+            using PerformanceActivityScope activity = postSequence % PropertyChangeInstrumentationInterval == 0
                 ? PerformanceTelemetry.StartActivity("ExecutionTaskViewModel.Task.Dispatch")
                     .SetTag("task.id", Task.Id.Value)
                     .SetTag("task.title", Task.Title)
+                    .SetTag("property.name", e.PropertyName ?? string.Empty)
+                    .SetTag("change.sequence", propertyChangeSequence)
                     .SetTag("dispatch.post.sequence", postSequence)
                     .SetTag("dispatch.queue.delay_ms", (DateTime.UtcNow - postedAtUtc).TotalMilliseconds.ToString("0"))
                 : default;

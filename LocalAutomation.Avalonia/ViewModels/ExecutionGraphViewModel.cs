@@ -192,6 +192,9 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             .SetTag("plan.task.count", tasks?.Count ?? 0);
 
         _sourceTasks = tasks?.ToList();
+        Dictionary<RuntimeExecutionTaskId, double> retainedMeasuredNodeWidths = tasks == null
+            ? new Dictionary<RuntimeExecutionTaskId, double>()
+            : RetainMeasuredNodeWidths(tasks);
         IsUpdatingGraph = true;
         try
         {
@@ -206,6 +209,11 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             _ownedRawTaskIdsByVisibleNodeId.Clear();
             _leafDescendantsByGroupId.Clear();
             _measuredNodeWidths.Clear();
+            foreach ((RuntimeExecutionTaskId taskId, double width) in retainedMeasuredNodeWidths)
+            {
+                _measuredNodeWidths[taskId] = width;
+            }
+
             _rootTaskIds.Clear();
 
             if (tasks == null)
@@ -269,6 +277,26 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     public void AttachTasks(IReadOnlyDictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel> tasksById)
     {
         _tasksById = tasksById ?? throw new ArgumentNullException(nameof(tasksById));
+    }
+
+    /// <summary>
+    /// Seeds measured widths from another graph for matching visible task ids so a newly opened runtime graph can reuse
+    /// the already-measured preview widths instead of forcing a full first-pass width measurement for the same nodes.
+    /// </summary>
+    public void ImportMeasuredNodeWidthsFrom(ExecutionGraphViewModel? sourceGraph, IReadOnlyList<RuntimeExecutionTask>? tasks)
+    {
+        if (sourceGraph == null || tasks == null)
+        {
+            return;
+        }
+
+        /* Group containers size themselves from dynamic header content such as metrics chips and status labels, so only
+           leaf-task widths are worth importing from another graph snapshot. Carrying group widths forward causes stale
+           header measurements to clip once the live runtime header grows wider than the cached preview width. */
+        foreach ((RuntimeExecutionTaskId taskId, double width) in sourceGraph.RetainMeasuredNodeWidths(tasks))
+        {
+            _measuredNodeWidths[taskId] = width;
+        }
     }
 
     /// <summary>
@@ -338,6 +366,20 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Returns whether the provided node still needs one hidden-host measurement pass before the layout can trust its
+    /// rendered width.
+    /// </summary>
+    internal bool NeedsMeasuredNodeWidth(RuntimeExecutionTaskId taskId)
+    {
+        /* Group containers keep dynamic header chrome that can widen as metrics/status change during execution, so they
+           always opt back into the hidden-host measurement pass instead of trusting an older cached width. Leaf cards are
+           far more numerous, so they continue reusing cached widths until they first appear or their cache is absent. */
+        return !_nodesById.TryGetValue(taskId, out ExecutionNodeViewModel? node) ||
+               node.IsContainer ||
+               !_measuredNodeWidths.ContainsKey(taskId);
+    }
+
+    /// <summary>
     /// Materializes one graph node view model for every task in the source plan.
     /// </summary>
     private void BuildNodeLookup(IReadOnlyList<RuntimeExecutionTask> tasks)
@@ -363,6 +405,33 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         }
 
         _nodes.AddRange(nodes);
+    }
+
+    /// <summary>
+    /// Preserves measured widths for visible node ids that survive into the next graph snapshot so runtime child-task
+    /// insertion only measures genuinely new nodes instead of forcing every existing card through hidden-host layout
+    /// again.
+    /// </summary>
+    private Dictionary<RuntimeExecutionTaskId, double> RetainMeasuredNodeWidths(IReadOnlyList<RuntimeExecutionTask> tasks)
+    {
+        /* Width reuse should follow the visible graph shape, not the raw authored hierarchy. Many visible leaf cards own
+           hidden body children, which makes them raw parents even though they still render as leaf cards. Excluding raw
+           parents here drops most reusable card widths and forces the session graph to rebuild a full hidden measurement
+           host on first render. */
+        Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTask> visibleTasksById = tasks
+            .Where(ShouldRenderTask)
+            .ToDictionary(task => task.Id);
+        HashSet<RuntimeExecutionTaskId> visibleParentIds = visibleTasksById.Values
+            .Where(task => task.ParentId != null && visibleTasksById.ContainsKey(task.ParentId.Value))
+            .Select(task => task.ParentId!.Value)
+            .ToHashSet();
+        HashSet<RuntimeExecutionTaskId> reusableLeafIds = visibleTasksById.Keys
+            .Where(taskId => !visibleParentIds.Contains(taskId))
+            .ToHashSet();
+
+        return _measuredNodeWidths
+            .Where(entry => reusableLeafIds.Contains(entry.Key))
+            .ToDictionary(entry => entry.Key, entry => entry.Value);
     }
 
     /// <summary>

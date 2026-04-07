@@ -15,9 +15,11 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
 {
+    private const int MetricsRefreshInstrumentationInterval = 25;
     private bool _isSelected;
     private ObservableCollection<LogEntryViewModel> _selectedLogEntries = new();
     private readonly Dictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel> _tasksById = new();
+    private int _metricsRefreshCount;
 
     /// <summary>
     /// Creates a workspace tab with the provided graph and optional execution session.
@@ -234,15 +236,27 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// </summary>
     public void SetTasks(IEnumerable<RuntimeExecutionTask> tasks)
     {
-        foreach (ExecutionTaskViewModel existingTask in _tasksById.Values)
+        /* Runtime graph refreshes often add only a few child tasks at a time. Reuse existing task view models for stable
+           task ids so structural refreshes do not resubscribe every visible task and force avoidable UI churn. */
+        List<RuntimeExecutionTask> materializedTasks = tasks?.ToList() ?? new List<RuntimeExecutionTask>();
+        HashSet<RuntimeExecutionTaskId> incomingTaskIds = materializedTasks.Select(task => task.Id).ToHashSet();
+        List<RuntimeExecutionTaskId> removedTaskIds = _tasksById.Keys
+            .Where(taskId => !incomingTaskIds.Contains(taskId))
+            .ToList();
+
+        foreach (RuntimeExecutionTaskId removedTaskId in removedTaskIds)
         {
-            existingTask.Dispose();
+            _tasksById[removedTaskId].Dispose();
+            _tasksById.Remove(removedTaskId);
         }
 
-        _tasksById.Clear();
-        List<RuntimeExecutionTask> materializedTasks = tasks?.ToList() ?? new List<RuntimeExecutionTask>();
         foreach (RuntimeExecutionTask task in materializedTasks)
         {
+            if (_tasksById.ContainsKey(task.Id))
+            {
+                continue;
+            }
+
             _tasksById[task.Id] = new ExecutionTaskViewModel(task, Session);
         }
     }
@@ -260,6 +274,15 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// </summary>
     public void RefreshAllTaskMetrics()
     {
+        int refreshSequence = System.Threading.Interlocked.Increment(ref _metricsRefreshCount);
+        using PerformanceActivityScope activity = refreshSequence % MetricsRefreshInstrumentationInterval == 0
+            ? PerformanceTelemetry.StartActivity("RuntimeWorkspaceTab.RefreshAllTaskMetrics")
+                .SetTag("tab.id", Id)
+                .SetTag("tab.title", Title)
+                .SetTag("task.count", _tasksById.Count)
+                .SetTag("refresh.sequence", refreshSequence)
+            : default;
+
         foreach (ExecutionTaskViewModel task in _tasksById.Values)
         {
             task.RefreshTimeSensitiveState();

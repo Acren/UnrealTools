@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Avalonia.Media;
+using LocalAutomation.Core;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
 using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
@@ -13,6 +14,7 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionNodeViewModel : ViewModelBase
 {
+    private const int PropertyChangeInstrumentationInterval = 250;
     private string _summaryText = string.Empty;
     private bool _isSelected;
     private double _x;
@@ -21,6 +23,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     private double _height = ExecutionGraphViewModel.NodeHeight;
     private int _directChildCount;
     private int _descendantTaskCount;
+    private int _propertyChangeCount;
 
     /// <summary>
     /// Creates a graph-node view model from one shared Avalonia task view model.
@@ -319,6 +322,15 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     private void HandleTaskPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        int propertyChangeSequence = System.Threading.Interlocked.Increment(ref _propertyChangeCount);
+        using PerformanceActivityScope activity = propertyChangeSequence % PropertyChangeInstrumentationInterval == 0
+            ? PerformanceTelemetry.StartActivity("ExecutionNodeViewModel.Task.PropertyChanged")
+                .SetTag("task.id", Task.Id.Value)
+                .SetTag("task.title", Task.Title)
+                .SetTag("property.name", e.PropertyName ?? string.Empty)
+                .SetTag("change.sequence", propertyChangeSequence)
+            : default;
+
         if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.State), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Outcome), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Status), StringComparison.Ordinal) ||

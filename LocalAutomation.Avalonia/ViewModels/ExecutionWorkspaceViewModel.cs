@@ -16,6 +16,7 @@ using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
 using RuntimeExecutionTaskOutcome = LocalAutomation.Runtime.ExecutionTaskOutcome;
+using RuntimeExecutionTaskState = LocalAutomation.Runtime.ExecutionTaskState;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -30,16 +31,25 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private const int MaxLogEntriesPerFlush = 100;
     private static readonly TimeSpan PendingLogFlushInterval = TimeSpan.FromMilliseconds(50);
     private const int DispatcherInstrumentationInterval = 250;
+    private const int SelectionInstrumentationInterval = 100;
+    private const int LogRebuildInstrumentationInterval = 25;
 
     private readonly LocalAutomationApplicationHost _services;
     private readonly object _pendingLogSyncRoot = new();
+    private readonly object _pendingTaskStateSyncRoot = new();
+    private readonly object _pendingGraphRefreshSyncRoot = new();
     private readonly Action<string> _setStatus;
     private readonly DispatcherTimer _pendingLogFlushTimer;
     private readonly DispatcherTimer _runtimeDurationTimer;
     private readonly Dictionary<RuntimeWorkspaceTabViewModel, Queue<LogEntryViewModel>> _pendingLogEntries = new();
+    private readonly Dictionary<RuntimeWorkspaceTabViewModel, HashSet<RuntimeExecutionTaskId>> _pendingTaskStateChanges = new();
+    private readonly HashSet<RuntimeWorkspaceTabViewModel> _taskStateFlushQueuedTabs = new();
+    private readonly HashSet<RuntimeWorkspaceTabViewModel> _pendingGraphRefreshTabs = new();
     private readonly Dictionary<RuntimeWorkspaceTabViewModel, ILogStream> _attachedLogStreams = new();
     private readonly Dictionary<RuntimeWorkspaceTabViewModel, RuntimeExecutionSession> _attachedSessions = new();
     private int _taskStatusDispatcherPostCount;
+    private int _selectionStateChangeCount;
+    private int _selectedLogRebuildCount;
     private bool _isPendingLogFlushStartQueued;
     private RuntimeWorkspaceTabViewModel? _observedWorkspaceTab;
     private RuntimeWorkspaceTabViewModel? _selectedRuntimeTab;
@@ -77,10 +87,23 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         get => _selectedRuntimeTab;
         set
         {
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionWorkspace.SetSelectedRuntimeTab")
+                .SetTag("previous.tab.id", _selectedRuntimeTab?.Id ?? string.Empty)
+                .SetTag("previous.tab.kind", _selectedRuntimeTab?.Kind.ToString() ?? string.Empty)
+                .SetTag("next.tab.id", value?.Id ?? string.Empty)
+                .SetTag("next.tab.kind", value?.Kind.ToString() ?? string.Empty);
+
+            /* The shared graph host should only see a SelectedGraph property change when the selected tab actually swaps
+               to a different graph owner. Broadly re-raising SelectedGraph during unrelated header/log refreshes causes
+               the canvas DataContext to churn and forces a full measured redraw. */
+            ExecutionGraphViewModel? previousSelectedGraph = SelectedGraph;
             if (!SetProperty(ref _selectedRuntimeTab, value))
             {
+                activity.SetTag("selection.changed", false);
                 return;
             }
+
+            activity.SetTag("selection.changed", true);
 
             if (_selectedRuntimeTabPropertyChanged != null)
             {
@@ -115,6 +138,18 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 {
                     RemovePendingLogEntries(tab);
                 }
+            }
+
+            if (!ReferenceEquals(previousSelectedGraph, SelectedGraph))
+            {
+                activity.SetTag("selected_graph.changed", true)
+                    .SetTag("previous.graph.hash", previousSelectedGraph?.GetHashCode() ?? 0)
+                    .SetTag("next.graph.hash", SelectedGraph?.GetHashCode() ?? 0);
+                RaisePropertyChanged(nameof(SelectedGraph));
+            }
+            else
+            {
+                activity.SetTag("selected_graph.changed", false);
             }
 
             RaiseSelectionStateChanged();
@@ -295,8 +330,15 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
            registry and the rendered graph from the same materialized snapshot each time. */
         List<RuntimeExecutionTask> taskSnapshot = session.Tasks.ToList();
         runtimeTab.SetTasks(taskSnapshot);
+        /* The selected plan-preview tab has usually just measured the same authored graph. Reuse those widths when the
+           execution session tab opens so the first runtime render can skip a redundant full hidden-host measurement pass
+           for unchanged nodes. */
+        ExecutionGraphViewModel? selectedGraph = SelectedGraph;
+        if (selectedGraph != null && !ReferenceEquals(selectedGraph, graph))
+        {
+            graph.ImportMeasuredNodeWidthsFrom(selectedGraph, taskSnapshot);
+        }
 
-        graph.AttachTasks(runtimeTab.TasksById);
         graph.SetGraph(taskSnapshot);
 
         HookGraphSelection(runtimeTab);
@@ -310,30 +352,13 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         AttachSessionLogs(runtimeTab, session);
         session.TaskStateChanged += (taskId, state, outcome, statusReason) =>
         {
-            DateTime postedAtUtc = DateTime.UtcNow;
-            Dispatcher.UIThread.Post(() =>
-            {
-                int postSequence = Interlocked.Increment(ref _taskStatusDispatcherPostCount);
-                using PerformanceActivityScope uiActivity = CreateDispatcherPostedActivity(
-                    "ExecutionWorkspace.TaskStateChanged.Dispatch",
-                    runtimeTab,
-                    postedAtUtc,
-                    postSequence,
-                    extraTags: activity => activity
-                        .SetTag("task.id", taskId.Value)
-                        .SetTag("task.state", state.ToString())
-                        .SetTag("task.outcome", outcome?.ToString() ?? string.Empty)
-                        .SetTag("task.status_reason", statusReason ?? string.Empty));
-
-                runtimeTab.Graph.NotifyTaskStateChanged(taskId);
-                runtimeTab.RefreshAllTaskMetrics();
-                if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
-                {
-                    RaiseSelectionStateChanged();
-                }
-            });
+            EnqueuePendingTaskStateChange(runtimeTab, taskId, state, outcome, statusReason);
         };
-        session.TaskGraphChanged += () => Dispatcher.UIThread.Post(() => RefreshRuntimeSessionGraph(runtimeTab));
+
+        /* Child-task insertion can arrive in bursts while the runtime is expanding nested work. Queue at most one
+           structural graph refresh per tab so the UI thread does not rebuild the full graph repeatedly before the first
+           posted refresh has even run. */
+        session.TaskGraphChanged += () => EnqueuePendingGraphRefresh(runtimeTab);
 
         _attachedSessions[runtimeTab] = session;
         _ = WatchExecutionCompletionAsync(runtimeTab);
@@ -356,7 +381,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
            cannot diverge while runtime child tasks are being merged into the live session. */
         List<RuntimeExecutionTask> taskSnapshot = session.Tasks.ToList();
         runtimeTab.SetTasks(taskSnapshot);
-        runtimeTab.Graph.AttachTasks(runtimeTab.TasksById);
         runtimeTab.Graph.SetGraph(taskSnapshot);
         RebuildTabSelectedLogEntries(runtimeTab);
         runtimeTab.RefreshAllTaskMetrics();
@@ -509,6 +533,8 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private void RemoveRuntimeTab(RuntimeWorkspaceTabViewModel runtimeTab)
     {
         RemovePendingLogEntries(runtimeTab);
+        RemovePendingTaskStateChanges(runtimeTab);
+        RemovePendingGraphRefresh(runtimeTab);
         _attachedLogStreams.Remove(runtimeTab);
         _attachedSessions.Remove(runtimeTab);
         runtimeTab.DisposeTasks();
@@ -528,6 +554,144 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         RaiseSelectionStateChanged();
+    }
+
+    /// <summary>
+    /// Buffers task-state changes per runtime tab so one burst of scheduler transitions turns into one dispatcher flush
+    /// instead of hundreds of tiny UI callbacks that fight with graph rendering for the UI thread.
+    /// </summary>
+    private void EnqueuePendingTaskStateChange(RuntimeWorkspaceTabViewModel runtimeTab, RuntimeExecutionTaskId taskId, RuntimeExecutionTaskState state, RuntimeExecutionTaskOutcome? outcome, string? statusReason)
+    {
+        bool shouldPostFlush;
+        DateTime postedAtUtc = DateTime.UtcNow;
+        lock (_pendingTaskStateSyncRoot)
+        {
+            if (!_pendingTaskStateChanges.TryGetValue(runtimeTab, out HashSet<RuntimeExecutionTaskId>? pendingTaskIds))
+            {
+                pendingTaskIds = new HashSet<RuntimeExecutionTaskId>();
+                _pendingTaskStateChanges[runtimeTab] = pendingTaskIds;
+            }
+
+            pendingTaskIds.Add(taskId);
+            shouldPostFlush = _taskStateFlushQueuedTabs.Add(runtimeTab);
+        }
+
+        if (!shouldPostFlush)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => FlushPendingTaskStateChanges(runtimeTab, postedAtUtc, state, outcome, statusReason));
+    }
+
+    /// <summary>
+    /// Applies one queued batch of task-state changes for a runtime tab on the UI thread.
+    /// </summary>
+    private void FlushPendingTaskStateChanges(RuntimeWorkspaceTabViewModel runtimeTab, DateTime postedAtUtc, RuntimeExecutionTaskState latestState, RuntimeExecutionTaskOutcome? latestOutcome, string? latestStatusReason)
+    {
+        List<RuntimeExecutionTaskId> pendingTaskIds;
+        lock (_pendingTaskStateSyncRoot)
+        {
+            _taskStateFlushQueuedTabs.Remove(runtimeTab);
+            if (!_pendingTaskStateChanges.Remove(runtimeTab, out HashSet<RuntimeExecutionTaskId>? pendingTaskIdSet) || pendingTaskIdSet.Count == 0)
+            {
+                return;
+            }
+
+            pendingTaskIds = pendingTaskIdSet.ToList();
+        }
+
+        if (!_attachedSessions.ContainsKey(runtimeTab))
+        {
+            return;
+        }
+
+        int postSequence = Interlocked.Increment(ref _taskStatusDispatcherPostCount);
+        using PerformanceActivityScope uiActivity = CreateDispatcherPostedActivity(
+            "ExecutionWorkspace.TaskStateChanged.Dispatch",
+            runtimeTab,
+            postedAtUtc,
+            postSequence,
+            extraTags: activity => activity
+                .SetTag("task.batch.count", pendingTaskIds.Count.ToString())
+                .SetTag("task.id", pendingTaskIds[^1].Value)
+                .SetTag("task.state", latestState.ToString())
+                .SetTag("task.outcome", latestOutcome?.ToString() ?? string.Empty)
+                .SetTag("task.status_reason", latestStatusReason ?? string.Empty));
+
+        /* Task view models already react to the underlying runtime model changes. This flush only updates graph-level
+           selection visuals and one shared metrics/header pass, so one burst of runtime transitions costs one UI update. */
+        foreach (RuntimeExecutionTaskId pendingTaskId in pendingTaskIds)
+        {
+            runtimeTab.Graph.NotifyTaskStateChanged(pendingTaskId);
+        }
+
+        runtimeTab.RefreshAllTaskMetrics();
+        if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
+        {
+            RaiseSelectionStateChanged();
+        }
+    }
+
+    /// <summary>
+    /// Drops any queued task-state flush for a runtime tab that is being cleared or removed.
+    /// </summary>
+    private void RemovePendingTaskStateChanges(RuntimeWorkspaceTabViewModel runtimeTab)
+    {
+        lock (_pendingTaskStateSyncRoot)
+        {
+            _pendingTaskStateChanges.Remove(runtimeTab);
+            _taskStateFlushQueuedTabs.Remove(runtimeTab);
+        }
+    }
+
+    /// <summary>
+    /// Queues one structural graph refresh for the provided runtime tab so bursts of child-task insertion collapse into
+    /// one UI-thread rebuild instead of posting one dispatcher callback per graph mutation.
+    /// </summary>
+    private void EnqueuePendingGraphRefresh(RuntimeWorkspaceTabViewModel runtimeTab)
+    {
+        bool shouldPostRefresh;
+        lock (_pendingGraphRefreshSyncRoot)
+        {
+            shouldPostRefresh = _pendingGraphRefreshTabs.Add(runtimeTab);
+        }
+
+        if (!shouldPostRefresh)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            lock (_pendingGraphRefreshSyncRoot)
+            {
+                if (!_pendingGraphRefreshTabs.Remove(runtimeTab))
+                {
+                    return;
+                }
+            }
+
+            /* Closing a tab removes its session before the posted callback runs. Re-check that the tab still owns a live
+               attached session so queued refreshes quietly disappear instead of rebuilding a tab that no longer exists. */
+            if (!_attachedSessions.ContainsKey(runtimeTab))
+            {
+                return;
+            }
+
+            RefreshRuntimeSessionGraph(runtimeTab);
+        });
+    }
+
+    /// <summary>
+    /// Drops any queued structural graph refresh for a runtime tab that is being torn down.
+    /// </summary>
+    private void RemovePendingGraphRefresh(RuntimeWorkspaceTabViewModel runtimeTab)
+    {
+        lock (_pendingGraphRefreshSyncRoot)
+        {
+            _pendingGraphRefreshTabs.Remove(runtimeTab);
+        }
     }
 
     /// <summary>
@@ -589,29 +753,59 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// </summary>
     private void RebuildTabSelectedLogEntries(RuntimeWorkspaceTabViewModel runtimeTab)
     {
+        int rebuildSequence = Interlocked.Increment(ref _selectedLogRebuildCount);
+        using PerformanceActivityScope activity = rebuildSequence % LogRebuildInstrumentationInterval == 0
+            ? PerformanceTelemetry.StartActivity("ExecutionWorkspace.RebuildSelectedLogEntries")
+                .SetTag("tab.id", runtimeTab.Id)
+                .SetTag("tab.title", runtimeTab.Title)
+                .SetTag("tab.kind", runtimeTab.Kind.ToString())
+                .SetTag("rebuild.sequence", rebuildSequence)
+            : default;
+
         if (runtimeTab.IsApplicationLog)
         {
-            runtimeTab.SetSelectedLogEntries(ApplicationLogService.LogStream.Entries.Select(CreateLogEntryViewModel));
+            List<LogEntryViewModel> applicationEntries = ApplicationLogService.LogStream.Entries.Select(CreateLogEntryViewModel).ToList();
+            activity.SetTag("log.source", "application")
+                .SetTag("selected.task.count", 0)
+                .SetTag("session.entry.count", applicationEntries.Count)
+                .SetTag("visible.entry.count", applicationEntries.Count);
+            runtimeTab.SetSelectedLogEntries(applicationEntries);
             return;
         }
 
         if (runtimeTab.Session == null)
         {
+            activity.SetTag("log.source", "none")
+                .SetTag("selected.task.count", 0)
+                .SetTag("session.entry.count", 0)
+                .SetTag("visible.entry.count", 0);
             runtimeTab.SetSelectedLogEntries(Array.Empty<LogEntryViewModel>());
             return;
         }
 
         IReadOnlyList<RuntimeExecutionTaskId> selectedTaskIds = runtimeTab.Graph.GetSelectedLogTaskIds();
+        int sessionEntryCount = runtimeTab.Session.LogStream.Entries.Count;
         if (selectedTaskIds.Count == 0)
         {
-            runtimeTab.SetSelectedLogEntries(runtimeTab.Session.LogStream.Entries.Select(CreateLogEntryViewModel));
+            List<LogEntryViewModel> sessionEntries = runtimeTab.Session.LogStream.Entries.Select(CreateLogEntryViewModel).ToList();
+            activity.SetTag("log.source", "session")
+                .SetTag("selected.task.count", 0)
+                .SetTag("session.entry.count", sessionEntryCount)
+                .SetTag("visible.entry.count", sessionEntries.Count);
+            runtimeTab.SetSelectedLogEntries(sessionEntries);
             return;
         }
 
         HashSet<RuntimeExecutionTaskId> selectedTaskIdSet = new(selectedTaskIds);
-        runtimeTab.SetSelectedLogEntries(runtimeTab.Session.LogStream.Entries
+        List<LogEntryViewModel> filteredEntries = runtimeTab.Session.LogStream.Entries
             .Where(entry => RuntimeExecutionTaskId.FromNullable(entry.TaskId) is RuntimeExecutionTaskId taskId && selectedTaskIdSet.Contains(taskId))
-            .Select(CreateLogEntryViewModel));
+            .Select(CreateLogEntryViewModel)
+            .ToList();
+        activity.SetTag("log.source", "selection")
+            .SetTag("selected.task.count", selectedTaskIdSet.Count)
+            .SetTag("session.entry.count", sessionEntryCount)
+            .SetTag("visible.entry.count", filteredEntries.Count);
+        runtimeTab.SetSelectedLogEntries(filteredEntries);
     }
 
     /// <summary>
@@ -829,9 +1023,19 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// </summary>
     private void RaiseSelectionStateChanged()
     {
+        int selectionSequence = Interlocked.Increment(ref _selectionStateChangeCount);
+        using PerformanceActivityScope activity = selectionSequence % SelectionInstrumentationInterval == 0
+            ? PerformanceTelemetry.StartActivity("ExecutionWorkspace.RaiseSelectionStateChanged")
+                .SetTag("sequence", selectionSequence)
+                .SetTag("selected.tab.id", SelectedRuntimeTab?.Id ?? string.Empty)
+                .SetTag("selected.tab.kind", SelectedRuntimeTab?.Kind.ToString() ?? string.Empty)
+                .SetTag("selected.tab.shows_graph", SelectedRuntimeTab?.ShowsGraph ?? false)
+                .SetTag("selected.tab.shows_log", SelectedRuntimeTab?.ShowsLog ?? false)
+                .SetTag("selected.tab.shows_metrics", SelectedRuntimeTab?.ShowsRuntimeMetrics ?? false)
+            : default;
+
         RaisePropertyChanged(nameof(ExecutionSummary));
         RaisePropertyChanged(nameof(IsRunning));
-        RaisePropertyChanged(nameof(SelectedGraph));
         RaisePropertyChanged(nameof(SelectedTask));
         RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
         RaisePropertyChanged(nameof(SelectedRuntimeLogEntries));

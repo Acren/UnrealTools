@@ -23,10 +23,28 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
                     RenderTransformOrigin="0,0">
-                <Canvas x:Name="GraphCanvas"
-                        Width="{Binding CanvasWidth}"
-                        Height="{Binding CanvasHeight}"
-                        UseLayoutRounding="True" />
+                <!-- Separate retained layers keep z-order structural instead of relying on manual child-index juggling
+                     inside one flat canvas. Groups stay behind edges, and edges stay behind task cards. -->
+                <Grid Width="{Binding CanvasWidth}"
+                      Height="{Binding CanvasHeight}"
+                      UseLayoutRounding="True"
+                      IsHitTestVisible="False">
+                    <Canvas x:Name="GroupCanvas"
+                            Width="{Binding CanvasWidth}"
+                            Height="{Binding CanvasHeight}"
+                            UseLayoutRounding="True"
+                            IsHitTestVisible="False" />
+                    <Canvas x:Name="EdgeCanvas"
+                            Width="{Binding CanvasWidth}"
+                            Height="{Binding CanvasHeight}"
+                            UseLayoutRounding="True"
+                            IsHitTestVisible="True" />
+                    <Canvas x:Name="TaskCanvas"
+                            Width="{Binding CanvasWidth}"
+                            Height="{Binding CanvasHeight}"
+                            UseLayoutRounding="True"
+                            IsHitTestVisible="False" />
+                </Grid>
             </Border>
         </Border>
 

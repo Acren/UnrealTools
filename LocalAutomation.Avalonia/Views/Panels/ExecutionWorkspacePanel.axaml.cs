@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using LocalAutomation.Avalonia.Controls;
 using LocalAutomation.Avalonia.ViewModels;
+using LocalAutomation.Core;
 
 namespace LocalAutomation.Avalonia.Views.Panels;
 
@@ -135,9 +136,11 @@ public partial class ExecutionWorkspacePanel : UserControl
     /// </summary>
     private void HandleViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        /* Workspace layout depends on which tab is selected and whether that tab shows graph/log panes. Graph-object
+           updates inside the already-selected tab should not retrigger host layout because the shared graph canvas stays
+           mounted while its own bound graph view model updates independently. */
         if (string.IsNullOrWhiteSpace(e.PropertyName) ||
             e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeTab) ||
-            e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedGraph) ||
             e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeLogEntries) ||
             e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeLogSourceId))
         {
@@ -151,8 +154,10 @@ public partial class ExecutionWorkspacePanel : UserControl
     /// </summary>
     private void UpdateWorkspaceLayout()
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionWorkspacePanel.UpdateWorkspaceLayout");
         if (_graphHost == null || _graphLogSplitter == null || _logHost == null)
         {
+            activity.SetTag("layout.skipped", "MissingHosts");
             return;
         }
 
@@ -160,6 +165,11 @@ public partial class ExecutionWorkspacePanel : UserControl
         bool showsGraph = selectedTab?.ShowsGraph == true;
         bool showsLog = selectedTab?.ShowsLog == true;
         bool usesSplitWorkspace = showsGraph && showsLog;
+        activity.SetTag("selected.tab.id", selectedTab?.Id ?? string.Empty)
+            .SetTag("selected.tab.kind", selectedTab?.Kind.ToString() ?? string.Empty)
+            .SetTag("shows.graph", showsGraph)
+            .SetTag("shows.log", showsLog)
+            .SetTag("uses.split_workspace", usesSplitWorkspace);
 
         _graphHost.IsVisible = showsGraph;
         Grid.SetColumn(_graphHost, 0);
