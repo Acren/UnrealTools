@@ -373,7 +373,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         RebuildTabSelectedLogEntries(SelectedRuntimeTab);
         _setStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}.");
         RaiseSelectedRuntimeLogStateChanged();
-        RaiseSelectedRuntimeMetricsChanged();
+        RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
     }
 
     /// <summary>
@@ -561,7 +561,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         runtimeTab.RefreshAllTaskMetrics();
         if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
         {
-            RaiseSelectedRuntimeMetricsChanged();
+            RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
         }
     }
 
@@ -950,20 +950,21 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             return;
         }
 
-        switch (propertyName)
+        if (string.Equals(propertyName, nameof(RuntimeWorkspaceTabViewModel.SelectedLogEntries), StringComparison.Ordinal))
         {
-            case nameof(RuntimeWorkspaceTabViewModel.SelectedLogEntries):
-                activity.SetTag("action", "RaiseSelectedRuntimeLogEntries");
-                RaiseSelectedRuntimeLogStateChanged();
-                break;
-            case nameof(RuntimeWorkspaceTabViewModel.IsRunning):
-                activity.SetTag("action", "RaiseSelectedRuntimeHeaderState");
-                RaiseSelectedRuntimeHeaderStateChanged();
-                break;
-            default:
-                activity.SetTag("action", "NoWorkspaceDerivedChange");
-                break;
+            activity.SetTag("action", "RaiseSelectedRuntimeLogEntries");
+            RaiseSelectedRuntimeLogStateChanged();
+            return;
         }
+
+        if (string.Equals(propertyName, nameof(RuntimeWorkspaceTabViewModel.IsRunning), StringComparison.Ordinal))
+        {
+            activity.SetTag("action", "RaiseSelectedRuntimeHeaderState");
+            RaiseSelectedRuntimeHeaderStateChanged();
+            return;
+        }
+
+        activity.SetTag("action", "NoWorkspaceDerivedChange");
     }
 
     /// <summary>
@@ -1013,17 +1014,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         RaiseWorkspaceProperties(
             "ExecutionWorkspace.RaiseSelectedRuntimeHeaderStateChanged",
             nameof(IsRunning),
-            nameof(SelectedRuntimeMetrics),
-            nameof(ShowSelectedRuntimeMetrics));
-    }
-
-    /// <summary>
-    /// Raises the selected runtime metrics only.
-    /// </summary>
-    private void RaiseSelectedRuntimeMetricsChanged()
-    {
-        RaiseWorkspaceProperties(
-            "ExecutionWorkspace.RaiseSelectedRuntimeMetricsChanged",
             nameof(SelectedRuntimeMetrics));
     }
 
