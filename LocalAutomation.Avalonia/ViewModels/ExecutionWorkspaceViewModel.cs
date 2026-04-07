@@ -53,7 +53,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     private bool _isPendingLogFlushStartQueued;
     private RuntimeWorkspaceTabViewModel? _observedWorkspaceTab;
     private RuntimeWorkspaceTabViewModel? _selectedRuntimeTab;
-    private event PropertyChangedEventHandler? _selectedRuntimeTabPropertyChanged;
 
     /// <summary>
     /// Creates the execution workspace view model around the shared services and shell status sink.
@@ -105,21 +104,15 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
             activity.SetTag("selection.changed", true);
 
-            if (_selectedRuntimeTabPropertyChanged != null)
+            if (_observedWorkspaceTab != null)
             {
-                if (_observedWorkspaceTab != null)
-                {
-                    _observedWorkspaceTab.PropertyChanged -= _selectedRuntimeTabPropertyChanged;
-                }
-
-                _selectedRuntimeTabPropertyChanged = null;
+                _observedWorkspaceTab.PropertyChanged -= HandleObservedRuntimeTabPropertyChanged;
                 _observedWorkspaceTab = null;
             }
 
             if (value != null)
             {
-                _selectedRuntimeTabPropertyChanged = (_, args) => HandleSelectedRuntimeTabPropertyChanged(args.PropertyName);
-                value.PropertyChanged += _selectedRuntimeTabPropertyChanged;
+                value.PropertyChanged += HandleObservedRuntimeTabPropertyChanged;
                 _observedWorkspaceTab = value;
             }
 
@@ -159,58 +152,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// <summary>
     /// Gets whether the selected runtime tab currently represents active work that can be terminated.
     /// </summary>
-    public bool IsRunning => SelectedRuntimeTab?.CanTerminate == true;
-
-    /// <summary>
-    /// Gets a short summary line for the selected runtime workspace tab.
-    /// </summary>
-    public string ExecutionSummary
-    {
-        get
-        {
-            if (SelectedRuntimeTab == null)
-            {
-                return "No runtime tab is selected.";
-            }
-
-            if (SelectedRuntimeTab.IsApplicationLog)
-            {
-                return "Application log messages appear here even when no tasks are running.";
-            }
-
-            if (SelectedRuntimeTab.IsPlanPreview)
-            {
-                return "The Plan tab previews the task graph for the current target, operation, and option values.";
-            }
-
-            if (SelectedRuntimeTab.Session?.IsRunning == true)
-            {
-                return $"Running {SelectedRuntimeTab.Session.OperationName} on {SelectedRuntimeTab.Session.TargetName}";
-            }
-
-            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskOutcome.Completed)
-            {
-                return $"{SelectedRuntimeTab.Session.OperationName} succeeded for {SelectedRuntimeTab.Session.TargetName}";
-            }
-
-            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskOutcome.Cancelled)
-            {
-                return $"{SelectedRuntimeTab.Session.OperationName} was cancelled for {SelectedRuntimeTab.Session.TargetName}";
-            }
-
-            if (SelectedRuntimeTab.Session?.Outcome == RuntimeExecutionTaskOutcome.Interrupted)
-            {
-                return $"{SelectedRuntimeTab.Session.OperationName} was interrupted for {SelectedRuntimeTab.Session.TargetName}";
-            }
-
-            if (SelectedRuntimeTab.Session != null)
-            {
-                return $"{SelectedRuntimeTab.Session.OperationName} failed for {SelectedRuntimeTab.Session.TargetName}";
-            }
-
-            return SelectedRuntimeTab.Subtitle;
-        }
-    }
+    public bool IsRunning => SelectedRuntimeTab?.IsRunning == true;
 
     /// <summary>
     /// Gets the log entries shown for the selected graph node, or the full session log when nothing is selected.
@@ -250,19 +192,9 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Gets the selected runtime-tab title shown in the workspace header.
-    /// </summary>
-    public string SelectedRuntimeTabTitle => SelectedRuntimeTab?.Title ?? "Runtime";
-
-    /// <summary>
     /// Gets whether the selected runtime tab should show task metrics in the header.
     /// </summary>
     public bool ShowSelectedRuntimeMetrics => SelectedRuntimeTab?.ShowsRuntimeMetrics == true;
-
-    /// <summary>
-    /// Gets the selected task view model when the graph selection corresponds to a real task.
-    /// </summary>
-    public ExecutionTaskViewModel? SelectedTask => SelectedRuntimeTab?.Graph.SelectedNode?.Task;
 
     /// <summary>
     /// Gets the shared metrics shown in the selected runtime-tab header.
@@ -271,12 +203,13 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     {
         get
         {
-            if (SelectedRuntimeTab?.Session is not RuntimeExecutionSession session)
+            RuntimeWorkspaceTabViewModel? selectedTab = SelectedRuntimeTab;
+            if (selectedTab?.Session is not RuntimeExecutionSession session)
             {
                 return RuntimeExecutionTaskMetrics.Empty;
             }
 
-            return SelectedTask?.Metrics ?? session.GetTaskMetrics(SelectedRuntimeTab.Graph.SelectedTaskId);
+            return selectedTab.Graph.SelectedNode?.Task?.Metrics ?? session.GetTaskMetrics(selectedTab.Graph.SelectedTaskId);
         }
     }
 
@@ -996,7 +929,15 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Mirrors selected runtime-tab property changes into the derived workspace properties used by the header.
+    /// Forwards the currently selected tab's property changes into the workspace-level derived-property invalidation path.
+    /// </summary>
+    private void HandleObservedRuntimeTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        HandleSelectedRuntimeTabPropertyChanged(e.PropertyName);
+    }
+
+    /// <summary>
+    /// Mirrors selected runtime-tab property changes into the derived workspace properties used by the active bindings.
     /// </summary>
     private void HandleSelectedRuntimeTabPropertyChanged(string? propertyName)
     {
@@ -1011,16 +952,11 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         switch (propertyName)
         {
-            case nameof(RuntimeWorkspaceTabViewModel.DurationText):
-                activity.SetTag("action", "RaiseSelectedRuntimeMetrics");
-                RaiseSelectedRuntimeMetricsChanged();
-                break;
             case nameof(RuntimeWorkspaceTabViewModel.SelectedLogEntries):
                 activity.SetTag("action", "RaiseSelectedRuntimeLogEntries");
                 RaiseSelectedRuntimeLogStateChanged();
                 break;
             case nameof(RuntimeWorkspaceTabViewModel.IsRunning):
-            case nameof(RuntimeWorkspaceTabViewModel.CanTerminate):
                 activity.SetTag("action", "RaiseSelectedRuntimeHeaderState");
                 RaiseSelectedRuntimeHeaderStateChanged();
                 break;
@@ -1048,13 +984,10 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         RaiseWorkspaceProperties(
             "ExecutionWorkspace.RaiseSelectionStateChanged.Properties",
-            nameof(ExecutionSummary),
             nameof(IsRunning),
-            nameof(SelectedTask),
             nameof(SelectedRuntimeMetrics),
             nameof(SelectedRuntimeLogEntries),
             nameof(SelectedRuntimeLogSourceId),
-            nameof(SelectedRuntimeTabTitle),
             nameof(ShowSelectedRuntimeMetrics));
     }
 
@@ -1079,10 +1012,8 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     {
         RaiseWorkspaceProperties(
             "ExecutionWorkspace.RaiseSelectedRuntimeHeaderStateChanged",
-            nameof(ExecutionSummary),
             nameof(IsRunning),
             nameof(SelectedRuntimeMetrics),
-            nameof(SelectedRuntimeTabTitle),
             nameof(ShowSelectedRuntimeMetrics));
     }
 
@@ -1107,14 +1038,13 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Raises the selected graph-driven properties after node selection or graph structure changes affect the currently
-    /// selected task, scoped log stream, or selected-task metrics.
+    /// Raises the selected graph-driven properties after node selection or graph structure changes affect the scoped log
+    /// stream or selected-task metrics.
     /// </summary>
     private void RaiseSelectedGraphSelectionStateChanged()
     {
         RaiseWorkspaceProperties(
             "ExecutionWorkspace.RaiseSelectedGraphSelectionStateChanged",
-            nameof(SelectedTask),
             nameof(SelectedRuntimeMetrics),
             nameof(SelectedRuntimeLogEntries),
             nameof(SelectedRuntimeLogSourceId));

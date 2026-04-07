@@ -113,11 +113,6 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     public bool UsesDetailedStripLayout => !UsesCompactStripLayout;
 
     /// <summary>
-    /// Gets whether this tab represents a started execution session.
-    /// </summary>
-    public bool IsExecutionSession => Kind == RuntimeWorkspaceTabKind.ExecutionSession;
-
-    /// <summary>
     /// Gets whether this tab is the permanent application log tab.
     /// </summary>
     public bool IsApplicationLog => Kind == RuntimeWorkspaceTabKind.ApplicationLog;
@@ -136,11 +131,6 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     /// Gets whether the tab represents a running execution session.
     /// </summary>
     public bool IsRunning => Session is { IsRunning: true };
-
-    /// <summary>
-    /// Gets whether the selected execution can be terminated from the header.
-    /// </summary>
-    public bool CanTerminate => Session is { IsRunning: true };
 
     /// <summary>
     /// Gets whether the strip should render a status marker for this tab.
@@ -163,26 +153,6 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     public bool ShowsRuntimeMetrics => Presentation.ShowRuntimeMetrics;
 
     /// <summary>
-    /// Gets whether the status marker should show the running accent.
-    /// </summary>
-    public bool IsRunningStatus => Session?.IsRunning == true;
-
-    /// <summary>
-    /// Gets whether the status marker should show the success accent.
-    /// </summary>
-    public bool IsSucceededStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskOutcome.Completed;
-
-    /// <summary>
-    /// Gets whether the status marker should show the failure accent.
-    /// </summary>
-    public bool IsFailedStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskOutcome.Failed;
-
-    /// <summary>
-    /// Gets whether the status marker should show the cancelled accent.
-    /// </summary>
-    public bool IsCancelledStatus => Session?.IsRunning != true && Session?.Outcome == RuntimeExecutionTaskOutcome.Cancelled;
-
-    /// <summary>
     /// Gets the semantic status rendered by the shared status-indicator control.
     /// </summary>
     public ExecutionTaskDisplayStatus SessionStatusForIndicator => Session?.IsRunning == true
@@ -198,37 +168,11 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
                     : ExecutionTaskDisplayStatus.Pending;
 
     /// <summary>
-    /// Gets the execution duration text shown in the selected-tab header.
-    /// </summary>
-    public string DurationText
-    {
-        get
-        {
-            if (Session == null)
-            {
-                return "--:--";
-            }
-
-            DateTimeOffset endTime = Session.FinishedAt ?? DateTimeOffset.Now;
-            TimeSpan duration = endTime - Session.StartedAt;
-            if (duration < TimeSpan.Zero)
-            {
-                duration = TimeSpan.Zero;
-            }
-
-            return duration.TotalHours >= 1
-                ? duration.ToString(@"h\:mm\:ss")
-                : duration.ToString(@"mm\:ss");
-        }
-    }
-
-    /// <summary>
     /// Replaces the currently displayed log entries for the selected graph node or current tab-wide log view.
     /// </summary>
     public void SetSelectedLogEntries(System.Collections.Generic.IEnumerable<LogEntryViewModel> entries)
     {
         SelectedLogEntries = new ObservableCollection<LogEntryViewModel>(entries.ToList());
-        RaiseSelectionMetricsChanged();
     }
 
     /// <summary>
@@ -259,14 +203,6 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
 
             _tasksById[task.Id] = new ExecutionTaskViewModel(task, Session);
         }
-    }
-
-    /// <summary>
-    /// Returns the shared task view model for one execution task id when this tab currently knows about it.
-    /// </summary>
-    public ExecutionTaskViewModel? GetTask(RuntimeExecutionTaskId taskId)
-    {
-        return _tasksById.TryGetValue(taskId, out ExecutionTaskViewModel? task) ? task : null;
     }
 
     /// <summary>
@@ -303,34 +239,11 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Raises derived state after execution or selection data changes.
+    /// Raises the tab properties that change when the backing execution session transitions between runtime states.
     /// </summary>
     public void NotifyStateChanged()
     {
-        RaisePropertyChanged(nameof(DurationText));
         RaisePropertyChanged(nameof(IsRunning));
-        RaisePropertyChanged(nameof(CanTerminate));
-        RaiseStatusChanged();
-    }
-
-    /// <summary>
-    /// Raises selection-sensitive derived properties that still depend on the currently displayed log stream.
-    /// </summary>
-    private void RaiseSelectionMetricsChanged()
-    {
-        RaisePropertyChanged(nameof(DurationText));
-    }
-
-    /// <summary>
-    /// Raises the tab-strip status marker properties.
-    /// </summary>
-    private void RaiseStatusChanged()
-    {
-        RaisePropertyChanged(nameof(ShowsStatusMarker));
-        RaisePropertyChanged(nameof(IsRunningStatus));
-        RaisePropertyChanged(nameof(IsSucceededStatus));
-        RaisePropertyChanged(nameof(IsFailedStatus));
-        RaisePropertyChanged(nameof(IsCancelledStatus));
         RaisePropertyChanged(nameof(SessionStatusForIndicator));
     }
 }
