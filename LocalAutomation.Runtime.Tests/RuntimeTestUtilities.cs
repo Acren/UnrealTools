@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
-using Microsoft.Extensions.Logging.Abstractions;
 using TestUtilities;
 
 namespace LocalAutomation.Runtime.Tests;
@@ -38,7 +37,7 @@ internal static class RuntimeTestUtilities
     public static ExecutionPlanScheduler CreateScheduler(ExecutionPlan plan, out ExecutionSession session)
     {
         session = new ExecutionSession(new BufferedLogStream(), plan);
-        return new ExecutionPlanScheduler(NullLogger.Instance, session);
+        return new ExecutionPlanScheduler(TestLoggingBootstrap.LoggerFactory.CreateLogger("LocalAutomation.Runtime.Scheduler"), session);
     }
 
     /// <summary>

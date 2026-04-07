@@ -33,7 +33,7 @@ public static class ExecutionPlanFactory
             return null;
         }
 
-        return BuildWrappedPlan(operation, operationParameters, NullLogger.Instance);
+        return BuildWrappedPlan(operation, operationParameters, ResolveDefaultLogger());
     }
 
     /// <summary>
@@ -72,5 +72,21 @@ public static class ExecutionPlanFactory
         ExecutionTaskBuilder root = builder.Task(operation.OperationName, operationParameters.Target.DisplayName, default);
         operation.AuthorExecutionPlan(operation.ValidateParameters(operationParameters), root);
         return builder.BuildPlan();
+    }
+
+    /// <summary>
+    /// Resolves the process-wide logger when one has already been initialized, otherwise falls back to a no-op logger for
+    /// preview/runtime callers that execute before host startup.
+    /// </summary>
+    private static ILogger ResolveDefaultLogger()
+    {
+        try
+        {
+            return ApplicationLogger.Logger;
+        }
+        catch (InvalidOperationException)
+        {
+            return NullLogger.Instance;
+        }
     }
 }

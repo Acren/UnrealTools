@@ -27,7 +27,6 @@ public sealed class ExecutionSession
     private readonly SessionLogger _sessionLogger;
     private bool _hasBegunExecution;
     private Task<OperationResult>? _currentTask;
-    private ILogger _logger = NullLogger.Instance;
 
     /// <summary>
     /// Creates an execution session around a shared log stream and the authored plan it will execute.
@@ -117,8 +116,6 @@ public sealed class ExecutionSession
             throw new InvalidOperationException("Task is already running");
         }
 
-        _logger = ResolveCurrentLogger();
-
         /* Top-level execution owns the concrete output directory lifecycle so each run starts from a clean workspace
            before any schedulable task body begins. */
         string outputPath = _operation.GetOutputPath(_operationParameters);
@@ -174,7 +171,7 @@ public sealed class ExecutionSession
         }
         finally
         {
-            _logger.LogDebug("'{OperationName}' task ended", _operation.OperationName);
+            _sessionLogger.LogDebug("'{OperationName}' task ended", _operation.OperationName);
             _currentTask = null;
             CompleteExecution();
         }
@@ -524,7 +521,7 @@ public sealed class ExecutionSession
             return Task.CompletedTask;
         }
 
-        _logger.LogWarning("Cancelling operation '{OperationName}'", _operation.OperationName);
+        _sessionLogger.LogWarning("Cancelling operation '{OperationName}'", _operation.OperationName);
         _cancellationTokenSource.Cancel();
         return currentTask;
     }
@@ -732,11 +729,11 @@ public sealed class ExecutionSession
         try
         {
             Directory.Delete(sessionTempRoot, recursive: true);
-            _logger.LogInformation("Deleted session temp root '{SessionTempRoot}'.", sessionTempRoot);
+            _sessionLogger.LogInformation("Deleted session temp root '{SessionTempRoot}'.", sessionTempRoot);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to delete session temp root '{SessionTempRoot}'.", sessionTempRoot);
+            _sessionLogger.LogWarning(ex, "Failed to delete session temp root '{SessionTempRoot}'.", sessionTempRoot);
         }
     }
 
@@ -773,7 +770,7 @@ public sealed class ExecutionSession
     /// </summary>
     private OperationResult FinalizeOutcome(OperationResult result, ILogger logger)
     {
-        return FinalizeOutcome(_operation, result, logger, _logger, _warnings.Count, _errors.Count);
+        return FinalizeOutcome(_operation, result, logger, _sessionLogger, _warnings.Count, _errors.Count);
     }
 
     /// <summary>
@@ -872,22 +869,6 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Resolves the active host logger at run time so session-specific forwarding loggers can be installed before the
-    /// framework-owned execution path begins.
-    /// </summary>
-    private static ILogger ResolveCurrentLogger()
-    {
-        try
-        {
-            return ApplicationLogger.Logger;
-        }
-        catch (InvalidOperationException)
-        {
-            return NullLogger.Instance;
-        }
-    }
-
-    /// <summary>
     /// Routes session and task log output into the session's buffered streams while still mirroring the same messages to
     /// the process-wide fallback logger.
     /// </summary>
@@ -958,6 +939,22 @@ public sealed class ExecutionSession
         public ILogger CreateTaskLogger(ExecutionTaskId taskId)
         {
             return new SessionLogger(_session, taskId);
+        }
+
+        /// <summary>
+        /// Resolves the active host logger at run time so session-specific forwarding loggers can be installed before the
+        /// framework-owned execution path begins.
+        /// </summary>
+        private static ILogger ResolveCurrentLogger()
+        {
+            try
+            {
+                return ApplicationLogger.Logger;
+            }
+            catch (InvalidOperationException)
+            {
+                return NullLogger.Instance;
+            }
         }
 
         /// <summary>
