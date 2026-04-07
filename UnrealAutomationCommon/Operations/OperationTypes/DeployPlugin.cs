@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
+using LocalAutomation.Core.IO;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Polly;
@@ -155,14 +156,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Returns the full-copy project variant used for the project-plugin packaging branch.
-        /// </summary>
-        private static string GetProjectPluginVariantPath(DeploymentWorkspaceState state)
-        {
-            return GetWorkspacePath(state.WorkspacePath, "ProjectPluginVariant");
-        }
-
-        /// <summary>
         /// Returns the full-copy project variant used for the engine-plugin packaging branch.
         /// </summary>
         private static string GetEnginePluginVariantPath(DeploymentWorkspaceState state)
@@ -293,13 +286,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Recreates one full project copy, including generated build outputs, so later branches can mutate or package an
-        /// isolated variant without racing the shared built example base.
+        /// Recreates one isolated prepared-project variant using the explicit materialization subset needed by later
+        /// packaging and validation branches without copying every generated file from the shared example base.
         /// </summary>
         private static void CopyProjectVariant(string sourceProjectPath, string destinationProjectPath)
         {
             FileUtils.DeleteDirectoryIfExists(destinationProjectPath);
-            FileUtils.CopyDirectory(sourceProjectPath, destinationProjectPath);
+            using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Prepared source project is not available for variant materialization");
+            FileUtils.MaterializeDirectory(
+                sourceProject.ProjectPath,
+                destinationProjectPath,
+                MaterializationSpecs.CreateProject(sourceProject, includePlugins: true, includeBuildOutputs: true));
         }
 
         /// <summary>
@@ -368,14 +365,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     .When(deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.")
                     .Run(RunClangCompileCheck);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareProjectVariant = steps.Task("Prepare Project Variant")
-                    .Describe("Clone the built example project for project-plugin packaging")
-                    .After(buildExampleBase.Id)
-                    .Run(PrepareProjectPluginVariantAsync);
-
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder packageProjectPlugin = steps.Task("Package Project Plugin")
-                    .Describe("Package the example project with the plugin installed at project level")
-                    .After(prepareProjectVariant.Id)
+                    .Describe("Package the shared example-project base with the plugin installed at project level after every cloning branch has finished")
                     .Run(PackageCodeExampleProjectWithProjectPluginAsync);
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder testProjectPlugin = steps.Task("Test Project Plugin")
@@ -409,6 +400,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     .Describe("Clone the built example project, convert it to blueprint-only, and prune plugins for blueprint and demo packaging")
                     .After(buildExampleBase.Id)
                     .Run(PrepareBlueprintDemoVariantAsync);
+
+                /* The project-plugin package can reuse the built example base directly, but only once every branch that
+                   clones that base has finished copying it. That keeps the shared base read-only while the prepare tasks
+                   fan out in parallel and avoids racing UAT writes against file copies. */
+                packageProjectPlugin.After(prepareClangVariant.Id, prepareEngineVariant.Id, prepareBlueprintDemoVariant.Id);
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder packageBlueprint = steps.Task("Package Blueprint")
                     .Describe("Package the blueprint-only project with the plugin installed to the engine")
@@ -749,21 +745,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Creates one isolated project-plugin packaging variant from the built example-project base.
-        /// </summary>
-        private async Task PrepareProjectPluginVariantAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
-        {
-            using IDisposable nodeScope = context.Logger.BeginSection("Preparing project-plugin variant");
-            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
-            string sourceProjectPath = GetExampleProjectBasePath(state);
-            string projectVariantPath = GetProjectPluginVariantPath(state);
-            CopyProjectVariant(sourceProjectPath, projectVariantPath);
-            using Project projectVariant = CreateRequiredProject(projectVariantPath, "Project-plugin variant was not created successfully");
-            context.Logger.LogInformation($"Prepared project-plugin variant: {projectVariant.ProjectPath}");
-            await Task.CompletedTask;
-        }
-
-        /// <summary>
         /// Creates one isolated engine-plugin packaging variant by cloning the built example-project base and removing the
         /// project-level plugin copy before later packaging depends on the engine install.
         /// </summary>
@@ -875,14 +856,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Scheduler wrapper for packaging the code example project with the plugin installed at project level.
+        /// Scheduler wrapper for packaging the shared built example-project base with the plugin installed at project
+        /// level once every sibling branch has finished cloning that base.
         /// </summary>
         private async Task PackageCodeExampleProjectWithProjectPluginAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging code example project with plugin inside project");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
-            using Project projectVariant = CreateRequiredProject(GetProjectPluginVariantPath(state), "Project-plugin variant is not available for packaging");
-            await RunPackageProjectAsync(projectVariant, state, GetProjectPluginPackagePath(state), context, "Package project with included plugin failed");
+            using Project exampleProjectBase = CreateRequiredProject(GetExampleProjectBasePath(state), "Example project base is not available for project-plugin packaging");
+            await RunPackageProjectAsync(exampleProjectBase, state, GetProjectPluginPackagePath(state), context, "Package project with included plugin failed");
         }
 
         /// <summary>

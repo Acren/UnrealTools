@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LocalAutomation.Core.IO;
 using Microsoft.Extensions.Logging;
 using Semver;
 using UnrealAutomationCommon.Operations.BaseOperations;

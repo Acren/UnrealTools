@@ -1,4 +1,5 @@
 using System.IO;
+using LocalAutomation.Core.IO;
 
 namespace UnrealAutomationCommon.Unreal
 {

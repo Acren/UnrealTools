@@ -1,4 +1,5 @@
 using System.IO;
+using LocalAutomation.Core.IO;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -9,12 +10,13 @@ namespace UnrealAutomationCommon.Unreal
     internal static class MaterializationSpecs
     {
         /// <summary>
-        /// Creates the explicit project subset copied into isolated workspaces and example projects. The spec keeps only
-        /// author-maintained project inputs and leaves generated output folders behind.
+        /// Creates the explicit project subset copied into isolated workspaces, example projects, and prepared variants.
+        /// Callers opt into additional filesystem categories explicitly so the spec stays generic and filesystem-shaped
+        /// rather than encoding deploy-pipeline semantics.
         /// </summary>
-        public static FileMaterializationSpec CreateProject(Project project)
+        public static FileMaterializationSpec CreateProject(Project project, bool includePlugins = false, bool includeBuildOutputs = false)
         {
-            return new FileMaterializationSpec
+            FileMaterializationSpec spec = new()
             {
                 { Path.GetFileName(project.UProjectPath), true },
                 { "Config", true },
@@ -22,6 +24,19 @@ namespace UnrealAutomationCommon.Unreal
                 { "Content" },
                 { Path.GetFileNameWithoutExtension(project.UProjectPath) + ".png" }
             };
+
+            if (includePlugins)
+            {
+                spec.Add("Plugins");
+            }
+
+            if (includeBuildOutputs)
+            {
+                spec.Add("Binaries");
+                spec.Add("Build");
+            }
+
+            return spec;
         }
 
         /// <summary>
