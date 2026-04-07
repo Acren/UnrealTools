@@ -198,9 +198,13 @@ public partial class ExecutionGroupContainer : UserControl
         Border backgroundShell = GetRequiredBorder("ContainerBackgroundShell");
         Border borderChrome = GetRequiredBorder("ContainerBorderChrome");
         Border headerShell = GetRequiredBorder("HeaderShell");
+        /* Group background layers need the same semantic classes as the frame so disabled groups read as dimmer
+           containers across both the body and header surfaces. */
         ExecutionStatusClasses.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyStatusClasses(backgroundShell.Classes, _observedNode.DisplayStatus);
         ExecutionStatusClasses.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
         ExecutionStatusClasses.ApplyInteractionClasses(headerShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyStatusClasses(headerShell.Classes, _observedNode.DisplayStatus);
         ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.DisplayStatus);
     }
 }

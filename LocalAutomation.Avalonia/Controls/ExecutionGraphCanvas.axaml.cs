@@ -10,6 +10,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using LocalAutomation.Avalonia.ViewModels;
@@ -31,6 +32,7 @@ public partial class ExecutionGraphCanvas : UserControl
     private const double MaxZoom = 2.5;
     private const double ZoomStep = 1.15;
     private const double ViewportRecoveryMargin = 40;
+    private const double EdgeHitThickness = 10;
 
     private Canvas? _graphCanvas;
     private Canvas? _measurementCanvas;
@@ -409,20 +411,12 @@ public partial class ExecutionGraphCanvas : UserControl
 
         foreach (ExecutionEdgeViewModel edge in _observedGraph.Edges)
         {
-            ShapePath path = new()
+            /* Each rendered edge gets a visible path plus a wider transparent hit target so hover affordances are usable
+               without forcing the user to land precisely on a two-pixel line. */
+            foreach (ShapePath edgePath in CreateEdgeControls(edge))
             {
-                StrokeThickness = 2,
-                Opacity = 0.72,
-                IsHitTestVisible = false,
-                DataContext = edge
-            };
-
-            /* Bind edge geometry while semantic classes drive tinting from XAML, so the edge uses the same status
-               language as the rest of the execution graph without hard-coded color values in view models. */
-            path.Classes.Add("execution-edge");
-            ApplyEdgeStatusClasses(path, edge.Target);
-            BindToDataContext(path, ShapePath.DataProperty, nameof(ExecutionEdgeViewModel.PathData));
-            _graphCanvas.Children.Add(path);
+                _graphCanvas.Children.Add(edgePath);
+            }
         }
 
         foreach (ExecutionNodeViewModel node in _observedGraph.Nodes.Where(node => !node.IsContainer))
@@ -435,6 +429,40 @@ public partial class ExecutionGraphCanvas : UserControl
         ApplyViewportTransform();
         activity.SetTag("render.child.count", _graphCanvas.Children.Count);
         ApplyPendingViewportAdjustment();
+    }
+
+    /// <summary>
+    /// Creates the visible edge path plus a transparent hover target that toggles the same visual path classes.
+    /// </summary>
+    private static IEnumerable<ShapePath> CreateEdgeControls(ExecutionEdgeViewModel edge)
+    {
+        ShapePath visiblePath = new()
+        {
+            DataContext = edge
+        };
+
+        /* Bind edge geometry while semantic classes drive tinting from XAML, so the edge uses the same status language
+           as the rest of the execution graph without hard-coded color values in view models. */
+        visiblePath.Classes.Add("execution-edge");
+        ApplyEdgeStatusClasses(visiblePath, edge.Target);
+        BindToDataContext(visiblePath, ShapePath.DataProperty, nameof(ExecutionEdgeViewModel.PathData));
+
+        ShapePath hoverTargetPath = new()
+        {
+            DataContext = edge,
+            Stroke = Brushes.Transparent,
+            StrokeThickness = EdgeHitThickness,
+            IsHitTestVisible = true
+        };
+
+        /* The hover target shares the same geometry as the visible path but never paints anything, which makes the edge
+           easy to interact with while preserving the slimmer rendered line. */
+        BindToDataContext(hoverTargetPath, ShapePath.DataProperty, nameof(ExecutionEdgeViewModel.PathData));
+        hoverTargetPath.PointerEntered += (_, _) => visiblePath.Classes.Set("hover", true);
+        hoverTargetPath.PointerExited += (_, _) => visiblePath.Classes.Set("hover", false);
+        hoverTargetPath.DetachedFromVisualTree += (_, _) => visiblePath.Classes.Set("hover", false);
+
+        return [visiblePath, hoverTargetPath];
     }
 
     /// <summary>

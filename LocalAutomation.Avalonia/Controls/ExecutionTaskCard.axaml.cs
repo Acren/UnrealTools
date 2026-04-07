@@ -180,9 +180,15 @@ public partial class ExecutionTaskCard : UserControl
 
         Border backgroundShell = GetRequiredBorder("CardBackgroundShell");
         Border borderChrome = GetRequiredBorder("CardBorderChrome");
+        Border clickSurface = GetRequiredBorder("ClickSurface");
         AnimatedConicBorder animatedBorderChrome = GetRequiredAnimatedBorder("AnimatedBorderChrome");
 
+        /* The outer click surface carries whole-card opacity treatment, while the inner shells still own fill and stroke
+           styling. All three layers need the same semantic classes so the styles can compose predictably. */
+        ExecutionStatusClasses.ApplyInteractionClasses(clickSurface.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyStatusClasses(clickSurface.Classes, _observedNode.DisplayStatus);
         ExecutionStatusClasses.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyStatusClasses(backgroundShell.Classes, _observedNode.DisplayStatus);
         ExecutionStatusClasses.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
         ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.DisplayStatus);
         ExecutionStatusClasses.ApplyStatusClasses(animatedBorderChrome.Classes, _observedNode.DisplayStatus);

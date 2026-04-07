@@ -34,6 +34,32 @@
             <Setter Property="IsVisible" Value="True" />
             <Setter Property="Opacity" Value="1" />
         </Style>
+        <!-- The outer shell owns overall card opacity so status dimming affects the full tile consistently while the
+             inner layers stay focused on their own visual roles. -->
+        <Style Selector="Border.task-card-shell">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.task-card-shell.pending, Border.task-card-shell.planned">
+            <Setter Property="Opacity" Value="0.92" />
+        </Style>
+        <Style Selector="Border.task-card-shell.cancelled, Border.task-card-shell.interrupted, Border.task-card-shell.skipped, Border.task-card-shell.disabled">
+            <Setter Property="Opacity" Value="0.72" />
+        </Style>
+        <!-- Most interaction states now fall back to the shared shell rules so status styling stays compact. Only the
+             inactive hover override remains specialized so disabled cards do not brighten all the way back to active
+             card strength. -->
+        <Style Selector="Border.task-card-shell.hover">
+            <Setter Property="Opacity" Value="0.97" />
+        </Style>
+        <Style Selector="Border.task-card-shell.cancelled.hover, Border.task-card-shell.interrupted.hover, Border.task-card-shell.skipped.hover, Border.task-card-shell.disabled.hover">
+            <Setter Property="Opacity" Value="0.8" />
+        </Style>
+        <Style Selector="Border.task-card-shell.selected">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.task-card-shell.pressed">
+            <Setter Property="Opacity" Value="0.9" />
+        </Style>
         <Style Selector="Border.task-card-background">
             <Setter Property="Background" Value="#1D2835" />
         </Style>
@@ -46,8 +72,13 @@
         <Style Selector="Border.task-card-background.selected.hover">
             <Setter Property="Background" Value="#2C3C4E" />
         </Style>
-        <Style Selector="Border.task-card-background.pressed">
-            <Setter Property="Opacity" Value="0.9" />
+        <!-- The background layer only owns fill colors so status and interaction changes can retint the surface without
+             independently changing card opacity. -->
+        <Style Selector="Border.task-card-background.pending, Border.task-card-background.planned">
+            <Setter Property="Background" Value="#1C2733" />
+        </Style>
+        <Style Selector="Border.task-card-background.cancelled, Border.task-card-background.interrupted, Border.task-card-background.skipped, Border.task-card-background.disabled">
+            <Setter Property="Background" Value="#171F29" />
         </Style>
         <Style Selector="Border.task-card-border">
             <Setter Property="Opacity" Value="0.78" />
@@ -68,10 +99,10 @@
              muted treatment. Interrupted intentionally reuses the same muted color as Cancelled while keeping its own
              semantic class. -->
         <Style Selector="Border.task-card-border.pending, Border.task-card-border.planned">
-            <Setter Property="BorderBrush" Value="#98A9B8" />
+            <Setter Property="BorderBrush" Value="#7F8C97" />
         </Style>
         <Style Selector="Border.task-card-border.cancelled, Border.task-card-border.interrupted, Border.task-card-border.skipped, Border.task-card-border.disabled">
-            <Setter Property="BorderBrush" Value="#69717A" />
+            <Setter Property="BorderBrush" Value="#59616A" />
         </Style>
         <Style Selector="Border.task-card-border.running">
             <!-- Keep a faint continuous stroke under the animated highlights so the card still reads as one border. -->
@@ -89,7 +120,7 @@
           Height="{Binding CardHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
           ClipToBounds="False">
         <Border x:Name="ClickSurface"
-                Classes="graph-interactive"
+                Classes="graph-interactive task-card-shell"
                 Background="Transparent"
                 CornerRadius="8"
                 HorizontalAlignment="Stretch"
