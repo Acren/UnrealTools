@@ -303,7 +303,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         if (ReferenceEquals(SelectedRuntimeTab, planTab))
         {
-            RaiseSelectionStateChanged();
+            RaiseSelectedGraphSelectionStateChanged();
         }
     }
 
@@ -362,7 +362,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         _attachedSessions[runtimeTab] = session;
         _ = WatchExecutionCompletionAsync(runtimeTab);
-        RaiseSelectionStateChanged();
     }
 
     /// <summary>
@@ -386,7 +385,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         runtimeTab.RefreshAllTaskMetrics();
         if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
         {
-            RaiseSelectionStateChanged();
+            RaiseSelectedGraphSelectionStateChanged();
         }
     }
 
@@ -402,7 +401,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         _setStatus($"Cancelling {session.OperationName}.");
         await session.CancelAsync();
-        RaiseSelectionStateChanged();
+        RaiseSelectedRuntimeHeaderStateChanged(includeMetrics: true);
     }
 
     /// <summary>
@@ -420,7 +419,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             ApplicationLogService.LogStream.Clear();
             RebuildTabSelectedLogEntries(SelectedRuntimeTab);
             _setStatus("Cleared application log output.");
-            RaiseSelectionStateChanged();
+            RaiseSelectedRuntimeLogStateChanged(includeSourceId: false);
             return;
         }
 
@@ -440,7 +439,8 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         RemovePendingLogEntries(SelectedRuntimeTab);
         RebuildTabSelectedLogEntries(SelectedRuntimeTab);
         _setStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}.");
-        RaiseSelectionStateChanged();
+        RaiseSelectedRuntimeLogStateChanged(includeSourceId: false);
+        RaiseSelectedRuntimeMetricsChanged();
     }
 
     /// <summary>
@@ -477,7 +477,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
         {
-            RaiseSelectionStateChanged();
+            RaiseSelectedGraphSelectionStateChanged();
         }
     }
 
@@ -505,7 +505,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             runtimeTab.NotifyStateChanged();
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
-                RaiseSelectionStateChanged();
+                RaiseSelectedRuntimeHeaderStateChanged(includeMetrics: true);
             }
 
             if (session.Outcome == RuntimeExecutionTaskOutcome.Completed)
@@ -553,7 +553,6 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             SelectedRuntimeTab = RuntimeTabs.Count > 0 ? RuntimeTabs[nextIndex] : null;
         }
 
-        RaiseSelectionStateChanged();
     }
 
     /// <summary>
@@ -629,7 +628,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         runtimeTab.RefreshAllTaskMetrics();
         if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
         {
-            RaiseSelectionStateChanged();
+            RaiseSelectedRuntimeMetricsChanged();
         }
     }
 
@@ -742,7 +741,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             RebuildTabSelectedLogEntries(runtimeTab);
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
-                RaiseSelectionStateChanged();
+                RaiseSelectedGraphSelectionStateChanged();
             }
         };
     }
@@ -1001,8 +1000,11 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// </summary>
     private void HandleSelectedRuntimeTabPropertyChanged(string? propertyName)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionWorkspace.HandleSelectedRuntimeTabPropertyChanged")
+            .SetTag("property.name", propertyName ?? string.Empty);
         if (string.IsNullOrWhiteSpace(propertyName))
         {
+            activity.SetTag("action", "RaiseSelectionStateChanged");
             RaiseSelectionStateChanged();
             return;
         }
@@ -1010,10 +1012,20 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         switch (propertyName)
         {
             case nameof(RuntimeWorkspaceTabViewModel.DurationText):
-                RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
+                activity.SetTag("action", "RaiseSelectedRuntimeMetrics");
+                RaiseSelectedRuntimeMetricsChanged();
+                break;
+            case nameof(RuntimeWorkspaceTabViewModel.SelectedLogEntries):
+                activity.SetTag("action", "RaiseSelectedRuntimeLogEntries");
+                RaiseSelectedRuntimeLogStateChanged(includeSourceId: false);
+                break;
+            case nameof(RuntimeWorkspaceTabViewModel.IsRunning):
+            case nameof(RuntimeWorkspaceTabViewModel.CanTerminate):
+                activity.SetTag("action", "RaiseSelectedRuntimeHeaderState");
+                RaiseSelectedRuntimeHeaderStateChanged(includeMetrics: true);
                 break;
             default:
-                RaiseSelectionStateChanged();
+                activity.SetTag("action", "NoWorkspaceDerivedChange");
                 break;
         }
     }
@@ -1034,14 +1046,98 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 .SetTag("selected.tab.shows_metrics", SelectedRuntimeTab?.ShowsRuntimeMetrics ?? false)
             : default;
 
-        RaisePropertyChanged(nameof(ExecutionSummary));
-        RaisePropertyChanged(nameof(IsRunning));
-        RaisePropertyChanged(nameof(SelectedTask));
-        RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
-        RaisePropertyChanged(nameof(SelectedRuntimeLogEntries));
-        RaisePropertyChanged(nameof(SelectedRuntimeLogSourceId));
-        RaisePropertyChanged(nameof(SelectedRuntimeTabTitle));
-        RaisePropertyChanged(nameof(ShowSelectedRuntimeMetrics));
+        RaiseWorkspaceProperties(
+            "ExecutionWorkspace.RaiseSelectionStateChanged.Properties",
+            nameof(ExecutionSummary),
+            nameof(IsRunning),
+            nameof(SelectedTask),
+            nameof(SelectedRuntimeMetrics),
+            nameof(SelectedRuntimeLogEntries),
+            nameof(SelectedRuntimeLogSourceId),
+            nameof(SelectedRuntimeTabTitle),
+            nameof(ShowSelectedRuntimeMetrics));
+    }
+
+    /// <summary>
+    /// Raises one targeted set of workspace properties and records which derived values were invalidated.
+    /// </summary>
+    private void RaiseWorkspaceProperties(string activityName, params string[] propertyNames)
+    {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity(activityName)
+            .SetTag("property.count", propertyNames.Length)
+            .SetTag("property.names", string.Join(",", propertyNames));
+        foreach (string propertyName in propertyNames)
+        {
+            RaisePropertyChanged(propertyName);
+        }
+    }
+
+    /// <summary>
+    /// Raises the selected-tab header properties whose values depend on the selected runtime tab and its session state.
+    /// </summary>
+    private void RaiseSelectedRuntimeHeaderStateChanged(bool includeMetrics)
+    {
+        if (includeMetrics)
+        {
+            RaiseWorkspaceProperties(
+                "ExecutionWorkspace.RaiseSelectedRuntimeHeaderStateChanged",
+                nameof(ExecutionSummary),
+                nameof(IsRunning),
+                nameof(SelectedRuntimeMetrics),
+                nameof(SelectedRuntimeTabTitle),
+                nameof(ShowSelectedRuntimeMetrics));
+            return;
+        }
+
+        RaiseWorkspaceProperties(
+            "ExecutionWorkspace.RaiseSelectedRuntimeHeaderStateChanged",
+            nameof(ExecutionSummary),
+            nameof(IsRunning),
+            nameof(SelectedRuntimeTabTitle),
+            nameof(ShowSelectedRuntimeMetrics));
+    }
+
+    /// <summary>
+    /// Raises the selected runtime metrics only.
+    /// </summary>
+    private void RaiseSelectedRuntimeMetricsChanged()
+    {
+        RaiseWorkspaceProperties(
+            "ExecutionWorkspace.RaiseSelectedRuntimeMetricsChanged",
+            nameof(SelectedRuntimeMetrics));
+    }
+
+    /// <summary>
+    /// Raises the selected log pane properties without invalidating unrelated header or selection state.
+    /// </summary>
+    private void RaiseSelectedRuntimeLogStateChanged(bool includeSourceId)
+    {
+        if (includeSourceId)
+        {
+            RaiseWorkspaceProperties(
+                "ExecutionWorkspace.RaiseSelectedRuntimeLogStateChanged",
+                nameof(SelectedRuntimeLogEntries),
+                nameof(SelectedRuntimeLogSourceId));
+            return;
+        }
+
+        RaiseWorkspaceProperties(
+            "ExecutionWorkspace.RaiseSelectedRuntimeLogStateChanged",
+            nameof(SelectedRuntimeLogEntries));
+    }
+
+    /// <summary>
+    /// Raises the selected graph-driven properties after node selection or graph structure changes affect the currently
+    /// selected task, scoped log stream, or selected-task metrics.
+    /// </summary>
+    private void RaiseSelectedGraphSelectionStateChanged()
+    {
+        RaiseWorkspaceProperties(
+            "ExecutionWorkspace.RaiseSelectedGraphSelectionStateChanged",
+            nameof(SelectedTask),
+            nameof(SelectedRuntimeMetrics),
+            nameof(SelectedRuntimeLogEntries),
+            nameof(SelectedRuntimeLogSourceId));
     }
 
     /// <summary>

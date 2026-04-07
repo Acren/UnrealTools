@@ -144,6 +144,8 @@ public partial class ExecutionWorkspacePanel : UserControl
             e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeLogEntries) ||
             e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeLogSourceId))
         {
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionWorkspacePanel.HandleViewModelPropertyChanged")
+                .SetTag("property.name", e.PropertyName ?? string.Empty);
             UpdateWorkspaceLayout();
         }
     }
