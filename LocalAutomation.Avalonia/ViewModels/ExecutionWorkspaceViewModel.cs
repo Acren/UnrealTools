@@ -401,7 +401,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
 
         _setStatus($"Cancelling {session.OperationName}.");
         await session.CancelAsync();
-        RaiseSelectedRuntimeHeaderStateChanged(includeMetrics: true);
+        RaiseSelectedRuntimeHeaderStateChanged();
     }
 
     /// <summary>
@@ -419,7 +419,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             ApplicationLogService.LogStream.Clear();
             RebuildTabSelectedLogEntries(SelectedRuntimeTab);
             _setStatus("Cleared application log output.");
-            RaiseSelectedRuntimeLogStateChanged(includeSourceId: false);
+            RaiseSelectedRuntimeLogStateChanged();
             return;
         }
 
@@ -439,7 +439,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         RemovePendingLogEntries(SelectedRuntimeTab);
         RebuildTabSelectedLogEntries(SelectedRuntimeTab);
         _setStatus($"Cleared log output for {SelectedRuntimeTab.Title.ToLowerInvariant()}.");
-        RaiseSelectedRuntimeLogStateChanged(includeSourceId: false);
+        RaiseSelectedRuntimeLogStateChanged();
         RaiseSelectedRuntimeMetricsChanged();
     }
 
@@ -505,7 +505,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             runtimeTab.NotifyStateChanged();
             if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
             {
-                RaiseSelectedRuntimeHeaderStateChanged(includeMetrics: true);
+                RaiseSelectedRuntimeHeaderStateChanged();
             }
 
             if (session.Outcome == RuntimeExecutionTaskOutcome.Completed)
@@ -1017,12 +1017,12 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 break;
             case nameof(RuntimeWorkspaceTabViewModel.SelectedLogEntries):
                 activity.SetTag("action", "RaiseSelectedRuntimeLogEntries");
-                RaiseSelectedRuntimeLogStateChanged(includeSourceId: false);
+                RaiseSelectedRuntimeLogStateChanged();
                 break;
             case nameof(RuntimeWorkspaceTabViewModel.IsRunning):
             case nameof(RuntimeWorkspaceTabViewModel.CanTerminate):
                 activity.SetTag("action", "RaiseSelectedRuntimeHeaderState");
-                RaiseSelectedRuntimeHeaderStateChanged(includeMetrics: true);
+                RaiseSelectedRuntimeHeaderStateChanged();
                 break;
             default:
                 activity.SetTag("action", "NoWorkspaceDerivedChange");
@@ -1075,24 +1075,13 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// <summary>
     /// Raises the selected-tab header properties whose values depend on the selected runtime tab and its session state.
     /// </summary>
-    private void RaiseSelectedRuntimeHeaderStateChanged(bool includeMetrics)
+    private void RaiseSelectedRuntimeHeaderStateChanged()
     {
-        if (includeMetrics)
-        {
-            RaiseWorkspaceProperties(
-                "ExecutionWorkspace.RaiseSelectedRuntimeHeaderStateChanged",
-                nameof(ExecutionSummary),
-                nameof(IsRunning),
-                nameof(SelectedRuntimeMetrics),
-                nameof(SelectedRuntimeTabTitle),
-                nameof(ShowSelectedRuntimeMetrics));
-            return;
-        }
-
         RaiseWorkspaceProperties(
             "ExecutionWorkspace.RaiseSelectedRuntimeHeaderStateChanged",
             nameof(ExecutionSummary),
             nameof(IsRunning),
+            nameof(SelectedRuntimeMetrics),
             nameof(SelectedRuntimeTabTitle),
             nameof(ShowSelectedRuntimeMetrics));
     }
@@ -1108,19 +1097,10 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Raises the selected log pane properties without invalidating unrelated header or selection state.
+    /// Raises the selected log pane entries without invalidating unrelated header or selection state.
     /// </summary>
-    private void RaiseSelectedRuntimeLogStateChanged(bool includeSourceId)
+    private void RaiseSelectedRuntimeLogStateChanged()
     {
-        if (includeSourceId)
-        {
-            RaiseWorkspaceProperties(
-                "ExecutionWorkspace.RaiseSelectedRuntimeLogStateChanged",
-                nameof(SelectedRuntimeLogEntries),
-                nameof(SelectedRuntimeLogSourceId));
-            return;
-        }
-
         RaiseWorkspaceProperties(
             "ExecutionWorkspace.RaiseSelectedRuntimeLogStateChanged",
             nameof(SelectedRuntimeLogEntries));
