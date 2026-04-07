@@ -121,31 +121,34 @@
                     Classes="group-header-shell"
                     ClipToBounds="False"
                     CornerRadius="10,10,0,0">
-                <!-- Center the title/status row within the header so the compact status indicator shares the same
-                     visual baseline as the title. -->
-                <Grid x:Name="HeaderContentGrid"
-                      ColumnDefinitions="Auto,Auto,Auto"
-                      HorizontalAlignment="Left"
-                      Margin="14,10,14,10"
-                      VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Title}"
-                                FontSize="14"
-                                FontWeight="SemiBold"
-                               Foreground="#F3F6F9"
-                               TextWrapping="Wrap"
-                               VerticalAlignment="Center" />
-                    <controls:StatusIndicator Grid.Column="1"
-                                               Margin="12,0,0,0"
-                                               Status="{Binding DisplayStatus}"
-                                               ShowLabel="True"
-                                               DotSize="6"
-                                               LabelFontSize="11"
-                                               VerticalAlignment="Center" />
-                    <controls:ExecutionMetricsStrip Grid.Column="2"
-                                                    Margin="12,0,0,0"
-                                                    Metrics="{Binding Metrics}"
-                                                    VerticalAlignment="Center" />
-                </Grid>
+                <controls:MeasuredSizeHost x:Name="HeaderMeasureHost"
+                                           HorizontalAlignment="Left"
+                                           VerticalAlignment="Center">
+                    <!-- Center the title/status row within the header so the compact status indicator shares the same
+                         visual baseline as the title. -->
+                    <Grid ColumnDefinitions="Auto,Auto,Auto"
+                          HorizontalAlignment="Left"
+                          Margin="14,10,14,10"
+                          VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}"
+                                    FontSize="14"
+                                    FontWeight="SemiBold"
+                                   Foreground="#F3F6F9"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                        <controls:StatusIndicator Grid.Column="1"
+                                                   Margin="12,0,0,0"
+                                                   Status="{Binding DisplayStatus}"
+                                                   ShowLabel="True"
+                                                   DotSize="6"
+                                                   LabelFontSize="11"
+                                                   VerticalAlignment="Center" />
+                        <controls:ExecutionMetricsStrip Grid.Column="2"
+                                                        Margin="12,0,0,0"
+                                                        Metrics="{Binding Metrics}"
+                                                        VerticalAlignment="Center" />
+                    </Grid>
+                </controls:MeasuredSizeHost>
             </Border>
         </Border>
 

@@ -14,9 +14,16 @@ namespace LocalAutomation.Avalonia.Controls;
 /// </summary>
 public partial class ExecutionGroupContainer : UserControl
 {
+    private const double WidthChangeThreshold = 0.5;
     private bool _isHovered;
     private bool _isPressed;
     private ExecutionNodeViewModel? _observedNode;
+    private double _measuredHeaderMinWidth = ExecutionGraphViewModel.NodeMinWidth;
+    private Border? _clickSurface;
+    private Border? _backgroundShell;
+    private Border? _borderChrome;
+    private Border? _headerShell;
+    private MeasuredSizeHost? _headerMeasureHost;
 
     /// <summary>
     /// Identifies the rendered width for the group container. Defaults to NaN so detached measurement can use the
@@ -38,16 +45,23 @@ public partial class ExecutionGroupContainer : UserControl
         AvaloniaProperty.Register<ExecutionGroupContainer, double>(nameof(HeaderHeight));
 
     /// <summary>
+    /// Identifies the minimum header width resolved from the visible control's own layout.
+    /// </summary>
+    public static readonly DirectProperty<ExecutionGroupContainer, double> MeasuredHeaderMinWidthProperty =
+        AvaloniaProperty.RegisterDirect<ExecutionGroupContainer, double>(
+            nameof(MeasuredHeaderMinWidth),
+            control => control.MeasuredHeaderMinWidth);
+
+    /// <summary>
     /// Creates the XAML-backed execution-graph group container control.
     /// </summary>
     public ExecutionGroupContainer()
     {
         InitializeComponent();
-        Border clickSurface = GetRequiredBorder("ClickSurface");
-        clickSurface.PointerEntered += ClickSurface_PointerEntered;
-        clickSurface.PointerExited += ClickSurface_PointerExited;
-        clickSurface.PointerPressed += ClickSurface_PointerPressed;
-        clickSurface.PointerReleased += ClickSurface_PointerReleased;
+        _clickSurface!.PointerEntered += ClickSurface_PointerEntered;
+        _clickSurface.PointerExited += ClickSurface_PointerExited;
+        _clickSurface.PointerPressed += ClickSurface_PointerPressed;
+        _clickSurface.PointerReleased += ClickSurface_PointerReleased;
         DataContextChanged += HandleDataContextChanged;
     }
 
@@ -84,11 +98,26 @@ public partial class ExecutionGroupContainer : UserControl
     }
 
     /// <summary>
+    /// Gets the minimum width required by the current header content.
+    /// </summary>
+    public double MeasuredHeaderMinWidth
+    {
+        get => _measuredHeaderMinWidth;
+        private set => SetAndRaise(MeasuredHeaderMinWidthProperty, ref _measuredHeaderMinWidth, value);
+    }
+
+    /// <summary>
     /// Loads the compiled Avalonia markup for the group container.
     /// </summary>
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
+        SizeChanged += HandleSizeChanged;
+        _clickSurface = GetRequiredControl<Border>("ClickSurface");
+        _backgroundShell = GetRequiredControl<Border>("ContainerBackgroundShell");
+        _borderChrome = GetRequiredControl<Border>("ContainerBorderChrome");
+        _headerShell = GetRequiredControl<Border>("HeaderShell");
+        _headerMeasureHost = GetRequiredControl<MeasuredSizeHost>("HeaderMeasureHost");
     }
 
     /// <summary>
@@ -115,8 +144,7 @@ public partial class ExecutionGroupContainer : UserControl
     /// </summary>
     private void ClickSurface_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        Border clickSurface = GetRequiredBorder("ClickSurface");
-        if (!e.GetCurrentPoint(clickSurface).Properties.IsLeftButtonPressed)
+        if (!e.GetCurrentPoint(_clickSurface!).Properties.IsLeftButtonPressed)
         {
             return;
         }
@@ -131,8 +159,7 @@ public partial class ExecutionGroupContainer : UserControl
     /// </summary>
     private void ClickSurface_PointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        Border clickSurface = GetRequiredBorder("ClickSurface");
-        bool isInsideHeader = clickSurface.Bounds.Contains(e.GetPosition(clickSurface));
+        bool isInsideHeader = _clickSurface!.Bounds.Contains(e.GetPosition(_clickSurface));
         _isPressed = false;
         ApplySemanticClasses();
         if (!isInsideHeader || e.InitialPressMouseButton != MouseButton.Left)
@@ -145,12 +172,13 @@ public partial class ExecutionGroupContainer : UserControl
     }
 
     /// <summary>
-    /// Looks up one named border from the compiled XAML so pointer handlers can manipulate the visual shell directly.
+    /// Looks up one named control from the compiled XAML and caches a typed reference so later updates avoid repeated
+    /// string-based tree lookups.
     /// </summary>
-    private Border GetRequiredBorder(string name)
+    private T GetRequiredControl<T>(string name) where T : Control
     {
-        return this.FindControl<Border>(name)
-            ?? throw new InvalidOperationException($"ExecutionGroupContainer border '{name}' was not initialized.");
+        return this.FindControl<T>(name)
+            ?? throw new InvalidOperationException($"ExecutionGroupContainer control '{name}' was not initialized.");
     }
 
     /// <summary>
@@ -170,6 +198,8 @@ public partial class ExecutionGroupContainer : UserControl
         }
 
         ApplySemanticClasses();
+        MeasuredHeaderMinWidth = ExecutionGraphViewModel.NodeMinWidth;
+        UpdateMeasuredHeaderMinWidthIfNeeded();
     }
 
     /// <summary>
@@ -186,6 +216,14 @@ public partial class ExecutionGroupContainer : UserControl
     }
 
     /// <summary>
+    /// Re-reports the header minimum width when Avalonia resolves a different on-screen size for the group container.
+    /// </summary>
+    private void HandleSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        UpdateMeasuredHeaderMinWidthIfNeeded();
+    }
+
+    /// <summary>
     /// Applies the group semantic classes consumed by the local Avalonia styles.
     /// </summary>
     private void ApplySemanticClasses()
@@ -195,16 +233,39 @@ public partial class ExecutionGroupContainer : UserControl
             return;
         }
 
-        Border backgroundShell = GetRequiredBorder("ContainerBackgroundShell");
-        Border borderChrome = GetRequiredBorder("ContainerBorderChrome");
-        Border headerShell = GetRequiredBorder("HeaderShell");
         /* Group background layers need the same semantic classes as the frame so disabled groups read as dimmer
            containers across both the body and header surfaces. */
-        ExecutionStatusClasses.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusClasses.ApplyStatusClasses(backgroundShell.Classes, _observedNode.DisplayStatus);
-        ExecutionStatusClasses.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusClasses.ApplyInteractionClasses(headerShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusClasses.ApplyStatusClasses(headerShell.Classes, _observedNode.DisplayStatus);
-        ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.DisplayStatus);
+        ExecutionStatusClasses.ApplyInteractionClasses(_backgroundShell!.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyStatusClasses(_backgroundShell.Classes, _observedNode.DisplayStatus);
+        ExecutionStatusClasses.ApplyInteractionClasses(_borderChrome!.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyInteractionClasses(_headerShell!.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
+        ExecutionStatusClasses.ApplyStatusClasses(_headerShell.Classes, _observedNode.DisplayStatus);
+        ExecutionStatusClasses.ApplyStatusClasses(_borderChrome.Classes, _observedNode.DisplayStatus);
+    }
+
+    /// <summary>
+    /// Measures the live header content and updates the control-owned minimum width when it changes materially.
+    /// </summary>
+    private void UpdateMeasuredHeaderMinWidthIfNeeded()
+    {
+        if (_observedNode == null || !_observedNode.IsContainer)
+        {
+            return;
+        }
+
+        if (_headerMeasureHost == null || _clickSurface == null)
+        {
+            return;
+        }
+
+        double measuredWidth = Math.Max(
+            ExecutionGraphViewModel.NodeMinWidth,
+            _headerMeasureHost.MeasuredWidth + _clickSurface.Margin.Left + _clickSurface.Margin.Right);
+        if (Math.Abs(MeasuredHeaderMinWidth - measuredWidth) <= WidthChangeThreshold)
+        {
+            return;
+        }
+
+        MeasuredHeaderMinWidth = measuredWidth;
     }
 }

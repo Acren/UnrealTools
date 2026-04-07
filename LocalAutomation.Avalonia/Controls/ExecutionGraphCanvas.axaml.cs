@@ -45,12 +45,15 @@ public partial class ExecutionGraphCanvas : UserControl
     private readonly Dictionary<RuntimeExecutionTaskId, ExecutionGroupContainer> _renderedGroupControls = new();
     private readonly Dictionary<RuntimeExecutionTaskId, ExecutionTaskCard> _renderedTaskControls = new();
     private readonly Dictionary<RuntimeExecutionTaskId, Control> _measurementNodeControls = new();
+    private readonly Dictionary<RuntimeExecutionTaskId, double> _pendingGroupWidthUpdates = new();
     private bool _isPanning;
     private bool _pendingRender;
     private string _pendingRenderTrigger = "Deferred";
     private bool _measurementRefreshPending;
     private string _pendingMeasurementTrigger = "Deferred";
     private bool _pendingViewportAdjustment;
+    private bool _groupWidthFlushPending;
+    private bool _applyingGroupWidthUpdates;
     private bool _suppressGraphNotifications;
     private Point _lastPanPoint;
     private double _zoom = DefaultZoom;
@@ -621,6 +624,7 @@ public partial class ExecutionGraphCanvas : UserControl
                 continue;
             }
 
+            DetachGroupMeasuredWidthObserver(groupControl);
             _groupCanvas.Children.Remove(groupControl);
             _renderedGroupControls.Remove(taskId);
             removedCount++;
@@ -685,6 +689,7 @@ public partial class ExecutionGraphCanvas : UserControl
         {
             if (_renderedGroupControls.Remove(leaf.Id, out ExecutionGroupContainer? staleGroupControl))
             {
+                DetachGroupMeasuredWidthObserver(staleGroupControl);
                 _groupCanvas?.Children.Remove(staleGroupControl);
                 recreatedForRoleChangeCount++;
             }
@@ -780,6 +785,11 @@ public partial class ExecutionGraphCanvas : UserControl
         foreach (ExecutionNodeViewModel node in graph.Nodes)
         {
             if (!graph.NeedsMeasuredNodeWidth(node.Id))
+            {
+                continue;
+            }
+
+            if (node.IsContainer)
             {
                 continue;
             }
@@ -897,6 +907,7 @@ public partial class ExecutionGraphCanvas : UserControl
         };
 
         container.Invoked += ExecutionNode_Click;
+        AttachGroupMeasuredWidthObserver(container);
 
         Canvas.SetLeft(container, group.X);
         Canvas.SetTop(container, group.Y);
@@ -914,6 +925,119 @@ public partial class ExecutionGraphCanvas : UserControl
         container.HeaderHeight = ExecutionGraphViewModel.GroupHeaderHeight;
         Canvas.SetLeft(container, group.X);
         Canvas.SetTop(container, group.Y);
+    }
+
+    /// <summary>
+    /// Attaches one retained group control to the control-owned measured-width property so visible geometry drives graph
+    /// width updates without a custom event contract.
+    /// </summary>
+    private void AttachGroupMeasuredWidthObserver(ExecutionGroupContainer container)
+    {
+        ((System.ComponentModel.INotifyPropertyChanged)container).PropertyChanged += HandleGroupControlPropertyChanged;
+    }
+
+    /// <summary>
+    /// Removes the measured-width observer for a group control leaving the retained layer.
+    /// </summary>
+    private void DetachGroupMeasuredWidthObserver(ExecutionGroupContainer container)
+    {
+        ((System.ComponentModel.INotifyPropertyChanged)container).PropertyChanged -= HandleGroupControlPropertyChanged;
+    }
+
+    /// <summary>
+    /// Observes control-owned measured width changes from retained group containers and forwards them into the coalesced
+    /// graph width update queue.
+    /// </summary>
+    private void HandleGroupControlPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (!string.Equals(e.PropertyName, nameof(ExecutionGroupContainer.MeasuredHeaderMinWidth), StringComparison.Ordinal) ||
+            sender is not ExecutionGroupContainer container ||
+            container.DataContext is not ExecutionNodeViewModel node)
+        {
+            return;
+        }
+
+        EnqueuePendingGroupWidthUpdate(node.Id, container.MeasuredHeaderMinWidth);
+    }
+
+    /// <summary>
+    /// Queues one visible group-container width update so the graph can relayout once per burst instead of once per
+    /// control size change.
+    /// </summary>
+    private void EnqueuePendingGroupWidthUpdate(RuntimeExecutionTaskId taskId, double measuredWidth)
+    {
+        if (_observedGraph == null || _applyingGroupWidthUpdates)
+        {
+            return;
+        }
+
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.EnqueuePendingGroupWidthUpdate")
+            .SetTag("task.id", taskId.Value)
+            .SetTag("reported.width", measuredWidth.ToString("0.###"));
+
+        _pendingGroupWidthUpdates[taskId] = measuredWidth;
+        activity.SetTag("pending.group.width.count", _pendingGroupWidthUpdates.Count)
+            .SetTag("flush.already.pending", _groupWidthFlushPending);
+        if (_groupWidthFlushPending)
+        {
+            return;
+        }
+
+        _groupWidthFlushPending = true;
+        Dispatcher.UIThread.Post(FlushPendingGroupWidthUpdates, DispatcherPriority.Render);
+    }
+
+    /// <summary>
+    /// Applies one coalesced batch of visible group width updates through the existing graph width cache and relayout path.
+    /// </summary>
+    private void FlushPendingGroupWidthUpdates()
+    {
+        _groupWidthFlushPending = false;
+        if (_observedGraph == null || _pendingGroupWidthUpdates.Count == 0)
+        {
+            return;
+        }
+
+        if (_measurementRefreshPending)
+        {
+            _groupWidthFlushPending = true;
+            Dispatcher.UIThread.Post(FlushPendingGroupWidthUpdates, DispatcherPriority.Render);
+            return;
+        }
+
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.FlushPendingGroupWidthUpdates")
+            .SetTag("pending.group.width.count", _pendingGroupWidthUpdates.Count);
+        KeyValuePair<RuntimeExecutionTaskId, double>[] updates = _pendingGroupWidthUpdates.ToArray();
+        _pendingGroupWidthUpdates.Clear();
+
+        int changedWidthCount = 0;
+        foreach ((RuntimeExecutionTaskId taskId, double width) in updates)
+        {
+            bool changed = _observedGraph.SetMeasuredNodeWidth(taskId, width);
+            if (changed)
+            {
+                changedWidthCount++;
+            }
+        }
+
+        activity.SetTag("group.width.changed.count", changedWidthCount);
+        if (changedWidthCount == 0)
+        {
+            return;
+        }
+
+        _applyingGroupWidthUpdates = true;
+        _suppressGraphNotifications = true;
+        try
+        {
+            _observedGraph.Relayout();
+            RenderGraph(trigger: "Deferred:GroupWidthChanged");
+        }
+        finally
+        {
+            _suppressGraphNotifications = false;
+            _applyingGroupWidthUpdates = false;
+        }
     }
 
     /// <summary>
