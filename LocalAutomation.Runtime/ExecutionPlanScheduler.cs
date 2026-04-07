@@ -26,11 +26,8 @@ public sealed class ExecutionPlanScheduler
     private readonly ILogger _logger;
     private readonly IExecutionTaskStateSink? _taskStateSink;
     private readonly ExecutionSession _session;
-    private readonly object _syncRoot = new();
     private readonly object _workSignalSyncRoot = new();
     private readonly object _executionCancellationSyncRoot = new();
-    private readonly Dictionary<ExecutionTaskId, Task<OperationResult>> _runningTasks = new();
-    private readonly Dictionary<Task<OperationResult>, ExecutionTaskId> _taskOwners = new(TaskComparer.Instance);
     private TaskCompletionSource<bool> _workAvailableSignal = CreateWorkAvailableSignal();
     private CancellationTokenSource? _schedulerCancellationSource;
     private CancellationToken _executionCancellationToken;
@@ -86,7 +83,7 @@ public sealed class ExecutionPlanScheduler
                     break;
                 }
 
-                Task<OperationResult>[] runningTasksSnapshot = GetActiveRunningTasksSnapshot();
+                Task<OperationResult>[] runningTasksSnapshot = GetActiveExecutionTasksSnapshot();
 
                 if (runningTasksSnapshot.Length == 0)
                 {
@@ -138,7 +135,7 @@ public sealed class ExecutionPlanScheduler
         bool handledAny = false;
         while (true)
         {
-            Task<OperationResult>[] completedTasks = GetActiveRunningTasksSnapshot()
+            Task<OperationResult>[] completedTasks = GetActiveExecutionTasksSnapshot()
                 .Where(task => task.IsCompleted)
                 .ToArray();
             if (completedTasks.Length == 0)
@@ -297,7 +294,7 @@ public sealed class ExecutionPlanScheduler
         int startedCount = 0;
         int passCount = 0;
         using PerformanceActivityScope readyActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartReadyItems")
-            .SetTag("running.count", _runningTasks.Count)
+            .SetTag("running.count", _session.Tasks.Count(task => task.HasActiveExecution))
             .SetTag("pending.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.Pending));
         if (_lastCompletedTaskId != null)
         {
@@ -322,12 +319,9 @@ public sealed class ExecutionPlanScheduler
 
             foreach (ExecutionTask task in readyTasks)
             {
-                lock (_syncRoot)
+                if (task.HasActiveExecution)
                 {
-                    if (_runningTasks.ContainsKey(task.Id))
-                    {
-                        throw new InvalidOperationException($"Task '{task.Id}' is pending and scheduler-ready but is still tracked as running.");
-                    }
+                    continue;
                 }
 
                 using PerformanceActivityScope startActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartTask")
@@ -353,19 +347,23 @@ public sealed class ExecutionPlanScheduler
 
                 try
                 {
-                    TaskStartResult startResult = StartTaskExecutionAsync(task.Id, cancellationToken, lockHandle);
-                    ExecutionTask startedTask = startResult.Task;
-                    Task<OperationResult> runningTask = startResult.RunningTask;
-                    lock (_syncRoot)
-                    {
-                        if (_runningTasks.TryGetValue(startedTask.Id, out Task<OperationResult>? existingTask))
+                    _session.StartTaskAsync(
+                        task.Id,
+                        CreateTaskLogger,
+                        cancellationToken,
+                        this,
+                        (startedTask, executeAsync) =>
                         {
-                            throw new InvalidOperationException($"Task '{startedTask.Id}' cannot be started twice. Existing running task entry is still active ({existingTask.Status}).");
-                        }
+                            TaskCompletionSource<OperationResult> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                            startedTask.AttachActiveExecution(completionSource.Task);
 
-                        _runningTasks[startedTask.Id] = runningTask;
-                        _taskOwners[runningTask] = startedTask.Id;
-                    }
+                            _logger.LogDebug(
+                                "Dispatching task '{TaskPath}' ({TaskId}) to worker execution.",
+                                _session.GetTaskDisplayPath(startedTask.Id),
+                                startedTask.Id);
+                            StartTaskExecutionAsync(startedTask, executeAsync, lockHandle, completionSource);
+                            return completionSource.Task;
+                        });
 
                     startedAny = true;
                     startedThisPass = true;
@@ -406,12 +404,20 @@ public sealed class ExecutionPlanScheduler
         return readyTasks
             .Select((task, index) =>
             {
-                ExecutionTask nextStartTask = task.GetNextStartableTask();
+                ExecutionTask? nextStartTask = task.TryGetNextStartableTask();
+                if (nextStartTask == null || nextStartTask.HasActiveExecution)
+                {
+                    return null;
+                }
+
                 return new OrderedReadyTask(
-                    task,
+                    nextStartTask,
                     index,
                     CountDownstreamWork(nextStartTask));
             })
+            .Where(item => item != null)
+            .GroupBy(item => item!.Task.Id)
+            .Select(group => group.OrderBy(item => item!.OriginalIndex).First()!)
             .OrderByDescending(item => item.DownstreamWorkCount)
             .ThenBy(item => item.OriginalIndex)
             .Select(item => item.Task)
@@ -470,7 +476,11 @@ public sealed class ExecutionPlanScheduler
     private void ValidateNoReadyTasksRemainPending()
     {
         ExecutionTask? strandedTask = _session.GetSchedulerReadyTasks()
-            .FirstOrDefault(task => task.GetExecutionLocksForNextStart().Count == 0);
+            .Select(task => task.TryGetNextStartableTask())
+            .FirstOrDefault(task =>
+                task != null
+                && task.Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(task.Title, task.OperationParameters, task.DeclaredOptionTypes)).Count == 0
+                && !task.HasActiveExecution);
         if (strandedTask == null)
         {
             return;
@@ -485,20 +495,10 @@ public sealed class ExecutionPlanScheduler
     /// </summary>
     private async Task HandleCompletedTaskAsync(Task<OperationResult> completedTask)
     {
-        ExecutionTaskId completedTaskId;
-        lock (_syncRoot)
-        {
-            if (!_taskOwners.TryGetValue(completedTask, out completedTaskId))
-            {
-                throw new InvalidOperationException("Scheduler received completion for a task that is not tracked as running.");
-            }
-
-            _taskOwners.Remove(completedTask);
-            if (!_runningTasks.Remove(completedTaskId))
-            {
-                throw new InvalidOperationException($"Scheduler lost running-task ownership for '{completedTaskId}' before its task completed.");
-            }
-        }
+        ExecutionTask completedExecutionTask = _session.Tasks.FirstOrDefault(task => ReferenceEquals(task.ActiveExecutionTask, completedTask))
+            ?? throw new InvalidOperationException("Scheduler received completion for a task that is not attached to any live execution task.");
+        ExecutionTaskId completedTaskId = completedExecutionTask.Id;
+        completedExecutionTask.ClearActiveExecution(completedTask);
 
         using PerformanceActivityScope completionActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.HandleCompletedTask")
             .SetTag("task.id", completedTaskId.Value);
@@ -627,7 +627,7 @@ public sealed class ExecutionPlanScheduler
     private void CancelOutstandingTasks(SchedulerStopReason stopReason, string? runningTaskReason = null, bool preserveRunningTerminalOutcomes = false)
     {
         _session.CancelOutstandingSchedulableTasks(
-            IsTaskTrackedAsRunning,
+            taskId => _session.GetTask(taskId).HasActiveExecution,
             userCancelled: stopReason == SchedulerStopReason.UserCancelled,
             runningTaskReason: runningTaskReason ?? ResolveStopReasonMessage(stopReason),
             skippedTaskReason: stopReason == SchedulerStopReason.UserCancelled
@@ -721,7 +721,7 @@ public sealed class ExecutionPlanScheduler
         }
 
         ExecutionTask task = _session.GetTask(taskId);
-        return state == ExecutionTaskState.Running || task.State == ExecutionTaskState.Running || IsTaskTrackedAsRunning(taskId);
+        return state == ExecutionTaskState.Running || task.State == ExecutionTaskState.Running || task.HasActiveExecution;
     }
 
     /// <summary>
@@ -737,7 +737,7 @@ public sealed class ExecutionPlanScheduler
         }
 
         ExecutionTask task = _session.GetTask(taskId);
-        if (state == ExecutionTaskState.Completed || task.State == ExecutionTaskState.Completed || task.Outcome != null || !IsTaskTrackedAsRunning(taskId))
+        if (state == ExecutionTaskState.Completed || task.State == ExecutionTaskState.Completed || task.Outcome != null || !task.HasActiveExecution)
         {
             return;
         }
@@ -763,26 +763,16 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Returns whether the scheduler still owns a live running task for the provided task id.
+    /// Returns the currently active execution handles by scanning the live task graph. The graph is small enough that the
+    /// scheduler can derive this view directly from the tasks instead of maintaining a duplicated ownership registry.
     /// </summary>
-    private bool IsTaskTrackedAsRunning(ExecutionTaskId taskId)
+    private Task<OperationResult>[] GetActiveExecutionTasksSnapshot()
     {
-        lock (_syncRoot)
-        {
-            return _runningTasks.ContainsKey(taskId);
-        }
-    }
-
-    /// <summary>
-    /// Returns the currently running tasks. Scheduler progress now follows only dependency readiness, so there is no
-    /// separate subset of capacity-consuming work.
-    /// </summary>
-    private Task<OperationResult>[] GetActiveRunningTasksSnapshot()
-    {
-        lock (_syncRoot)
-        {
-            return _runningTasks.Values.ToArray();
-        }
+        return _session.Tasks
+            .Select(task => task.ActiveExecutionTask)
+            .Where(task => task != null)
+            .Cast<Task<OperationResult>>()
+            .ToArray();
     }
 
     /// <summary>
@@ -927,50 +917,58 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Dispatches one task execution onto the thread pool so work that does synchronous setup before its first await does
-    /// not block the scheduler loop from starting other ready tasks in the same scheduling pass.
+    /// Dispatches one already-resolved task body onto worker execution. The scheduler owns execution policy such as
+    /// off-thread dispatch and lock lifetime, but it no longer reconstructs task selection or runtime context because the
+    /// session start path already performed that shared task-local work.
     /// </summary>
-    private TaskStartResult StartTaskExecutionAsync(ExecutionTaskId taskId, CancellationToken cancellationToken, AsyncLockHandle lockHandle)
+    private void StartTaskExecutionAsync(ExecutionTask task, Func<Task<OperationResult>> executeAsync, AsyncLockHandle lockHandle, TaskCompletionSource<OperationResult> completionSource)
     {
-        TaskStartResult startResult = _session.StartTaskAsync(taskId, CreateTaskLogger, cancellationToken, this);
-        TaskCompletionSource<OperationResult> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ThreadPool.QueueUserWorkItem(async _ =>
-        {
-            try
+        /* Use a dedicated long-running task for startup dispatch so synchronous pre-await work cannot starve unrelated
+           task starts behind shared thread-pool heuristics when multiple scheduler tests or operations run in parallel. */
+        _ = Task.Factory.StartNew(
+            async () =>
             {
-                completionSource.TrySetResult(await ExecuteTaskAsync(startResult.Task.Id, startResult.RunningTask, lockHandle).ConfigureAwait(false));
-            }
-            catch (OperationCanceledException)
-            {
-                completionSource.TrySetCanceled();
-            }
-            catch (Exception ex)
-            {
-                completionSource.TrySetException(ex);
-            }
-        });
-        return new TaskStartResult(startResult.Task, completionSource.Task);
+                try
+                {
+                    completionSource.TrySetResult(await ExecuteTaskBodyAsync(task, executeAsync, lockHandle).ConfigureAwait(false));
+                }
+                catch (OperationCanceledException)
+                {
+                    completionSource.TrySetCanceled();
+                }
+                catch (Exception ex)
+                {
+                    completionSource.TrySetException(ex);
+                }
+            },
+            CancellationToken.None,
+            TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
     }
 
     /// <summary>
-    /// Executes one task while preserving task-state error and cancellation reporting at the scheduler boundary.
+    /// Executes one started task body while preserving task-state error and cancellation reporting at the scheduler
+    /// boundary.
     /// </summary>
-    private async Task<OperationResult> ExecuteTaskAsync(ExecutionTaskId taskId, Task<OperationResult> runningTask, AsyncLockHandle lockHandle)
+    private async Task<OperationResult> ExecuteTaskBodyAsync(ExecutionTask task, Func<Task<OperationResult>> executeAsync, AsyncLockHandle lockHandle)
     {
-        ExecutionTask task = _session.GetTask(taskId);
+        ILogger taskLogger = CreateTaskLogger(task.Id);
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.ExecuteTaskBody")
             .SetTag("task.id", task.Id.Value)
             .SetTag("task.title", task.Title);
         try
         {
             await using AsyncLockHandle acquiredLockHandle = lockHandle;
-            OperationResult result = await runningTask.ConfigureAwait(false);
+            taskLogger.LogDebug("Starting task body '{TaskTitle}' ({TaskId}).", task.Title, task.Id);
+            OperationResult result = await executeAsync().ConfigureAwait(false);
             activity.SetTag("task.outcome", result.Outcome.ToString());
+            taskLogger.LogDebug("Finished task body '{TaskTitle}' ({TaskId}) with outcome '{Outcome}'.", task.Title, task.Id, result.Outcome);
             return result;
         }
         catch (OperationCanceledException)
         {
             activity.SetTag("task.outcome", ExecutionTaskOutcome.Cancelled.ToString());
+            taskLogger.LogDebug("Task body '{TaskTitle}' ({TaskId}) observed cancellation.", task.Title, task.Id);
             throw;
         }
         catch (Exception ex)
@@ -978,6 +976,8 @@ public sealed class ExecutionPlanScheduler
             activity.SetTag("task.outcome", "Exception")
                 .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name)
                 .SetTag("exception.message", ex.Message);
+
+            taskLogger.LogDebug(ex, "Task body '{TaskTitle}' ({TaskId}) failed with an exception.", task.Title, task.Id);
 
             /* Preserve the original exception so the scheduler can log the real root cause and expose the innermost
                message in task status instead of a wrapper message. */

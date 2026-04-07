@@ -49,9 +49,14 @@ public sealed class ExecutionPlanAuthoredDependencyTests
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         ExecutionTask prepareWorkspace = plan.Tasks.Single(task => task.Title == "Prepare Workspace");
         ExecutionTask prepareWorkspaceBody = plan.Tasks.Single(task => task.Title == "Prepare Workspace.Body" && task.ParentId == prepareWorkspace.Id);
+        TaskStartResult startResult = session.StartTaskAsync(
+            prepareWorkspace.Id,
+            _ => Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            default,
+            scheduler,
+            (_, executeAsync) => executeAsync());
 
-        // Act: ask the session to start the visible task id rather than the hidden body child explicitly.
-        TaskStartResult startResult = session.StartTaskAsync(prepareWorkspace.Id, _ => Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, default, scheduler);
+        // Act: start the visible task id and await the actual running task it delegated to.
         OperationResult result = await startResult.RunningTask;
 
         // Assert: session start delegation picks the hidden body child as the actual started task.
@@ -60,8 +65,8 @@ public sealed class ExecutionPlanAuthoredDependencyTests
     }
 
     /// <summary>
-     /// Confirms that fluent sibling chaining records dependencies on the previous authored task node instead of hidden
-     /// implementation details such as body tasks.
+    /// Confirms that fluent sibling chaining records dependencies on the previous authored task node instead of hidden
+    /// implementation details such as body tasks.
     /// </summary>
     [Fact]
     public void ThenDependsOnPreviousAuthoredTask()

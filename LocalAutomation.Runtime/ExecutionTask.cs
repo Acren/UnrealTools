@@ -22,6 +22,9 @@ internal enum TaskStartState
 
 internal sealed class TaskStartResult
 {
+    /// <summary>
+    /// Carries one task that has already been started so callers can await the running task directly.
+    /// </summary>
     public TaskStartResult(ExecutionTask task, Task<OperationResult> runningTask)
     {
         Task = task ?? throw new ArgumentNullException(nameof(task));
@@ -30,8 +33,13 @@ internal sealed class TaskStartResult
 
     public ExecutionTask Task { get; }
 
+    /// <summary>
+    /// Gets the already-started task.
+    /// </summary>
     public Task<OperationResult> RunningTask { get; }
 }
+
+internal delegate Task<OperationResult> TaskExecutionRunner(ExecutionTask task, Func<Task<OperationResult>> executeAsync);
 
 /// <summary>
 /// Immutable authored specification for one execution task. Captures identity, behavior, and graph structure as
@@ -73,6 +81,8 @@ public class ExecutionTask : INotifyPropertyChanged
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _finishedAt;
     private ExecutionTaskOutcome? _outcome;
+    private readonly object _activeExecutionSyncRoot = new();
+    private Task<OperationResult>? _activeExecutionTask;
     private readonly Dictionary<Type, object> _stateByType = new();
     private readonly object _stateWaitSyncRoot = new();
     private readonly HashSet<ExecutionTaskState> _reachedStates = new();
@@ -200,6 +210,35 @@ public class ExecutionTask : INotifyPropertyChanged
     {
         get => _outcome;
         internal set => SetProperty(ref _outcome, value);
+    }
+
+    /// <summary>
+    /// Gets the live execution task currently owned by this task, if any. This is separate from lifecycle state so the
+    /// scheduler can await and identify active body executions without keeping a parallel ownership registry.
+    /// </summary>
+    internal Task<OperationResult>? ActiveExecutionTask
+    {
+        get
+        {
+            lock (_activeExecutionSyncRoot)
+            {
+                return _activeExecutionTask;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns whether this task currently owns a live execution task handle.
+    /// </summary>
+    internal bool HasActiveExecution
+    {
+        get
+        {
+            lock (_activeExecutionSyncRoot)
+            {
+                return _activeExecutionTask != null;
+            }
+        }
     }
 
     /// <summary>
@@ -432,20 +471,13 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Starts the next startable work item in this task subtree and returns the actual task that entered Running.
-    /// Walks children via direct object references.
+    /// Resolves the concrete next startable task in this subtree. Task-local selection stays here with the task, while
+    /// the session still owns runtime-context construction and state transitions, and the scheduler still owns when
+    /// execution actually begins.
     /// </summary>
-    internal TaskStartResult StartAsync(ExecutionTaskContext context)
+    internal ExecutionTask ResolveTaskToStart()
     {
-        if (context == null)
-        {
-            throw new ArgumentNullException(nameof(context));
-        }
-
-        ExecutionTask nextStartTask = GetNextStartableTask();
-        ExecutionTaskContext startContext = nextStartTask.Id == Id ? context : context.CreateForTask(nextStartTask);
-        startContext.GetRequiredRuntime().SetTaskState(nextStartTask.Id, ExecutionTaskState.Running);
-        return new TaskStartResult(nextStartTask, nextStartTask._spec.ExecuteAsync!(startContext));
+        return GetNextStartableTask();
     }
 
     /// <summary>
@@ -484,7 +516,55 @@ public class ExecutionTask : INotifyPropertyChanged
         Outcome = Enabled ? null : ExecutionTaskOutcome.Disabled;
         StartedAt = null;
         FinishedAt = null;
+        lock (_activeExecutionSyncRoot)
+        {
+            _activeExecutionTask = null;
+        }
         ResetReachedStates(initialState);
+    }
+
+    /// <summary>
+    /// Attaches one live execution handle to this task. Tasks own their active execution handles directly so the
+    /// scheduler can scan the graph for in-flight work instead of maintaining a duplicated running-task registry.
+    /// </summary>
+    internal void AttachActiveExecution(Task<OperationResult> executionTask)
+    {
+        if (executionTask == null)
+        {
+            throw new ArgumentNullException(nameof(executionTask));
+        }
+
+        lock (_activeExecutionSyncRoot)
+        {
+            if (_activeExecutionTask != null)
+            {
+                throw new InvalidOperationException($"Task '{Id}' already has an active execution handle.");
+            }
+
+            _activeExecutionTask = executionTask;
+        }
+    }
+
+    /// <summary>
+    /// Clears the active execution handle from this task after the scheduler has observed completion. The completed task
+    /// must match the attached handle exactly so ownership cannot drift between overlapping executions.
+    /// </summary>
+    internal void ClearActiveExecution(Task<OperationResult> executionTask)
+    {
+        if (executionTask == null)
+        {
+            throw new ArgumentNullException(nameof(executionTask));
+        }
+
+        lock (_activeExecutionSyncRoot)
+        {
+            if (!ReferenceEquals(_activeExecutionTask, executionTask))
+            {
+                throw new InvalidOperationException($"Task '{Id}' cannot clear a non-owned execution handle.");
+            }
+
+            _activeExecutionTask = null;
+        }
     }
 
     /// <summary>

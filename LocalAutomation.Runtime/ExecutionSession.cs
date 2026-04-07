@@ -616,21 +616,36 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Starts one scheduler-ready task through the task model so callers never need to know how the concrete task stores
-    /// its runnable work.
+    /// Starts one scheduler-ready task through the single runtime start path. The session owns graph-level task
+    /// resolution, runtime-context construction, and the visible Running transition. The scheduler remains responsible
+    /// only for execution policy such as lock reservation, worker-thread dispatch, and completion orchestration, so it
+    /// provides only the transport that actually invokes the already-bound body delegate.
     /// </summary>
-    internal TaskStartResult StartTaskAsync(ExecutionTaskId taskId, Func<ExecutionTaskId, ILogger> createLogger, CancellationToken cancellationToken, ExecutionPlanScheduler scheduler)
+    internal TaskStartResult StartTaskAsync(ExecutionTaskId taskId, Func<ExecutionTaskId, ILogger> createLogger, CancellationToken cancellationToken, ExecutionPlanScheduler scheduler, TaskExecutionRunner runTaskAsync)
     {
         if (createLogger == null)
         {
             throw new ArgumentNullException(nameof(createLogger));
         }
 
+        if (runTaskAsync == null)
+        {
+            throw new ArgumentNullException(nameof(runTaskAsync));
+        }
+
         ExecutionTask task = GetTask(taskId);
         ValidatedOperationParameters validatedOperationParameters = new(task.Title, task.OperationParameters, task.DeclaredOptionTypes);
         ExecutionTaskRuntimeServices runtime = new(this, scheduler, createLogger);
         ExecutionTaskContext context = new(task.Id, task.Title, createLogger(task.Id), cancellationToken, validatedOperationParameters, task.Operation, runtime);
-        return task.StartAsync(context);
+        ExecutionTask startedTask = task.ResolveTaskToStart();
+        ExecutionTaskContext startedContext = startedTask.Id == task.Id ? context : context.CreateForTask(startedTask);
+        Func<Task<OperationResult>> executeAsync = () => startedTask.Spec.ExecuteAsync!(startedContext);
+
+        /* Running stays anchored at the session-level start boundary so the scheduler path and direct-start tests observe
+           the same lifecycle transition and delegate through the same visible runtime behavior. */
+        startedContext.GetRequiredRuntime().SetTaskState(startedTask.Id, ExecutionTaskState.Running);
+        Task<OperationResult> runningTask = runTaskAsync(startedTask, executeAsync);
+        return new TaskStartResult(startedTask, runningTask);
     }
 
     /// <summary>
