@@ -186,8 +186,8 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     public ExecutionChildOperationBuilder AddChildOperation<TOperation>(Func<OperationParameters> createParameters)
         where TOperation : Operation, new()
     {
-        string operationName = Operation.CreateOperation(typeof(TOperation)).OperationName;
-        return AddChildOperation<TOperation>(operationName, createParameters);
+        Operation childOperation = Operation.CreateOperation(typeof(TOperation));
+        return AddChildOperation(childOperation, createParameters);
     }
 
     /// <summary>
@@ -197,7 +197,28 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     public ExecutionChildOperationBuilder AddChildOperation<TOperation>(string title, Func<OperationParameters> createParameters, string? description = null)
         where TOperation : Operation, new()
     {
-        return _owner.AttachChildOperation(_task, typeof(TOperation), createParameters, title, description);
+        Operation childOperation = Operation.CreateOperation(typeof(TOperation));
+        return AddChildOperation(title, childOperation, createParameters, description);
+    }
+
+    /// <summary>
+    /// Declares one specific child operation instance using that instance's own default root title. This allows callers
+    /// to author inline or stateful child operations without creating a one-off operation type only to satisfy the builder
+    /// API.
+    /// </summary>
+    public ExecutionChildOperationBuilder AddChildOperation(Operation childOperation, Func<OperationParameters> createParameters)
+    {
+        _ = childOperation ?? throw new ArgumentNullException(nameof(childOperation));
+        return AddChildOperation(childOperation.OperationName, childOperation, createParameters);
+    }
+
+    /// <summary>
+    /// Declares one specific child operation instance beneath the current task and returns a builder that configures the
+    /// imported child root directly after the child plan is expanded and inserted.
+    /// </summary>
+    public ExecutionChildOperationBuilder AddChildOperation(string title, Operation childOperation, Func<OperationParameters> createParameters, string? description = null)
+    {
+        return _owner.AttachChildOperation(_task, childOperation, createParameters, title, description);
     }
 
     /// <summary>

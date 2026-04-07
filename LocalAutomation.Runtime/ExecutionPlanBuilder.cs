@@ -213,12 +213,23 @@ public sealed class ExecutionPlanBuilder
     {
         _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
         Type resolvedOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
+        Operation childOperation = Operation.CreateOperation(resolvedOperationType);
+        return AttachChildOperation(parentTask, childOperation, createParameters, title, description);
+    }
+
+    /// <summary>
+    /// Expands one specific child operation instance immediately, attaches the imported root beneath the current parent,
+    /// and advances the parent's completion frontier to the imported subtree's leaf tasks.
+    /// </summary>
+    internal ExecutionChildOperationBuilder AttachChildOperation(ExecutionTask parentTask, Operation childOperation, Func<OperationParameters> createParameters, string title, string? description)
+    {
+        _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
+        Operation resolvedChildOperation = childOperation ?? throw new ArgumentNullException(nameof(childOperation));
         Func<OperationParameters> createChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters));
 
-        Operation childOperation = Operation.CreateOperation(resolvedOperationType);
         OperationParameters childParameters = createChildParameters();
-        ExecutionPlan childPlan = _buildChildPlan(childOperation, childParameters)
-            ?? throw new InvalidOperationException($"Child operation '{resolvedOperationType.Name}' returned no execution plan during authoring.");
+        ExecutionPlan childPlan = _buildChildPlan(resolvedChildOperation, childParameters)
+            ?? throw new InvalidOperationException($"Child operation '{resolvedChildOperation.GetType().Name}' returned no execution plan during authoring.");
         InsertedExecutionTasks insertedTasks = ExecutionTaskInsertion.InsertUnderParent(
             childPlan,
             parentTask.Id,

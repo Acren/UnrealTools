@@ -632,12 +632,10 @@ public sealed class ExecutionPlanSchedulerTests
     [Fact]
     public async Task WaitingTaskStartsPromptlyAfterExecutionLockRelease()
     {
-        /* The repro mirrors the observed production shape in the smallest form:
-           - one branch holds the shared lock and then unlocks a separate higher-priority lock-free follow-up task,
-           - another branch is already ready and waiting on that same lock.
-           The follow-up body does synchronous work before returning its Task, which currently runs inline on the scheduler
-           thread. The waiting child body should still start promptly instead of being delayed until that unrelated setup
-           work finishes. */
+        /* Keep the shared lock on the outer operation so the direct lock holder and waiting task contend for the same
+           lock, but move the higher-priority follow-up work into a separate lock-free child operation instance. That
+           makes lock release and follow-up readiness happen on the same completed task without a parent waiting on its own
+           same-lock child operation. */
         ExecutionLock sharedLock = new("lock-release-wakeup-lock");
         TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -646,53 +644,51 @@ public sealed class ExecutionPlanSchedulerTests
         TaskCompletionSource<bool> followUpStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseWaitingTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ExecutionTaskId waitingTaskId = default;
-        ExecutionTaskId followUpTaskId = default;
         ExecutionTaskId lockHolderTaskId = default;
+        Operation blockingFollowUpOperation = new ExecutionTestCommon.InlineOperation(
+            root =>
+            {
+                /* Child operations still need one explicit child task beneath their root before authored sequential
+                   siblings can be declared. The blocking startup task is the actual scheduler contender; the dependents
+                   only increase its downstream-work priority once the lock holder finishes. */
+                root.Children(childScope =>
+                {
+                    childScope.Task("Blocking Startup")
+                        .Run(_ =>
+                        {
+                            followUpStarted.TrySetResult(true);
+                            releaseFollowUp.Task.Wait(TimeSpan.FromSeconds(5));
+                            return Task.FromResult(OperationResult.Succeeded());
+                        })
+                        .Then("Long Lock-Free Follow-up Dependent 1")
+                        .Run(() => Task.CompletedTask)
+                        .Then("Long Lock-Free Follow-up Dependent 2")
+                        .Run(() => Task.CompletedTask)
+                        .Then("Long Lock-Free Follow-up Dependent 3")
+                        .Run(() => Task.CompletedTask);
+                });
+            },
+            operationName: "Blocking Follow-Up Child Operation");
 
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
             root.Children(ExecutionChildMode.Parallel, scope =>
             {
-                scope.Task("Lock Holder Branch")
-                    .Run(async context =>
-                    {
-                        Operation lockHolderOperation = new ExecutionTestCommon.InlineOperation(
-                            lockHolderRoot =>
-                            {
-                                lockHolderRoot.Run(async _ =>
-                                {
-                                    lockHolderStarted.TrySetResult(true);
-                                    await releaseLockHolder.Task.WaitAsync(TimeSpan.FromSeconds(5));
-                                });
-                            },
-                            operationName: "Lock Holder Child Operation",
-                            executionLocks: new[] { sharedLock });
+                scope.Task("Lock Holder")
+                    .Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder), out lockHolderTaskId);
 
-                        OperationParameters lockHolderParameters = lockHolderOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
-                        OperationResult lockHolderResult = await context.RunChildOperationAsync(lockHolderOperation, lockHolderParameters);
-                        if (!lockHolderResult.Success)
-                        {
-                            throw new InvalidOperationException(lockHolderResult.FailureReason ?? "Lock holder child operation failed.");
-                        }
-                    }, out lockHolderTaskId);
-
+                /* This host task has no body of its own. Its imported child operation stays lock-free, but it becomes
+                   ready from the same lock-holder completion that frees the waiting task's shared lock. */
                 scope.Task("Long Lock-Free Follow-up")
                     .After(lockHolderTaskId)
-                    .Run(_ =>
-                    {
-                        followUpStarted.TrySetResult(true);
-
-                        /* This intentionally blocks synchronously before returning a Task so the test exercises whether
-                           task startup is still running inline on the scheduler thread after lock release. */
-                        releaseFollowUp.Task.Wait(TimeSpan.FromSeconds(5));
-                        return Task.FromResult(OperationResult.Succeeded());
-                    }, out followUpTaskId)
-                    .Then("Long Lock-Free Follow-up Dependent 1")
-                    .Run(() => Task.CompletedTask)
-                    .Then("Long Lock-Free Follow-up Dependent 2")
-                    .Run(() => Task.CompletedTask)
-                    .Then("Long Lock-Free Follow-up Dependent 3")
-                    .Run(() => Task.CompletedTask);
+                    .AddChildOperation(
+                        blockingFollowUpOperation,
+                        () =>
+                        {
+                            OperationParameters parameters = blockingFollowUpOperation.CreateParameters();
+                            parameters.Target = new ExecutionTestCommon.TestTarget();
+                            return parameters;
+                        });
 
                 scope.Task("Waiting Task")
                     .Run(async context =>
@@ -704,9 +700,9 @@ public sealed class ExecutionPlanSchedulerTests
             });
         }, sharedLock);
 
-        /* The waiting task is already ready from the start but cannot acquire the shared lock while the lock holder runs.
-           Once the lock-holder branch completes, the scheduler should retry the waiting task immediately even though the
-           higher-priority follow-up task has also become ready in the same scheduler pass. */
+        /* The waiting task is already ready from the start but cannot acquire the shared lock while the lock holder
+           runs. Once the lock holder completes, the scheduler should retry the waiting task promptly even though the
+           higher-priority lock-free follow-up becomes ready in the same scheduler pass. */
         (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
 
@@ -716,8 +712,8 @@ public sealed class ExecutionPlanSchedulerTests
 
         releaseLockHolder.TrySetResult(true);
 
-        /* The waiting task should start promptly after the lock-holder body releases the shared lock even though
-           the higher-priority follow-up task has already begun synchronous setup work. */
+        /* The waiting task should start promptly after the lock-holder body releases the shared lock even though the
+           higher-priority follow-up task has already begun synchronous setup work. */
         TimeoutException? startTimeout = null;
         ExecutionTaskId startedTaskId = default;
         try
@@ -737,8 +733,6 @@ public sealed class ExecutionPlanSchedulerTests
 
         OperationResult result = await executeTask;
 
-        Assert.NotEqual(default, followUpTaskId);
-        Assert.NotEqual(default, waitingTaskId);
         Assert.True(followUpStarted.Task.IsCompleted, "The synchronous lock-free follow-up never started.");
         Assert.Null(startTimeout);
         Assert.Equal(waitingTaskId, startedTaskId);
