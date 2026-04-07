@@ -39,10 +39,10 @@
         <Style Selector="Border.task-card-shell">
             <Setter Property="Opacity" Value="1" />
         </Style>
-        <Style Selector="Border.task-card-shell.pending, Border.task-card-shell.planned">
+        <Style Selector="Border.task-card-shell.pending, Border.task-card-shell.planned, Border.task-card-shell.cancelled, Border.task-card-shell.skipped">
             <Setter Property="Opacity" Value="0.92" />
         </Style>
-        <Style Selector="Border.task-card-shell.cancelled, Border.task-card-shell.interrupted, Border.task-card-shell.skipped, Border.task-card-shell.disabled">
+        <Style Selector="Border.task-card-shell.interrupted, Border.task-card-shell.disabled">
             <Setter Property="Opacity" Value="0.72" />
         </Style>
         <!-- Most interaction states now fall back to the shared shell rules so status styling stays compact. Only the
@@ -51,7 +51,7 @@
         <Style Selector="Border.task-card-shell.hover">
             <Setter Property="Opacity" Value="0.97" />
         </Style>
-        <Style Selector="Border.task-card-shell.cancelled.hover, Border.task-card-shell.interrupted.hover, Border.task-card-shell.skipped.hover, Border.task-card-shell.disabled.hover">
+        <Style Selector="Border.task-card-shell.interrupted.hover, Border.task-card-shell.disabled.hover">
             <Setter Property="Opacity" Value="0.8" />
         </Style>
         <Style Selector="Border.task-card-shell.selected">
@@ -74,10 +74,10 @@
         </Style>
         <!-- The background layer only owns fill colors so status and interaction changes can retint the surface without
              independently changing card opacity. -->
-        <Style Selector="Border.task-card-background.pending, Border.task-card-background.planned">
+        <Style Selector="Border.task-card-background.pending, Border.task-card-background.planned, Border.task-card-background.cancelled, Border.task-card-background.skipped">
             <Setter Property="Background" Value="#1C2733" />
         </Style>
-        <Style Selector="Border.task-card-background.cancelled, Border.task-card-background.interrupted, Border.task-card-background.skipped, Border.task-card-background.disabled">
+        <Style Selector="Border.task-card-background.interrupted, Border.task-card-background.disabled">
             <Setter Property="Background" Value="#171F29" />
         </Style>
         <Style Selector="Border.task-card-border">
@@ -95,13 +95,12 @@
         <Style Selector="Border.task-card-border.pressed">
             <Setter Property="Opacity" Value="1" />
         </Style>
-        <!-- Planned and Pending share one neutral queued/preview treatment, while inactive terminal states keep a more
-             muted treatment. Interrupted intentionally reuses the same muted color as Cancelled while keeping its own
-             semantic class. -->
-        <Style Selector="Border.task-card-border.pending, Border.task-card-border.planned">
+        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment, while Interrupted and
+             Disabled keep the more muted inactive treatment. -->
+        <Style Selector="Border.task-card-border.pending, Border.task-card-border.planned, Border.task-card-border.cancelled, Border.task-card-border.skipped">
             <Setter Property="BorderBrush" Value="#7F8C97" />
         </Style>
-        <Style Selector="Border.task-card-border.cancelled, Border.task-card-border.interrupted, Border.task-card-border.skipped, Border.task-card-border.disabled">
+        <Style Selector="Border.task-card-border.interrupted, Border.task-card-border.disabled">
             <Setter Property="BorderBrush" Value="#59616A" />
         </Style>
         <Style Selector="Border.task-card-border.running">

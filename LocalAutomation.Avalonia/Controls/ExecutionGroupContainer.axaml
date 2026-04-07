@@ -24,10 +24,10 @@
         </Style>
         <!-- Group fills follow semantic classes too so non-runnable branches recede as whole containers rather than
              only through the frame stroke. -->
-        <Style Selector="Border.group-container-background.pending, Border.group-container-background.planned">
+        <Style Selector="Border.group-container-background.pending, Border.group-container-background.planned, Border.group-container-background.cancelled, Border.group-container-background.skipped">
             <Setter Property="Background" Value="#121924" />
         </Style>
-        <Style Selector="Border.group-container-background.cancelled, Border.group-container-background.interrupted, Border.group-container-background.skipped, Border.group-container-background.disabled">
+        <Style Selector="Border.group-container-background.interrupted, Border.group-container-background.disabled">
             <Setter Property="Background" Value="#101720" />
         </Style>
         <Style Selector="Border.group-header-shell">
@@ -45,10 +45,10 @@
         <Style Selector="Border.group-header-shell.pressed">
             <Setter Property="Opacity" Value="0.92" />
         </Style>
-        <Style Selector="Border.group-header-shell.pending, Border.group-header-shell.planned">
+        <Style Selector="Border.group-header-shell.pending, Border.group-header-shell.planned, Border.group-header-shell.cancelled, Border.group-header-shell.skipped">
             <Setter Property="Background" Value="#16202D" />
         </Style>
-        <Style Selector="Border.group-header-shell.cancelled, Border.group-header-shell.interrupted, Border.group-header-shell.skipped, Border.group-header-shell.disabled">
+        <Style Selector="Border.group-header-shell.interrupted, Border.group-header-shell.disabled">
             <Setter Property="Background" Value="#121A24" />
         </Style>
         <Style Selector="Border.group-container-border">
@@ -66,20 +66,19 @@
         <Style Selector="Border.group-container-border.pressed">
             <Setter Property="Opacity" Value="0.96" />
         </Style>
-        <!-- Planned and Pending share one neutral queued/preview treatment, while inactive terminal states keep a more
-             muted treatment. Interrupted intentionally reuses the same muted color as Cancelled while keeping its own
-             semantic class. -->
-        <Style Selector="Border.group-container-border.pending, Border.group-container-border.planned">
+        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment, while Interrupted and
+             Disabled keep the more muted inactive treatment. -->
+        <Style Selector="Border.group-container-border.pending, Border.group-container-border.planned, Border.group-container-border.cancelled, Border.group-container-border.skipped">
             <Setter Property="BorderBrush" Value="#7F8C97" />
             <Setter Property="Opacity" Value="0.44" />
         </Style>
-        <Style Selector="Border.group-container-border.cancelled, Border.group-container-border.interrupted, Border.group-container-border.skipped, Border.group-container-border.disabled">
+        <Style Selector="Border.group-container-border.interrupted, Border.group-container-border.disabled">
             <Setter Property="BorderBrush" Value="#59616A" />
             <Setter Property="Opacity" Value="0.28" />
         </Style>
         <!-- Let selected groups use the shared frame-emphasis fallback while inactive hover stays quieter than active
              groups so disabled containers do not jump back to full-strength chrome. -->
-        <Style Selector="Border.group-container-border.cancelled.hover, Border.group-container-border.interrupted.hover, Border.group-container-border.skipped.hover, Border.group-container-border.disabled.hover">
+        <Style Selector="Border.group-container-border.interrupted.hover, Border.group-container-border.disabled.hover">
             <Setter Property="Opacity" Value="0.38" />
         </Style>
         <Style Selector="Border.group-container-border.running">

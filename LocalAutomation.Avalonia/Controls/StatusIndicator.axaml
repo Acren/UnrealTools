@@ -7,14 +7,14 @@
              ClipToBounds="False">
     <UserControl.Styles>
         <!-- Reuse the tab marker class directly so running, success, and failure keep the original animation/glow
-             language, while local styles extend the shared preview and inactive status groupings. Disabled and other
-             inactive outcomes deliberately read quieter than active work inside dense graph headers. -->
-        <Style Selector="Border.status-indicator-dot.pending, Border.status-indicator-dot.planned">
+             language, while local styles extend the shared preview and inactive status groupings. Cancelled and Skipped
+             stay in the neutral queued palette, while Disabled and Interrupted deliberately read quieter. -->
+        <Style Selector="Border.status-indicator-dot.pending, Border.status-indicator-dot.planned, Border.status-indicator-dot.cancelled, Border.status-indicator-dot.skipped">
             <Setter Property="Background" Value="#7F8C97" />
             <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
             <Setter Property="Opacity" Value="0.72" />
         </Style>
-        <Style Selector="Border.status-indicator-dot.cancelled, Border.status-indicator-dot.interrupted, Border.status-indicator-dot.disabled, Border.status-indicator-dot.skipped">
+        <Style Selector="Border.status-indicator-dot.interrupted, Border.status-indicator-dot.disabled">
             <Setter Property="Background" Value="#59616A" />
             <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
             <Setter Property="Opacity" Value="0.52" />
@@ -22,11 +22,11 @@
         <Style Selector="TextBlock.status-indicator-label">
             <Setter Property="Foreground" Value="#A9B5C2" />
         </Style>
-        <Style Selector="TextBlock.status-indicator-label.pending, TextBlock.status-indicator-label.planned">
+        <Style Selector="TextBlock.status-indicator-label.pending, TextBlock.status-indicator-label.planned, TextBlock.status-indicator-label.cancelled, TextBlock.status-indicator-label.skipped">
             <Setter Property="Foreground" Value="#9EACB8" />
             <Setter Property="Opacity" Value="0.82" />
         </Style>
-        <Style Selector="TextBlock.status-indicator-label.cancelled, TextBlock.status-indicator-label.interrupted, TextBlock.status-indicator-label.disabled, TextBlock.status-indicator-label.skipped">
+        <Style Selector="TextBlock.status-indicator-label.interrupted, TextBlock.status-indicator-label.disabled">
             <Setter Property="Foreground" Value="#7B838C" />
             <Setter Property="Opacity" Value="0.68" />
         </Style>
