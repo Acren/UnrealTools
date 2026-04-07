@@ -27,13 +27,12 @@
                      inside one flat canvas. Groups stay behind edges, and edges stay behind task cards. -->
                 <Grid Width="{Binding CanvasWidth}"
                       Height="{Binding CanvasHeight}"
-                      UseLayoutRounding="True"
-                      IsHitTestVisible="False">
+                      UseLayoutRounding="True">
                     <Canvas x:Name="GroupCanvas"
                             Width="{Binding CanvasWidth}"
                             Height="{Binding CanvasHeight}"
                             UseLayoutRounding="True"
-                            IsHitTestVisible="False" />
+                            IsHitTestVisible="True" />
                     <Canvas x:Name="EdgeCanvas"
                             Width="{Binding CanvasWidth}"
                             Height="{Binding CanvasHeight}"
@@ -43,7 +42,7 @@
                             Width="{Binding CanvasWidth}"
                             Height="{Binding CanvasHeight}"
                             UseLayoutRounding="True"
-                            IsHitTestVisible="False" />
+                            IsHitTestVisible="True" />
                 </Grid>
             </Border>
         </Border>
