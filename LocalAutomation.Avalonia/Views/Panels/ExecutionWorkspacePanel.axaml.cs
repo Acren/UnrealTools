@@ -132,17 +132,15 @@ public partial class ExecutionWorkspacePanel : UserControl
     }
 
     /// <summary>
-    /// Refreshes the shared workspace layout when the selected tab or graph/log visibility changes in the view model.
+    /// Refreshes the shared workspace layout only when the selected workspace tab changes.
     /// </summary>
     private void HandleViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        /* Workspace layout depends on which tab is selected and whether that tab shows graph/log panes. Graph-object
-           updates inside the already-selected tab should not retrigger host layout because the shared graph canvas stays
-           mounted while its own bound graph view model updates independently. */
+        /* Workspace layout is a pure function of the selected tab's presentation profile. Log-entry churn and log-source
+           switches update the mounted LogViewer directly through binding and do not change whether the shared hosts are
+           in graph-only, log-only, or split mode. */
         if (string.IsNullOrWhiteSpace(e.PropertyName) ||
-            e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeTab) ||
-            e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeLogEntries) ||
-            e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeLogSourceId))
+            e.PropertyName == nameof(ExecutionWorkspaceViewModel.SelectedRuntimeTab))
         {
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionWorkspacePanel.HandleViewModelPropertyChanged")
                 .SetTag("property.name", e.PropertyName ?? string.Empty);
