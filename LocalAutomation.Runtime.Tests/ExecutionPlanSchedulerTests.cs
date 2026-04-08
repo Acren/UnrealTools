@@ -886,4 +886,79 @@ public sealed class ExecutionPlanSchedulerTests
         releaseBranchB.TrySetResult(true);
         await executeTask;
     }
+
+    /// <summary>
+    /// Confirms that a second session blocked only by an execution lock held by another live session remains pending
+    /// instead of being marked skipped before that lock is released.
+    /// </summary>
+    [Fact]
+    public async Task SecondSessionStaysPendingWhileAnotherSessionHoldsExecutionLock()
+    {
+        /* Each session contains one body task that declares the same shared execution lock. Session A keeps the lock open
+           until the test releases it, while session B should remain non-terminal and pending until that happens. */
+        ExecutionLock sharedLock = new("cross-session-lock");
+        TaskCompletionSource<bool> sessionAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseSessionA = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> sessionBStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseSessionB = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId sessionABodyTaskId = default;
+        ExecutionTaskId sessionBBodyTaskId = default;
+
+        Operation operationA = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(scope =>
+            {
+                scope.Task("Body").Run(RuntimeTestUtilities.RunUntilReleased(sessionAStarted, releaseSessionA), out sessionABodyTaskId);
+            });
+        }, sharedLock);
+
+        Operation operationB = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(scope =>
+            {
+                scope.Task("Body").Run(async _ =>
+                {
+                    sessionBStarted.TrySetResult(true);
+                    await releaseSessionB.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    return OperationResult.Succeeded();
+                }, out sessionBBodyTaskId);
+            });
+        }, sharedLock);
+
+        /* Start session A first so it definitely holds the shared lock before session B begins. Session B should then be
+           blocked only by that external lock holder. */
+        (ExecutionPlan _, ExecutionSession sessionA, ExecutionPlanScheduler schedulerA) = RuntimeTestUtilities.CreateRuntime(operationA);
+        (ExecutionPlan _, ExecutionSession sessionB, ExecutionPlanScheduler schedulerB) = RuntimeTestUtilities.CreateRuntime(operationB);
+        Task<OperationResult> executeSessionA = schedulerA.ExecuteAsync(CancellationToken.None);
+        await sessionAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await sessionA.GetTask(sessionABodyTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        Task<OperationResult> executeSessionB = schedulerB.ExecuteAsync(CancellationToken.None);
+
+        try
+        {
+            /* Release session A and wait for it to finish so the shared execution lock becomes available again. Session B
+               keeps its own body blocked on a separate gate, which means a correct implementation should start session B
+               promptly after the release without allowing the session to complete yet. */
+            releaseSessionA.TrySetResult(true);
+            await executeSessionA;
+
+            ExecutionTask sessionBBodyTask = sessionB.GetTask(sessionBBodyTaskId);
+            await sessionBBodyTask.WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            Assert.False(sessionB.Completion.IsCompleted);
+            Assert.Null(sessionB.Outcome);
+            Assert.True(sessionBStarted.Task.IsCompleted);
+            Assert.Equal(ExecutionTaskState.Running, sessionBBodyTask.State);
+            Assert.Null(sessionBBodyTask.Outcome);
+        }
+        finally
+        {
+            /* Cleanup releases any remaining body gates and lets both schedulers drain. The assertions above remain the
+               only intended failure point. */
+            releaseSessionA.TrySetResult(true);
+            releaseSessionB.TrySetResult(true);
+            await Task.WhenAny(executeSessionA, Task.Delay(TimeSpan.FromSeconds(1)));
+            await Task.WhenAny(executeSessionB, Task.Delay(TimeSpan.FromSeconds(1)));
+        }
+    }
 }
