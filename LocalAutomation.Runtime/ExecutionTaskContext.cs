@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
@@ -32,6 +33,26 @@ internal sealed class ExecutionTaskRuntimeServices
     internal void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state)
     {
         _session.SetTaskState(taskId, state);
+    }
+
+    internal Task<IAsyncDisposable> AcquireExecutionLocksAsync(ExecutionTask task, IReadOnlyList<ExecutionLock> executionLocks, ILogger taskLogger, CancellationToken cancellationToken)
+    {
+        if (task == null)
+        {
+            throw new ArgumentNullException(nameof(task));
+        }
+
+        if (executionLocks == null)
+        {
+            throw new ArgumentNullException(nameof(executionLocks));
+        }
+
+        if (taskLogger == null)
+        {
+            throw new ArgumentNullException(nameof(taskLogger));
+        }
+
+        return ExecutionLockWait.AcquireAsync(task, executionLocks, taskLogger, cancellationToken);
     }
 
     internal ExecutionSessionId SessionId => _session.Id;

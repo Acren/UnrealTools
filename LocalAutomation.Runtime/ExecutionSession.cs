@@ -228,7 +228,7 @@ public sealed class ExecutionSession
                 effectiveStart = effectiveStart == null || task.StartedAt < effectiveStart ? task.StartedAt : effectiveStart;
             }
 
-            if (task.State == ExecutionTaskState.Running)
+            if (task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
             {
                 effectiveEnd = timestampNow;
                 continue;
@@ -550,7 +550,7 @@ public sealed class ExecutionSession
         foreach (ExecutionTask task in Tasks)
         {
             ExecutionTaskState currentState = task.State;
-            if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running)
+            if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
             {
                 continue;
             }
@@ -560,8 +560,9 @@ public sealed class ExecutionSession
                 throw new InvalidOperationException($"Task '{task.Id}' cannot return to pending readiness while it already has semantic outcome '{task.Outcome}'.");
             }
 
+            TaskStartState startState = task.GetTaskStartState();
             string? waitingReason = task.GetSchedulingPendingReason();
-            if (task.GetTaskStartState() == TaskStartState.NoStartableWork)
+            if (startState is TaskStartState.NoStartableWork or TaskStartState.Running or TaskStartState.WaitingForExecutionLock)
             {
                 continue;
             }
@@ -607,7 +608,7 @@ public sealed class ExecutionSession
                 continue;
             }
 
-            bool taskExecutionIsStillActive = task.State == ExecutionTaskState.Running || isTaskTrackedAsRunning(task.Id);
+            bool taskExecutionIsStillActive = task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock || isTaskTrackedAsRunning(task.Id);
             ExecutionTaskOutcome nextOutcome = taskExecutionIsStillActive
                 ? userCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted
                 : ExecutionTaskOutcome.Skipped;
@@ -647,13 +648,56 @@ public sealed class ExecutionSession
         ExecutionTaskContext context = new(task.Id, task.Title, createLogger(task.Id), cancellationToken, validatedOperationParameters, task.Operation, runtime);
         ExecutionTask startedTask = task.ResolveTaskToStart();
         ExecutionTaskContext startedContext = startedTask.Id == task.Id ? context : context.CreateForTask(startedTask);
-        Func<Task<OperationResult>> executeAsync = () => startedTask.Spec.ExecuteAsync!(startedContext);
+        IReadOnlyList<ExecutionLock> executionLocks = startedTask.Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(startedTask.Title, startedTask.OperationParameters, startedTask.DeclaredOptionTypes));
+        ILogger taskLogger = createLogger(startedTask.Id);
 
-        /* Running stays anchored at the session-level start boundary so the scheduler path and direct-start tests observe
-           the same lifecycle transition and delegate through the same visible runtime behavior. */
-        startedContext.GetRequiredRuntime().SetTaskState(startedTask.Id, ExecutionTaskState.Running);
+        if (executionLocks.Count == 0)
+        {
+            /* Lock-free tasks can enter Running at admission time because there is no external resource gate between the
+               scheduler's chosen start order and the body becoming eligible to execute. This preserves deterministic
+               start-order observations while lock-waiting tasks still surface their explicit intermediate state. */
+            startedContext.GetRequiredRuntime().SetTaskState(startedTask.Id, ExecutionTaskState.Running);
+        }
+
+        Func<Task<OperationResult>> executeAsync = async () =>
+        {
+            /* Once the scheduler admits this task as the chosen contender for its lock set, the task execution path owns
+               the remaining lifecycle: enter explicit lock-wait state, acquire the declared locks, transition to Running,
+               then execute the body under the held lock. */
+            await using IAsyncDisposable acquiredLocks = await AcquireExecutionLocksForStartedTaskAsync(startedContext, startedTask, executionLocks, taskLogger, cancellationToken).ConfigureAwait(false);
+            if (executionLocks.Count > 0)
+            {
+                startedContext.GetRequiredRuntime().SetTaskState(startedTask.Id, ExecutionTaskState.Running);
+            }
+
+            return await startedTask.Spec.ExecuteAsync!(startedContext).ConfigureAwait(false);
+        };
+
         Task<OperationResult> runningTask = runTaskAsync(startedTask, executeAsync);
         return new TaskStartResult(startedTask, runningTask);
+    }
+
+    /// <summary>
+    /// Acquires the declared execution locks for one already-admitted task. The session owns the visible transition into
+    /// WaitingForExecutionLock, while the task's execution coroutine owns the actual wait and later Running transition.
+    /// </summary>
+    private void SetTaskWaitingForExecutionLock(ExecutionTaskId taskId)
+    {
+        SetTaskState(taskId, ExecutionTaskState.WaitingForExecutionLock, "Waiting for execution lock.");
+    }
+
+    /// <summary>
+    /// Marks an admitted task as explicitly waiting on a lock, then delegates the actual lock wait to task runtime
+    /// services so the session remains a state authority rather than a lock implementation host.
+    /// </summary>
+    private Task<IAsyncDisposable> AcquireExecutionLocksForStartedTaskAsync(ExecutionTaskContext startedContext, ExecutionTask task, IReadOnlyList<ExecutionLock> executionLocks, ILogger taskLogger, CancellationToken cancellationToken)
+    {
+        if (executionLocks.Count > 0)
+        {
+            SetTaskWaitingForExecutionLock(task.Id);
+        }
+
+        return startedContext.GetRequiredRuntime().AcquireExecutionLocksAsync(task, executionLocks, taskLogger, cancellationToken);
     }
 
     /// <summary>
@@ -1151,8 +1195,10 @@ public sealed class ExecutionSession
 
             TaskStartState parentStartState = currentParent.GetTaskStartState();
             bool ownTaskIsRunning = currentParent.State == ExecutionTaskState.Running && parentStartState == TaskStartState.Running;
+            bool ownTaskIsWaitingForExecutionLock = currentParent.State == ExecutionTaskState.WaitingForExecutionLock && parentStartState == TaskStartState.WaitingForExecutionLock;
             bool ownTaskIsQueued = parentStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
             bool anyChildRunning = childTasks.Any(task => task.State == ExecutionTaskState.Running);
+            bool anyChildWaitingForExecutionLock = childTasks.Any(task => task.State == ExecutionTaskState.WaitingForExecutionLock);
             bool anyPending = childTasks.Any(task => task.State is ExecutionTaskState.Pending or ExecutionTaskState.Planned);
             ExecutionTask? failedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Failed);
             ExecutionTask? cancelledTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Cancelled);
@@ -1165,7 +1211,7 @@ public sealed class ExecutionSession
             {
                 parentState = ExecutionTaskState.Completed;
             }
-            else if (ownTaskIsRunning || anyChildRunning)
+            else if (ownTaskIsRunning || ownTaskIsWaitingForExecutionLock || anyChildRunning || anyChildWaitingForExecutionLock)
             {
                 parentState = ExecutionTaskState.Running;
             }
@@ -1174,7 +1220,7 @@ public sealed class ExecutionSession
                 /* Pending is reserved for scopes whose subtree has not started yet. Once a scope or any descendant has
                    started, the scope remains Running until the entire subtree reaches a terminal outcome, even if more
                    descendant work is temporarily blocked on dependencies or parent readiness. */
-                parentState = currentParent.State == ExecutionTaskState.Running || currentParent.Outcome != null
+                parentState = currentParent.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock || currentParent.Outcome != null
                     ? ExecutionTaskState.Running
                     : ExecutionTaskState.Pending;
             }
@@ -1185,7 +1231,7 @@ public sealed class ExecutionSession
 
             ExecutionTaskOutcome? parentOutcome = currentParent.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped
                 ? currentParent.Outcome
-                : ownTaskIsRunning || ownTaskIsQueued || anyPending || anyChildRunning
+                : ownTaskIsRunning || ownTaskIsWaitingForExecutionLock || ownTaskIsQueued || anyPending || anyChildRunning || anyChildWaitingForExecutionLock
                     ? null
                     : failedTask != null
                     ? ExecutionTaskOutcome.Failed

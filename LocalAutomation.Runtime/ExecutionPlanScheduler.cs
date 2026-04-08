@@ -295,7 +295,8 @@ public sealed class ExecutionPlanScheduler
         int passCount = 0;
         using PerformanceActivityScope readyActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartReadyItems")
             .SetTag("running.count", _session.Tasks.Count(task => task.HasActiveExecution))
-            .SetTag("pending.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.Pending));
+            .SetTag("pending.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.Pending))
+            .SetTag("lock_wait.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.WaitingForExecutionLock));
         if (_lastCompletedTaskId != null)
         {
             readyActivity.SetTag("completed.task.id", _lastCompletedTaskId.Value.Value)
@@ -338,13 +339,6 @@ public sealed class ExecutionPlanScheduler
                     throw new InvalidOperationException($"Task '{task.Id}' cannot start execution while it already has semantic outcome '{task.Outcome}'.");
                 }
 
-                IReadOnlyList<ExecutionLock> executionLocks = task.GetExecutionLocksForNextStart();
-                if (!TryReserveExecutionLocks(task, executionLocks, out AsyncLockHandle lockHandle))
-                {
-                    /* Lock-blocked tasks remain Pending until the scheduler can reserve their full lock set. */
-                    continue;
-                }
-
                 try
                 {
                     _session.StartTaskAsync(
@@ -361,7 +355,7 @@ public sealed class ExecutionPlanScheduler
                                 "Dispatching task '{TaskPath}' ({TaskId}) to worker execution.",
                                 _session.GetTaskDisplayPath(startedTask.Id),
                                 startedTask.Id);
-                            StartTaskExecutionAsync(startedTask, executeAsync, lockHandle, completionSource);
+                            StartTaskExecutionAsync(startedTask, executeAsync, completionSource);
                             return completionSource.Task;
                         });
 
@@ -371,7 +365,6 @@ public sealed class ExecutionPlanScheduler
                 }
                 catch
                 {
-                    lockHandle.DisposeAsync().AsTask().GetAwaiter().GetResult();
                     throw;
                 }
             }
@@ -921,16 +914,19 @@ public sealed class ExecutionPlanScheduler
     /// off-thread dispatch and lock lifetime, but it no longer reconstructs task selection or runtime context because the
     /// session start path already performed that shared task-local work.
     /// </summary>
-    private void StartTaskExecutionAsync(ExecutionTask task, Func<Task<OperationResult>> executeAsync, AsyncLockHandle lockHandle, TaskCompletionSource<OperationResult> completionSource)
+    private void StartTaskExecutionAsync(
+        ExecutionTask task,
+        Func<Task<OperationResult>> executeAsync,
+        TaskCompletionSource<OperationResult> completionSource)
     {
-        /* Use a dedicated long-running task for startup dispatch so synchronous pre-await work cannot starve unrelated
-           task starts behind shared thread-pool heuristics when multiple scheduler tests or operations run in parallel. */
+        /* The task execution coroutine now owns lock waiting and the Running transition. The scheduler only dispatches
+           the already-admitted task and tracks its returned completion task. */
         _ = Task.Factory.StartNew(
             async () =>
             {
                 try
                 {
-                    completionSource.TrySetResult(await ExecuteTaskBodyAsync(task, executeAsync, lockHandle).ConfigureAwait(false));
+                    completionSource.TrySetResult(await ExecuteTaskBodyAsync(task, executeAsync).ConfigureAwait(false));
                 }
                 catch (OperationCanceledException)
                 {
@@ -950,7 +946,7 @@ public sealed class ExecutionPlanScheduler
     /// Executes one started task body while preserving task-state error and cancellation reporting at the scheduler
     /// boundary.
     /// </summary>
-    private async Task<OperationResult> ExecuteTaskBodyAsync(ExecutionTask task, Func<Task<OperationResult>> executeAsync, AsyncLockHandle lockHandle)
+    private async Task<OperationResult> ExecuteTaskBodyAsync(ExecutionTask task, Func<Task<OperationResult>> executeAsync)
     {
         ILogger taskLogger = CreateTaskLogger(task.Id);
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.ExecuteTaskBody")
@@ -958,7 +954,6 @@ public sealed class ExecutionPlanScheduler
             .SetTag("task.title", task.Title);
         try
         {
-            await using AsyncLockHandle acquiredLockHandle = lockHandle;
             taskLogger.LogDebug("Starting task body '{TaskTitle}' ({TaskId}).", task.Title, task.Id);
             OperationResult result = await executeAsync().ConfigureAwait(false);
             activity.SetTag("task.outcome", result.Outcome.ToString());
@@ -978,68 +973,7 @@ public sealed class ExecutionPlanScheduler
                 .SetTag("exception.message", ex.Message);
 
             taskLogger.LogDebug(ex, "Task body '{TaskTitle}' ({TaskId}) failed with an exception.", task.Title, task.Id);
-
-            /* Preserve the original exception so the scheduler can log the real root cause and expose the innermost
-               message in task status instead of a wrapper message. */
             throw;
-        }
-    }
-
-    /// <summary>
-    /// Tries to reserve the declared execution locks for one task before the scheduler marks that task Running. This
-    /// keeps lock-blocked tasks visibly Pending until body execution can begin immediately.
-    /// </summary>
-    private bool TryReserveExecutionLocks(ExecutionTask task, IReadOnlyList<ExecutionLock> executionLocks, out AsyncLockHandle lockHandle)
-    {
-        if (executionLocks.Count == 0)
-        {
-            lockHandle = AsyncLockHandle.Empty;
-            return true;
-        }
-
-        string lockSummary = string.Join(", ", executionLocks.Select(executionLock => executionLock.Key));
-        ILogger taskLogger = CreateTaskLogger(task.Id);
-        if (!ExecutionLocks.TryAcquire(executionLocks, out IAsyncDisposable handle))
-        {
-            taskLogger.LogDebug("Execution lock(s) still busy for task '{TaskTitle}': {ExecutionLocks}", task.Title, lockSummary);
-            lockHandle = AsyncLockHandle.Empty;
-            return false;
-        }
-
-        taskLogger.LogInformation("Acquired execution lock(s): {ExecutionLocks}", lockSummary);
-        lockHandle = new AsyncLockHandle(handle, taskLogger, lockSummary);
-        return true;
-    }
-
-    /// <summary>
-    /// Wraps one acquired lock handle so release logging stays paired with the same task that acquired it.
-    /// </summary>
-    private sealed class AsyncLockHandle : IAsyncDisposable
-    {
-        public static AsyncLockHandle Empty { get; } = new(null, null, null);
-
-        private readonly IAsyncDisposable? _inner;
-        private readonly ILogger? _logger;
-        private readonly string? _summary;
-
-        public AsyncLockHandle(IAsyncDisposable? inner, ILogger? logger, string? summary)
-        {
-            _inner = inner;
-            _logger = logger;
-            _summary = summary;
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            if (_inner != null)
-            {
-                await _inner.DisposeAsync().ConfigureAwait(false);
-            }
-
-            if (_logger != null && !string.IsNullOrWhiteSpace(_summary))
-            {
-                _logger.LogInformation("Released execution lock(s): {ExecutionLocks}", _summary);
-            }
         }
     }
 

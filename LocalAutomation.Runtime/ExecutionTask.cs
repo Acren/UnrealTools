@@ -16,6 +16,7 @@ internal enum TaskStartState
     Ready,
     WaitingForDependencies,
     WaitingForParent,
+    WaitingForExecutionLock,
     Running,
     NoStartableWork
 }
@@ -354,6 +355,12 @@ public class ExecutionTask : INotifyPropertyChanged
         if (State == ExecutionTaskState.Completed)
         {
             return TaskStartState.NoStartableWork;
+        }
+
+        if ((_spec.ExecuteAsync != null && State == ExecutionTaskState.WaitingForExecutionLock)
+            || _children.Any(child => child.GetTaskStartState() == TaskStartState.WaitingForExecutionLock))
+        {
+            return TaskStartState.WaitingForExecutionLock;
         }
 
         if (CanStartOwnWork())
@@ -867,12 +874,17 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal string? GetSchedulingPendingReason()
     {
-        if (State != ExecutionTaskState.Pending)
+        if (State is not (ExecutionTaskState.Pending or ExecutionTaskState.WaitingForExecutionLock))
         {
             return null;
         }
 
         TaskStartState startState = GetTaskStartState();
+        if (startState == TaskStartState.WaitingForExecutionLock)
+        {
+            return "Waiting for execution lock.";
+        }
+
         if (startState == TaskStartState.WaitingForDependencies)
         {
             return "Waiting for dependencies.";
@@ -993,7 +1005,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Returns whether this task has entered real execution instead of remaining untouched queued work.
     /// </summary>
     internal bool HasStarted =>
-        State == ExecutionTaskState.Running
+        State is ExecutionTaskState.WaitingForExecutionLock or ExecutionTaskState.Running
         || StartedAt != null
         || Outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Failed;
 
@@ -1007,7 +1019,7 @@ public class ExecutionTask : INotifyPropertyChanged
         DateTimeOffset? finishedAt = FinishedAt;
         DateTimeOffset timestamp = DateTimeOffset.Now;
 
-        if (state == ExecutionTaskState.Running && StartedAt == null)
+        if (state is ExecutionTaskState.WaitingForExecutionLock or ExecutionTaskState.Running && StartedAt == null)
         {
             startedAt = timestamp;
             finishedAt = null;
@@ -1036,7 +1048,7 @@ public class ExecutionTask : INotifyPropertyChanged
             throw new InvalidOperationException($"Task '{Id}' cannot transition from completed execution state back to '{nextState}'.");
         }
 
-        if (State == ExecutionTaskState.Running && nextState is ExecutionTaskState.Pending or ExecutionTaskState.Planned)
+        if (State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock && nextState is ExecutionTaskState.Pending or ExecutionTaskState.Planned)
         {
             /* Once a task or any descendant in its subtree has started, queued states are no longer legal. Container
                scopes must remain Running until they complete or fail, even if later descendant work is only waiting on
@@ -1050,7 +1062,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal void ValidateObservedState(ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
-        if (state == ExecutionTaskState.Running && outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Skipped or ExecutionTaskOutcome.Disabled)
+        if (state is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock && outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Skipped or ExecutionTaskOutcome.Disabled)
         {
             throw new InvalidOperationException($"Task '{Id}' cannot be running while reporting semantic outcome '{outcome}'.");
         }

@@ -17,6 +17,12 @@ public enum ExecutionTaskState
     Pending,
 
     /// <summary>
+    /// The task has been admitted into active execution and is now blocked only on acquiring its declared execution
+    /// lock set. Parent scopes treat this as in-progress work rather than as untouched queued work.
+    /// </summary>
+    WaitingForExecutionLock,
+
+    /// <summary>
     /// The task itself is running or at least one descendant is still active. Parent tasks remain Running until their
     /// entire subtree reaches a terminal state.
     /// </summary>
