@@ -1,9 +1,6 @@
 using System;
 using System.ComponentModel;
-using System.Threading;
 using Avalonia.Threading;
-using LocalAutomation.Core;
-using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
@@ -18,18 +15,16 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
 {
-    private const int PropertyChangeInstrumentationInterval = 250;
-    private int _uiPostCount;
-    private int _propertyChangeCount;
+    private RuntimeExecutionTaskMetrics _metrics;
     private bool _isDisposed;
 
     /// <summary>
     /// Creates a shared Avalonia task view model from one execution-task model.
     /// </summary>
-    public ExecutionTaskViewModel(RuntimeExecutionTask task, RuntimeExecutionSession? session = null)
+    public ExecutionTaskViewModel(RuntimeExecutionTask task)
     {
         Task = task ?? throw new ArgumentNullException(nameof(task));
-        Session = session;
+        _metrics = RuntimeExecutionTaskMetrics.Empty;
         Task.PropertyChanged += HandleTaskPropertyChanged;
     }
 
@@ -91,27 +86,52 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Gets the raw runtime metrics for this task or task subtree.
+    /// Gets the stored runtime metrics currently displayed for this task or task subtree.
     /// </summary>
-    public RuntimeExecutionTaskMetrics Metrics
+    public RuntimeExecutionTaskMetrics Metrics => _metrics;
+
+    /// <summary>
+    /// Replaces the full displayed metrics snapshot.
+    /// </summary>
+    public bool SetMetrics(RuntimeExecutionTaskMetrics metrics)
     {
-        get => Session?.GetTaskMetrics(Task.Id) ?? RuntimeExecutionTaskMetrics.Empty;
+        if (_metrics.Equals(metrics))
+        {
+            return false;
+        }
+
+        _metrics = metrics;
+        RaisePropertyChanged(nameof(Metrics));
+        return true;
     }
 
     /// <summary>
-    /// Gets the backing execution session when this task belongs to a live or completed runtime tab.
+    /// Updates only the stored warning and error counts while preserving the current duration state.
     /// </summary>
-    private RuntimeExecutionSession? Session { get; }
+    public bool ApplyLogDelta(int warningDelta, int errorDelta)
+    {
+        if (warningDelta == 0 && errorDelta == 0)
+        {
+            return false;
+        }
+
+        return SetMetrics(
+            new RuntimeExecutionTaskMetrics(
+                _metrics.Duration,
+                _metrics.WarningCount + warningDelta,
+                _metrics.ErrorCount + errorDelta));
+    }
 
     /// <summary>
-    /// Raises duration-sensitive property changes while the task or one of its descendants is still active.
+    /// Updates only the stored duration while preserving the current warning and error counts.
     /// </summary>
-    public void RefreshTimeSensitiveState()
+    public bool SetDuration(TimeSpan? duration)
     {
-        if (Session != null)
-        {
-            RaisePropertyChanged(nameof(Metrics));
-        }
+        return SetMetrics(
+            new RuntimeExecutionTaskMetrics(
+                duration,
+                _metrics.WarningCount,
+                _metrics.ErrorCount));
     }
 
     /// <summary>
@@ -133,36 +153,13 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void HandleTaskPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        int propertyChangeSequence = Interlocked.Increment(ref _propertyChangeCount);
         if (Dispatcher.UIThread.CheckAccess())
         {
-            using PerformanceActivityScope inlineActivity = propertyChangeSequence % PropertyChangeInstrumentationInterval == 0
-                ? PerformanceTelemetry.StartActivity("ExecutionTaskViewModel.Task.PropertyChanged")
-                    .SetTag("task.id", Task.Id.Value)
-                    .SetTag("task.title", Task.Title)
-                    .SetTag("property.name", e.PropertyName ?? string.Empty)
-                    .SetTag("change.sequence", propertyChangeSequence)
-                    .SetTag("dispatch.mode", "inline")
-                : default;
             RaiseTaskProperties(e.PropertyName);
             return;
         }
 
-        int postSequence = Interlocked.Increment(ref _uiPostCount);
-        DateTime postedAtUtc = DateTime.UtcNow;
-        Dispatcher.UIThread.Post(() =>
-        {
-            using PerformanceActivityScope activity = postSequence % PropertyChangeInstrumentationInterval == 0
-                ? PerformanceTelemetry.StartActivity("ExecutionTaskViewModel.Task.Dispatch")
-                    .SetTag("task.id", Task.Id.Value)
-                    .SetTag("task.title", Task.Title)
-                    .SetTag("property.name", e.PropertyName ?? string.Empty)
-                    .SetTag("change.sequence", propertyChangeSequence)
-                    .SetTag("dispatch.post.sequence", postSequence)
-                    .SetTag("dispatch.queue.delay_ms", (DateTime.UtcNow - postedAtUtc).TotalMilliseconds.ToString("0"))
-                : default;
-            RaiseTaskProperties(e.PropertyName);
-        });
+        Dispatcher.UIThread.Post(() => RaiseTaskProperties(e.PropertyName));
     }
 
     /// <summary>
@@ -200,12 +197,6 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
         {
             RaisePropertyChanged(nameof(StatusReason));
             return;
-        }
-
-        if (string.Equals(propertyName, nameof(RuntimeExecutionTask.StartedAt), StringComparison.Ordinal) ||
-            string.Equals(propertyName, nameof(RuntimeExecutionTask.FinishedAt), StringComparison.Ordinal))
-        {
-            RaisePropertyChanged(nameof(Metrics));
         }
     }
 }

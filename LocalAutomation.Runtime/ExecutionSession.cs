@@ -191,12 +191,14 @@ public sealed class ExecutionSession
     {
         if (taskId == null)
         {
-            return new ExecutionTaskMetrics(GetSessionDuration(now), CountWarnings(LogStream.Entries), CountErrors(LogStream.Entries));
+            IReadOnlyList<LogEntry> sessionEntries = LogStream.Entries;
+            return new ExecutionTaskMetrics(GetSessionDuration(now), CountWarnings(sessionEntries), CountErrors(sessionEntries));
         }
 
         IReadOnlyList<ExecutionTaskId> subtreeIds = GetTaskSubtreeIds(taskId.Value);
         HashSet<ExecutionTaskId> subtreeIdSet = new(subtreeIds);
-        IReadOnlyList<LogEntry> subtreeEntries = LogStream.Entries
+        IReadOnlyList<LogEntry> sessionLogEntries = LogStream.Entries;
+        IReadOnlyList<LogEntry> subtreeEntries = sessionLogEntries
             .Where(entry => ExecutionTaskId.FromNullable(entry.TaskId) is ExecutionTaskId entryTaskId && subtreeIdSet.Contains(entryTaskId))
             .ToList();
 
