@@ -316,43 +316,42 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     .Describe("Create the isolated engine-specific workspace from the prepared source")
                     .Run(PrepareStepAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildEditor = steps.Task("Build Workspace Editor")
-                    .Describe("Compile the isolated workspace project so editor and standalone validation can launch against it")
-                    .After(prepareWorkspace.Id)
-                    .When(automationOptions.RunTests, "Run Tests is off.")
-                    .Run(BuildEditor);
-
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder stagePlugin = steps.Task("Stage Plugin")
                     .Describe("Create the staged plugin copy used for packaging and archiving")
                     .After(prepareWorkspace.Id)
                     .Run(StagingStepAsync);
-
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder testEditor = steps.Task("Test Workspace Editor")
-                    .Describe("Launch and validate the isolated workspace project in the editor before distributable packaging begins")
-                    .After(buildEditor.Id)
-                    .When(automationOptions.RunTests, "Run Tests is off.")
-                    .Run(context => TestEditor(context, automationOptions));
-
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder testStandalone = steps.Task("Test Workspace Standalone")
-                    .Describe("Launch and validate the isolated workspace project in standalone mode before distributable packaging begins")
-                    .After(buildEditor.Id)
-                    .When(automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Test Standalone is off." : "Run Tests is off.")
-                    .Run(context => TestStandalone(context, automationOptions));
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder buildPlugin = steps.Task("Build Distributable Plugin")
                     .Describe("Package the staged plugin into the distributable plugin payload used by later project and engine validation")
                     .After(stagePlugin.Id)
                     .Run(BuildPlugin);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareExampleBase = steps.Task("Prepare Project-Plugin Base")
-                    .Describe("Create the shared code example base and embed the built plugin as a project plugin for downstream package variants")
-                    .After(buildPlugin.Id)
-                    .Run(PrepareProjectPluginBaseAsync);
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder materializeProjectPluginBase = steps.Task("Materialize Project-Plugin Base")
+                    .Describe("Copy the shared code example base from the workspace project before the built plugin is installed into it")
+                    .After(prepareWorkspace.Id)
+                    .Run(MaterializeProjectPluginBaseAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder installProjectPluginBase = steps.Task("Install Distributable Plugin Into Project-Plugin Base")
+                    .Describe("Copy the built distributable plugin into the shared project-plugin base before downstream package variants clone it")
+                    .After(materializeProjectPluginBase.Id, buildPlugin.Id)
+                    .Run(InstallDistributablePluginIntoProjectPluginBaseAsync);
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder buildExampleBase = steps.Task("Prebuild Project-Plugin Base")
                     .Describe("Compile the shared code example base once so downstream package variants can reuse editor outputs with -nocompileeditor")
-                    .After(prepareExampleBase.Id)
+                    .After(installProjectPluginBase.Id)
                     .Run(PrebuildProjectPluginBaseAsync);
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testEditor = steps.Task("Test Project-Plugin Base Editor")
+                    .Describe("Launch and validate the prebuilt project-plugin base in the editor before downstream packaging completes")
+                    .After(buildExampleBase.Id)
+                    .When(automationOptions.RunTests, "Run Tests is off.")
+                    .Run(context => TestProjectPluginBaseEditorAsync(context, automationOptions));
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testStandalone = steps.Task("Test Project-Plugin Base Standalone")
+                    .Describe("Launch and validate the prebuilt project-plugin base in standalone mode before downstream packaging completes")
+                    .After(buildExampleBase.Id)
+                    .When(automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Test Standalone is off." : "Run Tests is off.")
+                    .Run(context => TestProjectPluginBaseStandaloneAsync(context, automationOptions));
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareClangVariant = steps.Task("Prepare Clang Validation Variant")
                     .Describe("Clone the prebuilt project-plugin base for the optional Clang validation branch")
@@ -459,22 +458,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     typeof(PluginBuildOptions),
                     typeof(PluginDeployOptions)
                 });
-        }
-
-        /// <summary>
-        /// Compiles the copied workspace project so editor-driven validation can run against the engine-specific workspace.
-        /// </summary>
-        private async Task BuildEditor(global::LocalAutomation.Runtime.ExecutionTaskContext context)
-        {
-            using IDisposable nodeScope = context.Logger.BeginSection("Building host project editor");
-            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
-            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for editor build");
-            global::LocalAutomation.Runtime.OperationParameters buildEditorParams = CreateParameters();
-            buildEditorParams.Target = workspaceProject;
-            buildEditorParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "BuildEditorOutput");
-            buildEditorParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
-
-            await RunChildOperationAsync<BuildEditor>(buildEditorParams, context, required: true, failureMessage: "Failed to build host project editor");
         }
 
         /// <summary>
@@ -604,39 +587,44 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Runs one optional deployment step or records a skipped node state when the current option values disable it.
+        /// Launches the prebuilt project-plugin base in the editor so deploy validation exercises the built plugin payload
+        /// rather than the intermediate workspace copy.
         /// </summary>
-        private async Task TestEditor(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
+        private async Task TestProjectPluginBaseEditorAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
-            using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing host project editor");
-            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestEditor")
+            using IDisposable nodeScope = context.Logger.BeginSection("Testing project-plugin base in editor");
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestProjectPluginBaseEditor")
                 .SetTag("trigger", "StepTransition");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
-            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for editor test");
+            using Project projectPluginBase = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for editor test");
             global::LocalAutomation.Runtime.OperationParameters launchEditorParams = CreateParameters();
-            launchEditorParams.Target = workspaceProject;
-            launchEditorParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "LaunchEditorOutput");
+            launchEditorParams.Target = projectPluginBase;
+            launchEditorParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "ProjectPluginBaseEditorLaunchOutput");
             launchEditorParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             launchEditorParams.SetOptions(automationOptions);
 
-            await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context, required: true, failureMessage: "Failed to launch host project");
+            await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context, required: true, failureMessage: "Failed to launch project-plugin base in editor");
             activity.SetTag("result", "Completed");
         }
 
-        private async Task TestStandalone(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
+        /// <summary>
+        /// Launches the prebuilt project-plugin base in standalone mode so deploy validation exercises the built plugin
+        /// payload rather than the intermediate workspace copy.
+        /// </summary>
+        private async Task TestProjectPluginBaseStandaloneAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
-            using IDisposable nodeScope = context.Logger.BeginSection("Launching and testing standalone");
-            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestStandalone")
+            using IDisposable nodeScope = context.Logger.BeginSection("Testing project-plugin base in standalone");
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestProjectPluginBaseStandalone")
                 .SetTag("trigger", "StepTransition");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
-            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for standalone test");
+            using Project projectPluginBase = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for standalone test");
             global::LocalAutomation.Runtime.OperationParameters launchStandaloneParams = CreateParameters();
-            launchStandaloneParams.Target = workspaceProject;
-            launchStandaloneParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "LaunchStandaloneOutput");
+            launchStandaloneParams.Target = projectPluginBase;
+            launchStandaloneParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "ProjectPluginBaseStandaloneLaunchOutput");
             launchStandaloneParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             launchStandaloneParams.SetOptions(automationOptions);
 
-            await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context, required: true, failureMessage: "Failed to launch standalone");
+            await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context, required: true, failureMessage: "Failed to launch project-plugin base in standalone");
             activity.SetTag("result", "Completed");
         }
 
@@ -678,38 +666,38 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Materializes the shared project-plugin base from the workspace project and overlays the packaged plugin build.
+        /// Materializes the shared project-plugin base from the workspace project before the built plugin is overlaid.
         /// Later packaging branches clone this prepared base instead of mutating one shared project directory in place.
         /// </summary>
-        private async Task PrepareProjectPluginBaseAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        private async Task MaterializeProjectPluginBaseAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            using IDisposable nodeScope = context.Logger.BeginSection("Preparing project-plugin base");
+            using IDisposable nodeScope = context.Logger.BeginSection("Materializing project-plugin base");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             string exampleProjectPath = GetExampleProjectBasePath(state);
             FileUtils.DeleteDirectoryIfExists(exampleProjectPath);
 
-            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for project-plugin base preparation");
-            using Plugin builtPlugin = CreateRequiredPlugin(GetBuiltPluginPath(state), "Built plugin is not available for project-plugin base preparation");
+            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for project-plugin base materialization");
             FileUtils.MaterializeDirectory(workspaceProject.ProjectPath, exampleProjectPath, MaterializationSpecs.CreateProject(workspaceProject));
 
-            using Project exampleProject = CreateRequiredProject(exampleProjectPath, "Project-plugin base was not created successfully");
+            using Project exampleProject = CreateRequiredProject(exampleProjectPath, "Project-plugin base was not materialized successfully");
             UpdateProjectDescriptorForArchive(state, exampleProject);
             context.Logger.LogInformation($"Updated project descriptor for archive: EngineAssociation = {state.Engine.Version}");
-
-            /* The copied project starts without a Plugins directory because the materialization spec only preserves
-               author-maintained project inputs. Re-add sibling plugins by name, then overlay the packaged target plugin
-               so every branch starts from the same built plugin payload. */
-            foreach (Plugin workspacePlugin in workspaceProject.Plugins)
-            {
-                if (!string.Equals(workspacePlugin.Name, state.SourcePlugin.Name, StringComparison.InvariantCultureIgnoreCase))
-                {
-                    exampleProject.AddPlugin(workspacePlugin);
-                }
-            }
-
-            exampleProject.AddPlugin(builtPlugin);
             string exampleProjectVersion = ProjectConfig.BuildVersionWithEnginePrefix(state.SourcePlugin.PluginDescriptor.VersionName, state.Engine.Version);
             exampleProject.SetProjectVersion(exampleProjectVersion, context.Logger);
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Installs the built distributable plugin into the already materialized project-plugin base so downstream
+        /// packaging and launch validation exercise the shipped plugin payload rather than the workspace copy.
+        /// </summary>
+        private async Task InstallDistributablePluginIntoProjectPluginBaseAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Installing distributable plugin into project-plugin base");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project exampleProject = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for plugin installation");
+            using Plugin builtPlugin = CreateRequiredPlugin(GetBuiltPluginPath(state), "Built plugin is not available for project-plugin base installation");
+            exampleProject.AddPlugin(builtPlugin);
             await Task.CompletedTask;
         }
 
