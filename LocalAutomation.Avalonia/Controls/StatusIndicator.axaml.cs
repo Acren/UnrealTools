@@ -139,12 +139,14 @@ public partial class StatusIndicator : UserControl
     }
 
     /// <summary>
-    /// Applies the shared status classes consumed by the XAML styles. Planned/Pending and the inactive terminal states
-    /// each have explicit grouped styling so the graph can distinguish preview work from inactive work.
+    /// Applies the shared status classes consumed by the XAML styles. Planned/Pending, explicit lock-waiting, and the
+    /// inactive terminal states each have grouped styling so the graph can distinguish untouched, resource-blocked, and
+    /// inactive work cleanly.
     /// </summary>
     private static void ApplyStatusClasses(Classes classes, global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus status)
     {
         classes.Set("pending", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Pending);
+        classes.Set("awaiting-lock", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.AwaitingLock);
         classes.Set("planned", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Planned);
         classes.Set("skipped", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Skipped);
         classes.Set("disabled", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Disabled);

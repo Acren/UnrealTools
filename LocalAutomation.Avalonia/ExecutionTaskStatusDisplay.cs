@@ -10,6 +10,7 @@ public enum ExecutionTaskDisplayStatus
 {
     Planned,
     Pending,
+    AwaitingLock,
     Running,
     Completed,
     Failed,
@@ -48,6 +49,7 @@ public static class ExecutionTaskStatusDisplay
         {
             ExecutionTaskState.Planned => ExecutionTaskDisplayStatus.Planned,
             ExecutionTaskState.Pending => ExecutionTaskDisplayStatus.Pending,
+            ExecutionTaskState.WaitingForExecutionLock => ExecutionTaskDisplayStatus.AwaitingLock,
             ExecutionTaskState.Running => ExecutionTaskDisplayStatus.Running,
             ExecutionTaskState.Completed => ExecutionTaskDisplayStatus.Completed,
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
@@ -60,6 +62,7 @@ public static class ExecutionTaskStatusDisplay
         {
             ExecutionTaskDisplayStatus.Completed => "Done",
             ExecutionTaskDisplayStatus.Pending => "Pending",
+            ExecutionTaskDisplayStatus.AwaitingLock => "Awaiting lock",
             ExecutionTaskDisplayStatus.Running => "Running",
             ExecutionTaskDisplayStatus.Failed => "Failed",
             ExecutionTaskDisplayStatus.Skipped => "Skipped",

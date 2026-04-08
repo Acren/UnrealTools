@@ -95,10 +95,14 @@
         <Style Selector="Border.task-card-border.pressed">
             <Setter Property="Opacity" Value="1" />
         </Style>
-        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment, while Interrupted and
-             Disabled keep the more muted inactive treatment. -->
+        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment. Awaiting lock gets a
+             slightly more active intermediate treatment, while Interrupted and Disabled keep the more muted inactive
+             treatment. -->
         <Style Selector="Border.task-card-border.pending, Border.task-card-border.planned, Border.task-card-border.cancelled, Border.task-card-border.skipped">
             <Setter Property="BorderBrush" Value="#7F8C97" />
+        </Style>
+        <Style Selector="Border.task-card-border.awaiting-lock">
+            <Setter Property="BorderBrush" Value="#5C8EA8C7" />
         </Style>
         <Style Selector="Border.task-card-border.interrupted, Border.task-card-border.disabled">
             <Setter Property="BorderBrush" Value="#59616A" />

@@ -66,11 +66,16 @@
         <Style Selector="Border.group-container-border.pressed">
             <Setter Property="Opacity" Value="0.96" />
         </Style>
-        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment, while Interrupted and
-             Disabled keep the more muted inactive treatment. -->
+        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment. Awaiting lock gets a
+             slightly more active intermediate treatment, while Interrupted and Disabled keep the more muted inactive
+             treatment. -->
         <Style Selector="Border.group-container-border.pending, Border.group-container-border.planned, Border.group-container-border.cancelled, Border.group-container-border.skipped">
             <Setter Property="BorderBrush" Value="#7F8C97" />
             <Setter Property="Opacity" Value="0.44" />
+        </Style>
+        <Style Selector="Border.group-container-border.awaiting-lock">
+            <Setter Property="BorderBrush" Value="#8EA8C7" />
+            <Setter Property="Opacity" Value="0.56" />
         </Style>
         <Style Selector="Border.group-container-border.interrupted, Border.group-container-border.disabled">
             <Setter Property="BorderBrush" Value="#59616A" />
