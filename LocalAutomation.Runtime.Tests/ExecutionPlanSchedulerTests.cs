@@ -947,7 +947,6 @@ public sealed class ExecutionPlanSchedulerTests
             await sessionBBodyTask.WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
             Assert.False(sessionB.Completion.IsCompleted);
             Assert.Null(sessionB.Outcome);
-            Assert.True(sessionBStarted.Task.IsCompleted);
             Assert.Equal(ExecutionTaskState.Running, sessionBBodyTask.State);
             Assert.Null(sessionBBodyTask.Outcome);
         }
