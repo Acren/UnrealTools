@@ -48,4 +48,15 @@ public sealed class ExecutionTaskScopeBuilder
         _hasDeclaredTasks = true;
         return _owner.DeclareScopedSequentialRelativeTask(_parentId, title, description, _completionFrontier);
     }
+
+    /// <summary>
+    /// Declares the next task in this child scope and copies out the authored task id so callers can capture stable
+    /// task identity directly from Task(...) without depending on the returned builder afterwards.
+    /// </summary>
+    public ExecutionTaskBuilder Task(string title, out ExecutionTaskId taskId, string? description = null)
+    {
+        ExecutionTaskBuilder builder = Task(title, description);
+        taskId = builder.Id;
+        return builder;
+    }
 }

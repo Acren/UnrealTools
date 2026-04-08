@@ -346,16 +346,16 @@ public sealed class ExecutionPlanScheduler
                         CreateTaskLogger,
                         cancellationToken,
                         this,
-                        (startedTask, executeAsync) =>
+                        (admittedTask, executeAsync) =>
                         {
                             TaskCompletionSource<OperationResult> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                            startedTask.AttachActiveExecution(completionSource.Task);
+                            admittedTask.AttachActiveExecution(completionSource.Task);
 
                             _logger.LogDebug(
                                 "Dispatching task '{TaskPath}' ({TaskId}) to worker execution.",
-                                _session.GetTaskDisplayPath(startedTask.Id),
-                                startedTask.Id);
-                            StartTaskExecutionAsync(startedTask, executeAsync, completionSource);
+                                _session.GetTaskDisplayPath(admittedTask.Id),
+                                admittedTask.Id);
+                            StartTaskExecutionAsync(admittedTask, executeAsync, completionSource);
                             return completionSource.Task;
                         });
 
@@ -404,7 +404,7 @@ public sealed class ExecutionPlanScheduler
                 }
 
                 return new OrderedReadyTask(
-                    nextStartTask,
+                    task,
                     index,
                     CountDownstreamWork(nextStartTask));
             })

@@ -647,6 +647,7 @@ public sealed class ExecutionSession
         ExecutionTaskRuntimeServices runtime = new(this, scheduler, createLogger);
         ExecutionTaskContext context = new(task.Id, task.Title, createLogger(task.Id), cancellationToken, validatedOperationParameters, task.Operation, runtime);
         ExecutionTask startedTask = task.ResolveTaskToStart();
+        ExecutionTask visibleStartedTask = task;
         ExecutionTaskContext startedContext = startedTask.Id == task.Id ? context : context.CreateForTask(startedTask);
         IReadOnlyList<ExecutionLock> executionLocks = startedTask.Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(startedTask.Title, startedTask.OperationParameters, startedTask.DeclaredOptionTypes));
         ILogger taskLogger = createLogger(startedTask.Id);
@@ -656,7 +657,14 @@ public sealed class ExecutionSession
             /* Lock-free tasks can enter Running at admission time because there is no external resource gate between the
                scheduler's chosen start order and the body becoming eligible to execute. This preserves deterministic
                start-order observations while lock-waiting tasks still surface their explicit intermediate state. */
-            startedContext.GetRequiredRuntime().SetTaskState(startedTask.Id, ExecutionTaskState.Running);
+            startedContext.GetRequiredRuntime().SetTaskState(visibleStartedTask.Id, ExecutionTaskState.Running);
+        }
+        else
+        {
+            /* Lock-waiting must become visible immediately at admission time on the authored task that declared the lock.
+               If this transition waits for the worker coroutine to begin, the authored task can still read as Pending or
+               get rolled into Running through descendant-derived state before the explicit wait state is ever observed. */
+            SetTaskWaitingForExecutionLock(visibleStartedTask.Id);
         }
 
         Func<Task<OperationResult>> executeAsync = async () =>
@@ -667,14 +675,14 @@ public sealed class ExecutionSession
             await using IAsyncDisposable acquiredLocks = await AcquireExecutionLocksForStartedTaskAsync(startedContext, startedTask, executionLocks, taskLogger, cancellationToken).ConfigureAwait(false);
             if (executionLocks.Count > 0)
             {
-                startedContext.GetRequiredRuntime().SetTaskState(startedTask.Id, ExecutionTaskState.Running);
+                startedContext.GetRequiredRuntime().SetTaskState(visibleStartedTask.Id, ExecutionTaskState.Running);
             }
 
             return await startedTask.Spec.ExecuteAsync!(startedContext).ConfigureAwait(false);
         };
 
-        Task<OperationResult> runningTask = runTaskAsync(startedTask, executeAsync);
-        return new TaskStartResult(startedTask, runningTask);
+        Task<OperationResult> runningTask = runTaskAsync(visibleStartedTask, executeAsync);
+        return new TaskStartResult(visibleStartedTask, runningTask);
     }
 
     /// <summary>
@@ -687,17 +695,12 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Marks an admitted task as explicitly waiting on a lock, then delegates the actual lock wait to task runtime
-    /// services so the session remains a state authority rather than a lock implementation host.
+    /// Delegates the actual lock wait to task runtime services after the authored task has already published its visible
+    /// WaitingForExecutionLock state at admission time.
     /// </summary>
-    private Task<IAsyncDisposable> AcquireExecutionLocksForStartedTaskAsync(ExecutionTaskContext startedContext, ExecutionTask task, IReadOnlyList<ExecutionLock> executionLocks, ILogger taskLogger, CancellationToken cancellationToken)
+    private Task<IAsyncDisposable> AcquireExecutionLocksForStartedTaskAsync(ExecutionTaskContext startedContext, ExecutionTask executingTask, IReadOnlyList<ExecutionLock> executionLocks, ILogger taskLogger, CancellationToken cancellationToken)
     {
-        if (executionLocks.Count > 0)
-        {
-            SetTaskWaitingForExecutionLock(task.Id);
-        }
-
-        return startedContext.GetRequiredRuntime().AcquireExecutionLocksAsync(task, executionLocks, taskLogger, cancellationToken);
+        return startedContext.GetRequiredRuntime().AcquireExecutionLocksAsync(executingTask, executionLocks, taskLogger, cancellationToken);
     }
 
     /// <summary>
@@ -1211,7 +1214,15 @@ public sealed class ExecutionSession
             {
                 parentState = ExecutionTaskState.Completed;
             }
-            else if (ownTaskIsRunning || ownTaskIsWaitingForExecutionLock || anyChildRunning || anyChildWaitingForExecutionLock)
+            else if (ownTaskIsWaitingForExecutionLock)
+            {
+                /* When an authored task itself owns the declared execution lock, its explicit lock-wait state should stay
+                   visible even if the concrete hidden body task beneath it is also the executing node that will later run
+                   under that lock. Ancestor scopes above this task still observe the descendant wait as in-progress work
+                   and therefore remain Running. */
+                parentState = ExecutionTaskState.WaitingForExecutionLock;
+            }
+            else if (ownTaskIsRunning || anyChildRunning || anyChildWaitingForExecutionLock)
             {
                 parentState = ExecutionTaskState.Running;
             }

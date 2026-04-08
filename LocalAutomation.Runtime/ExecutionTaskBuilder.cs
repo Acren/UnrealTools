@@ -118,7 +118,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        executionTaskId = _owner.AttachBodyTask(_task, async context =>
+        executionTaskId = _owner.AttachBody(_task, async context =>
         {
             await executeAsync(context);
             return OperationResult.Succeeded();
@@ -140,7 +140,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// </summary>
     public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync, out ExecutionTaskId executionTaskId)
     {
-        executionTaskId = _owner.AttachBodyTask(_task, executeAsync);
+        executionTaskId = _owner.AttachBody(_task, executeAsync);
         return this;
     }
 
@@ -163,7 +163,7 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
             throw new ArgumentNullException(nameof(executeAsync));
         }
 
-        executionTaskId = _owner.AttachBodyTask(_task, async _ =>
+        executionTaskId = _owner.AttachBody(_task, async _ =>
         {
             await executeAsync();
             return OperationResult.Succeeded();

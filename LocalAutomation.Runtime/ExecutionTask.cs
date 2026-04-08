@@ -624,6 +624,14 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Attaches one executable body directly to this authored task during plan building.
+    /// </summary>
+    internal void SetExecuteAsync(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
+    {
+        _spec = _spec with { ExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync)) };
+    }
+
+    /// <summary>
     /// Controls whether this authored task is hidden in the graph projection until debugging reveals internal nodes.
     /// </summary>
     internal void SetHiddenInGraph(bool isHiddenInGraph)

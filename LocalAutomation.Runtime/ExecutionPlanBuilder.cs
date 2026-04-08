@@ -47,6 +47,17 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
+    /// Declares one authored task container in the plan, returns its fluent builder, and copies out the authored task id
+    /// so callers can capture stable task identity without separately reading the builder property.
+    /// </summary>
+    public ExecutionTaskBuilder Task(string title, out ExecutionTaskId taskId, string? description = null, ExecutionTaskId? parentId = null)
+    {
+        ExecutionTaskBuilder builder = Task(title, description, parentId);
+        taskId = builder.Id;
+        return builder;
+    }
+
+    /// <summary>
     /// Root-level sibling scopes are not supported because plans still require one real root container task.
     /// </summary>
     public void Children(Action<ExecutionTaskScopeBuilder> build)
@@ -176,33 +187,18 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Attaches one hidden body task beneath the provided parent task and immediately advances the parent's completion
-    /// frontier to that body task. The body task inherits the parent's authored specification with overrides for
-    /// identity, title, execution delegate, and graph visibility.
+    /// Attaches one execution body directly to the authored task and advances that task's completion frontier to the
+    /// authored task itself. Plain Run(...) steps therefore execute on the same visible task identity the user authored.
     /// </summary>
-    internal ExecutionTaskId AttachBodyTask(ExecutionTask parentTask, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
+    internal ExecutionTaskId AttachBody(ExecutionTask task, Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
-        _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
+        _ = task ?? throw new ArgumentNullException(nameof(task));
         Func<ExecutionTaskContext, Task<OperationResult>> resolvedExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
 
-        ParentBuildState parentState = GetParentState(parentTask.Id);
-        parentState.BodyCount += 1;
-
-        ExecutionTask bodyTask = new ExecutionTask(parentTask.Spec with
-        {
-            Id = GenerateTaskId(),
-            Title = CreateBodyTaskTitle(parentTask, parentState.BodyCount),
-            ParentId = parentTask.Id,
-            Dependencies = Array.Empty<ExecutionTaskId>(),
-            ExecuteAsync = resolvedExecuteAsync,
-            IsOperationRoot = false,
-            IsHiddenInGraph = true
-        });
-
-        AddTaskDefinition(bodyTask);
-        WireDependencies(bodyTask, parentState.CompletionFrontier);
-        ReplaceFrontier(parentState.CompletionFrontier, bodyTask.Id);
-        return bodyTask.Id;
+        task.SetExecuteAsync(resolvedExecuteAsync);
+        ParentBuildState parentState = GetParentState(task.Id);
+        ReplaceFrontier(parentState.CompletionFrontier, task.Id);
+        return task.Id;
     }
 
     /// <summary>
@@ -375,16 +371,6 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Generates the stable body-task title sequence shown in the graph for repeated Run(...) calls on one parent task.
-    /// </summary>
-    private static string CreateBodyTaskTitle(ExecutionTask parentTask, int bodyIndex)
-    {
-        return bodyIndex == 1
-            ? parentTask.Title + ".Body"
-            : parentTask.Title + ".Body " + bodyIndex;
-    }
-
-    /// <summary>
     /// Returns the leaf tasks of one imported subtree so the parent's frontier advances to the tasks that actually finish
     /// the child operation step.
     /// </summary>
@@ -401,8 +387,7 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Registers one builder-owned task together with the per-parent authoring state used to track completion frontiers
-    /// and body numbering.
+    /// Registers one builder-owned task together with the per-parent authoring state used to track completion frontiers.
     /// </summary>
     private void AddTaskDefinition(ExecutionTask task)
     {
@@ -428,14 +413,12 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Tracks the current completion frontier and body naming count for one parent task while its nested child and body
-    /// steps are still being declared.
+    /// Tracks the current completion frontier for one parent task while nested child declarations are still being
+    /// authored.
     /// </summary>
     private sealed class ParentBuildState
     {
         public List<ExecutionTaskId> CompletionFrontier { get; } = new();
-
-        public int BodyCount { get; set; }
     }
 }
 
