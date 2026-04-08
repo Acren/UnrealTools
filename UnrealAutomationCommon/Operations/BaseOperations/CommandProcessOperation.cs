@@ -47,6 +47,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 .SetTag("operation.type", GetType().Name);
 
             _wasCancelled = false;
+            _cancellationTerminationRequested = 0;
             ILogger logger = context.Logger;
             global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters = context.ValidatedOperationParameters;
             global::LocalAutomation.Runtime.Command command;
@@ -108,7 +109,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 tcs.TrySetResult(0);
             };
 
-            CancellationTokenRegistration registration = context.CancellationToken.Register(() => TryTerminateProcessForCancellation());
+            /* Register the live process-cancellation callback only after launch so terminate requests can report the
+               concrete process identity they attempted to stop. */
+            CancellationTokenRegistration registration = context.CancellationToken.Register(() => TryTerminateProcessForCancellation(logger));
 
             await tcs.Task;
 
@@ -202,33 +205,92 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         /// <summary>
         /// Attempts to terminate the active process tree once when user cancellation reaches this operation.
         /// </summary>
-        private void TryTerminateProcessForCancellation()
+        private void TryTerminateProcessForCancellation(ILogger logger)
         {
             _wasCancelled = true;
             if (Interlocked.Exchange(ref _cancellationTerminationRequested, 1) != 0)
             {
+                logger.LogDebug("Cancellation termination for process '{FileAndProcess}' was already requested.", FileAndProcess);
                 return;
             }
 
             Process? process = _process;
             if (process == null)
             {
+                logger.LogError("Cancellation reached process-backed operation '{OperationType}' before a process instance was available. No termination attempt could be made.", GetType().Name);
                 return;
             }
+
+            int? processId = TryGetProcessId(process);
 
             try
             {
                 if (process.HasExited)
                 {
+                    logger.LogInformation("Cancellation reached process '{FileAndProcess}'{ProcessIdSuffix}, but it had already exited.", FileAndProcess, FormatProcessIdSuffix(processId));
                     return;
                 }
             }
             catch (InvalidOperationException)
             {
+                logger.LogInformation("Cancellation reached process '{FileAndProcess}'{ProcessIdSuffix}, but it had already exited.", FileAndProcess, FormatProcessIdSuffix(processId));
                 return;
             }
 
-            ProcessUtils.KillProcessAndChildren(process);
+            logger.LogWarning("Attempting to terminate process '{FileAndProcess}'{ProcessIdSuffix} because cancellation was requested.", FileAndProcess, FormatProcessIdSuffix(processId));
+
+            try
+            {
+                ProcessUtils.KillProcessAndChildren(process);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Termination attempt for process '{FileAndProcess}'{ProcessIdSuffix} threw an exception.", FileAndProcess, FormatProcessIdSuffix(processId));
+                return;
+            }
+
+            try
+            {
+                if (process.WaitForExit(2000))
+                {
+                    logger.LogInformation("Cancellation terminated process '{FileAndProcess}'{ProcessIdSuffix}.", FileAndProcess, FormatProcessIdSuffix(processId));
+                    return;
+                }
+
+                logger.LogError("Cancellation attempted to terminate process '{FileAndProcess}'{ProcessIdSuffix}, but it is still running after 2000 ms.", FileAndProcess, FormatProcessIdSuffix(processId));
+            }
+            catch (InvalidOperationException)
+            {
+                logger.LogInformation("Cancellation terminated process '{FileAndProcess}'{ProcessIdSuffix}.", FileAndProcess, FormatProcessIdSuffix(processId));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Termination verification for process '{FileAndProcess}'{ProcessIdSuffix} failed after the kill attempt.", FileAndProcess, FormatProcessIdSuffix(processId));
+            }
+        }
+
+        /// <summary>
+        /// Reads the current process identifier for diagnostics without failing when the process has already exited.
+        /// </summary>
+        private static int? TryGetProcessId(Process process)
+        {
+            try
+            {
+                return process.Id;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Formats the optional process identifier as a suffix so termination logs stay readable when the process has
+        /// already exited and the runtime can no longer read its PID.
+        /// </summary>
+        private static string FormatProcessIdSuffix(int? processId)
+        {
+            return processId.HasValue ? $" (pid {processId.Value})" : string.Empty;
         }
     }
 }

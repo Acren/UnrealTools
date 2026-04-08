@@ -523,6 +523,12 @@ public sealed class ExecutionSession
             return Task.CompletedTask;
         }
 
+        if (_cancellationTokenSource.IsCancellationRequested)
+        {
+            _sessionLogger.LogDebug("Cancellation was already requested for operation '{OperationName}'.", _operation.OperationName);
+            return currentTask;
+        }
+
         _sessionLogger.LogWarning("Cancelling operation '{OperationName}'", _operation.OperationName);
         _cancellationTokenSource.Cancel();
         return currentTask;
