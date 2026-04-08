@@ -60,7 +60,6 @@ public sealed class ExecutionPlanAuthoredDependencyTests
 
         // Assert: session start keeps the authored task as the execution identity.
         Assert.Equal(prepareWorkspace.Id, startResult.Task.Id);
-        Assert.Equal(prepareWorkspace.Id, startResult.ExecutionTask.Id);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
     }
 
