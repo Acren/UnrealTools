@@ -160,6 +160,7 @@ public sealed class ExecutionPlanSchedulerTests
         ExecutionLock sharedLock = new("pending-lock");
         TaskCompletionSource<bool> branchAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId branchBVisibleTaskId = default;
         ExecutionTaskId branchATaskId = default;
         ExecutionTaskId branchBTaskId = default;
 
@@ -168,7 +169,7 @@ public sealed class ExecutionPlanSchedulerTests
             root.Children(ExecutionChildMode.Parallel, scope =>
             {
                 scope.Task("Branch A").Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchATaskId);
-                scope.Task("Branch B").Run(_ => Task.FromResult(OperationResult.Succeeded()), out branchBTaskId);
+                scope.Task("Branch B", out branchBVisibleTaskId).Run(_ => Task.FromResult(OperationResult.Succeeded()), out branchBTaskId);
             });
         }, sharedLock);
 
@@ -178,9 +179,10 @@ public sealed class ExecutionPlanSchedulerTests
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchATaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-        // Assert: the contended task should surface the explicit lock-wait state because it has been admitted into
-        // execution but has not acquired the lock yet.
-        ExecutionTask blockedTask = session.GetTask(branchBTaskId);
+        // Assert: the visible/authored task that declared the lock should surface the explicit lock-wait state rather
+        // than leaving that state hidden on the executable body task below it.
+        Assert.NotEqual(default, branchBVisibleTaskId);
+        ExecutionTask blockedTask = session.GetTask(branchBVisibleTaskId);
         Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, blockedTask.State);
 
         // Cleanup: release the lock holder so the run can finish normally.
@@ -644,6 +646,7 @@ public sealed class ExecutionPlanSchedulerTests
         TaskCompletionSource<ExecutionTaskId> waitingTaskStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> followUpStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseWaitingTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId waitingVisibleTaskId = default;
         ExecutionTaskId waitingTaskId = default;
         ExecutionTaskId lockHolderTaskId = default;
         Operation blockingFollowUpOperation = new ExecutionTestCommon.InlineOperation(
@@ -691,13 +694,12 @@ public sealed class ExecutionPlanSchedulerTests
                             return parameters;
                         });
 
-                scope.Task("Waiting Task")
-                    .Run(async context =>
-                    {
-                        waitingTaskStarted.TrySetResult(context.TaskId);
-                        await releaseWaitingTask.Task.WaitAsync(TimeSpan.FromSeconds(5));
-                        return OperationResult.Succeeded();
-                    }, out waitingTaskId);
+                scope.Task("Waiting Task", out waitingVisibleTaskId).Run(async context =>
+                {
+                    waitingTaskStarted.TrySetResult(context.TaskId);
+                    await releaseWaitingTask.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    return OperationResult.Succeeded();
+                }, out waitingTaskId);
             });
         }, sharedLock);
 
@@ -709,7 +711,9 @@ public sealed class ExecutionPlanSchedulerTests
 
         await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotEqual(default, waitingTaskId);
-        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, session.GetTask(waitingTaskId).State);
+        Assert.NotEqual(default, waitingVisibleTaskId);
+        ExecutionTask waitingTask = session.GetTask(waitingVisibleTaskId);
+        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, waitingTask.State);
 
         releaseLockHolder.TrySetResult(true);
 
@@ -850,6 +854,7 @@ public sealed class ExecutionPlanSchedulerTests
         TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> branchBStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseBranchB = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId branchBVisibleTaskId = default;
         ExecutionTaskId branchABodyTaskId = default;
         ExecutionTaskId branchBBodyTaskId = default;
 
@@ -862,7 +867,7 @@ public sealed class ExecutionPlanSchedulerTests
                     branchScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchABodyTaskId);
                 });
 
-                scope.Task("Branch B").Children(branchScope =>
+                scope.Task("Branch B", out branchBVisibleTaskId).Children(branchScope =>
                 {
                     branchScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilReleased(branchBStarted, releaseBranchB), out branchBBodyTaskId);
                 });
@@ -875,12 +880,13 @@ public sealed class ExecutionPlanSchedulerTests
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchABodyTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-        // Assert: branch B's child should surface the explicit lock-wait state, while the parent scope stays Running
-        // because the subtree is already in progress.
-        ExecutionTask branchBTask = session.GetTask(branchBBodyTaskId);
-        ExecutionTask branchBScope = session.GetTask(branchBTask.ParentId!.Value);
-        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, branchBTask.State);
-        Assert.Equal(ExecutionTaskState.Running, branchBScope.State);
+        // Assert: the visible/authored branch task that declared the lock should surface the explicit lock-wait state,
+        // while its containing parallel scope stays Running because that subtree is already in progress.
+        Assert.NotEqual(default, branchBVisibleTaskId);
+        ExecutionTask branchBVisibleTask = session.GetTask(branchBVisibleTaskId);
+        ExecutionTask branchBParallelScope = session.GetTask(branchBVisibleTask.ParentId!.Value);
+        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, branchBVisibleTask.State);
+        Assert.Equal(ExecutionTaskState.Running, branchBParallelScope.State);
 
         // Cleanup: release both branches in sequence so the run can complete if the scheduler eventually starts branch B.
         releaseBranchA.TrySetResult(true);
