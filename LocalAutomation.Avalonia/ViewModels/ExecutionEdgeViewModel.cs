@@ -55,58 +55,47 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
             StreamGeometry geometry = new();
             using StreamGeometryContext context = geometry.Open();
 
-            double sharedLeft = Math.Max(GetSafeLeft(Source), GetSafeLeft(Target));
-            double sharedRight = Math.Min(GetSafeRight(Source), GetSafeRight(Target));
-            bool nodesAreVerticallySeparated = Source.Y + Source.Height <= Target.Y || Target.Y + Target.Height <= Source.Y;
-            if (nodesAreVerticallySeparated && sharedLeft <= sharedRight)
+            SafeSpan sourceHorizontalSpan = GetSafeHorizontalSpan(Source);
+            SafeSpan targetHorizontalSpan = GetSafeHorizontalSpan(Target);
+            SafeSpan sourceVerticalSpan = GetSafeVerticalSpan(Source);
+            SafeSpan targetVerticalSpan = GetSafeVerticalSpan(Target);
+
+            RoutedCoordinatePair verticalRoute = ResolveRouteCoordinates(sourceVerticalSpan, targetVerticalSpan);
+            if (verticalRoute.IsShared)
             {
-                /* When stacked nodes expose a shared buffered horizontal span, route through the midpoint of that span so
-                   the connection reads as one clean vertical segment instead of an elbow that can cross header chrome. */
-                double sharedX = sharedLeft + ((sharedRight - sharedLeft) / 2.0);
-                bool sourceIsAboveTarget = Source.Y + Source.Height <= Target.Y;
+                /* When the safe vertical spans overlap, keep the dependency as one straight horizontal segment through
+                   the shared band. This branch and the elbow fallback both use the same interval pairing so small layout
+                   nudges cannot flip the route onto the far edge of either node. */
+                Point start = new(Source.X + Source.Width, verticalRoute.Source);
+                Point end = new(Target.X, verticalRoute.Target);
+                context.BeginFigure(start, false);
+                context.LineTo(end);
+                return geometry;
+            }
+
+            RoutedCoordinatePair horizontalRoute = ResolveRouteCoordinates(sourceHorizontalSpan, targetHorizontalSpan);
+            if (horizontalRoute.IsShared)
+            {
+                /* When the safe horizontal spans overlap instead, keep the route as one straight vertical segment. The
+                   vertical interval pairing already tells us whether the source sits above or below the target, so the
+                   segment can still touch the correct outer faces instead of anchoring to the far side after recentering. */
+                bool sourceIsAboveTarget = verticalRoute.Source <= verticalRoute.Target;
                 Point start = sourceIsAboveTarget
-                    ? new Point(sharedX, Source.Y + Source.Height)
-                    : new Point(sharedX, Source.Y);
+                    ? new Point(horizontalRoute.Source, Source.Y + Source.Height)
+                    : new Point(horizontalRoute.Source, Source.Y);
                 Point end = sourceIsAboveTarget
-                    ? new Point(sharedX, Target.Y)
-                    : new Point(sharedX, Target.Y + Target.Height);
+                    ? new Point(horizontalRoute.Target, Target.Y)
+                    : new Point(horizontalRoute.Target, Target.Y + Target.Height);
                 context.BeginFigure(start, false);
                 context.LineTo(end);
                 return geometry;
             }
 
-            double sourceY = ResolveSafePathY(Source);
-            double targetY = ResolveSafePathY(Target);
-            double sharedTop = Math.Max(sourceY, targetY);
-            double sharedBottom = Math.Min(GetSafeBottom(Source), GetSafeBottom(Target));
-
-            if (sharedTop <= sharedBottom)
-            {
-                /* When both nodes expose a shared buffered vertical span, route the edge through the midpoint of that
-                   shared span so the connection reads as one clean horizontal line. */
-                double sharedY = sharedTop + ((sharedBottom - sharedTop) / 2.0);
-                Point start = new(Source.X + Source.Width, sharedY);
-                Point end = new(Target.X, sharedY);
-                context.BeginFigure(start, false);
-                context.LineTo(end);
-                return geometry;
-            }
-
-            /* Once the safe spans no longer overlap, keep using the nearest buffered edges as the anchor points so the
-               line transitions into an elbow without suddenly jumping to different parts of either node. */
-            Point elbowStart;
-            Point elbowEnd;
-            if (Source.Y + Source.Height <= Target.Y)
-            {
-                elbowStart = new Point(Source.X + Source.Width, GetSafeBottom(Source));
-                elbowEnd = new Point(Target.X, GetSafeTop(Target));
-            }
-            else
-            {
-                elbowStart = new Point(Source.X + Source.Width, GetSafeTop(Source));
-                elbowEnd = new Point(Target.X, GetSafeBottom(Target));
-            }
-
+            /* When neither axis overlaps, connect the nearest safe endpoints picked by the same interval rule used for
+               the straight-line cases. That keeps the elbow attached to the closest faces even when stage-centering or
+               measured-width updates move nodes just across an overlap threshold. */
+            Point elbowStart = new(Source.X + Source.Width, verticalRoute.Source);
+            Point elbowEnd = new(Target.X, verticalRoute.Target);
             double midpointX = elbowStart.X + Math.Max(ElbowHorizontalInset, (elbowEnd.X - elbowStart.X) / 2.0);
             context.BeginFigure(elbowStart, false);
             context.LineTo(new Point(midpointX, elbowStart.Y));
@@ -153,11 +142,51 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Resolves the top safe boundary because the shared-span computation works in absolute graph-space Y values.
+    /// Returns the safe horizontal routing span for one node.
     /// </summary>
-    private static double ResolveSafePathY(ExecutionNodeViewModel node)
+    private static SafeSpan GetSafeHorizontalSpan(ExecutionNodeViewModel node)
     {
-        return GetSafeTop(node);
+        return new SafeSpan(GetSafeLeft(node), GetSafeRight(node));
+    }
+
+    /// <summary>
+    /// Returns the safe vertical routing span for one node.
+    /// </summary>
+    private static SafeSpan GetSafeVerticalSpan(ExecutionNodeViewModel node)
+    {
+        return new SafeSpan(GetSafeTop(node), GetSafeBottom(node));
+    }
+
+    /// <summary>
+    /// Chooses one shared coordinate inside the overlap span while biasing toward the two nodes' natural face centers.
+    /// </summary>
+    private static double ResolveSharedCoordinate(double overlapStart, double overlapEnd, double sourcePreferred, double targetPreferred)
+    {
+        /* Clamping the average preferred coordinate shortens visible detours for mismatched node sizes while still
+           guaranteeing a stable point inside the shared safe span. */
+        double preferred = (sourcePreferred + targetPreferred) / 2.0;
+        return Math.Clamp(preferred, overlapStart, overlapEnd);
+    }
+
+    /// <summary>
+    /// Resolves the pair of coordinates that should be connected along one axis, returning a shared point when the safe
+    /// spans overlap and the nearest interval endpoints when they do not.
+    /// </summary>
+    private static RoutedCoordinatePair ResolveRouteCoordinates(SafeSpan sourceSpan, SafeSpan targetSpan)
+    {
+        if (sourceSpan.Overlaps(targetSpan))
+        {
+            double shared = ResolveSharedCoordinate(
+                Math.Max(sourceSpan.Start, targetSpan.Start),
+                Math.Min(sourceSpan.End, targetSpan.End),
+                sourceSpan.Center,
+                targetSpan.Center);
+            return new RoutedCoordinatePair(shared, shared);
+        }
+
+        return sourceSpan.End < targetSpan.Start
+            ? new RoutedCoordinatePair(sourceSpan.End, targetSpan.Start)
+            : new RoutedCoordinatePair(sourceSpan.Start, targetSpan.End);
     }
 
     /// <summary>
@@ -183,5 +212,48 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
         {
             RaisePropertyChanged(nameof(PathData));
         }
+    }
+
+    /// <summary>
+    /// Represents one buffered face span on a single axis so routing can reason about overlap and nearest endpoints with
+    /// the same interval math everywhere.
+    /// </summary>
+    private readonly struct SafeSpan
+    {
+        public SafeSpan(double start, double end)
+        {
+            Start = Math.Min(start, end);
+            End = Math.Max(start, end);
+        }
+
+        public double Start { get; }
+
+        public double End { get; }
+
+        public double Center => Start + ((End - Start) / 2.0);
+
+        public bool Overlaps(SafeSpan other)
+        {
+            return Start <= other.End && other.Start <= End;
+        }
+    }
+
+    /// <summary>
+    /// Carries the source and target coordinates chosen for one routing axis so straight and elbow routes can share the
+    /// same interval resolution result.
+    /// </summary>
+    private readonly struct RoutedCoordinatePair
+    {
+        public RoutedCoordinatePair(double source, double target)
+        {
+            Source = source;
+            Target = target;
+        }
+
+        public double Source { get; }
+
+        public double Target { get; }
+
+        public bool IsShared => Math.Abs(Source - Target) <= 0.001;
     }
 }
