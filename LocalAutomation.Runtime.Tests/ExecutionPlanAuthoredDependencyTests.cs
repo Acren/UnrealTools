@@ -7,13 +7,13 @@ namespace LocalAutomation.Runtime.Tests;
 public sealed class ExecutionPlanAuthoredDependencyTests
 {
     /// <summary>
-    /// Confirms that Run(...) creates a separate hidden body subtask beneath the visible authored task.
+    /// Confirms that Run(...) attaches executable work directly to the visible authored task instead of synthesizing a
+    /// hidden body subtask beneath it.
     /// </summary>
     [Fact]
-    public void RunCreatesHiddenBodySubtaskBeneathVisibleTask()
+    public void RunDoesNotCreateHiddenBodySubtaskBeneathVisibleTask()
     {
-        // Arrange: author one visible task with a body so the resulting plan contains both the visible step and the
-        // hidden body subtask that actually runs the work.
+        // Arrange: author one visible task with a body so the resulting plan should contain only the authored task node.
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
             root.Children(steps => steps
@@ -21,24 +21,24 @@ public sealed class ExecutionPlanAuthoredDependencyTests
                     .Run(() => Task.CompletedTask));
         });
 
-        // Act: build the authored plan and locate the visible task plus its generated body subtask.
+        // Act: build the authored plan and locate the visible task plus any descendants currently attached beneath it.
         ExecutionPlan plan = RuntimeTestUtilities.BuildPlan(operation);
         ExecutionTask prepareWorkspace = plan.Tasks.Single(task => task.Title == "Prepare Workspace");
-        ExecutionTask prepareWorkspaceBody = plan.Tasks.Single(task => task.Title == "Prepare Workspace.Body" && task.ParentId == prepareWorkspace.Id);
+        ExecutionTask[] prepareWorkspaceChildren = plan.Tasks.Where(task => task.ParentId == prepareWorkspace.Id).ToArray();
 
-        // Assert: the body is modeled as a normal hidden child task rather than as a separate public task kind.
+        // Assert: the authored task stays visible and no synthetic hidden body child is created for plain Run(...).
         Assert.False(prepareWorkspace.IsHiddenInGraph);
-        Assert.True(prepareWorkspaceBody.IsHiddenInGraph);
+        Assert.Empty(prepareWorkspaceChildren);
     }
 
     /// <summary>
-    /// Confirms that asking the session to start the visible authored task delegates to the hidden body child that holds
-    /// the actual runnable work.
+    /// Confirms that asking the session to start the visible authored task executes that same task directly instead of
+    /// delegating to a hidden body child.
     /// </summary>
     [Fact]
-    public async Task StartingVisibleTaskDelegatesToHiddenBodyChild()
+    public async Task StartingVisibleTaskExecutesThatSameTask()
     {
-        // Arrange: build one visible task with hidden body work and create the live runtime session.
+        // Arrange: build one visible task with body work and create the live runtime session.
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
             root.Children(steps => steps
@@ -48,7 +48,6 @@ public sealed class ExecutionPlanAuthoredDependencyTests
 
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         ExecutionTask prepareWorkspace = plan.Tasks.Single(task => task.Title == "Prepare Workspace");
-        ExecutionTask prepareWorkspaceBody = plan.Tasks.Single(task => task.Title == "Prepare Workspace.Body" && task.ParentId == prepareWorkspace.Id);
         TaskStartResult startResult = session.StartTaskAsync(
             prepareWorkspace.Id,
             _ => Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
@@ -56,11 +55,12 @@ public sealed class ExecutionPlanAuthoredDependencyTests
             scheduler,
             (_, executeAsync) => executeAsync());
 
-        // Act: start the visible task id and await the actual running task it delegated to.
+        // Act: start the visible task id and await the actual running task it returns.
         OperationResult result = await startResult.RunningTask;
 
-        // Assert: session start delegation picks the hidden body child as the actual started task.
-        Assert.Equal(prepareWorkspaceBody.Id, startResult.Task.Id);
+        // Assert: session start keeps the authored task as the execution identity.
+        Assert.Equal(prepareWorkspace.Id, startResult.Task.Id);
+        Assert.Equal(prepareWorkspace.Id, startResult.ExecutionTask.Id);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
     }
 

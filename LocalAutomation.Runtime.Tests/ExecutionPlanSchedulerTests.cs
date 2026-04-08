@@ -150,13 +150,13 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
-    /// Confirms that a body task blocked only on an execution lock should remain pending until the scheduler can actually
-    /// start executing its body.
+    /// Confirms that a task blocked only on an execution lock should surface the explicit lock-wait state until the
+    /// scheduler can actually begin executing it.
     /// </summary>
     [Fact]
     public async Task TaskWaitingForExecutionLockStaysPending()
     {
-        // Arrange: two parallel body tasks contend for the same lock, and branch A holds it open.
+        // Arrange: two parallel tasks contend for the same lock, and branch A holds it open.
         ExecutionLock sharedLock = new("pending-lock");
         TaskCompletionSource<bool> branchAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -191,7 +191,7 @@ public sealed class ExecutionPlanSchedulerTests
 
         // Assert: once the lock is released, the blocked task should still be able to complete successfully.
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
-        Assert.Equal(ExecutionTaskOutcome.Completed, session.GetTask(branchBTaskId).Outcome);
+        Assert.Equal(ExecutionTaskOutcome.Completed, session.GetTask(branchBVisibleTaskId).Outcome);
     }
 
     /// <summary>
@@ -710,7 +710,6 @@ public sealed class ExecutionPlanSchedulerTests
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
 
         await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.NotEqual(default, waitingTaskId);
         Assert.NotEqual(default, waitingVisibleTaskId);
         ExecutionTask waitingTask = session.GetTask(waitingVisibleTaskId);
         Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, waitingTask.State);
@@ -740,16 +739,16 @@ public sealed class ExecutionPlanSchedulerTests
 
         Assert.True(followUpStarted.Task.IsCompleted, "The synchronous lock-free follow-up never started.");
         Assert.Null(startTimeout);
-        Assert.Equal(waitingTaskId, startedTaskId);
+        Assert.Equal(waitingVisibleTaskId, startedTaskId);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
     }
 
     /// <summary>
-    /// Confirms that interleaved body and child declarations execute in the same explicit order they were authored on the
-    /// parent task.
+    /// Confirms that explicit authored subtasks preserve the same declaration order when body work and nested child
+    /// scopes need to be interleaved.
     /// </summary>
     [Fact]
-    public async Task InterleavedBodiesAndChildrenKeepExplicitOrder()
+    public async Task ExplicitSubtasksKeepDeclaredExecutionOrder()
     {
         // Arrange: record each body as it runs so the final list reflects scheduler start order directly.
         List<string> executionOrder = new();
@@ -765,30 +764,30 @@ public sealed class ExecutionPlanSchedulerTests
 
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
-            root.Run(() =>
-            {
-                Record("root-body-1");
-                return Task.CompletedTask;
-            });
-
-            root.Child("Child").Run(() =>
-            {
-                Record("child-body");
-                return Task.CompletedTask;
-            });
-
-            root.Run(() =>
-            {
-                Record("root-body-2");
-                return Task.CompletedTask;
-            });
-
             root.Children(scope =>
             {
-                scope.Task("Nested").Run(() =>
+                scope.Task("Root Body 1").Run(() =>
                 {
-                    Record("nested-body");
+                    Record("root-body-1");
                     return Task.CompletedTask;
+                })
+                .Then("Child").Run(() =>
+                {
+                    Record("child-body");
+                    return Task.CompletedTask;
+                })
+                .Then("Root Body 2").Run(() =>
+                {
+                    Record("root-body-2");
+                    return Task.CompletedTask;
+                })
+                .Then("Nested").Children(nestedScope =>
+                {
+                    nestedScope.Task("Nested Body").Run(() =>
+                    {
+                        Record("nested-body");
+                        return Task.CompletedTask;
+                    });
                 });
             });
         });
@@ -796,7 +795,7 @@ public sealed class ExecutionPlanSchedulerTests
         // Act: execute the authored plan through the real runtime pipeline.
         (_, _, OperationResult result) = await RuntimeTestUtilities.ExecuteAsync(operation);
 
-        // Assert: the bodies should run in the same interleaved order that the plan author declared them.
+        // Assert: the supported explicit-subtask model should preserve authored execution order exactly.
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
         Assert.Equal(new[] { "root-body-1", "child-body", "root-body-2", "nested-body" }, executionOrder);
     }
@@ -880,12 +879,15 @@ public sealed class ExecutionPlanSchedulerTests
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchABodyTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-        // Assert: the visible/authored branch task that declared the lock should surface the explicit lock-wait state,
-        // while its containing parallel scope stays Running because that subtree is already in progress.
+        // Assert: the real runnable child that declares the shared lock should surface the explicit lock-wait state,
+        // while its containing authored branch task and enclosing parallel scope both stay Running because that subtree
+        // is already in progress.
         Assert.NotEqual(default, branchBVisibleTaskId);
         ExecutionTask branchBVisibleTask = session.GetTask(branchBVisibleTaskId);
+        ExecutionTask branchBActiveWorkTask = session.GetTask(branchBBodyTaskId);
         ExecutionTask branchBParallelScope = session.GetTask(branchBVisibleTask.ParentId!.Value);
-        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, branchBVisibleTask.State);
+        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, branchBActiveWorkTask.State);
+        Assert.Equal(ExecutionTaskState.Running, branchBVisibleTask.State);
         Assert.Equal(ExecutionTaskState.Running, branchBParallelScope.State);
 
         // Cleanup: release both branches in sequence so the run can complete if the scheduler eventually starts branch B.
