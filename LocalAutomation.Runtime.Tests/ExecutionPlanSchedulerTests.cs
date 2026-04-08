@@ -178,9 +178,10 @@ public sealed class ExecutionPlanSchedulerTests
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchATaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-        // Assert: the contended task should still be pending because it has not acquired the lock yet.
+        // Assert: the contended task should surface the explicit lock-wait state because it has been admitted into
+        // execution but has not acquired the lock yet.
         ExecutionTask blockedTask = session.GetTask(branchBTaskId);
-        Assert.Equal(ExecutionTaskState.Pending, blockedTask.State);
+        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, blockedTask.State);
 
         // Cleanup: release the lock holder so the run can finish normally.
         releaseBranchA.TrySetResult(true);
@@ -708,7 +709,7 @@ public sealed class ExecutionPlanSchedulerTests
 
         await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotEqual(default, waitingTaskId);
-        Assert.Equal(ExecutionTaskState.Pending, session.GetTask(waitingTaskId).State);
+        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, session.GetTask(waitingTaskId).State);
 
         releaseLockHolder.TrySetResult(true);
 
@@ -874,11 +875,12 @@ public sealed class ExecutionPlanSchedulerTests
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchABodyTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-        // Assert: branch B should still be pending because its child cannot start until the lock becomes available.
+        // Assert: branch B's child should surface the explicit lock-wait state, while the parent scope stays Running
+        // because the subtree is already in progress.
         ExecutionTask branchBTask = session.GetTask(branchBBodyTaskId);
         ExecutionTask branchBScope = session.GetTask(branchBTask.ParentId!.Value);
-        Assert.Equal(ExecutionTaskState.Pending, branchBTask.State);
-        Assert.Equal(ExecutionTaskState.Pending, branchBScope.State);
+        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, branchBTask.State);
+        Assert.Equal(ExecutionTaskState.Running, branchBScope.State);
 
         // Cleanup: release both branches in sequence so the run can complete if the scheduler eventually starts branch B.
         releaseBranchA.TrySetResult(true);
