@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
 
 namespace LocalAutomation.Runtime;
@@ -54,7 +55,7 @@ public static class LoggingExtensions
         public void Dispose()
         {
             _stopwatch.Stop();
-            _logger.LogInformation("Finished section '{SectionHeader}' in {ElapsedSeconds:0.00} s", _header, _stopwatch.Elapsed.TotalSeconds);
+            _logger.LogInformation("Finished section '{SectionHeader}' in {Elapsed}.", _header, DurationFormatting.FormatSeconds(_stopwatch.Elapsed));
         }
     }
 }

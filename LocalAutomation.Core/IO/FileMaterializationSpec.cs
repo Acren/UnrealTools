@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 
 namespace LocalAutomation.Core.IO;
 
@@ -19,6 +21,29 @@ public sealed class FileMaterializationSpec : IEnumerable<FileMaterializationEnt
     public void Add(string relativePath, bool required = false)
     {
         Entries.Add(new FileMaterializationEntry(relativePath, required));
+    }
+
+    /// <summary>
+    /// Adds all entries from another materialization spec underneath one relative root path.
+    /// </summary>
+    public void AddSubtree(string relativeRootPath, FileMaterializationSpec subtreeSpec)
+    {
+        if (relativeRootPath == null)
+        {
+            throw new ArgumentNullException(nameof(relativeRootPath));
+        }
+
+        if (subtreeSpec == null)
+        {
+            throw new ArgumentNullException(nameof(subtreeSpec));
+        }
+
+        /* Subtree expansion keeps the materialization model explicit: callers can compose nested subsets without
+           teaching the generic copy helper about higher-level content types such as Unreal plugins. */
+        foreach (FileMaterializationEntry entry in subtreeSpec.Entries)
+        {
+            Add(Path.Combine(relativeRootPath, entry.RelativePath), entry.Required);
+        }
     }
 
     /// <summary>

@@ -289,14 +289,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Recreates one isolated prepared-project variant using the explicit materialization subset needed by later
         /// packaging and validation branches without copying every generated file from the shared example base.
         /// </summary>
-        private static void CopyProjectVariant(string sourceProjectPath, string destinationProjectPath, bool includeBuildOutputs = true)
+        private static void CopyProjectVariant(string sourceProjectPath, string destinationProjectPath, ILogger logger, bool includeBuildOutputs = true)
         {
             FileUtils.DeleteDirectoryIfExists(destinationProjectPath);
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Prepared source project is not available for variant materialization");
             FileUtils.MaterializeDirectory(
                 sourceProject.ProjectPath,
                 destinationProjectPath,
-                MaterializationSpecs.CreateProject(sourceProject, includePlugins: true, includeBuildOutputs: includeBuildOutputs));
+                MaterializationSpecs.CreateProject(sourceProject, includePlugins: true, includeBuildOutputs: includeBuildOutputs),
+                logger);
         }
 
         /// <summary>
@@ -497,12 +498,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Directory.CreateDirectory(workspacePath);
 
             context.Logger.LogInformation($"Copying host project to workspace: {workspaceProjectPath}");
-            FileUtils.MaterializeDirectory(hostProject.ProjectPath, workspaceProjectPath, MaterializationSpecs.CreateProject(hostProject));
+            FileUtils.MaterializeDirectory(hostProject.ProjectPath, workspaceProjectPath, MaterializationSpecs.CreateProject(hostProject), context.Logger);
 
             string workspacePluginsPath = Path.Combine(workspaceProjectPath, "Plugins");
             Directory.CreateDirectory(workspacePluginsPath);
             context.Logger.LogInformation($"Materializing target plugin into workspace: {workspacePluginPath}");
-            FileUtils.MaterializeDirectory(plugin.PluginPath, workspacePluginPath, MaterializationSpecs.CreatePlugin(plugin));
+            FileUtils.MaterializeDirectory(plugin.PluginPath, workspacePluginPath, MaterializationSpecs.CreatePlugin(plugin), context.Logger);
             context.Logger.LogInformation($"Finished copying host project to workspace: {workspaceProjectPath}");
 
             if (!Directory.Exists(workspacePluginsPath))
@@ -538,7 +539,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteDirectoryIfExists(stagingPluginPath);
 
             using Plugin workspacePlugin = CreateRequiredPlugin(workspacePluginPath, "Workspace plugin is not available for staging");
-            FileUtils.MaterializeDirectory(workspacePlugin.PluginPath, stagingPluginPath, MaterializationSpecs.CreatePlugin(workspacePlugin));
+            FileUtils.MaterializeDirectory(workspacePlugin.PluginPath, stagingPluginPath, MaterializationSpecs.CreatePlugin(workspacePlugin), context.Logger);
             context.Logger.LogInformation($"Copied plugin to staging destination: {stagingPluginPath}");
 
             using Plugin stagingPlugin = CreateRequiredPlugin(stagingPluginPath, "Staged plugin was not created successfully");
@@ -677,7 +678,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteDirectoryIfExists(exampleProjectPath);
 
             using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for project-plugin base materialization");
-            FileUtils.MaterializeDirectory(workspaceProject.ProjectPath, exampleProjectPath, MaterializationSpecs.CreateProject(workspaceProject));
+            FileUtils.MaterializeDirectory(workspaceProject.ProjectPath, exampleProjectPath, MaterializationSpecs.CreateProject(workspaceProject), context.Logger);
 
             using Project exampleProject = CreateRequiredProject(exampleProjectPath, "Project-plugin base was not materialized successfully");
             UpdateProjectDescriptorForArchive(state, exampleProject);
@@ -727,7 +728,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             string sourceProjectPath = GetExampleProjectBasePath(state);
             string clangVariantPath = GetClangVariantPath(state);
-            CopyProjectVariant(sourceProjectPath, clangVariantPath);
+            CopyProjectVariant(sourceProjectPath, clangVariantPath, context.Logger);
             using Project clangVariant = CreateRequiredProject(clangVariantPath, "Clang validation variant was not created successfully");
             context.Logger.LogInformation($"Prepared Clang validation variant: {clangVariant.ProjectPath}");
             await Task.CompletedTask;
@@ -743,7 +744,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             string sourceProjectPath = GetExampleProjectBasePath(state);
             string engineVariantPath = GetEnginePluginVariantPath(state);
-            CopyProjectVariant(sourceProjectPath, engineVariantPath);
+            CopyProjectVariant(sourceProjectPath, engineVariantPath, context.Logger);
 
             using Project engineVariant = CreateRequiredProject(engineVariantPath, "Engine-plugin variant was not created successfully");
             engineVariant.RemovePlugin(state.SourcePlugin.Name);
@@ -761,7 +762,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             string sourceProjectPath = GetExampleProjectBasePath(state);
             string blueprintVariantPath = GetBlueprintDemoVariantPath(state);
-            CopyProjectVariant(sourceProjectPath, blueprintVariantPath);
+            CopyProjectVariant(sourceProjectPath, blueprintVariantPath, context.Logger);
 
             using Project blueprintVariant = CreateRequiredProject(blueprintVariantPath, "Blueprint/demo variant was not created successfully");
             blueprintVariant.RemovePlugin(state.SourcePlugin.Name);
@@ -1022,7 +1023,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Directory.CreateDirectory(archivePath);
             FileUtils.DeleteFileIfExists(pluginSourceArchiveZipPath);
-            ZipFile.CreateFromDirectory(stagingPlugin.PluginPath, pluginSourceArchiveZipPath, CompressionLevel.Optimal, true);
+            FileUtils.CreateZipFromDirectory(stagingPlugin.PluginPath, pluginSourceArchiveZipPath, true, context.Logger);
             CopyArchiveToOutputIfConfigured(context, pluginSourceArchiveZipPath);
             await Task.CompletedTask;
         }
@@ -1048,7 +1049,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Directory.CreateDirectory(archivePath);
             FileUtils.DeleteFileIfExists(pluginBuildZipPath);
-            ZipFile.CreateFromDirectory(builtPlugin.PluginPath, pluginBuildZipPath, CompressionLevel.Optimal, true);
+            FileUtils.CreateZipFromDirectory(builtPlugin.PluginPath, pluginBuildZipPath, true, context.Logger);
             CopyArchiveToOutputIfConfigured(context, pluginBuildZipPath);
             await Task.CompletedTask;
         }
@@ -1074,14 +1075,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string exampleProjectZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "ExampleProject.zip");
 
             Directory.CreateDirectory(archivePath);
-            CopyProjectVariant(GetBlueprintDemoVariantPath(state), archiveProjectPath, includeBuildOutputs: false);
+            CopyProjectVariant(GetBlueprintDemoVariantPath(state), archiveProjectPath, context.Logger, includeBuildOutputs: false);
 
             using Project archiveProject = CreateRequiredProject(archiveProjectPath, "Example-project archive copy is not available");
             string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
             FileUtils.DeleteOtherSubdirectories(archiveProject.ProjectPath, allowedExampleProjectSubDirectoryNames);
             FileUtils.DeleteFilesWithExtension(archiveProject.ProjectPath, new[] { ".pdb" }, SearchOption.AllDirectories);
             FileUtils.DeleteFileIfExists(exampleProjectZipPath);
-            ZipFile.CreateFromDirectory(archiveProject.ProjectPath, exampleProjectZipPath);
+            FileUtils.CreateZipFromDirectory(archiveProject.ProjectPath, exampleProjectZipPath, false, context.Logger);
             CopyArchiveToOutputIfConfigured(context, exampleProjectZipPath);
             await Task.CompletedTask;
         }
@@ -1107,7 +1108,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             Directory.CreateDirectory(archivePath);
             FileUtils.DeleteFileIfExists(demoPackageZipPath);
-            ZipFile.CreateFromDirectory(demoPackage.TargetPath, demoPackageZipPath);
+            FileUtils.CreateZipFromDirectory(demoPackage.TargetPath, demoPackageZipPath, false, context.Logger);
             CopyArchiveToOutputIfConfigured(context, demoPackageZipPath);
             await Task.CompletedTask;
         }
