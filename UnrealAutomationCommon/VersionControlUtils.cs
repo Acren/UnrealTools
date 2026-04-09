@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace UnrealAutomationCommon
 {
@@ -9,7 +10,7 @@ namespace UnrealAutomationCommon
         /// <summary>
         /// Returns the current git branch for one working tree while keeping the child process fully backgrounded.
         /// </summary>
-        public static string GetBranchName(string WorkingDirectory)
+        public static async Task<string> GetBranchNameAsync(string WorkingDirectory)
         {
             var gitPath = @"C:\Program Files\Git\bin\git.exe";
             ProcessStartInfo startInfo = new(gitPath);
@@ -25,6 +26,7 @@ namespace UnrealAutomationCommon
 
             using Process process = new();
             process.StartInfo = startInfo;
+            process.EnableRaisingEvents = true;
 
             try
             {
@@ -40,11 +42,46 @@ namespace UnrealAutomationCommon
                 throw;
             }
 
-            string branchName = process.StandardOutput.ReadLine();
-            /* Waiting for exit keeps the backgrounded git process lifecycle tidy and ensures stderr has drained before
-               control returns to the caller. */
-            process.WaitForExit();
+            /* Read stdout and stderr asynchronously so the caller does not block a worker thread while git resolves the
+               current branch and so non-zero exits can report the captured error text clearly. */
+            Task<string> branchNameTask = process.StandardOutput.ReadLineAsync();
+            Task<string> errorTask = process.StandardError.ReadToEndAsync();
+            await WaitForExitAsync(process);
+            string branchName = await branchNameTask;
+            string error = await errorTask;
+            if (process.ExitCode != 0)
+            {
+                throw new Exception($"git branch --show-current failed with exit code {process.ExitCode}. Error: {error}");
+            }
+
             return branchName;
+        }
+
+        /// <summary>
+        /// Waits asynchronously for one started process to exit without blocking the caller thread.
+        /// </summary>
+        private static Task WaitForExitAsync(Process process)
+        {
+            if (process.HasExited)
+            {
+                return Task.CompletedTask;
+            }
+
+            TaskCompletionSource<bool> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void HandleProcessExited(object sender, EventArgs args)
+            {
+                process.Exited -= HandleProcessExited;
+                completionSource.TrySetResult(true);
+            }
+
+            process.Exited += HandleProcessExited;
+            if (process.HasExited)
+            {
+                process.Exited -= HandleProcessExited;
+                return Task.CompletedTask;
+            }
+
+            return completionSource.Task;
         }
     }
 }

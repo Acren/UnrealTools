@@ -479,7 +479,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState workspaceState = new(engine, plugin, hostProject, workspacePath, workspaceProjectPath, workspacePluginPath);
 
             context.Logger.LogInformation($"Engine version: {engine.Version}");
-            string archivePrefix = BuildArchivePrefix(workspaceState);
+            string archivePrefix = await BuildArchivePrefixAsync(workspaceState);
             context.Logger.LogInformation($"Archive name prefix is '{archivePrefix}'");
             context.Logger.LogInformation($"Source host project: {hostProject.ProjectPath}");
             context.Logger.LogInformation($"Source plugin: {plugin.PluginPath}");
@@ -551,12 +551,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// <summary>
         /// Builds the archive filename prefix for the active engine-specific execution scope.
         /// </summary>
-        private string BuildArchivePrefix(DeploymentWorkspaceState state)
+        private async Task<string> BuildArchivePrefixAsync(DeploymentWorkspaceState state)
         {
             Plugin plugin = state.SourcePlugin;
             PluginDescriptor pluginDescriptor = plugin.PluginDescriptor;
             bool standardBranch = true;
-            string branchName = VersionControlUtils.GetBranchName(state.HostProject.ProjectPath);
+            string branchName = await VersionControlUtils.GetBranchNameAsync(state.HostProject.ProjectPath);
             if (!string.IsNullOrEmpty(branchName))
             {
                 string[] standardBranchNames = { "master", "develop", "development" };
@@ -1017,7 +1017,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Archiving plugin source");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             using Plugin stagingPlugin = CreateRequiredPlugin(GetStagingPluginPath(state), "Staged plugin is not available for source archiving");
-            string archivePrefix = BuildArchivePrefix(state);
+            string archivePrefix = await BuildArchivePrefixAsync(state);
             string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
             string pluginSourceArchiveZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "PluginSource.zip");
 
@@ -1043,7 +1043,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             using Plugin builtPlugin = CreateRequiredPlugin(GetBuiltPluginPath(state), "Built plugin is not available for archiving");
-            string archivePrefix = BuildArchivePrefix(state);
+            string archivePrefix = await BuildArchivePrefixAsync(state);
             string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
             string pluginBuildZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "PluginBuild.zip");
 
@@ -1070,7 +1070,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             string archiveProjectPath = GetExampleArchiveProjectPath(state);
-            string archivePrefix = BuildArchivePrefix(state);
+            string archivePrefix = await BuildArchivePrefixAsync(state);
             string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
             string exampleProjectZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "ExampleProject.zip");
 
@@ -1102,7 +1102,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             Package demoPackage = CreateRequiredPackage(state, GetDemoPackageOutputPath(state), "Demo package output is not available for archiving");
-            string archivePrefix = BuildArchivePrefix(state);
+            string archivePrefix = await BuildArchivePrefixAsync(state);
             string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
             string demoPackageZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "DemoPackage.zip");
 
