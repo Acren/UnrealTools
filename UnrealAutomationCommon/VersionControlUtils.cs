@@ -26,8 +26,6 @@ namespace UnrealAutomationCommon
 
             using Process process = new();
             process.StartInfo = startInfo;
-            process.EnableRaisingEvents = true;
-
             try
             {
                 process.Start();
@@ -46,7 +44,7 @@ namespace UnrealAutomationCommon
                current branch and so non-zero exits can report the captured error text clearly. */
             Task<string> branchNameTask = process.StandardOutput.ReadLineAsync();
             Task<string> errorTask = process.StandardError.ReadToEndAsync();
-            await WaitForExitAsync(process);
+            await process.WaitForExitAsync();
             string branchName = await branchNameTask;
             string error = await errorTask;
             if (process.ExitCode != 0)
@@ -55,33 +53,6 @@ namespace UnrealAutomationCommon
             }
 
             return branchName;
-        }
-
-        /// <summary>
-        /// Waits asynchronously for one started process to exit without blocking the caller thread.
-        /// </summary>
-        private static Task WaitForExitAsync(Process process)
-        {
-            if (process.HasExited)
-            {
-                return Task.CompletedTask;
-            }
-
-            TaskCompletionSource<bool> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            void HandleProcessExited(object sender, EventArgs args)
-            {
-                process.Exited -= HandleProcessExited;
-                completionSource.TrySetResult(true);
-            }
-
-            process.Exited += HandleProcessExited;
-            if (process.HasExited)
-            {
-                process.Exited -= HandleProcessExited;
-                return Task.CompletedTask;
-            }
-
-            return completionSource.Task;
         }
     }
 }
