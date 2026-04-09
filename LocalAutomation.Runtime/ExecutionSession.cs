@@ -228,7 +228,9 @@ public sealed class ExecutionSession
                 effectiveStart = effectiveStart == null || task.StartedAt < effectiveStart ? task.StartedAt : effectiveStart;
             }
 
-            if (task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
+            /* Lock wait is in-progress scheduler state, but it is not execution time. Only Running extends the live
+               duration clock to 'now'. */
+            if (task.State == ExecutionTaskState.Running)
             {
                 effectiveEnd = timestampNow;
                 continue;

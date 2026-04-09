@@ -1018,8 +1018,10 @@ public class ExecutionTask : INotifyPropertyChanged
         || Outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Failed;
 
     /// <summary>
-    /// Resolves the timing timestamps that correspond to a lifecycle state transition on this task. Running tasks capture
-    /// their start time, and completing tasks capture both start and finish times.
+    /// Resolves the timing timestamps that correspond to a lifecycle state transition on this task. Only actual Running
+    /// work captures a start time, while completion records only the finish boundary for work that has already started.
+    /// Tasks that wait on execution locks or complete without ever running therefore keep a null StartedAt so UI timing
+    /// stays at its untouched placeholder until real execution begins.
     /// </summary>
     internal (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) ResolveTaskTiming(ExecutionTaskState state)
     {
@@ -1027,7 +1029,7 @@ public class ExecutionTask : INotifyPropertyChanged
         DateTimeOffset? finishedAt = FinishedAt;
         DateTimeOffset timestamp = DateTimeOffset.Now;
 
-        if (state is ExecutionTaskState.WaitingForExecutionLock or ExecutionTaskState.Running && StartedAt == null)
+        if (state == ExecutionTaskState.Running && StartedAt == null)
         {
             startedAt = timestamp;
             finishedAt = null;
@@ -1036,7 +1038,6 @@ public class ExecutionTask : INotifyPropertyChanged
 
         if (state == ExecutionTaskState.Completed)
         {
-            startedAt ??= timestamp;
             finishedAt = timestamp;
         }
 
