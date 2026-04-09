@@ -15,6 +15,8 @@ namespace LocalAutomation.Avalonia.Controls;
 /// </summary>
 public partial class ExecutionGroupContainer : UserControl
 {
+    private static readonly Thickness SelectedBorderThickness = new(2.0);
+    private static readonly Thickness DefaultBorderThickness = new(1.5);
     private const double WidthChangeThreshold = 0.5;
     private bool _isHovered;
     private bool _isPressed;
@@ -52,6 +54,14 @@ public partial class ExecutionGroupContainer : UserControl
         AvaloniaProperty.RegisterDirect<ExecutionGroupContainer, double>(
             nameof(MeasuredHeaderMinWidth),
             control => control.MeasuredHeaderMinWidth);
+
+    /// <summary>
+    /// Identifies the current frame thickness used by the group border and header inset.
+    /// </summary>
+    public static readonly DirectProperty<ExecutionGroupContainer, Thickness> FrameBorderThicknessProperty =
+        AvaloniaProperty.RegisterDirect<ExecutionGroupContainer, Thickness>(
+            nameof(FrameBorderThickness),
+            control => control.FrameBorderThickness);
 
     /// <summary>
     /// Creates the XAML-backed execution-graph group container control.
@@ -106,6 +116,13 @@ public partial class ExecutionGroupContainer : UserControl
         get => _measuredHeaderMinWidth;
         private set => SetAndRaise(MeasuredHeaderMinWidthProperty, ref _measuredHeaderMinWidth, value);
     }
+
+    /// <summary>
+    /// Gets the current frame thickness for the group border and header inset.
+    /// </summary>
+    public Thickness FrameBorderThickness => _observedNode?.IsSelected == true
+        ? SelectedBorderThickness
+        : DefaultBorderThickness;
 
     /// <summary>
     /// Loads the compiled Avalonia markup for the group container.
@@ -201,6 +218,7 @@ public partial class ExecutionGroupContainer : UserControl
         ApplySemanticClasses();
         MeasuredHeaderMinWidth = ExecutionGraphLayoutSettings.NodeMinWidth;
         UpdateMeasuredHeaderMinWidthIfNeeded();
+        RaisePropertyChanged(FrameBorderThicknessProperty, DefaultBorderThickness, FrameBorderThickness);
     }
 
     /// <summary>
@@ -208,11 +226,19 @@ public partial class ExecutionGroupContainer : UserControl
     /// </summary>
     private void HandleObservedNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal) ||
-            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal) ||
+        if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
         {
             ApplySemanticClasses();
+            if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
+            {
+                Thickness nextThickness = FrameBorderThickness;
+                Thickness previousThickness = nextThickness.Equals(SelectedBorderThickness)
+                    ? DefaultBorderThickness
+                    : SelectedBorderThickness;
+                RaisePropertyChanged(FrameBorderThicknessProperty, previousThickness, nextThickness);
+                UpdateMeasuredHeaderMinWidthIfNeeded();
+            }
         }
     }
 
@@ -269,4 +295,5 @@ public partial class ExecutionGroupContainer : UserControl
 
         MeasuredHeaderMinWidth = measuredWidth;
     }
+
 }

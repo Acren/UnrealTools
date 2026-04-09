@@ -1123,7 +1123,6 @@ public partial class ExecutionGraphCanvas : UserControl
         handler = (_, e) =>
         {
             if (string.IsNullOrWhiteSpace(e.PropertyName) ||
-                string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal) ||
                 string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal))
             {
                 ExecutionStatusClasses.ApplyStatusClasses(path.Classes, target.DisplayStatus);

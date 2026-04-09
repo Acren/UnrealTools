@@ -15,6 +15,8 @@ namespace LocalAutomation.Avalonia.Controls;
 /// </summary>
 public partial class ExecutionTaskCard : UserControl
 {
+    private static readonly Thickness SelectedBorderThickness = new(2.0);
+    private static readonly Thickness DefaultBorderThickness = new(1.5);
     private bool _isHovered;
     private bool _isPressed;
     private ExecutionNodeViewModel? _observedNode;
@@ -24,6 +26,14 @@ public partial class ExecutionTaskCard : UserControl
     /// </summary>
     public static readonly StyledProperty<double> CardHeightProperty =
         AvaloniaProperty.Register<ExecutionTaskCard, double>(nameof(CardHeight));
+
+    /// <summary>
+    /// Identifies the current border thickness used by the task card chrome and animated overlay.
+    /// </summary>
+    public static readonly DirectProperty<ExecutionTaskCard, Thickness> FrameBorderThicknessProperty =
+        AvaloniaProperty.RegisterDirect<ExecutionTaskCard, Thickness>(
+            nameof(FrameBorderThickness),
+            control => control.FrameBorderThickness);
 
     /// <summary>
     /// Creates the XAML-backed execution-graph task card control.
@@ -54,6 +64,13 @@ public partial class ExecutionTaskCard : UserControl
         get => GetValue(CardHeightProperty);
         set => SetValue(CardHeightProperty, value);
     }
+
+    /// <summary>
+    /// Gets the current border thickness for the task card chrome and animated border overlay.
+    /// </summary>
+    public Thickness FrameBorderThickness => _observedNode?.IsSelected == true
+        ? SelectedBorderThickness
+        : DefaultBorderThickness;
 
     /// <summary>
     /// Loads the compiled Avalonia markup for the task card.
@@ -151,6 +168,7 @@ public partial class ExecutionTaskCard : UserControl
         }
 
         ApplySemanticClasses();
+        RaisePropertyChanged(FrameBorderThicknessProperty, DefaultBorderThickness, FrameBorderThickness);
     }
 
     /// <summary>
@@ -159,11 +177,18 @@ public partial class ExecutionTaskCard : UserControl
     private void HandleObservedNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.State), StringComparison.Ordinal) ||
-            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.Status), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal) ||
             string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
         {
             ApplySemanticClasses();
+            if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
+            {
+                Thickness nextThickness = FrameBorderThickness;
+                Thickness previousThickness = nextThickness.Equals(SelectedBorderThickness)
+                    ? DefaultBorderThickness
+                    : SelectedBorderThickness;
+                RaisePropertyChanged(FrameBorderThicknessProperty, previousThickness, nextThickness);
+            }
         }
     }
 

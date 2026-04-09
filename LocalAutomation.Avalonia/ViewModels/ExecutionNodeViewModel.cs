@@ -1,6 +1,4 @@
 using System;
-using Avalonia;
-using Avalonia.Media;
 using LocalAutomation.Avalonia.ExecutionGraph;
 using LocalAutomation.Core;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
@@ -100,11 +98,6 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     public RuntimeExecutionTaskOutcome? Outcome => Task.Outcome;
 
     /// <summary>
-    /// Gets the combined display status rendered by the graph surfaces.
-    /// </summary>
-    public ExecutionTaskDisplayStatus Status => Task.Status;
-
-    /// <summary>
     /// Gets the primary semantic status shown on the graph. Lifecycle remains available separately for animation and
     /// active-work context.
     /// </summary>
@@ -140,114 +133,13 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     public bool IsSelected
     {
         get => _isSelected;
-        set
-        {
-            if (SetProperty(ref _isSelected, value))
-            {
-                RaiseSelectionVisualChanged();
-            }
-        }
+        set => SetProperty(ref _isSelected, value);
     }
-
-    /// <summary>
-    /// Gets a short uppercase status label rendered on the graph node card.
-    /// </summary>
-    public string StatusText => ExecutionTaskStatusDisplay.GetUpperLabel(DisplayStatus);
-
-    /// <summary>
-    /// Gets the compact label used by the stacked dot-and-label status treatment.
-    /// </summary>
-    public string StatusLabelText => ExecutionTaskStatusDisplay.GetLabel(DisplayStatus);
 
     /// <summary>
     /// Gets the shared execution metrics currently displayed for this node.
     /// </summary>
     public RuntimeExecutionTaskMetrics Metrics => Task.Metrics;
-
-    /// <summary>
-    /// Gets the border thickness for group containers.
-    /// </summary>
-    public Thickness ContainerBorderThickness => new(IsSelected ? 2.0 : 1.5);
-
-    /// <summary>
-    /// Gets the border thickness for leaf task cards.
-    /// </summary>
-    public Thickness CardBorderThickness => new(IsSelected ? 2.0 : 1.5);
-
-    /// <summary>
-    /// Gets the description text best suited for the details pane.
-    /// </summary>
-    public string DetailsText
-    {
-        get
-        {
-            if (!IsContainer)
-            {
-                return Description;
-            }
-
-            if (string.IsNullOrWhiteSpace(Description))
-            {
-                return SummaryText;
-            }
-
-            if (string.IsNullOrWhiteSpace(SummaryText))
-            {
-                return Description;
-            }
-
-            return Description + Environment.NewLine + SummaryText;
-        }
-    }
-
-    /// <summary>
-    /// Gets the compact hierarchy metadata shown under group titles.
-    /// </summary>
-    public string GroupMetaText
-    {
-        get
-        {
-            if (!IsContainer)
-            {
-                return string.Empty;
-            }
-
-            return $"{DirectChildCount} child items  •  {DescendantTaskCount} runnable tasks";
-        }
-    }
-
-    /// <summary>
-    /// Gets whether the group metadata line should be shown.
-    /// </summary>
-    public bool HasGroupMetaText => !string.IsNullOrWhiteSpace(GroupMetaText);
-
-    /// <summary>
-    /// Gets a trimmed one-line description for leaf cards so the graph stays readable even with long task text.
-    /// </summary>
-    public string CardDescriptionText => string.IsNullOrWhiteSpace(Description)
-        ? string.Empty
-        : Description.Trim();
-
-    /// <summary>
-    /// Gets whether the leaf-card description row should be shown.
-    /// </summary>
-    public bool HasCardDescription => !string.IsNullOrWhiteSpace(CardDescriptionText);
-
-    /// <summary>
-    /// Gets the short suffix used to identify a task inside the current hierarchy without flooding the card with the
-    /// full generated identifier.
-    /// </summary>
-    public string ShortIdText
-    {
-        get
-        {
-            string value = Id.Value;
-            int lastDashIndex = value.LastIndexOf('-');
-            return lastDashIndex >= 0 && lastDashIndex < value.Length - 1
-                ? value[(lastDashIndex + 1)..]
-                : value;
-        }
-    }
 
     /// <summary>
     /// Applies the latest layout snapshot produced by the dedicated graph-layout layer.
@@ -285,9 +177,6 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         RaisePropertyChanged(nameof(DirectChildCount));
         RaisePropertyChanged(nameof(DescendantTaskCount));
         RaisePropertyChanged(nameof(SummaryText));
-        RaisePropertyChanged(nameof(DetailsText));
-        RaisePropertyChanged(nameof(GroupMetaText));
-        RaisePropertyChanged(nameof(HasGroupMetaText));
     }
 
     /// <summary>
@@ -324,9 +213,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         if (string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Description), StringComparison.Ordinal))
         {
             RaisePropertyChanged(nameof(Description));
-            RaisePropertyChanged(nameof(CardDescriptionText));
-            RaisePropertyChanged(nameof(HasCardDescription));
-            RaisePropertyChanged(nameof(DetailsText));
+            return;
         }
     }
 
@@ -335,14 +222,11 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     private void RaiseStatusChanged()
     {
-        /* Graph surfaces still listen for Status changes, so relay both lifecycle and semantic-display updates when either
-           source changes on the shared task view model. */
-        RaisePropertyChanged(nameof(Status));
+        /* Graph surfaces listen for lifecycle and semantic-display state separately, so relay both whenever either source
+           changes on the shared task view model. */
         RaisePropertyChanged(nameof(State));
         RaisePropertyChanged(nameof(Outcome));
         RaisePropertyChanged(nameof(DisplayStatus));
-        RaisePropertyChanged(nameof(StatusText));
-        RaisePropertyChanged(nameof(StatusLabelText));
     }
 
     /// <summary>
@@ -356,12 +240,4 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
         RaisePropertyChanged(nameof(Height));
     }
 
-    /// <summary>
-    /// Raises derived selection-sensitive visual properties for generated canvas bindings.
-    /// </summary>
-    private void RaiseSelectionVisualChanged()
-    {
-        RaisePropertyChanged(nameof(ContainerBorderThickness));
-        RaisePropertyChanged(nameof(CardBorderThickness));
-    }
 }

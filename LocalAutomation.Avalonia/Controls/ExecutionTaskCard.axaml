@@ -134,14 +134,14 @@
                             CornerRadius="8" />
                     <Border x:Name="CardBorderChrome"
                             Classes="task-card-border"
-                            BorderThickness="{Binding CardBorderThickness}"
+                            BorderThickness="{Binding FrameBorderThickness, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
                             CornerRadius="8"
                             IsHitTestVisible="False" />
                     <!-- Keep the animated border as a real Border stroke so rounded corners and stroke thickness stay
                          consistent while the conic brush rotates two opposing highlights around the card. -->
                     <controls:AnimatedConicBorder x:Name="AnimatedBorderChrome"
                                                   Classes="task-card-animated-border"
-                                                  BorderThickness="{Binding CardBorderThickness}"
+                                                  BorderThickness="{Binding FrameBorderThickness, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
                                                   CornerRadius="8"
                                                   IsHitTestVisible="False" />
                     <!-- Center the title/status block within the card so shorter cards do not feel top-weighted. -->

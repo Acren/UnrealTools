@@ -107,7 +107,7 @@
                 CornerRadius="12" />
         <Border x:Name="ContainerBorderChrome"
                 Classes="group-container-border"
-                BorderThickness="{Binding ContainerBorderThickness}"
+                BorderThickness="{Binding FrameBorderThickness, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
                 CornerRadius="12"
                 IsHitTestVisible="False" />
 
@@ -117,7 +117,7 @@
                 Background="Transparent"
                 ClipToBounds="False"
                 CornerRadius="10,10,0,0"
-                Margin="{Binding ContainerBorderThickness}"
+                Margin="{Binding FrameBorderThickness, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
                 Height="{Binding HeaderHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Top">
