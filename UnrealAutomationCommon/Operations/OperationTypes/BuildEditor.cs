@@ -5,7 +5,7 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class BuildEditor : CommandProcessOperation<Project>
+    public class BuildEditor : BuildCookRunProjectOperationBase
     {
         /// <summary>
         /// BuildCookRun editor builds always expose build configuration selection.
@@ -20,23 +20,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 });
         }
 
-        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLock> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        /// <summary>
+        /// Editor prebuilds are modeled as the build-only BuildCookRun preset used by packaging workflows to prepare code
+        /// outputs without entering cook or package phases.
+        /// </summary>
+        protected override BuildCookRunProjectRequest GetBuildCookRunRequest(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
-            /* BuildCookRun editor builds still run through UAT/UBT under the hood, so they share the same process-local
-               Unreal build lock as direct Build.bat flows. */
-            foreach (global::LocalAutomation.Runtime.ExecutionLock executionLock in base.GetExecutionLocks(operationParameters))
-            {
-                yield return executionLock;
-            }
-
-            yield return UnrealExecutionLocks.GlobalBuild;
-        }
-
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
-        {
-            Engine engine = GetRequiredTargetEngineInstall(operationParameters);
-            Arguments args = UATArguments.MakeBuildArguments(operationParameters, engine);
-            return new global::LocalAutomation.Runtime.Command(engine.GetRunUATPath(), args.ToString());
+            return new BuildCookRunProjectRequest(BuildCookRunProjectPhases.Build);
         }
 
         protected override string GetOperationName()

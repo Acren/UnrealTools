@@ -9,7 +9,7 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
-    public class PackageProject : CommandProcessOperation<Project>
+    public class PackageProject : BuildCookRunProjectOperationBase
     {
         /// <summary>
         /// Project packaging always exposes archive and cooker settings because the generated UAT request depends on
@@ -27,49 +27,22 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 });
         }
 
-        protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLock> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        /// <summary>
+        /// Full project packaging remains a single BuildCookRun command for callers outside Deploy Plugin, but the shared
+        /// phase request now makes the build portion explicit so other workflows can split it when needed.
+        /// </summary>
+        protected override BuildCookRunProjectRequest GetBuildCookRunRequest(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
-            /* Project packaging compiles and stages through UAT, which touches the same shared Unreal build metadata as
-               editor and direct build flows. */
-            foreach (global::LocalAutomation.Runtime.ExecutionLock executionLock in base.GetExecutionLocks(operationParameters))
+            BuildCookRunProjectPhases phases = BuildCookRunProjectPhases.Cook
+                | BuildCookRunProjectPhases.Stage
+                | BuildCookRunProjectPhases.Pak
+                | BuildCookRunProjectPhases.Package;
+            if (operationParameters.GetOptions<PackageOptions>().Build)
             {
-                yield return executionLock;
+                phases |= BuildCookRunProjectPhases.Build;
             }
 
-            yield return UnrealExecutionLocks.GlobalBuild;
-        }
-
-        protected override global::LocalAutomation.Runtime.Command BuildCommand(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
-        {
-            Engine engine = GetRequiredTargetEngineInstall(operationParameters);
-            Arguments arguments = UATArguments.MakeBuildArguments(operationParameters, engine);
-            arguments.SetFlag("cook");
-            arguments.SetFlag("stage");
-            arguments.SetFlag("pak");
-            arguments.SetFlag("package");
-            //arguments.SetFlag("nocompileeditor");
-
-            // Archive
-            if (operationParameters.GetOptions<PackageOptions>().Archive)
-            {
-                arguments.SetFlag("archive");
-                arguments.SetKeyPath("archivedirectory", GetOutputPath(operationParameters));
-            }
-
-            // Set cooker exe
-            BuildConfiguration cookerConfiguration = operationParameters.GetOptions<CookOptions>().CookerConfiguration;
-            if (cookerConfiguration != BuildConfiguration.Development)
-            {
-                string unrealExe = engine.GetEditorCmdExe(cookerConfiguration);
-                arguments.SetKeyPath("unrealexe", unrealExe);
-            }
-
-            if (operationParameters.GetOptions<CookOptions>().WaitForAttach)
-            {
-                arguments.SetKeyValue("additionalcookeroptions", "-waitforattach");
-            }
-
-            return new global::LocalAutomation.Runtime.Command(engine.GetRunUATPath(), arguments.ToString());
+            return new BuildCookRunProjectRequest(phases, useArchiveOptions: true, useCookOptions: true);
         }
 
         protected override string GetOperationName()

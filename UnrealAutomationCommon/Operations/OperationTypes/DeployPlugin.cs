@@ -773,10 +773,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Reuses one already-prebuilt project variant for packaging by passing `-nocompileeditor` through the child
-        /// package-project operation.
+        /// Creates one shared parameter bag for BuildCookRun child operations that package prepared example-project
+        /// variants. Deploy-specific phase selection now lives on the transient BuildCookRun operation instances rather
+        /// than on a deploy-only public operation type.
         /// </summary>
-        private global::LocalAutomation.Runtime.OperationParameters CreateExampleProjectPackageParams(Project project, DeploymentWorkspaceState state, string outputPath)
+        private global::LocalAutomation.Runtime.OperationParameters CreateExampleProjectBuildCookRunParams(Project project, DeploymentWorkspaceState state, string outputPath)
         {
             global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
             parameters.Target = project;
@@ -797,12 +798,57 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Runs one package-project child operation against the provided example-project variant.
+        /// Creates one transient BuildCookRun child operation whose phase set is specific to the surrounding deploy flow
+        /// without forcing that preset into the public operation catalog.
         /// </summary>
-        private Task RunPackageProjectAsync(Project project, DeploymentWorkspaceState state, string outputPath, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
+        private static ConfiguredBuildCookRunProjectOperation CreateBuildCookRunProjectOperation(string operationName, BuildCookRunProjectRequest request)
+        {
+            return new ConfiguredBuildCookRunProjectOperation(operationName, request);
+        }
+
+        /// <summary>
+        /// Builds the prepared project's game target so later package-only BuildCookRun passes have the staged game receipt
+        /// they expect in Binaries/Win64 even when the project descriptor itself no longer has modules.
+        /// </summary>
+        private Task RunPreparedProjectBuildAsync(Project project, DeploymentWorkspaceState state, string outputPath, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
+        {
+            global::LocalAutomation.Runtime.OperationParameters parameters = CreateExampleProjectBuildCookRunParams(project, state, outputPath);
+
+            /* Stage still validates the game's target receipt when any enabled plugin contributes code, so the split build
+               step must always compile the game target explicitly before package-only BuildCookRun takes over. */
+            return RunChildOperationAsync(
+                new BuildProjectTarget(),
+                parameters,
+                context,
+                required: true,
+                failureMessage: failureMessage);
+        }
+
+        /// <summary>
+        /// Runs the split package flow for one prepared example-project variant. The flow first builds the game's UBT
+        /// target so staging has the expected receipt, then it runs a package-only BuildCookRun command without holding
+        /// the shared Unreal build lock through cook and package phases.
+        /// </summary>
+        private async Task RunPackageProjectAsync(Project project, DeploymentWorkspaceState state, string outputPath, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage, bool prebuildTarget = true)
         {
             FileUtils.DeleteDirectoryIfExists(outputPath);
-            return RunChildOperationAsync<PackageProject>(CreateExampleProjectPackageParams(project, state, outputPath), context, required: true, failureMessage: failureMessage);
+            global::LocalAutomation.Runtime.OperationParameters parameters = CreateExampleProjectBuildCookRunParams(project, state, outputPath);
+            if (prebuildTarget)
+            {
+                await RunPreparedProjectBuildAsync(project, state, outputPath, context, "Build project target for packaging failed");
+            }
+
+            await RunChildOperationAsync(
+                CreateBuildCookRunProjectOperation(
+                    "Package Prepared Project",
+                    new BuildCookRunProjectRequest(
+                        BuildCookRunProjectPhases.Cook | BuildCookRunProjectPhases.Stage | BuildCookRunProjectPhases.Pak | BuildCookRunProjectPhases.Package,
+                        useArchiveOptions: true,
+                        useCookOptions: true)),
+                parameters,
+                context,
+                required: true,
+                failureMessage: failureMessage);
         }
 
         /// <summary>
@@ -913,6 +959,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging blueprint-only example");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             using Project blueprintVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for packaging");
+
+            /* Unreal still treats the package as code-based when enabled plugins contribute modules, even after the host
+               project descriptor is converted to blueprint-only, so this branch still needs the explicit game-target build
+               step before the lock-free package-only BuildCookRun pass. */
             await RunPackageProjectAsync(blueprintVariant, state, GetBlueprintPackagePath(state), context, "Package blueprint-only example failed");
         }
 
@@ -939,12 +989,31 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteDirectoryIfExists(demoPackagePath);
 
             using Project demoVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for demo packaging");
-            global::LocalAutomation.Runtime.OperationParameters demoPackageParams = CreateExampleProjectPackageParams(demoVariant, state, demoPackagePath);
+            global::LocalAutomation.Runtime.OperationParameters demoPackageParams = CreateExampleProjectBuildCookRunParams(demoVariant, state, demoPackagePath);
 
             demoPackageParams.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
             demoPackageParams.GetOptions<PackageOptions>().NoDebugInfo = true;
 
-            await RunChildOperationAsync<PackageProject>(demoPackageParams, context, required: true, failureMessage: "Package demo executable failed");
+            /* The shipping demo still needs a game receipt when any enabled plugin contains code, so build the shipping
+               target first and then reuse that output during the package-only BuildCookRun pass. */
+            await RunChildOperationAsync(
+                new BuildProjectTarget(),
+                demoPackageParams,
+                context,
+                required: true,
+                failureMessage: "Build demo project target for packaging failed");
+
+            await RunChildOperationAsync(
+                CreateBuildCookRunProjectOperation(
+                    "Package Demo Project",
+                    new BuildCookRunProjectRequest(
+                        BuildCookRunProjectPhases.Cook | BuildCookRunProjectPhases.Stage | BuildCookRunProjectPhases.Pak | BuildCookRunProjectPhases.Package,
+                        useArchiveOptions: true,
+                        useCookOptions: true)),
+                demoPackageParams,
+                context,
+                required: true,
+                failureMessage: "Package demo executable failed");
         }
 
         /// <summary>

@@ -85,7 +85,10 @@ public sealed class UnrealExtensionModule : IExtensionModule
             typeof(VerifyDeployment)
         };
 
-        orderedTypes.AddRange(TypeUtils.GetSubclassesOf(typeof(RuntimeOperation)));
+        /* Extension discovery only auto-registers concrete public operations that the host can instantiate through the
+           default Activator path. Internal orchestration helpers may still derive from Operation, but they are created
+           explicitly by parent workflows and should never appear in the public extension catalog. */
+        orderedTypes.AddRange(TypeUtils.GetSubclassesOf(typeof(RuntimeOperation)).Where(IsDiscoverableOperationType));
 
         int sortOrder = 0;
         List<OperationDescriptor> descriptors = new();
@@ -103,6 +106,23 @@ public sealed class UnrealExtensionModule : IExtensionModule
         }
 
         return descriptors;
+    }
+
+    /// <summary>
+    /// Returns whether one reflected operation type is safe to register as a user-discoverable extension operation.
+    /// </summary>
+    private static bool IsDiscoverableOperationType(Type operationType)
+    {
+        if (operationType.IsAbstract)
+        {
+            return false;
+        }
+
+        /* The extension host instantiates registered operations through RuntimeOperation.CreateOperation, which uses the
+           public parameterless Activator path. Skip helper types that require constructor arguments or are not publicly
+           visible so discovery does not fail during module registration. */
+        return operationType.IsPublic
+            && operationType.GetConstructor(Type.EmptyTypes) != null;
     }
 
     /// <summary>

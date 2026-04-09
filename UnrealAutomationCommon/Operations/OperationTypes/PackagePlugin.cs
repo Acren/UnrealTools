@@ -26,12 +26,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override IEnumerable<global::LocalAutomation.Runtime.ExecutionLock> GetExecutionLocks(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             /* BuildPlugin runs through UAT and shares Unreal's writable build-rule outputs with other tool-driven build
-               flows, so plugin packaging participates in the same in-process lock. */
+               flows, so plugin packaging participates in the same in-process lock. It also launches AutomationTool, which
+               only allows one active instance per engine install. */
             foreach (global::LocalAutomation.Runtime.ExecutionLock executionLock in base.GetExecutionLocks(operationParameters))
             {
                 yield return executionLock;
             }
 
+            yield return UnrealExecutionLocks.GetAutomationToolLock(GetRequiredTargetEngineInstall(operationParameters));
             yield return UnrealExecutionLocks.GlobalBuild;
         }
 
