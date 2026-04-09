@@ -30,6 +30,7 @@ internal static class WindowsDirectoryCopy
             Arguments = BuildArguments(sourcePath, destinationPath),
             UseShellExecute = false,
             CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
