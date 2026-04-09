@@ -149,21 +149,21 @@
                           RowSpacing="6"
                           Margin="18,10,18,10"
                           VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Title}"
+                        <TextBlock Text="{Binding Task.Title}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
-                               Foreground="#F2F5F8"
-                               MaxHeight="40"
-                               TextWrapping="Wrap"
-                               VerticalAlignment="Center" />
+                                Foreground="#F2F5F8"
+                                MaxHeight="40"
+                                TextWrapping="Wrap"
+                                VerticalAlignment="Center" />
                         <controls:StatusIndicator Grid.Row="1"
-                                                  Status="{Binding DisplayStatus}"
+                                                  Status="{Binding Task.DisplayStatus}"
                                                   ShowLabel="True"
                                                   DotSize="6"
-                                                LabelFontSize="11"
-                                               VerticalAlignment="Center" />
+                                                 LabelFontSize="11"
+                                                VerticalAlignment="Center" />
                         <controls:ExecutionMetricsStrip Grid.Row="2"
-                                                        Metrics="{Binding Metrics}"
+                                                        Metrics="{Binding Task.Metrics}"
                                                         VerticalAlignment="Center" />
                   </Grid>
             </Grid>
@@ -177,7 +177,7 @@
                      Padding="10,8"
                      MaxWidth="320"
                      IsOpen="False">
-                <TextBlock Text="{Binding Description}"
+                <TextBlock Text="{Binding Task.Description}"
                            TextWrapping="Wrap"
                            Foreground="#D5DEE7"
                            FontSize="12"

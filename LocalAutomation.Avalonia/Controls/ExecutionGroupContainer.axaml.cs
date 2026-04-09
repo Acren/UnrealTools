@@ -204,41 +204,63 @@ public partial class ExecutionGroupContainer : UserControl
     /// </summary>
     private void HandleDataContextChanged(object? sender, EventArgs e)
     {
+        Thickness previousThickness = FrameBorderThickness;
         if (_observedNode != null)
         {
             _observedNode.PropertyChanged -= HandleObservedNodePropertyChanged;
+            _observedNode.Task.PropertyChanged -= HandleObservedTaskPropertyChanged;
         }
 
         _observedNode = DataContext as ExecutionNodeViewModel;
         if (_observedNode != null)
         {
             _observedNode.PropertyChanged += HandleObservedNodePropertyChanged;
+            _observedNode.Task.PropertyChanged += HandleObservedTaskPropertyChanged;
         }
 
         ApplySemanticClasses();
         MeasuredHeaderMinWidth = ExecutionGraphLayoutSettings.NodeMinWidth;
         UpdateMeasuredHeaderMinWidthIfNeeded();
-        RaisePropertyChanged(FrameBorderThicknessProperty, DefaultBorderThickness, FrameBorderThickness);
+        RaisePropertyChanged(FrameBorderThicknessProperty, previousThickness, FrameBorderThickness);
     }
 
     /// <summary>
-    /// Reapplies semantic classes whenever the node's status or selection state changes.
+    /// Reapplies selection-owned visuals whenever the graph node selection state changes.
     /// </summary>
     private void HandleObservedNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal) ||
-            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
+        if (!string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        ApplySemanticClasses();
+        Thickness nextThickness = FrameBorderThickness;
+        Thickness previousThickness = nextThickness.Equals(SelectedBorderThickness)
+            ? DefaultBorderThickness
+            : SelectedBorderThickness;
+        RaisePropertyChanged(FrameBorderThicknessProperty, previousThickness, nextThickness);
+        UpdateMeasuredHeaderMinWidthIfNeeded();
+    }
+
+    /// <summary>
+    /// Reapplies status-owned visuals and header measurement whenever the nested task view model changes in a way that can
+    /// alter semantic chrome or header content width.
+    /// </summary>
+    private void HandleObservedTaskPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.PropertyName) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.DisplayStatus), StringComparison.Ordinal))
         {
             ApplySemanticClasses();
-            if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
-            {
-                Thickness nextThickness = FrameBorderThickness;
-                Thickness previousThickness = nextThickness.Equals(SelectedBorderThickness)
-                    ? DefaultBorderThickness
-                    : SelectedBorderThickness;
-                RaisePropertyChanged(FrameBorderThicknessProperty, previousThickness, nextThickness);
-                UpdateMeasuredHeaderMinWidthIfNeeded();
-            }
+        }
+
+        if (string.IsNullOrWhiteSpace(e.PropertyName) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.DisplayStatus), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Title), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.Metrics), StringComparison.Ordinal))
+        {
+            UpdateMeasuredHeaderMinWidthIfNeeded();
         }
     }
 
@@ -263,11 +285,11 @@ public partial class ExecutionGroupContainer : UserControl
         /* Group background layers need the same semantic classes as the frame so disabled groups read as dimmer
            containers across both the body and header surfaces. */
         ExecutionStatusClasses.ApplyInteractionClasses(_backgroundShell!.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusClasses.ApplyStatusClasses(_backgroundShell.Classes, _observedNode.DisplayStatus);
+        ExecutionStatusClasses.ApplyStatusClasses(_backgroundShell.Classes, _observedNode.Task.DisplayStatus);
         ExecutionStatusClasses.ApplyInteractionClasses(_borderChrome!.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
         ExecutionStatusClasses.ApplyInteractionClasses(_headerShell!.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusClasses.ApplyStatusClasses(_headerShell.Classes, _observedNode.DisplayStatus);
-        ExecutionStatusClasses.ApplyStatusClasses(_borderChrome.Classes, _observedNode.DisplayStatus);
+        ExecutionStatusClasses.ApplyStatusClasses(_headerShell.Classes, _observedNode.Task.DisplayStatus);
+        ExecutionStatusClasses.ApplyStatusClasses(_borderChrome.Classes, _observedNode.Task.DisplayStatus);
     }
 
     /// <summary>

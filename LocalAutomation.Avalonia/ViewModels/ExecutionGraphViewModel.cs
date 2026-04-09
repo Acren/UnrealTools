@@ -20,7 +20,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private readonly RangeObservableCollection<ExecutionNodeViewModel> _nodes = new();
     private readonly RangeObservableCollection<ExecutionEdgeViewModel> _edges = new();
     private readonly Dictionary<RuntimeExecutionTaskId, ExecutionNodeViewModel> _nodesById = new();
-    private readonly Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), ExecutionEdgeViewModel> _edgesByKey = new();
     private readonly ExecutionGraphLayoutState _layoutState = new();
     private IReadOnlyDictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel> _tasksById = new Dictionary<RuntimeExecutionTaskId, ExecutionTaskViewModel>();
     private IReadOnlyList<RuntimeExecutionTask>? _sourceTasks;
@@ -314,7 +313,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         _nodes.Clear();
         _edges.Clear();
         _nodesById.Clear();
-        _edgesByKey.Clear();
 
         foreach (RuntimeExecutionTaskId taskId in _projection.VisibleTaskIds)
         {
@@ -337,7 +335,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         {
             ExecutionEdgeViewModel edge = CreateEdgeViewModel(edgeLayout);
             _edges.Add(edge);
-            _edgesByKey[(edgeLayout.SourceId, edgeLayout.TargetId)] = edge;
         }
 
         UpdateCanvasSize();
@@ -357,12 +354,10 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         }
 
         _edges.Clear();
-        _edgesByKey.Clear();
         foreach (ExecutionGraphEdgeLayout edgeLayout in _layoutResult.EdgeLayouts)
         {
             ExecutionEdgeViewModel edge = CreateEdgeViewModel(edgeLayout);
             _edges.Add(edge);
-            _edgesByKey[(edgeLayout.SourceId, edgeLayout.TargetId)] = edge;
         }
 
         UpdateCanvasSize();

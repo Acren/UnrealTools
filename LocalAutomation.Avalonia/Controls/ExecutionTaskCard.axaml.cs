@@ -156,39 +156,53 @@ public partial class ExecutionTaskCard : UserControl
     /// </summary>
     private void HandleDataContextChanged(object? sender, EventArgs e)
     {
+        Thickness previousThickness = FrameBorderThickness;
         if (_observedNode != null)
         {
             _observedNode.PropertyChanged -= HandleObservedNodePropertyChanged;
+            _observedNode.Task.PropertyChanged -= HandleObservedTaskPropertyChanged;
         }
 
         _observedNode = DataContext as ExecutionNodeViewModel;
         if (_observedNode != null)
         {
             _observedNode.PropertyChanged += HandleObservedNodePropertyChanged;
+            _observedNode.Task.PropertyChanged += HandleObservedTaskPropertyChanged;
         }
 
         ApplySemanticClasses();
-        RaisePropertyChanged(FrameBorderThicknessProperty, DefaultBorderThickness, FrameBorderThickness);
+        RaisePropertyChanged(FrameBorderThicknessProperty, previousThickness, FrameBorderThickness);
     }
 
     /// <summary>
-    /// Reapplies semantic classes whenever the node's status or selection state changes.
+    /// Reapplies selection-owned visuals whenever the graph node selection state changes.
     /// </summary>
     private void HandleObservedNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.State), StringComparison.Ordinal) ||
-            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal) ||
-            string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
+        if (!string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        ApplySemanticClasses();
+        Thickness nextThickness = FrameBorderThickness;
+        Thickness previousThickness = nextThickness.Equals(SelectedBorderThickness)
+            ? DefaultBorderThickness
+            : SelectedBorderThickness;
+        RaisePropertyChanged(FrameBorderThicknessProperty, previousThickness, nextThickness);
+    }
+
+    /// <summary>
+    /// Reapplies status-owned visuals whenever the nested task view model changes in a way that affects semantic styling
+    /// or the running animation state.
+    /// </summary>
+    private void HandleObservedTaskPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.PropertyName) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.State), StringComparison.Ordinal) ||
+            string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.DisplayStatus), StringComparison.Ordinal))
         {
             ApplySemanticClasses();
-            if (string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.IsSelected), StringComparison.Ordinal))
-            {
-                Thickness nextThickness = FrameBorderThickness;
-                Thickness previousThickness = nextThickness.Equals(SelectedBorderThickness)
-                    ? DefaultBorderThickness
-                    : SelectedBorderThickness;
-                RaisePropertyChanged(FrameBorderThicknessProperty, previousThickness, nextThickness);
-            }
         }
     }
 
@@ -211,15 +225,15 @@ public partial class ExecutionTaskCard : UserControl
         /* The outer click surface carries whole-card opacity treatment, while the inner shells still own fill and stroke
            styling. All three layers need the same semantic classes so the styles can compose predictably. */
         ExecutionStatusClasses.ApplyInteractionClasses(clickSurface.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusClasses.ApplyStatusClasses(clickSurface.Classes, _observedNode.DisplayStatus);
+        ExecutionStatusClasses.ApplyStatusClasses(clickSurface.Classes, _observedNode.Task.DisplayStatus);
         ExecutionStatusClasses.ApplyInteractionClasses(backgroundShell.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusClasses.ApplyStatusClasses(backgroundShell.Classes, _observedNode.DisplayStatus);
+        ExecutionStatusClasses.ApplyStatusClasses(backgroundShell.Classes, _observedNode.Task.DisplayStatus);
         ExecutionStatusClasses.ApplyInteractionClasses(borderChrome.Classes, _observedNode.IsSelected, _isHovered, _isPressed);
-        ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.DisplayStatus);
-        ExecutionStatusClasses.ApplyStatusClasses(animatedBorderChrome.Classes, _observedNode.DisplayStatus);
+        ExecutionStatusClasses.ApplyStatusClasses(borderChrome.Classes, _observedNode.Task.DisplayStatus);
+        ExecutionStatusClasses.ApplyStatusClasses(animatedBorderChrome.Classes, _observedNode.Task.DisplayStatus);
 
         /* Let the extracted control own the timer and conic brush creation while the task card only forwards whether the
            current task status should display the animated accent treatment. */
-        animatedBorderChrome.IsAnimated = _observedNode.State == global::LocalAutomation.Runtime.ExecutionTaskState.Running;
+        animatedBorderChrome.IsAnimated = _observedNode.Task.State == global::LocalAutomation.Runtime.ExecutionTaskState.Running;
     }
 }

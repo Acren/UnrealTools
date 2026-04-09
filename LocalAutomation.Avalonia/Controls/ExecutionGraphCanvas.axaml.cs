@@ -534,26 +534,18 @@ public partial class ExecutionGraphCanvas : UserControl
                 .SetTag("edge.count", graph.Edges.Count)
             : default;
 
-        (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount, int reorderedCount) groupStats;
+        (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount) groupStats;
         using (PerformanceActivityScope groupActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ReconcileGroupControls"))
         {
             groupStats = ReconcileGroupControls(graph);
-            groupActivity.SetTag("retained.group.count", groupStats.retainedCount)
-                .SetTag("created.group.count", groupStats.createdCount)
-                .SetTag("removed.group.count", groupStats.removedCount)
-                .SetTag("recreated.group.kind_change.count", groupStats.recreatedForRoleChangeCount)
-                .SetTag("reordered.group.count", groupStats.reorderedCount);
+            SetReconciliationTags(groupActivity, prefix: "group", groupStats);
         }
 
-        (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount, int reorderedCount) taskStats;
+        (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount) taskStats;
         using (PerformanceActivityScope taskActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ReconcileTaskControls"))
         {
             taskStats = ReconcileTaskControls(graph);
-            taskActivity.SetTag("retained.task.count", taskStats.retainedCount)
-                .SetTag("created.task.count", taskStats.createdCount)
-                .SetTag("removed.task.count", taskStats.removedCount)
-                .SetTag("recreated.task.kind_change.count", taskStats.recreatedForRoleChangeCount)
-                .SetTag("reordered.task.count", taskStats.reorderedCount);
+            SetReconciliationTags(taskActivity, prefix: "task", taskStats);
         }
 
         int edgePathCount;
@@ -563,47 +555,15 @@ public partial class ExecutionGraphCanvas : UserControl
             edgeActivity.SetTag("edge.path.count", edgePathCount);
         }
 
-        parentActivity.SetTag("retained.group.count", groupStats.retainedCount)
-            .SetTag("created.group.count", groupStats.createdCount)
-            .SetTag("removed.group.count", groupStats.removedCount)
-            .SetTag("recreated.group.kind_change.count", groupStats.recreatedForRoleChangeCount)
-            .SetTag("reordered.group.count", groupStats.reorderedCount)
-            .SetTag("retained.task.count", taskStats.retainedCount)
-            .SetTag("created.task.count", taskStats.createdCount)
-            .SetTag("removed.task.count", taskStats.removedCount)
-            .SetTag("recreated.task.kind_change.count", taskStats.recreatedForRoleChangeCount)
-            .SetTag("reordered.task.count", taskStats.reorderedCount)
-            .SetTag("edge.path.count", edgePathCount);
-
-        activity.SetTag("retained.group.count", groupStats.retainedCount)
-            .SetTag("created.group.count", groupStats.createdCount)
-            .SetTag("removed.group.count", groupStats.removedCount)
-            .SetTag("recreated.group.kind_change.count", groupStats.recreatedForRoleChangeCount)
-            .SetTag("reordered.group.count", groupStats.reorderedCount)
-            .SetTag("retained.task.count", taskStats.retainedCount)
-            .SetTag("created.task.count", taskStats.createdCount)
-            .SetTag("removed.task.count", taskStats.removedCount)
-            .SetTag("recreated.task.kind_change.count", taskStats.recreatedForRoleChangeCount)
-            .SetTag("reordered.task.count", taskStats.reorderedCount)
-            .SetTag("edge.path.count", edgePathCount);
-
-        sampledReconciliationActivity.SetTag("retained.group.count", groupStats.retainedCount)
-            .SetTag("created.group.count", groupStats.createdCount)
-            .SetTag("removed.group.count", groupStats.removedCount)
-            .SetTag("recreated.group.kind_change.count", groupStats.recreatedForRoleChangeCount)
-            .SetTag("reordered.group.count", groupStats.reorderedCount)
-            .SetTag("retained.task.count", taskStats.retainedCount)
-            .SetTag("created.task.count", taskStats.createdCount)
-            .SetTag("removed.task.count", taskStats.removedCount)
-            .SetTag("recreated.task.kind_change.count", taskStats.recreatedForRoleChangeCount)
-            .SetTag("reordered.task.count", taskStats.reorderedCount)
-            .SetTag("edge.path.count", edgePathCount);
+        SetReconciliationSummaryTags(parentActivity, groupStats, taskStats, edgePathCount);
+        SetReconciliationSummaryTags(activity, groupStats, taskStats, edgePathCount);
+        SetReconciliationSummaryTags(sampledReconciliationActivity, groupStats, taskStats, edgePathCount);
     }
 
     /// <summary>
     /// Reconciles retained group-container controls for nodes that currently act as containers.
     /// </summary>
-    private (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount, int reorderedCount) ReconcileGroupControls(ExecutionGraphViewModel graph)
+    private (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount) ReconcileGroupControls(ExecutionGraphViewModel graph)
     {
         if (_structureCanvas == null)
         {
@@ -645,19 +605,19 @@ public partial class ExecutionGraphCanvas : UserControl
                 continue;
             }
 
-            ExecutionGroupContainer groupControl = CreateGroupControl(group, useMeasuredWidth: false);
+            ExecutionGroupContainer groupControl = CreateGroupControl(group);
             _renderedGroupControls[group.Id] = groupControl;
             _structureCanvas.Children.Add(groupControl);
             createdCount++;
         }
 
-        return (retainedCount, createdCount, removedCount, recreatedForRoleChangeCount, reorderedCount: 0);
+        return (retainedCount, createdCount, removedCount, recreatedForRoleChangeCount);
     }
 
     /// <summary>
     /// Reconciles retained task-card controls for nodes that currently render as leaves.
     /// </summary>
-    private (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount, int reorderedCount) ReconcileTaskControls(ExecutionGraphViewModel graph)
+    private (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount) ReconcileTaskControls(ExecutionGraphViewModel graph)
     {
         if (_taskCanvas == null)
         {
@@ -668,7 +628,6 @@ public partial class ExecutionGraphCanvas : UserControl
         int createdCount = 0;
         int removedCount = 0;
         int recreatedForRoleChangeCount = 0;
-        int reorderedCount = 0;
         List<ExecutionNodeViewModel> leaves = graph.Nodes.Where(node => !node.IsContainer).ToList();
         HashSet<RuntimeExecutionTaskId> leafIds = leaves.Select(node => node.Id).ToHashSet();
 
@@ -709,7 +668,35 @@ public partial class ExecutionGraphCanvas : UserControl
         /* Leaf task cards do not visually stack on top of each other the way nested group containers do, so preserving
            exact child order in the task layer only creates expensive detach/re-add churn without changing what the user
            sees. Keep cards mounted in their existing order and only add/remove cards when the visible leaf set changes. */
-        return (retainedCount, createdCount, removedCount, recreatedForRoleChangeCount, reorderedCount);
+        return (retainedCount, createdCount, removedCount, recreatedForRoleChangeCount);
+    }
+
+    /// <summary>
+    /// Applies one common set of retained-control reconciliation tags for either the group layer or the task layer.
+    /// </summary>
+    private static void SetReconciliationTags(
+        PerformanceActivityScope activity,
+        string prefix,
+        (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount) stats)
+    {
+        activity.SetTag($"retained.{prefix}.count", stats.retainedCount)
+            .SetTag($"created.{prefix}.count", stats.createdCount)
+            .SetTag($"removed.{prefix}.count", stats.removedCount)
+            .SetTag($"recreated.{prefix}.kind_change.count", stats.recreatedForRoleChangeCount);
+    }
+
+    /// <summary>
+    /// Applies the combined reconciliation summary tags shared by the render, parent, and sampled activities.
+    /// </summary>
+    private static void SetReconciliationSummaryTags(
+        PerformanceActivityScope activity,
+        (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount) groupStats,
+        (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount) taskStats,
+        int edgePathCount)
+    {
+        SetReconciliationTags(activity, prefix: "group", groupStats);
+        SetReconciliationTags(activity, prefix: "task", taskStats);
+        activity.SetTag("edge.path.count", edgePathCount);
     }
 
     /// <summary>
@@ -869,9 +856,9 @@ public partial class ExecutionGraphCanvas : UserControl
                 continue;
             }
 
-            Control control = node.IsContainer
-                ? CreateGroupControl(node, useMeasuredWidth: true)
-                : CreateTaskControl(node);
+            /* The layout layer only reuses detached width measurement for leaf cards. Visible group containers report
+               live header widths through their retained controls instead of entering the hidden measurement host. */
+            Control control = CreateTaskControl(node);
             _measurementNodeControls[node.Id] = control;
             measurementCanvas.Children.Add(control);
         }
@@ -938,11 +925,11 @@ public partial class ExecutionGraphCanvas : UserControl
     /// <summary>
     /// Creates one XAML-backed group control and positions it on the graph canvas.
     /// </summary>
-    private ExecutionGroupContainer CreateGroupControl(ExecutionNodeViewModel group, bool useMeasuredWidth = false)
+    private ExecutionGroupContainer CreateGroupControl(ExecutionNodeViewModel group)
     {
         ExecutionGroupContainer container = new()
         {
-            GroupWidth = useMeasuredWidth ? double.NaN : group.Width,
+            GroupWidth = group.Width,
             GroupHeight = group.Height,
             HeaderHeight = ExecutionGraphLayoutSettings.GroupHeaderHeight,
             DataContext = group,
@@ -1117,20 +1104,21 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private static void ApplyEdgeStatusClasses(ShapePath path, ExecutionNodeViewModel target)
     {
-        ExecutionStatusClasses.ApplyStatusClasses(path.Classes, target.DisplayStatus);
+        ExecutionTaskViewModel task = target.Task;
+        ExecutionStatusClasses.ApplyStatusClasses(path.Classes, task.DisplayStatus);
 
         PropertyChangedEventHandler? handler = null;
         handler = (_, e) =>
         {
             if (string.IsNullOrWhiteSpace(e.PropertyName) ||
-                string.Equals(e.PropertyName, nameof(ExecutionNodeViewModel.DisplayStatus), StringComparison.Ordinal))
+                string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.DisplayStatus), StringComparison.Ordinal))
             {
-                ExecutionStatusClasses.ApplyStatusClasses(path.Classes, target.DisplayStatus);
+                ExecutionStatusClasses.ApplyStatusClasses(path.Classes, task.DisplayStatus);
             }
         };
 
-        target.PropertyChanged += handler;
-        path.DetachedFromVisualTree += (_, _) => target.PropertyChanged -= handler;
+        task.PropertyChanged += handler;
+        path.DetachedFromVisualTree += (_, _) => task.PropertyChanged -= handler;
     }
 
     /// <summary>
