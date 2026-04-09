@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
@@ -35,8 +36,7 @@ public partial class ExecutionGraphCanvas : UserControl
     private const double EdgeHitThickness = 10;
     private const int ReconciliationInstrumentationInterval = 10;
 
-    private Canvas? _groupCanvas;
-    private Canvas? _edgeCanvas;
+    private Canvas? _structureCanvas;
     private Canvas? _taskCanvas;
     private Canvas? _measurementCanvas;
     private Border? _viewportHost;
@@ -44,6 +44,7 @@ public partial class ExecutionGraphCanvas : UserControl
     private ExecutionGraphViewModel? _observedGraph;
     private readonly Dictionary<RuntimeExecutionTaskId, ExecutionGroupContainer> _renderedGroupControls = new();
     private readonly Dictionary<RuntimeExecutionTaskId, ExecutionTaskCard> _renderedTaskControls = new();
+    private readonly Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId, bool IsHoverTarget), ShapePath> _renderedEdgePaths = new();
     private readonly Dictionary<RuntimeExecutionTaskId, Control> _measurementNodeControls = new();
     private readonly Dictionary<RuntimeExecutionTaskId, double> _pendingGroupWidthUpdates = new();
     private bool _isPanning;
@@ -184,8 +185,7 @@ public partial class ExecutionGraphCanvas : UserControl
         AvaloniaXamlLoader.Load(this);
         _viewportHost = this.FindControl<Border>("ViewportHost");
         _graphContentRoot = this.FindControl<Border>("GraphContentRoot");
-        _groupCanvas = this.FindControl<Canvas>("GroupCanvas");
-        _edgeCanvas = this.FindControl<Canvas>("EdgeCanvas");
+        _structureCanvas = this.FindControl<Canvas>("StructureCanvas");
         _taskCanvas = this.FindControl<Canvas>("TaskCanvas");
         _measurementCanvas = this.FindControl<Canvas>("MeasurementCanvas");
         if (_viewportHost != null)
@@ -352,7 +352,7 @@ public partial class ExecutionGraphCanvas : UserControl
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RenderGraph")
             .SetTag("trigger", trigger);
 
-        if (_groupCanvas == null || _edgeCanvas == null || _taskCanvas == null || _measurementCanvas == null)
+        if (_structureCanvas == null || _taskCanvas == null || _measurementCanvas == null)
         {
             activity.SetTag("render.skipped", "MissingCanvas");
             return;
@@ -465,7 +465,7 @@ public partial class ExecutionGraphCanvas : UserControl
         }
 
         _measurementRefreshPending = false;
-        if (_observedGraph == null || _groupCanvas == null || _edgeCanvas == null || _taskCanvas == null || _measurementCanvas == null)
+        if (_observedGraph == null || _structureCanvas == null || _taskCanvas == null || _measurementCanvas == null)
         {
             return;
         }
@@ -509,7 +509,7 @@ public partial class ExecutionGraphCanvas : UserControl
                 .SetTag("pan.y", _panY.ToString("0.###"));
         }
 
-        activity.SetTag("render.child.count", _groupCanvas.Children.Count + _edgeCanvas.Children.Count + _taskCanvas.Children.Count);
+        activity.SetTag("render.child.count", _structureCanvas.Children.Count + _taskCanvas.Children.Count);
 
         using (PerformanceActivityScope viewportAdjustmentActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ApplyPendingViewportAdjustment"))
         {
@@ -604,7 +604,7 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount, int reorderedCount) ReconcileGroupControls(ExecutionGraphViewModel graph)
     {
-        if (_groupCanvas == null)
+        if (_structureCanvas == null)
         {
             return default;
         }
@@ -613,7 +613,6 @@ public partial class ExecutionGraphCanvas : UserControl
         int createdCount = 0;
         int removedCount = 0;
         int recreatedForRoleChangeCount = 0;
-        int reorderedCount = 0;
         List<ExecutionNodeViewModel> groups = graph.Nodes.Where(node => node.IsContainer).OrderByDescending(node => node.Width * node.Height).ToList();
         HashSet<RuntimeExecutionTaskId> groupIds = groups.Select(group => group.Id).ToHashSet();
 
@@ -625,7 +624,7 @@ public partial class ExecutionGraphCanvas : UserControl
             }
 
             DetachGroupMeasuredWidthObserver(groupControl);
-            _groupCanvas.Children.Remove(groupControl);
+            _structureCanvas.Children.Remove(groupControl);
             _renderedGroupControls.Remove(taskId);
             removedCount++;
         }
@@ -647,12 +646,11 @@ public partial class ExecutionGraphCanvas : UserControl
 
             ExecutionGroupContainer groupControl = CreateGroupControl(group, useMeasuredWidth: false);
             _renderedGroupControls[group.Id] = groupControl;
-            _groupCanvas.Children.Add(groupControl);
+            _structureCanvas.Children.Add(groupControl);
             createdCount++;
         }
 
-        reorderedCount = ReorderCanvasChildren(_groupCanvas, groups.Select(group => (Control)_renderedGroupControls[group.Id]));
-        return (retainedCount, createdCount, removedCount, recreatedForRoleChangeCount, reorderedCount);
+        return (retainedCount, createdCount, removedCount, recreatedForRoleChangeCount, reorderedCount: 0);
     }
 
     /// <summary>
@@ -690,7 +688,7 @@ public partial class ExecutionGraphCanvas : UserControl
             if (_renderedGroupControls.Remove(leaf.Id, out ExecutionGroupContainer? staleGroupControl))
             {
                 DetachGroupMeasuredWidthObserver(staleGroupControl);
-                _groupCanvas?.Children.Remove(staleGroupControl);
+                _structureCanvas?.Children.Remove(staleGroupControl);
                 recreatedForRoleChangeCount++;
             }
 
@@ -714,35 +712,43 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-    /// Rebuilds the edge layer while leaving retained node controls untouched.
+    /// Rebuilds the retained edge controls inside the shared structural canvas while leaving retained node controls and
+    /// task cards mounted in place.
     /// </summary>
     private int RebuildEdgeLayer(ExecutionGraphViewModel graph)
     {
-        if (_edgeCanvas == null)
+        if (_structureCanvas == null)
         {
             return 0;
         }
 
-        _edgeCanvas.Children.Clear();
+        foreach (ShapePath edgePath in _renderedEdgePaths.Values)
+        {
+            _structureCanvas.Children.Remove(edgePath);
+        }
+
+        _renderedEdgePaths.Clear();
         int edgePathCount = 0;
         foreach (ExecutionEdgeViewModel edge in graph.Edges)
         {
             /* Each rendered edge gets a visible path plus a wider transparent hit target so hover affordances are usable
                without forcing the user to land precisely on a two-pixel line. */
-            foreach (ShapePath edgePath in CreateEdgeControls(edge))
+            foreach (((RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId, bool IsHoverTarget) key, ShapePath edgePath) in CreateEdgeControls(edge))
             {
-                _edgeCanvas.Children.Add(edgePath);
+                _renderedEdgePaths[key] = edgePath;
+                _structureCanvas.Children.Add(edgePath);
                 edgePathCount++;
             }
         }
 
+        ApplyStructureZOrder(graph);
         return edgePathCount;
     }
 
     /// <summary>
     /// Creates the visible edge path plus a transparent hover target that toggles the same visual path classes.
     /// </summary>
-    private static IEnumerable<ShapePath> CreateEdgeControls(ExecutionEdgeViewModel edge)
+    private static IEnumerable<((RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId, bool IsHoverTarget) key, ShapePath path)> CreateEdgeControls(ExecutionEdgeViewModel edge)
     {
         ShapePath visiblePath = new()
         {
@@ -770,7 +776,75 @@ public partial class ExecutionGraphCanvas : UserControl
         hoverTargetPath.PointerExited += (_, _) => visiblePath.Classes.Set("hover", false);
         hoverTargetPath.DetachedFromVisualTree += (_, _) => visiblePath.Classes.Set("hover", false);
 
-        return [visiblePath, hoverTargetPath];
+        return
+        [
+            ((edge.Source.Id, edge.Target.Id, false), visiblePath),
+            ((edge.Source.Id, edge.Target.Id, true), hoverTargetPath)
+        ];
+    }
+
+    /// <summary>
+    /// Applies one shared back-to-front ordering across groups and whole edges so disjoint unrelated groups can sit above
+    /// or below a given dependency path without forcing segment-level clipping.
+    /// </summary>
+    private void ApplyStructureZOrder(ExecutionGraphViewModel graph)
+    {
+        if (_structureCanvas == null)
+        {
+            return;
+        }
+
+        ExecutionGraphViewModel.StructureLayeringSnapshot layering = graph.StructureLayering;
+        Dictionary<RuntimeExecutionTaskId, int> groupBaseZ = layering.OrderedGroups
+            .Select((group, index) => (group.Id, index))
+            .ToDictionary(entry => entry.Id, entry => entry.index * 2);
+
+        /* Group containers keep their deterministic relative order, while each edge is placed into the highest valid slot
+           that still stays below unrelated crossed groups and above the groups that own one of its endpoints. */
+        foreach (ExecutionNodeViewModel group in layering.OrderedGroups)
+        {
+            if (_renderedGroupControls.TryGetValue(group.Id, out ExecutionGroupContainer? control))
+            {
+                control.ZIndex = groupBaseZ[group.Id];
+            }
+        }
+
+        foreach (ExecutionEdgeViewModel edge in graph.Edges)
+        {
+            if (!layering.EdgeConstraints.TryGetValue((edge.Source.Id, edge.Target.Id), out ExecutionGraphViewModel.EdgeLayeringConstraints? constraints))
+            {
+                continue;
+            }
+
+            int minimumEdgeZ = -1;
+            foreach (RuntimeExecutionTaskId groupId in constraints.GroupsToRenderAbove)
+            {
+                if (groupBaseZ.TryGetValue(groupId, out int groupZ))
+                {
+                    minimumEdgeZ = Math.Max(minimumEdgeZ, groupZ + 1);
+                }
+            }
+
+            int maximumEdgeZ = (layering.OrderedGroups.Count * 2) + 1;
+            foreach (RuntimeExecutionTaskId groupId in constraints.GroupsToRenderBelow)
+            {
+                if (groupBaseZ.TryGetValue(groupId, out int groupZ))
+                {
+                    maximumEdgeZ = Math.Min(maximumEdgeZ, groupZ - 1);
+                }
+            }
+
+            int resolvedEdgeZ = minimumEdgeZ <= maximumEdgeZ ? maximumEdgeZ : minimumEdgeZ;
+            if (_renderedEdgePaths.TryGetValue((edge.Source.Id, edge.Target.Id, false), out ShapePath? visiblePath))
+            {
+                visiblePath.ZIndex = resolvedEdgeZ;
+            }
+
+            if (_renderedEdgePaths.TryGetValue((edge.Source.Id, edge.Target.Id, true), out ShapePath? hoverPath))
+            {
+                hoverPath.ZIndex = resolvedEdgeZ;
+            }
+        }
     }
 
     /// <summary>
@@ -849,39 +923,6 @@ public partial class ExecutionGraphCanvas : UserControl
     {
         measurementCanvas.Children.Clear();
         _measurementNodeControls.Clear();
-    }
-
-    /// <summary>
-    /// Reorders one layer so retained controls follow the same deterministic order as a fresh rebuild.
-    /// </summary>
-    private static int ReorderCanvasChildren(Canvas canvas, IEnumerable<Control> orderedControls)
-    {
-        List<Control> desiredControls = orderedControls.ToList();
-        if (canvas.Children.Count == desiredControls.Count)
-        {
-            bool orderMatches = true;
-            for (int index = 0; index < desiredControls.Count; index++)
-            {
-                if (!ReferenceEquals(canvas.Children[index], desiredControls[index]))
-                {
-                    orderMatches = false;
-                    break;
-                }
-            }
-
-            if (orderMatches)
-            {
-                return 0;
-            }
-        }
-
-        canvas.Children.Clear();
-        foreach (Control control in desiredControls)
-        {
-            canvas.Children.Add(control);
-        }
-
-        return desiredControls.Count;
     }
 
     /// <summary>

@@ -23,17 +23,12 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
                     RenderTransformOrigin="0,0">
-                <!-- Separate retained layers keep z-order structural instead of relying on manual child-index juggling
-                     inside one flat canvas. Groups stay behind edges, and edges stay behind task cards. -->
+                <!-- Keep task cards in their own top layer while groups and edges share one structural canvas whose child
+                     ZIndex values can interleave whole edges between unrelated group containers. -->
                 <Grid Width="{Binding CanvasWidth}"
                       Height="{Binding CanvasHeight}"
                       UseLayoutRounding="True">
-                    <Canvas x:Name="GroupCanvas"
-                            Width="{Binding CanvasWidth}"
-                            Height="{Binding CanvasHeight}"
-                            UseLayoutRounding="True"
-                            IsHitTestVisible="True" />
-                    <Canvas x:Name="EdgeCanvas"
+                    <Canvas x:Name="StructureCanvas"
                             Width="{Binding CanvasWidth}"
                             Height="{Binding CanvasHeight}"
                             UseLayoutRounding="True"

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Avalonia;
 using LocalAutomation.Avalonia.Collections;
 using LocalAutomation.Core;
 using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
@@ -15,6 +16,60 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionGraphViewModel : ViewModelBase
 {
+    /// <summary>
+    /// Carries the visible group ordering plus whole-edge slot constraints for one graph snapshot so the canvas can apply
+    /// interleaved Z ordering without teaching every edge view model about group ancestry.
+    /// </summary>
+    public sealed class StructureLayeringSnapshot
+    {
+        /// <summary>
+        /// Creates one immutable layering snapshot from the current visible groups and per-edge constraints.
+        /// </summary>
+        public StructureLayeringSnapshot(
+            IReadOnlyList<ExecutionNodeViewModel> orderedGroups,
+            IReadOnlyDictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), EdgeLayeringConstraints> edgeConstraints)
+        {
+            OrderedGroups = orderedGroups ?? throw new ArgumentNullException(nameof(orderedGroups));
+            EdgeConstraints = edgeConstraints ?? throw new ArgumentNullException(nameof(edgeConstraints));
+        }
+
+        /// <summary>
+        /// Gets visible groups in deterministic base draw order from back to front.
+        /// </summary>
+        public IReadOnlyList<ExecutionNodeViewModel> OrderedGroups { get; }
+
+        /// <summary>
+        /// Gets the whole-edge ordering constraints keyed by visible source and target identifiers.
+        /// </summary>
+        public IReadOnlyDictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), EdgeLayeringConstraints> EdgeConstraints { get; }
+    }
+
+    /// <summary>
+    /// Carries the groups a whole edge must render above and below for one graph snapshot.
+    /// </summary>
+    public sealed class EdgeLayeringConstraints
+    {
+        /// <summary>
+        /// Creates one immutable set of whole-edge ordering constraints.
+        /// </summary>
+        public EdgeLayeringConstraints(IReadOnlyList<RuntimeExecutionTaskId> groupsToRenderAbove, IReadOnlyList<RuntimeExecutionTaskId> groupsToRenderBelow)
+        {
+            GroupsToRenderAbove = groupsToRenderAbove ?? throw new ArgumentNullException(nameof(groupsToRenderAbove));
+            GroupsToRenderBelow = groupsToRenderBelow ?? throw new ArgumentNullException(nameof(groupsToRenderBelow));
+        }
+
+        /// <summary>
+        /// Gets the visible groups that a whole edge must render above because one endpoint belongs to their subtree.
+        /// </summary>
+        public IReadOnlyList<RuntimeExecutionTaskId> GroupsToRenderAbove { get; }
+
+        /// <summary>
+        /// Gets the visible groups that a whole edge should render below because the route crosses them without belonging
+        /// to their subtree.
+        /// </summary>
+        public IReadOnlyList<RuntimeExecutionTaskId> GroupsToRenderBelow { get; }
+    }
+
     /// <summary>
     /// Defines the minimum width used for graph nodes so short titles still read as graph nodes rather than badges.
     /// </summary>
@@ -58,6 +113,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     private double _canvasHeight;
     private bool _isUpdatingGraph;
     private bool _revealHiddenTasks;
+    private StructureLayeringSnapshot _structureLayering = new(new List<ExecutionNodeViewModel>(), new Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), EdgeLayeringConstraints>());
 
     /// <summary>
     /// Formats one optional duration using the compact runtime clock style shared by the workspace header and graph metrics.
@@ -89,6 +145,11 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// Gets the rendered graph-edge collection.
     /// </summary>
     public ObservableCollection<ExecutionEdgeViewModel> Edges => _edges;
+
+    /// <summary>
+    /// Gets the current structural layering snapshot used by the canvas to interleave groups and whole edges.
+    /// </summary>
+    public StructureLayeringSnapshot StructureLayering => _structureLayering;
 
     /// <summary>
     /// Gets whether the graph is currently rebuilding its internal collections and bounds as one bulk update.
@@ -209,6 +270,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             _ownedRawTaskIdsByVisibleNodeId.Clear();
             _leafDescendantsByGroupId.Clear();
             _measuredNodeWidths.Clear();
+            _structureLayering = new StructureLayeringSnapshot(new List<ExecutionNodeViewModel>(), new Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), EdgeLayeringConstraints>());
             foreach ((RuntimeExecutionTaskId taskId, double width) in retainedMeasuredNodeWidths)
             {
                 _measuredNodeWidths[taskId] = width;
@@ -903,6 +965,100 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         _edges.AddRange(edges
             .GroupBy(edge => (edge.Source.Id, edge.Target.Id))
             .Select(group => group.First()));
+        _structureLayering = BuildStructureLayeringSnapshot();
+    }
+
+    /// <summary>
+    /// Builds the graph-owned structural layering snapshot so the canvas can ask the graph for whole-edge ordering
+    /// answers without storing that policy on every edge view model.
+    /// </summary>
+    private StructureLayeringSnapshot BuildStructureLayeringSnapshot()
+    {
+        List<ExecutionNodeViewModel> orderedGroups = _nodes
+            .Where(node => node.IsContainer)
+            .OrderByDescending(node => node.Width * node.Height)
+            .ToList();
+        Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), EdgeLayeringConstraints> edgeConstraints = _edges
+            .ToDictionary(edge => (edge.Source.Id, edge.Target.Id), ResolveWholeEdgeLayering);
+        return new StructureLayeringSnapshot(orderedGroups, edgeConstraints);
+    }
+
+    /// <summary>
+    /// Resolves the visible groups that constrain one whole-edge draw slot so the canvas can interleave the edge between
+    /// unrelated group containers without segment-level clipping.
+    /// </summary>
+    private EdgeLayeringConstraints ResolveWholeEdgeLayering(ExecutionEdgeViewModel edge)
+    {
+        HashSet<RuntimeExecutionTaskId> groupsToRenderAbove = GetVisibleAncestorIds(edge.Source.Id)
+            .Concat(GetVisibleAncestorIds(edge.Target.Id))
+            .ToHashSet();
+        List<RuntimeExecutionTaskId> groupsToRenderBelow = _nodes
+            .Where(node => node.IsContainer)
+            .Select(node => node.Id)
+            .Where(groupId => !groupsToRenderAbove.Contains(groupId))
+            .Where(groupId => DoesEdgeCrossGroup(edge, _nodesById[groupId]))
+            .OrderBy(GetVisibleDepth)
+            .ToList();
+        return new EdgeLayeringConstraints(groupsToRenderAbove.OrderBy(GetVisibleDepth).ToList(), groupsToRenderBelow);
+    }
+
+    /// <summary>
+    /// Enumerates the visible ancestor chain for one node id using the collapsed hierarchy projection rather than raw task
+    /// parents.
+    /// </summary>
+    private IEnumerable<RuntimeExecutionTaskId> GetVisibleAncestorIds(RuntimeExecutionTaskId nodeId)
+    {
+        RuntimeExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId? parentId)
+            ? parentId
+            : null;
+        while (currentParentId is RuntimeExecutionTaskId resolvedParentId)
+        {
+            yield return resolvedParentId;
+            currentParentId = _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? nextParentId)
+                ? nextParentId
+                : null;
+        }
+    }
+
+    /// <summary>
+    /// Returns the visible hierarchy depth for one node so layering constraints can be ordered from outer groups to inner
+    /// groups consistently.
+    /// </summary>
+    private int GetVisibleDepth(RuntimeExecutionTaskId nodeId)
+    {
+        int depth = 0;
+        RuntimeExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId? parentId)
+            ? parentId
+            : null;
+        while (currentParentId is RuntimeExecutionTaskId resolvedParentId)
+        {
+            depth++;
+            currentParentId = _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? nextParentId)
+                ? nextParentId
+                : null;
+        }
+
+        return depth;
+    }
+
+    /// <summary>
+    /// Returns whether the routed edge intersects the target group rectangle at all, which is the condition that makes the
+    /// group relevant as an occluding container for whole-edge ordering.
+    /// </summary>
+    private static bool DoesEdgeCrossGroup(ExecutionEdgeViewModel edge, ExecutionNodeViewModel group)
+    {
+        Rect groupRect = new(group.X, group.Y, group.Width, group.Height);
+        if (groupRect.Width <= 0 || groupRect.Height <= 0)
+        {
+            return false;
+        }
+
+        Rect routeBounds = new(
+            Math.Min(edge.Source.X + edge.Source.Width, edge.Target.X),
+            Math.Min(edge.Source.Y, edge.Target.Y),
+            Math.Abs(edge.Target.X - (edge.Source.X + edge.Source.Width)),
+            Math.Max(edge.Source.Y + edge.Source.Height, edge.Target.Y + edge.Target.Height) - Math.Min(edge.Source.Y, edge.Target.Y));
+        return routeBounds.Intersects(groupRect);
     }
 
     /// <summary>
