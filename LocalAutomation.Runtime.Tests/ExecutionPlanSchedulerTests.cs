@@ -195,6 +195,48 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
+    /// Confirms that a task waiting only on an execution lock still has no execution timer until it actually reaches
+    /// Running.
+    /// </summary>
+    [Fact]
+    public async Task TaskWaitingForExecutionLockDoesNotStartDuration()
+    {
+        // Arrange: branch A holds the shared lock so branch B can only reach the explicit lock-wait state.
+        ExecutionLock sharedLock = new("lock-wait-duration");
+        TaskCompletionSource<bool> branchAStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseBranchA = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId branchATaskId = default;
+        ExecutionTaskId branchBVisibleTaskId = default;
+        ExecutionTaskId branchBTaskId = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Branch A").Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchATaskId);
+                scope.Task("Branch B", out branchBVisibleTaskId).Run(_ => Task.FromResult(OperationResult.Succeeded()), out branchBTaskId);
+            });
+        }, sharedLock);
+
+        // Act: wait until branch A is definitely running so branch B is forced to remain in lock wait.
+        (_, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(branchATaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        // Assert: lock wait is visible, but elapsed execution time should still be absent.
+        Assert.NotEqual(default, branchBVisibleTaskId);
+        ExecutionTask blockedTask = session.GetTask(branchBVisibleTaskId);
+        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, blockedTask.State);
+        Assert.Null(blockedTask.StartedAt);
+        Assert.Null(session.GetTaskDuration(branchBVisibleTaskId));
+
+        // Cleanup: release the holder so the scheduler can finish and the test leaves no background work behind.
+        releaseBranchA.TrySetResult(true);
+        await executeTask;
+    }
+
+    /// <summary>
     /// Confirms that equally ready sibling body tasks start in declared order when a shared lock forces the scheduler to
     /// choose exactly one winner first.
     /// </summary>
