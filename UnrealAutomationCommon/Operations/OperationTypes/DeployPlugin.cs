@@ -1202,7 +1202,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string expectedComment = $"// {copyrightNotice}";
             foreach (string file in Directory.EnumerateFiles(sourcePath, "*.*", SearchOption.AllDirectories))
             {
-                string firstLine;
+                string? firstLine;
                 using (StreamReader reader = new(file))
                 {
                     firstLine = reader.ReadLine();
@@ -1214,7 +1214,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 }
 
                 List<string> lines = File.ReadAllLines(file).ToList();
-                if (firstLine.StartsWith("//"))
+                if (firstLine != null && firstLine.StartsWith("//", StringComparison.Ordinal))
                 {
                     lines[0] = expectedComment;
                 }

@@ -45,7 +45,9 @@ namespace UnrealAutomationCommon
 
         public static void Run(string File, UnrealArguments Args)
         {
-            Run(File, Args.ToString());
+            /* Unreal argument builders are expected to format themselves as strings, but null-safe fallback keeps this
+               thin wrapper from passing a null argument string into the process-launch overload. */
+            Run(File, Args?.ToString() ?? string.Empty);
         }
 
         public static void OpenDirectory(string DirectoryPath)

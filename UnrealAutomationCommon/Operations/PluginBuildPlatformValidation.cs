@@ -48,7 +48,7 @@ namespace UnrealAutomationCommon.Operations
         // Parse a built argument list into the final set of requested target platforms.
         public static List<string> GetRequestedTargetPlatforms(Arguments arguments)
         {
-            Argument targetPlatformsArgument = arguments.GetArgument("TargetPlatforms");
+            Argument? targetPlatformsArgument = arguments.GetArgument("TargetPlatforms");
             if (targetPlatformsArgument == null || string.IsNullOrWhiteSpace(targetPlatformsArgument.Value))
             {
                 return new List<string>();

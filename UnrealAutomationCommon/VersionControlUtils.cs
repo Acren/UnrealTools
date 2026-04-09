@@ -42,10 +42,10 @@ namespace UnrealAutomationCommon
 
             /* Read stdout and stderr asynchronously so the caller does not block a worker thread while git resolves the
                current branch and so non-zero exits can report the captured error text clearly. */
-            Task<string> branchNameTask = process.StandardOutput.ReadLineAsync();
+            Task<string?> branchNameTask = process.StandardOutput.ReadLineAsync();
             Task<string> errorTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
-            string branchName = await branchNameTask;
+            string branchName = await branchNameTask ?? string.Empty;
             string error = await errorTask;
             if (process.ExitCode != 0)
             {

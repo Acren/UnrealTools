@@ -12,7 +12,7 @@ namespace UnrealAutomationCommon.Unreal
         {
             try
             {
-                string EnumString = Enum.GetName(config.GetType(), config);
+                string EnumString = Enum.GetName(typeof(BuildConfiguration), config) ?? string.Empty;
                 return EnumString;
             }
             catch

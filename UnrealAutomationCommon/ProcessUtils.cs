@@ -1,7 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Management;
-using System.Reflection;
 
 namespace UnrealAutomationCommon
 {
@@ -34,86 +32,21 @@ namespace UnrealAutomationCommon
 
             try
             {
-                // Prefer the runtime's built-in process-tree termination when available because it avoids platform-
-                // specific child-process discovery code and works across more host configurations.
-                if (TryKillProcessTree(pid))
-                {
-                    return;
-                }
-
-                // Fall back to the legacy WMI-based child walk on Windows desktop runtimes where System.Management is
-                // available. This preserves the previous behavior for older process flows.
-                ManagementObjectSearcher searcher = new("Select * From Win32_Process Where ParentProcessID=" + pid);
-                ManagementObjectCollection moc = searcher.Get();
-                foreach (ManagementObject mo in moc)
-                {
-                    KillProcessAndChildren(Convert.ToInt32(mo["ProcessID"]));
-                }
-            }
-            catch (PlatformNotSupportedException)
-            {
-                // Non-desktop or cross-platform hosts may not support System.Management. In that case, terminate the
-                // main process directly so cancel/terminate cannot crash the application.
-            }
-
-            TryKillSingleProcess(pid);
-        }
-
-        /// <summary>
-        /// Uses reflection to call `Process.Kill(true)` when running on a runtime that exposes the cross-platform
-        /// process-tree API, while keeping the shared project compatible with older target frameworks.
-        /// </summary>
-        private static bool TryKillProcessTree(int pid)
-        {
-            try
-            {
+                /* .NET 10 exposes cross-platform process-tree termination directly, so the runtime can own child-process
+                   traversal without reflection or Windows-only WMI queries. */
                 Process process = Process.GetProcessById(pid);
-                MethodInfo killTreeMethod = typeof(Process).GetMethod("Kill", new[] { typeof(bool) });
-                if (killTreeMethod == null)
-                {
-                    return false;
-                }
-
-                killTreeMethod.Invoke(process, new object[] { true });
-                return true;
-            }
-            catch (TargetInvocationException ex) when (ex.InnerException is PlatformNotSupportedException)
-            {
-                return false;
-            }
-            catch (TargetInvocationException)
-            {
-                return false;
+                process.Kill(true);
+                return;
             }
             catch (ArgumentException)
             {
                 // Process already exited.
-                return true;
+                return;
             }
             catch (InvalidOperationException)
             {
                 // Process already exited.
-                return true;
-            }
-        }
-
-        /// <summary>
-        /// Terminates a single process without attempting any child-process traversal.
-        /// </summary>
-        private static void TryKillSingleProcess(int pid)
-        {
-            try
-            {
-                Process proc = Process.GetProcessById(pid);
-                proc.Kill();
-            }
-            catch (ArgumentException)
-            {
-                // Process already exited.
-            }
-            catch (InvalidOperationException)
-            {
-                // Process already exited.
+                return;
             }
         }
     }

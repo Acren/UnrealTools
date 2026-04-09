@@ -15,6 +15,13 @@ namespace UnrealAutomationCommon.Unreal
 
         public static List<Engine> GetEngineInstallsFromRegistry()
         {
+            /* Registry-backed engine discovery is a Windows-only feature. Non-Windows hosts skip it entirely and rely on
+               manifest or explicit-path discovery instead of tripping platform analyzers or runtime failures. */
+            if (!OperatingSystem.IsWindows())
+            {
+                return new List<Engine>();
+            }
+
             try
             {
                 RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
@@ -82,8 +89,6 @@ namespace UnrealAutomationCommon.Unreal
 
         public static Engine? GetEngineInstallFromRegistry(string engineAssociation)
         {
-            RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-
             if (engineAssociation.Contains("."))
             // It's a launcher version
             {

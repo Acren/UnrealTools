@@ -149,7 +149,7 @@ namespace UnrealAutomationCommon.Unreal
             return MajorVersion == other.MajorVersion && MinorVersion == other.MinorVersion && PatchVersion == other.PatchVersion;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj))
             {
