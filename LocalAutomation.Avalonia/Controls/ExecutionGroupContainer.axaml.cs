@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using LocalAutomation.Avalonia.ExecutionGraph;
 using LocalAutomation.Avalonia.ViewModels;
 using LocalAutomation.Core;
 
@@ -18,7 +19,7 @@ public partial class ExecutionGroupContainer : UserControl
     private bool _isHovered;
     private bool _isPressed;
     private ExecutionNodeViewModel? _observedNode;
-    private double _measuredHeaderMinWidth = ExecutionGraphViewModel.NodeMinWidth;
+    private double _measuredHeaderMinWidth = ExecutionGraphLayoutSettings.NodeMinWidth;
     private Border? _clickSurface;
     private Border? _backgroundShell;
     private Border? _borderChrome;
@@ -198,7 +199,7 @@ public partial class ExecutionGroupContainer : UserControl
         }
 
         ApplySemanticClasses();
-        MeasuredHeaderMinWidth = ExecutionGraphViewModel.NodeMinWidth;
+        MeasuredHeaderMinWidth = ExecutionGraphLayoutSettings.NodeMinWidth;
         UpdateMeasuredHeaderMinWidthIfNeeded();
     }
 
@@ -259,7 +260,7 @@ public partial class ExecutionGroupContainer : UserControl
         }
 
         double measuredWidth = Math.Max(
-            ExecutionGraphViewModel.NodeMinWidth,
+            ExecutionGraphLayoutSettings.NodeMinWidth,
             _headerMeasureHost.MeasuredWidth + _clickSurface.Margin.Left + _clickSurface.Margin.Right);
         if (Math.Abs(MeasuredHeaderMinWidth - measuredWidth) <= WidthChangeThreshold)
         {

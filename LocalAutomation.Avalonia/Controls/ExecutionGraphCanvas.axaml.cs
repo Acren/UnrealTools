@@ -14,6 +14,7 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using LocalAutomation.Avalonia.ExecutionGraph;
 using LocalAutomation.Avalonia.ViewModels;
 using LocalAutomation.Core;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
@@ -794,24 +795,24 @@ public partial class ExecutionGraphCanvas : UserControl
             return;
         }
 
-        ExecutionGraphViewModel.StructureLayeringSnapshot layering = graph.StructureLayering;
-        Dictionary<RuntimeExecutionTaskId, int> groupBaseZ = layering.OrderedGroups
-            .Select((group, index) => (group.Id, index))
-            .ToDictionary(entry => entry.Id, entry => entry.index * 2);
+        ExecutionGraphStructureLayeringSnapshot layering = graph.StructureLayering;
+        Dictionary<RuntimeExecutionTaskId, int> groupBaseZ = layering.OrderedGroupIds
+            .Select((groupId, index) => (groupId, index))
+            .ToDictionary(entry => entry.groupId, entry => entry.index * 2);
 
         /* Group containers keep their deterministic relative order, while each edge is placed into the highest valid slot
            that still stays below unrelated crossed groups and above the groups that own one of its endpoints. */
-        foreach (ExecutionNodeViewModel group in layering.OrderedGroups)
+        foreach (RuntimeExecutionTaskId groupId in layering.OrderedGroupIds)
         {
-            if (_renderedGroupControls.TryGetValue(group.Id, out ExecutionGroupContainer? control))
+            if (_renderedGroupControls.TryGetValue(groupId, out ExecutionGroupContainer? control))
             {
-                control.ZIndex = groupBaseZ[group.Id];
+                control.ZIndex = groupBaseZ[groupId];
             }
         }
 
         foreach (ExecutionEdgeViewModel edge in graph.Edges)
         {
-            if (!layering.EdgeConstraints.TryGetValue((edge.Source.Id, edge.Target.Id), out ExecutionGraphViewModel.EdgeLayeringConstraints? constraints))
+            if (!layering.EdgeConstraints.TryGetValue((edge.Source.Id, edge.Target.Id), out ExecutionGraphEdgeLayeringConstraints? constraints))
             {
                 continue;
             }
@@ -825,7 +826,7 @@ public partial class ExecutionGraphCanvas : UserControl
                 }
             }
 
-            int maximumEdgeZ = (layering.OrderedGroups.Count * 2) + 1;
+            int maximumEdgeZ = (layering.OrderedGroupIds.Count * 2) + 1;
             foreach (RuntimeExecutionTaskId groupId in constraints.GroupsToRenderBelow)
             {
                 if (groupBaseZ.TryGetValue(groupId, out int groupZ))
@@ -943,7 +944,7 @@ public partial class ExecutionGraphCanvas : UserControl
         {
             GroupWidth = useMeasuredWidth ? double.NaN : group.Width,
             GroupHeight = group.Height,
-            HeaderHeight = ExecutionGraphViewModel.GroupHeaderHeight,
+            HeaderHeight = ExecutionGraphLayoutSettings.GroupHeaderHeight,
             DataContext = group,
         };
 
@@ -963,7 +964,7 @@ public partial class ExecutionGraphCanvas : UserControl
         container.DataContext = group;
         container.GroupWidth = group.Width;
         container.GroupHeight = group.Height;
-        container.HeaderHeight = ExecutionGraphViewModel.GroupHeaderHeight;
+        container.HeaderHeight = ExecutionGraphLayoutSettings.GroupHeaderHeight;
         Canvas.SetLeft(container, group.X);
         Canvas.SetTop(container, group.Y);
     }

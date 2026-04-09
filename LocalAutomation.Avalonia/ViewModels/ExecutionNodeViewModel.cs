@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Avalonia.Media;
+using LocalAutomation.Avalonia.ExecutionGraph;
 using LocalAutomation.Core;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 using RuntimeExecutionTaskMetrics = LocalAutomation.Runtime.ExecutionTaskMetrics;
@@ -14,14 +15,8 @@ namespace LocalAutomation.Avalonia.ViewModels;
 /// </summary>
 public sealed class ExecutionNodeViewModel : ViewModelBase
 {
-    private string _summaryText = string.Empty;
     private bool _isSelected;
-    private double _x;
-    private double _y;
-    private double _width = ExecutionGraphViewModel.NodeMinWidth;
-    private double _height = ExecutionGraphViewModel.NodeHeight;
-    private int _directChildCount;
-    private int _descendantTaskCount;
+    private ExecutionNodeLayout _layout = ExecutionNodeLayout.Default;
 
     /// <summary>
     /// Creates a graph-node view model from one shared Avalonia task view model.
@@ -60,21 +55,14 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// <summary>
     /// Gets whether this graph node currently acts as a visual container around child tasks.
     /// </summary>
-    public bool IsContainer => DirectChildCount > 0;
+    public bool IsContainer => _layout.IsContainer;
 
     /// <summary>
     /// Gets or sets the x coordinate assigned by the simple auto-layout pass.
     /// </summary>
     public double X
     {
-        get => _x;
-        set
-        {
-            if (SetProperty(ref _x, value))
-            {
-                RaiseBoundsChanged();
-            }
-        }
+        get => _layout.X;
     }
 
     /// <summary>
@@ -82,14 +70,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     public double Y
     {
-        get => _y;
-        set
-        {
-            if (SetProperty(ref _y, value))
-            {
-                RaiseBoundsChanged();
-            }
-        }
+        get => _layout.Y;
     }
 
     /// <summary>
@@ -97,14 +78,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     public double Width
     {
-        get => _width;
-        private set
-        {
-            if (SetProperty(ref _width, value))
-            {
-                RaiseBoundsChanged();
-            }
-        }
+        get => _layout.Width;
     }
 
     /// <summary>
@@ -112,14 +86,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     public double Height
     {
-        get => _height;
-        private set
-        {
-            if (SetProperty(ref _height, value))
-            {
-                RaiseBoundsChanged();
-            }
-        }
+        get => _layout.Height;
     }
 
     /// <summary>
@@ -148,14 +115,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     public int DirectChildCount
     {
-        get => _directChildCount;
-        private set
-        {
-            if (SetProperty(ref _directChildCount, value))
-            {
-                RaisePropertyChanged(nameof(IsContainer));
-            }
-        }
+        get => _layout.DirectChildCount;
     }
 
     /// <summary>
@@ -163,8 +123,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     public int DescendantTaskCount
     {
-        get => _descendantTaskCount;
-        private set => SetProperty(ref _descendantTaskCount, value);
+        get => _layout.DescendantTaskCount;
     }
 
     /// <summary>
@@ -172,8 +131,7 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     /// </summary>
     public string SummaryText
     {
-        get => _summaryText;
-        private set => SetProperty(ref _summaryText, value);
+        get => _layout.SummaryText;
     }
 
     /// <summary>
@@ -292,24 +250,41 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Updates the rendered size and position used by the canvas and dependency routing.
+    /// Applies the latest layout snapshot produced by the dedicated graph-layout layer.
     /// </summary>
-    public void SetBounds(double x, double y, double width, double height)
+    internal void ApplyLayout(ExecutionNodeLayout layout)
     {
-        X = x;
-        Y = y;
-        Width = width;
-        Height = height;
-    }
+        if (layout == null)
+        {
+            throw new ArgumentNullException(nameof(layout));
+        }
 
-    /// <summary>
-    /// Updates the group-container metrics derived from the hierarchy projection.
-    /// </summary>
-    public void SetHierarchyMetrics(int directChildCount, int descendantTaskCount, string? summaryText)
-    {
-        DirectChildCount = directChildCount;
-        DescendantTaskCount = descendantTaskCount;
-        SummaryText = summaryText ?? string.Empty;
+        bool boundsChanged = !layout.Equals(_layout) &&
+            (Math.Abs(_layout.X - layout.X) > 0.001 ||
+             Math.Abs(_layout.Y - layout.Y) > 0.001 ||
+             Math.Abs(_layout.Width - layout.Width) > 0.001 ||
+             Math.Abs(_layout.Height - layout.Height) > 0.001);
+        bool hierarchyChanged = !layout.Equals(_layout) &&
+            (_layout.IsContainer != layout.IsContainer ||
+             _layout.DirectChildCount != layout.DirectChildCount ||
+             _layout.DescendantTaskCount != layout.DescendantTaskCount ||
+             !string.Equals(_layout.SummaryText, layout.SummaryText, StringComparison.Ordinal));
+
+        _layout = layout;
+        if (boundsChanged)
+        {
+            RaiseBoundsChanged();
+        }
+
+        if (!hierarchyChanged)
+        {
+            return;
+        }
+
+        RaisePropertyChanged(nameof(IsContainer));
+        RaisePropertyChanged(nameof(DirectChildCount));
+        RaisePropertyChanged(nameof(DescendantTaskCount));
+        RaisePropertyChanged(nameof(SummaryText));
         RaisePropertyChanged(nameof(DetailsText));
         RaisePropertyChanged(nameof(GroupMetaText));
         RaisePropertyChanged(nameof(HasGroupMetaText));
