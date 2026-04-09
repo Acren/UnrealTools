@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LocalAutomation.Core;
 using TestUtilities;
 using Xunit;
 
@@ -147,6 +148,77 @@ public sealed class ExecutionPlanSchedulerTests
         Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(branchAActiveTaskId).Outcome);
         Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(branchBActiveTaskId).Outcome);
         Assert.Equal(ExecutionTaskOutcome.Skipped, session.GetTask(branchAQueuedBodyTaskId).Outcome);
+    }
+
+    /// <summary>
+    /// Confirms that an unexpected scheduler-path exception should still terminalize the entire live graph instead of
+    /// leaving already-started collateral work running after the root task is marked failed.
+    /// </summary>
+    [Fact]
+    public async Task SchedulerExceptionShouldTerminalizeWholeGraph()
+    {
+        /* Keep one branch visibly active while the other branch triggers an exception from the scheduler path itself.
+           The current broken behavior marks only the root failed, so this assertion should stay red until fatal-session
+           cleanup also terminalizes the collateral branch. */
+        TaskCompletionSource<bool> runningBranchStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseRunningBranch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId runningBranchTaskId = default;
+        ExecutionTaskId explodingBranchTaskId = default;
+        const string injectedFailureMessage = "Injected scheduler failure.";
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                /* This branch stays alive until the test releases it so the session definitely contains collateral active
+                   work when the scheduler-path exception occurs. */
+                scope.Task("Running Branch").Run(async _ =>
+                {
+                    runningBranchStarted.TrySetResult(true);
+                    await releaseRunningBranch.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    return OperationResult.Succeeded();
+                }, out runningBranchTaskId);
+
+                /* This branch itself succeeds, but the test injects a scheduler-path exception exactly when the session
+                   publishes its Running transition. That keeps the failure out of the task body and inside session/
+                   scheduler coordination. */
+                scope.Task("Exploding Branch").Run(() => Task.FromResult(OperationResult.Succeeded()), out explodingBranchTaskId);
+            });
+        });
+
+        ExecutionPlan plan = RuntimeTestUtilities.BuildPlan(operation);
+        ExecutionSession session = new(new BufferedLogStream(), plan);
+        session.TaskStateChanged += (taskId, state, _, _) =>
+        {
+            if (taskId == explodingBranchTaskId && state == ExecutionTaskState.Running)
+            {
+                throw new InvalidOperationException(injectedFailureMessage);
+            }
+        };
+
+        Task runTask = session.RunAsync();
+
+        try
+        {
+            /* Wait until the collateral branch is definitely active before asserting on the fatal-session cleanup state.
+               Without this gate the scenario could pass vacuously if the scheduler failed before any collateral work
+               started. */
+            await runningBranchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+            InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await runTask);
+            Assert.Equal(injectedFailureMessage, exception.Message);
+
+            /* The whole graph should be terminal after any fatal scheduler-path exception. This assertion is intentionally
+               stronger than just checking the root so it stays red until collateral running work is also finalized. */
+            Assert.Equal(ExecutionTaskOutcome.Failed, session.RootTask.Outcome);
+            Assert.All(session.Tasks, task => Assert.Equal(ExecutionTaskState.Completed, task.State));
+        }
+        finally
+        {
+            /* Always release the blocked collateral branch so the red test does not leak a background task after the
+               session-level assertion has observed the current broken state. */
+            releaseRunningBranch.TrySetResult(true);
+        }
     }
 
     /// <summary>
