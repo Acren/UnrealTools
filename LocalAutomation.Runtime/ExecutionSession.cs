@@ -166,7 +166,10 @@ public sealed class ExecutionSession
                 Verbosity = LogLevel.Error
             });
 
-            CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Failed, ex.Message);
+            /* Any fatal scheduler/session exception must leave the live graph in one coherent terminal state. Mark the
+               root failed, cancel running work, and force every remaining task to a terminal outcome before the session
+               completion signal is published so the UI never shows a failed root beside still-running descendants. */
+            FailOutstandingTasksAfterFatalException(ex.Message);
             throw;
         }
         finally
@@ -723,6 +726,72 @@ public sealed class ExecutionSession
         }
 
         CompleteTaskWithOutcome(rootTask.Id, outcome, statusReason);
+    }
+
+    /// <summary>
+    /// Forces the live graph into a coherent terminal state after an unexpected session-level exception. Running work is
+    /// interrupted, untouched work is skipped, and the root preserves the failed session outcome.
+    /// </summary>
+    private void FailOutstandingTasksAfterFatalException(string? failureReason)
+    {
+        if (_rootTask == null)
+        {
+            return;
+        }
+
+        /* Fatal session failure should propagate the same cancellation signal that ordinary interruption paths use so any
+           cooperative running task can begin unwinding immediately instead of continuing after the host has already
+           declared the session failed. */
+        _cancellationTokenSource.Cancel();
+
+        string rootFailureReason = string.IsNullOrWhiteSpace(failureReason)
+            ? "Execution terminated because the scheduler encountered a fatal error."
+            : failureReason;
+        const string interruptedReason = "Interrupted because execution terminated after a fatal scheduler error.";
+        const string skippedReason = "Skipped because execution terminated after a fatal scheduler error.";
+
+        /* Mark the root as failed before terminalizing descendants so later ancestor-refresh completion preserves the
+           failed session outcome instead of deriving success from the forced descendant completions. */
+        if (RootTask.State != ExecutionTaskState.Completed)
+        {
+            SetTaskOutcome(RootTask.Id, ExecutionTaskOutcome.Failed, rootFailureReason);
+        }
+
+        /* Finalize descendants from the leaves upward so container refresh sees already-terminal children instead of
+           bouncing parent state repeatedly while deeper active work is still being closed out. */
+        List<ExecutionTask> outstandingTasks = Tasks
+            .Where(task => task.Id != RootTask.Id && task.State != ExecutionTaskState.Completed)
+            .OrderByDescending(GetTaskDepth)
+            .ToList();
+        foreach (ExecutionTask task in outstandingTasks)
+        {
+            if (task.HasActiveExecution || task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
+            {
+                CompleteTaskLifecycle(task.Id, ExecutionTaskOutcome.Interrupted, interruptedReason);
+                continue;
+            }
+
+            CompleteTaskWithOutcome(task.Id, ExecutionTaskOutcome.Skipped, skippedReason);
+        }
+
+        CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Failed, rootFailureReason);
+    }
+
+    /// <summary>
+    /// Returns the number of ancestors above one task so fatal-session cleanup can finalize descendants before their
+    /// containing scopes.
+    /// </summary>
+    private static int GetTaskDepth(ExecutionTask task)
+    {
+        int depth = 0;
+        ExecutionTask? currentTask = task.Parent;
+        while (currentTask != null)
+        {
+            depth += 1;
+            currentTask = currentTask.Parent;
+        }
+
+        return depth;
     }
 
     /// <summary>
