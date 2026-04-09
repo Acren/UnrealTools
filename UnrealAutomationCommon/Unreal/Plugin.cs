@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using LocalAutomation.Core;
 using LocalAutomation.Core.IO;
+using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -13,6 +14,7 @@ using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
+    [Target]
     public class Plugin : OperationTarget, IEngineInstanceProvider, IDisposable
     {
         private PluginDescriptor _pluginDescriptor = null!;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using LocalAutomation.Core;
 using LocalAutomation.Core.IO;
+using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -11,6 +12,7 @@ using UnrealAutomationCommon.Operations;
 
 namespace UnrealAutomationCommon.Unreal
 {
+    [Target]
     public class Project : OperationTarget, IPackageProvider, IEngineInstanceProvider, IDisposable
     {
         private ProjectDescriptor _projectDescriptor = null!;

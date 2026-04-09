@@ -1,10 +1,12 @@
 using System.Linq;
+using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
+    [Operation(SortOrder = 0)]
     public class GenerateProjectFiles : CommandProcessOperation<Project>
     {
         protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)

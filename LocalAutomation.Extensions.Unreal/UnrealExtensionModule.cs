@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Reflection;
 using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon;
@@ -8,7 +8,6 @@ using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationTypes;
 using UnrealAutomationCommon.Unreal;
-using RuntimeOperation = global::LocalAutomation.Runtime.Operation;
 using RuntimeTarget = global::LocalAutomation.Runtime.IOperationTarget;
 
 namespace LocalAutomation.Extensions.Unreal;
@@ -29,6 +28,15 @@ public sealed class UnrealExtensionModule : IExtensionModule
     public string DisplayName => "Unreal Engine";
 
     /// <summary>
+    /// Unreal keeps its discoverable targets and operations in UnrealAutomationCommon, not beside the module type, so the
+    /// host must scan that assembly for attributed descriptors during module registration.
+    /// </summary>
+    public IEnumerable<Assembly> GetDescriptorAssemblies()
+    {
+        return new[] { typeof(Project).Assembly };
+    }
+
+    /// <summary>
     /// Registers Unreal target descriptors, operations, and target creation logic.
     /// </summary>
     public void Register(IExtensionRegistry registry)
@@ -39,19 +47,10 @@ public sealed class UnrealExtensionModule : IExtensionModule
         }
 
         RegisterLegacyLoggerBridge();
-        registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.project"), "Project", typeof(Project)));
-        registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.plugin"), "Plugin", typeof(Plugin)));
-        registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.engine"), "Engine", typeof(Engine)));
-        registry.RegisterTarget(new TargetDescriptor(new TargetTypeId("unreal.package"), "Package", typeof(Package)));
         registry.RegisterTargetFactory(new UnrealPathTargetFactory());
         registry.RegisterOptionValueConverter(new EngineVersionListOptionValueConverter());
         registry.RegisterOptionValueConverter(new TraceChannelListOptionValueConverter());
         RegisterContextActions(registry);
-
-        foreach (OperationDescriptor descriptor in BuildOperationDescriptors())
-        {
-            registry.RegisterOperation(descriptor);
-        }
     }
 
     /// <summary>
@@ -61,103 +60,6 @@ public sealed class UnrealExtensionModule : IExtensionModule
     private static void RegisterLegacyLoggerBridge()
     {
         UnrealAutomationCommon.AppLogger.Instance.Logger = ApplicationLogger.Logger;
-    }
-
-    /// <summary>
-    /// Preserves the existing user-facing operation order from the WPF app while formalizing it into extension
-    /// descriptors.
-    /// </summary>
-    private static IReadOnlyList<OperationDescriptor> BuildOperationDescriptors()
-    {
-        List<Type> orderedTypes = new()
-        {
-            typeof(GenerateProjectFiles),
-            typeof(BuildEditorTarget),
-            typeof(BuildEditor),
-            typeof(LaunchEditor),
-            typeof(LaunchProjectEditor),
-            typeof(LaunchStandalone),
-            typeof(PackageProject),
-            typeof(LaunchStagedPackage),
-            typeof(BuildPlugin),
-            typeof(PackagePlugin),
-            typeof(DeployPlugin),
-            typeof(VerifyDeployment)
-        };
-
-        /* Extension discovery only auto-registers concrete public operations that the host can instantiate through the
-           default Activator path. Internal orchestration helpers may still derive from Operation, but they are created
-           explicitly by parent workflows and should never appear in the public extension catalog. */
-        orderedTypes.AddRange(TypeUtils.GetSubclassesOf(typeof(RuntimeOperation)).Where(IsDiscoverableOperationType));
-
-        int sortOrder = 0;
-        List<OperationDescriptor> descriptors = new();
-        foreach (Type operationType in orderedTypes.Distinct())
-        {
-            RuntimeOperation operation = RuntimeOperation.CreateOperation(operationType);
-            descriptors.Add(new OperationDescriptor(
-                id: BuildOperationId(operationType),
-                displayName: operation.OperationName,
-                operationType: operationType,
-                supportedTargetTypes: GetSupportedTargetTypes(operationType),
-                sortOrder: sortOrder));
-
-            sortOrder++;
-        }
-
-        return descriptors;
-    }
-
-    /// <summary>
-    /// Returns whether one reflected operation type is safe to register as a user-discoverable extension operation.
-    /// </summary>
-    private static bool IsDiscoverableOperationType(Type operationType)
-    {
-        if (operationType.IsAbstract)
-        {
-            return false;
-        }
-
-        /* The extension host instantiates registered operations through RuntimeOperation.CreateOperation, which uses the
-           public parameterless Activator path. Skip helper types that require constructor arguments or are not publicly
-           visible so discovery does not fail during module registration. */
-        return operationType.IsPublic
-            && operationType.GetConstructor(Type.EmptyTypes) != null;
-    }
-
-    /// <summary>
-    /// Builds a stable operation identifier from its current runtime type.
-    /// </summary>
-    private static OperationId BuildOperationId(Type operationType)
-    {
-        return new OperationId("unreal.operation." + operationType.Name);
-    }
-
-    /// <summary>
-    /// Extracts the legacy generic target type used by the existing operation hierarchy so the host knows which
-    /// targets are compatible with each registered operation.
-    /// </summary>
-    private static IReadOnlyList<Type> GetSupportedTargetTypes(Type operationType)
-    {
-        List<Type> supportedTargetTypes = new();
-        Type? currentType = operationType;
-        while (currentType != null)
-        {
-            if (currentType.IsGenericType && currentType.GetGenericTypeDefinition() == typeof(global::UnrealAutomationCommon.Operations.BaseOperations.UnrealOperation<>))
-            {
-                supportedTargetTypes.Add(currentType.GetGenericArguments()[0]);
-                break;
-            }
-
-            currentType = currentType.BaseType;
-        }
-
-        if (supportedTargetTypes.Count == 0)
-        {
-            supportedTargetTypes.Add(typeof(RuntimeTarget));
-        }
-
-        return supportedTargetTypes;
     }
 
     /// <summary>

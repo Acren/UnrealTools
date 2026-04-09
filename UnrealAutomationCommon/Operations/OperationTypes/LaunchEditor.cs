@@ -1,4 +1,5 @@
 using System.Linq;
+using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
@@ -23,7 +24,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
     }
 
+    [Operation(SortOrder = 4)]
     public class LaunchProjectEditor : LaunchEditor<Project> { }
 
+    [Operation(SortOrder = 3)]
     public class LaunchEditor : LaunchEditor<Engine> { }
 }

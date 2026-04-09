@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
@@ -106,6 +107,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     {
     }
 
+    [Operation(SortOrder = 7)]
     public class LaunchStagedPackage : LaunchPackage<Project>
     {
     }

@@ -1,10 +1,12 @@
 using System.Collections.Generic;
 using System.Linq;
+using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
+    [Operation(SortOrder = 2)]
     public class BuildEditor : BuildCookRunProjectOperationBase
     {
         /// <summary>

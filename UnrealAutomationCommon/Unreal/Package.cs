@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -13,6 +14,7 @@ namespace UnrealAutomationCommon.Unreal
         public Package? GetProvidedPackage(Engine engineContext);
     }
 
+    [Target]
     public class Package : OperationTarget, IPackageProvider, IEngineInstanceProvider
     {
         [JsonConstructor]

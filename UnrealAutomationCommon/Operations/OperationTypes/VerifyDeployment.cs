@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core.IO;
+using LocalAutomation.Extensions.Abstractions;
 using Microsoft.Extensions.Logging;
 using Semver;
 using UnrealAutomationCommon.Operations.BaseOperations;
@@ -14,6 +15,7 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
+    [Operation(SortOrder = 11)]
     public class VerifyDeployment : UnrealOperation<Plugin>
     {
         private sealed class VerificationState

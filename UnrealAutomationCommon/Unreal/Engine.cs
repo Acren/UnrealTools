@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Runtime;
 using Newtonsoft.Json;
 using Semver;
@@ -8,6 +9,7 @@ using UnrealAutomationCommon.Operations;
 namespace UnrealAutomationCommon.Unreal
 {
     [JsonObject(MemberSerialization.OptIn)]
+    [Target]
     public class Engine : OperationTarget, IEngineInstanceProvider
     {
         [JsonProperty]

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using LocalAutomation.Core;
+using LocalAutomation.Extensions.Abstractions;
 using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
@@ -9,6 +10,7 @@ using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
+    [Operation(SortOrder = 9)]
     public class PackagePlugin : CommandProcessOperation<Plugin>
     {
         private List<string> _requestedTargetPlatforms = new();

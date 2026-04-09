@@ -1,11 +1,13 @@
 using System;
 using LocalAutomation.Core;
+using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
+    [Operation(SortOrder = 8)]
     public class BuildPlugin : BuildBatOperation<Plugin>
     {
         // Direct Build.bat plugin compilation needs a host project and only applies to code plugins.

@@ -1,9 +1,11 @@
 using System.Linq;
+using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
+    [Operation(SortOrder = 5)]
     public class LaunchStandalone : UnrealProcessOperation<Project>
     {
         /// <summary>

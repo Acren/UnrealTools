@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Reflection;
+
 namespace LocalAutomation.Extensions.Abstractions;
 
 /// <summary>
@@ -20,4 +23,13 @@ public interface IExtensionModule
     /// Registers this extension's contributions into the provided registry.
     /// </summary>
     void Register(IExtensionRegistry registry);
+
+    /// <summary>
+    /// Returns the assemblies that contain this module's discoverable attributed targets and operations. Modules that
+    /// keep their descriptors beside the module type can rely on the default implementation.
+    /// </summary>
+    IEnumerable<Assembly> GetDescriptorAssemblies()
+    {
+        return new[] { GetType().Assembly };
+    }
 }

@@ -70,6 +70,15 @@ public sealed class ExtensionCatalog : IExtensionRegistry
         _currentRegisteringModule = module;
         try
         {
+            /* Attributed targets and operations share the same declared descriptor assemblies by default, which keeps the
+               extension contract small while still allowing modules to relocate descriptor-bearing types away from the
+               module assembly itself. */
+            foreach (Assembly descriptorAssembly in module.GetDescriptorAssemblies())
+            {
+                TargetDescriptorRegistration.RegisterTargetsFromAssembly(this, module, descriptorAssembly);
+                OperationDescriptorRegistration.RegisterOperationsFromAssembly(this, module, descriptorAssembly);
+            }
+
             module.Register(this);
         }
         finally

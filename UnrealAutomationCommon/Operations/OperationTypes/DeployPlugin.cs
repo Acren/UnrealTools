@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 using LocalAutomation.Core.IO;
+using LocalAutomation.Extensions.Abstractions;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Polly;
@@ -1183,6 +1184,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
     }
 
+    [Operation(SortOrder = 10)]
     public class DeployPlugin : UnrealOperation<Plugin>
     {
         protected override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)

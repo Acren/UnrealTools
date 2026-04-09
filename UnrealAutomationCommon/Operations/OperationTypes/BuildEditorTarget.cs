@@ -1,10 +1,12 @@
 using System;
+using LocalAutomation.Extensions.Abstractions;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
+    [Operation(SortOrder = 1)]
     public class BuildEditorTarget : BuildBatOperation<Project>
     {
         // Build the project's editor target directly through Build.bat so direct UBT overrides are honored.
