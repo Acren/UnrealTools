@@ -182,20 +182,9 @@ internal sealed class ExecutionGraphProjection
     /// </summary>
     public IEnumerable<RuntimeExecutionTaskId> EnumerateVisibleSubtreeRawTaskIds(RuntimeExecutionTaskId rootId)
     {
-        if (_ownedRawTaskIdsByVisibleNodeId.TryGetValue(rootId, out List<RuntimeExecutionTaskId>? ownedTaskIds))
+        foreach (RuntimeExecutionTaskId taskId in EnumerateOwnedTaskSubtreeIds(rootId))
         {
-            foreach (RuntimeExecutionTaskId taskId in ownedTaskIds)
-            {
-                yield return taskId;
-            }
-        }
-
-        foreach (RuntimeExecutionTaskId childId in GetDirectChildIds(rootId))
-        {
-            foreach (RuntimeExecutionTaskId descendantId in EnumerateVisibleSubtreeRawTaskIds(childId))
-            {
-                yield return descendantId;
-            }
+            yield return taskId;
         }
     }
 
@@ -214,19 +203,12 @@ internal sealed class ExecutionGraphProjection
     /// </summary>
     public bool IsVisibleAncestor(RuntimeExecutionTaskId ancestorId, RuntimeExecutionTaskId descendantId)
     {
-        RuntimeExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(descendantId, out RuntimeExecutionTaskId? parentId)
-            ? parentId
-            : null;
-        while (currentParentId is RuntimeExecutionTaskId resolvedParentId)
+        foreach (RuntimeExecutionTaskId resolvedParentId in EnumerateVisibleAncestorIds(descendantId))
         {
             if (resolvedParentId == ancestorId)
             {
                 return true;
             }
-
-            currentParentId = _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? nextParentId)
-                ? nextParentId
-                : null;
         }
 
         return false;
@@ -237,15 +219,9 @@ internal sealed class ExecutionGraphProjection
     /// </summary>
     public IEnumerable<RuntimeExecutionTaskId> GetVisibleAncestorIds(RuntimeExecutionTaskId nodeId)
     {
-        RuntimeExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId? parentId)
-            ? parentId
-            : null;
-        while (currentParentId is RuntimeExecutionTaskId resolvedParentId)
+        foreach (RuntimeExecutionTaskId ancestorId in EnumerateVisibleAncestorIds(nodeId))
         {
-            yield return resolvedParentId;
-            currentParentId = _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? nextParentId)
-                ? nextParentId
-                : null;
+            yield return ancestorId;
         }
     }
 
@@ -255,15 +231,9 @@ internal sealed class ExecutionGraphProjection
     public int GetVisibleDepth(RuntimeExecutionTaskId nodeId)
     {
         int depth = 0;
-        RuntimeExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId? parentId)
-            ? parentId
-            : null;
-        while (currentParentId is RuntimeExecutionTaskId resolvedParentId)
+        foreach (RuntimeExecutionTaskId _ in EnumerateVisibleAncestorIds(nodeId))
         {
             depth++;
-            currentParentId = _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? nextParentId)
-                ? nextParentId
-                : null;
         }
 
         return depth;
@@ -298,7 +268,7 @@ internal sealed class ExecutionGraphProjection
     /// </summary>
     public IReadOnlyList<RuntimeExecutionTaskId> GetTaskSubtreeIds(RuntimeExecutionTaskId rootId)
     {
-        return EnumerateTaskSubtreeIds(rootId).ToList();
+        return EnumerateOwnedTaskSubtreeIds(rootId).ToList();
     }
 
     /// <summary>
@@ -345,7 +315,7 @@ internal sealed class ExecutionGraphProjection
     /// <summary>
     /// Enumerates one visible subtree's owned raw ids without exposing the internal ownership dictionary directly.
     /// </summary>
-    private IEnumerable<RuntimeExecutionTaskId> EnumerateTaskSubtreeIds(RuntimeExecutionTaskId rootId)
+    private IEnumerable<RuntimeExecutionTaskId> EnumerateOwnedTaskSubtreeIds(RuntimeExecutionTaskId rootId)
     {
         if (_ownedRawTaskIdsByVisibleNodeId.TryGetValue(rootId, out List<RuntimeExecutionTaskId>? ownedTaskIds))
         {
@@ -357,10 +327,27 @@ internal sealed class ExecutionGraphProjection
 
         foreach (RuntimeExecutionTaskId childId in GetDirectChildIds(rootId))
         {
-            foreach (RuntimeExecutionTaskId descendantId in EnumerateTaskSubtreeIds(childId))
+            foreach (RuntimeExecutionTaskId descendantId in EnumerateOwnedTaskSubtreeIds(childId))
             {
                 yield return descendantId;
             }
+        }
+    }
+
+    /// <summary>
+    /// Enumerates the visible ancestors of one node from parent upward.
+    /// </summary>
+    private IEnumerable<RuntimeExecutionTaskId> EnumerateVisibleAncestorIds(RuntimeExecutionTaskId nodeId)
+    {
+        RuntimeExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId? parentId)
+            ? parentId
+            : null;
+        while (currentParentId is RuntimeExecutionTaskId resolvedParentId)
+        {
+            yield return resolvedParentId;
+            currentParentId = _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? nextParentId)
+                ? nextParentId
+                : null;
         }
     }
 

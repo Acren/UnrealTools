@@ -86,12 +86,17 @@ public sealed class ExecutionNodeViewModel : ViewModelBase
             throw new ArgumentNullException(nameof(layout));
         }
 
-        bool boundsChanged = !layout.Equals(_layout) &&
-            (Math.Abs(_layout.X - layout.X) > 0.001 ||
-             Math.Abs(_layout.Y - layout.Y) > 0.001 ||
-             Math.Abs(_layout.Width - layout.Width) > 0.001 ||
-             Math.Abs(_layout.Height - layout.Height) > 0.001);
-        bool containerChanged = !layout.Equals(_layout) && _layout.IsContainer != layout.IsContainer;
+        ExecutionNodeLayout previousLayout = _layout;
+        if (layout.Equals(previousLayout))
+        {
+            return;
+        }
+
+        bool boundsChanged = Math.Abs(previousLayout.X - layout.X) > 0.001 ||
+            Math.Abs(previousLayout.Y - layout.Y) > 0.001 ||
+            Math.Abs(previousLayout.Width - layout.Width) > 0.001 ||
+            Math.Abs(previousLayout.Height - layout.Height) > 0.001;
+        bool containerChanged = previousLayout.IsContainer != layout.IsContainer;
 
         _layout = layout;
         if (boundsChanged)
