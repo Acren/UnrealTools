@@ -16,7 +16,11 @@
 
     <ItemGroup>
       <BundledExtensionProject>
-        <SourceRoot>%(RootDir)%(Directory)bin\$(Configuration)\%(ExtensionTargetFramework)\</SourceRoot>
+        <!-- Default bundled extensions to the consuming host's target framework so framework retargets do not require
+             a second hardcoded path update. Individual extensions can still provide ExtensionTargetFramework metadata
+             later if they intentionally diverge from the host. -->
+        <SourceRoot Condition="'%(BundledExtensionProject.ExtensionTargetFramework)' != ''">%(RootDir)%(Directory)bin\$(Configuration)\%(BundledExtensionProject.ExtensionTargetFramework)\</SourceRoot>
+        <SourceRoot Condition="'%(BundledExtensionProject.ExtensionTargetFramework)' == ''">%(RootDir)%(Directory)bin\$(Configuration)\$(TargetFramework)\</SourceRoot>
       </BundledExtensionProject>
 
       <!-- Batch directly on each bundled extension project so wildcard expansion happens against a concrete source

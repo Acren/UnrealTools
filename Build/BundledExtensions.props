@@ -7,7 +7,7 @@
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'LocalAutomation.Avalonia' or '$(MSBuildProjectName)' == 'UnrealCommander.Avalonia'">
     <BundledExtensionProject Include="$(MSBuildThisFileDirectory)..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj">
       <ExtensionFolderName>Unreal</ExtensionFolderName>
-      <ExtensionTargetFramework>netstandard2.1</ExtensionTargetFramework>
+      <ExtensionTargetFramework></ExtensionTargetFramework>
     </BundledExtensionProject>
 
     <!-- Keep bundled extensions in the normal project-reference build graph so runtime API changes rebuild the

@@ -1,3 +1,15 @@
 <Project>
+  <PropertyGroup>
+    <!-- Keep nullable context enabled consistently across the solution now that every project shares the same
+         .NET 10 baseline. -->
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory).editorconfig')">
+    <!-- Link the repository-level editorconfig into each project once so individual project files do not need to
+         repeat the same item declaration. -->
+    <None Include="$(MSBuildThisFileDirectory).editorconfig" Link=".editorconfig" />
+  </ItemGroup>
+
   <Import Project="Build\BundledExtensions.props" Condition="Exists('Build\BundledExtensions.props')" />
 </Project>
