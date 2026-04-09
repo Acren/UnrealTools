@@ -50,9 +50,8 @@ public partial class ExecutionGraphCanvas : UserControl
     private readonly Dictionary<RuntimeExecutionTaskId, Control> _measurementNodeControls = new();
     private readonly Dictionary<RuntimeExecutionTaskId, double> _pendingGroupWidthUpdates = new();
     private bool _isPanning;
-    private string? _pendingRenderTrigger;
-    private bool _measurementRefreshPending;
-    private string? _pendingMeasurementTrigger;
+    private bool _refreshQueuedWhileUpdating;
+    private RefreshPhase _refreshPhase;
     private bool _pendingViewportAdjustment;
     private GroupWidthUpdatePhase _groupWidthUpdatePhase;
     private bool _suppressGraphNotifications;
@@ -62,6 +61,18 @@ public partial class ExecutionGraphCanvas : UserControl
     private double _panY;
     private bool _hasViewportState;
     private int _reconciliationCount;
+
+    /// <summary>
+    /// Represents the lifecycle of one visible graph refresh as it moves through deferred graph updates and detached
+    /// measurement before the final visible reconciliation.
+    /// </summary>
+    private enum RefreshPhase
+    {
+        Idle,
+        WaitingForGraphUpdate,
+        WaitingForMeasurement,
+        ApplyingMeasuredRefresh
+    }
 
     /// <summary>
     /// Represents the current lifecycle of the deferred visible-group width update queue.
@@ -212,8 +223,8 @@ public partial class ExecutionGraphCanvas : UserControl
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.HandleDataContextChanged")
             .SetTag("previous.graph.hash", _observedGraph?.GetHashCode() ?? 0)
             .SetTag("next.graph.hash", (DataContext as ExecutionGraphViewModel)?.GetHashCode() ?? 0)
-            .SetTag("pending.render", !string.IsNullOrWhiteSpace(_pendingRenderTrigger))
-            .SetTag("measurement.pending", _measurementRefreshPending);
+            .SetTag("pending.render", _refreshQueuedWhileUpdating)
+            .SetTag("measurement.pending", _refreshPhase == RefreshPhase.WaitingForMeasurement);
 
         if (_observedGraph != null)
         {
@@ -308,11 +319,11 @@ public partial class ExecutionGraphCanvas : UserControl
 
         if (string.Equals(e.PropertyName, nameof(ExecutionGraphViewModel.IsUpdatingGraph), StringComparison.Ordinal))
         {
-            if (_observedGraph?.IsUpdatingGraph == false && !string.IsNullOrWhiteSpace(_pendingRenderTrigger))
+            if (_observedGraph?.IsUpdatingGraph == false && _refreshQueuedWhileUpdating)
             {
-                string pendingTrigger = _pendingRenderTrigger;
-                _pendingRenderTrigger = null;
-                RenderGraph(trigger: $"Deferred:{pendingTrigger}");
+                _refreshQueuedWhileUpdating = false;
+                _refreshPhase = RefreshPhase.Idle;
+                RenderGraph(trigger: "Deferred:GraphUpdate");
             }
 
             return;
@@ -347,7 +358,8 @@ public partial class ExecutionGraphCanvas : UserControl
             return false;
         }
 
-        _pendingRenderTrigger = trigger;
+        _refreshQueuedWhileUpdating = true;
+        _refreshPhase = RefreshPhase.WaitingForGraphUpdate;
         return true;
     }
 
@@ -372,7 +384,7 @@ public partial class ExecutionGraphCanvas : UserControl
             return;
         }
 
-        if (_measurementRefreshPending)
+        if (_refreshPhase == RefreshPhase.WaitingForMeasurement)
         {
             activity.SetTag("render.deferred", "MeasurementPending");
             return;
@@ -408,7 +420,7 @@ public partial class ExecutionGraphCanvas : UserControl
 
         if (measuredLeaves.Count == 0)
         {
-            _pendingMeasurementTrigger = trigger;
+            _refreshPhase = RefreshPhase.ApplyingMeasuredRefresh;
             using (PerformanceActivityScope inlineCompleteActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CompleteMeasuredRefreshInline"))
             {
                 CompleteMeasuredRefresh();
@@ -417,8 +429,7 @@ public partial class ExecutionGraphCanvas : UserControl
             return;
         }
 
-        _measurementRefreshPending = true;
-        _pendingMeasurementTrigger = trigger;
+        _refreshPhase = RefreshPhase.WaitingForMeasurement;
         using (PerformanceActivityScope populateMeasurementHostActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.PopulateMeasurementHost"))
         {
             PopulateMeasurementHost(_measurementCanvas, measuredLeaves);
@@ -438,22 +449,23 @@ public partial class ExecutionGraphCanvas : UserControl
     /// </summary>
     private void CompleteMeasuredRefresh()
     {
-        if (!_measurementRefreshPending && _pendingMeasurementTrigger == null)
+        if (_refreshPhase != RefreshPhase.WaitingForMeasurement && _refreshPhase != RefreshPhase.ApplyingMeasuredRefresh)
         {
             return;
         }
+
+        bool completingDeferredMeasurement = _refreshPhase == RefreshPhase.WaitingForMeasurement;
 
         if (!TryGetGraphSurfaces(out GraphSurfaces surfaces))
         {
-            _measurementRefreshPending = false;
-            _pendingMeasurementTrigger = null;
+            _refreshPhase = RefreshPhase.Idle;
             return;
         }
 
-        _measurementRefreshPending = false;
-        string trigger = _pendingMeasurementTrigger ?? "Deferred";
+        _refreshPhase = RefreshPhase.ApplyingMeasuredRefresh;
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CompleteMeasuredRefresh")
-            .SetTag("trigger", trigger);
+            .SetTag("deferred.measurement", completingDeferredMeasurement)
+            .SetTag("refresh.phase", RefreshPhase.ApplyingMeasuredRefresh.ToString());
 
         bool widthsChanged;
         using (PerformanceActivityScope widthActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ApplyMeasuredNodeWidths"))
@@ -470,7 +482,7 @@ public partial class ExecutionGraphCanvas : UserControl
             clearMeasurementActivity.SetTag("measured.node.count", _measurementNodeControls.Count);
         }
 
-        _pendingMeasurementTrigger = null;
+        _refreshPhase = RefreshPhase.Idle;
 
         int groupCount = surfaces.Graph.Nodes.Count(node => node.IsContainer);
         int leafCount = surfaces.Graph.Nodes.Count - groupCount;
@@ -1071,7 +1083,7 @@ public partial class ExecutionGraphCanvas : UserControl
             return;
         }
 
-        if (_measurementRefreshPending)
+        if (_refreshPhase == RefreshPhase.WaitingForMeasurement || _refreshPhase == RefreshPhase.ApplyingMeasuredRefresh)
         {
             _groupWidthUpdatePhase = GroupWidthUpdatePhase.Scheduled;
             Dispatcher.UIThread.Post(FlushPendingGroupWidthUpdates, DispatcherPriority.Render);
