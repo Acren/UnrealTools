@@ -10,6 +10,79 @@ namespace LocalAutomation.Runtime.Tests;
 public sealed class ExecutionPlanInsertedChildSchedulingTests
 {
     /// <summary>
+    /// Confirms that live child-operation insertion should not break scheduler traversal while another branch keeps the
+    /// runtime graph active.
+    /// </summary>
+    [Fact]
+    public async Task LiveChildInsertionShouldNotBreakSchedulerTraversal()
+    {
+        /* Keep one sibling visibly active while the other sibling repeatedly inserts tiny child operations. The current
+           race throws from ExecutionTask child-list traversal when scheduler reads and merge-time writes overlap. */
+        TaskCompletionSource<bool> companionStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseCompanion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        const int insertedChildOperationCount = 200;
+
+        var operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                /* This branch exists only to keep the scheduler actively evaluating the live graph while the other branch
+                   grows that same graph through repeated child-operation merges. */
+                scope.Task("Traversal Companion").Run(async _ =>
+                {
+                    companionStarted.TrySetResult(true);
+                    await releaseCompanion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                });
+
+                scope.Task("Insert Child Operations").Run(async context =>
+                {
+                    /* Repeated short child operations amplify the original production race without adding any synthetic
+                       test-only mutation hooks. Each iteration takes the normal BuildPlan -> MergeChildTasks -> wait path. */
+                    for (int index = 0; index < insertedChildOperationCount; index += 1)
+                    {
+                        var childOperation = new ExecutionTestCommon.InlineOperation(
+                            childRoot =>
+                            {
+                                childRoot.Run(async _ =>
+                                {
+                                    await Task.Yield();
+                                });
+                            },
+                            operationName: $"Inserted Child Operation {index}");
+
+                        OperationParameters childParameters = childOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                        OperationResult childResult = await context.RunChildOperationAsync((Operation)childOperation, childParameters);
+                        if (!childResult.Success)
+                        {
+                            throw new InvalidOperationException(childResult.FailureReason ?? $"Inserted child operation {index} failed.");
+                        }
+                    }
+                });
+            });
+        });
+
+        (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime((Operation)operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+
+        try
+        {
+            /* Wait until the companion branch is definitely active so child-operation insertion overlaps a live scheduler
+               run rather than completing during startup before scheduler traversal begins in earnest. */
+            await companionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            releaseCompanion.TrySetResult(true);
+
+            /* This should complete cleanly. Before the traversal fix, this path can fault with "Collection was modified;
+               enumeration operation may not execute." when child merges append while the scheduler is walking _children. */
+            OperationResult result = await executeTask.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+        }
+        finally
+        {
+            releaseCompanion.TrySetResult(true);
+        }
+    }
+
+    /// <summary>
     /// Confirms that when two sibling branches become ready together, a lock-blocked inserted child operation beneath the
     /// first sibling does not prevent the second independently ready sibling from starting.
     /// </summary>
