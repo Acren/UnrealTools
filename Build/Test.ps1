@@ -17,6 +17,10 @@ param(
     # Leaves the default console noise low while still surfacing failures quickly.
     [string]$Verbosity = 'minimal',
 
+    # Keeps solution-level test project execution sequential by default so failures are easier to interpret and one noisy
+    # test host cannot obscure another project's progress.
+    [int]$MaxCpuCount = 1,
+
     # Writes TRX results for per-test durations and post-run failure inspection.
     [string]$ResultsDirectory = 'TestResults',
 
@@ -39,6 +43,10 @@ if ($HangTimeoutSeconds -le 0) {
     throw 'HangTimeoutSeconds must be greater than zero.'
 }
 
+if ($MaxCpuCount -le 0) {
+    throw 'MaxCpuCount must be greater than zero.'
+}
+
 # Build one explicit dotnet test argument list so timeout, logging, and filter behavior stay standardized across reruns.
 $loggerValue = if ([string]::IsNullOrWhiteSpace($LogFileName)) {
     'trx'
@@ -53,6 +61,7 @@ $arguments = @(
     '--blame-hang'
     '--blame-hang-timeout'
     ("{0}s" -f $HangTimeoutSeconds)
+    ("-maxcpucount:{0}" -f $MaxCpuCount)
     '--results-directory'
     $resolvedResultsDirectory
     '--logger'
