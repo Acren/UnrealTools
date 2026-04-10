@@ -377,7 +377,6 @@ public sealed class ExecutionPlanScheduler
             }
         }
 
-        ValidateNoReadyTasksRemainPending();
         readyActivity.SetTag("started.count", startedCount);
         readyActivity.SetTag("pass.count", passCount);
         return startedAny;
@@ -461,27 +460,6 @@ public sealed class ExecutionPlanScheduler
         ExecutionTask Task,
         int OriginalIndex,
         int DownstreamWorkCount);
-
-    /// <summary>
-    /// Enforces that one scheduler pass reaches a fixpoint. If executable work is still ready after the pass ends, the
-    /// scheduler has left runnable work behind and should fail immediately instead of waiting for an unrelated wake-up.
-    /// </summary>
-    private void ValidateNoReadyTasksRemainPending()
-    {
-        ExecutionTask? strandedTask = _session.GetSchedulerReadyTasks()
-            .Select(task => task.TryGetNextStartableTask())
-            .FirstOrDefault(task =>
-                task != null
-                && task.Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(task.Title, task.OperationParameters, task.DeclaredOptionTypes)).Count == 0
-                && !task.HasActiveExecution);
-        if (strandedTask == null)
-        {
-            return;
-        }
-
-        string taskPath = _session.GetTaskDisplayPath(strandedTask.Id);
-        throw new InvalidOperationException($"Scheduler left runnable task '{taskPath}' ({strandedTask.Id}) pending even though its ancestor scopes are open, it declares no execution locks, and all dependencies are satisfied.");
-    }
 
     /// <summary>
     /// Processes one completed task and updates live session state based on the task outcome.

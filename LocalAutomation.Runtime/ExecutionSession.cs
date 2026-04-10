@@ -24,6 +24,11 @@ public sealed class ExecutionSession
     private readonly OperationParameters _operationParameters;
     private readonly List<string> _errors = new();
     private readonly List<string> _warnings = new();
+    /* The live task graph needs one session-scoped synchronization boundary, but graph traversal happens much more
+       often than graph mutation. A recursive reader/writer lock keeps traversal coherent while still letting the
+       scheduler's write-side updates break through tight concurrent read loops such as the inserted-child traversal
+       regression scenario. */
+    private readonly ReaderWriterLockSlim _graphLock = new(LockRecursionPolicy.SupportsRecursion);
     private readonly SessionLogger _sessionLogger;
     private bool _hasBegunExecution;
     private Task<OperationResult>? _currentTask;
@@ -66,9 +71,10 @@ public sealed class ExecutionSession
 
     /// <summary>
     /// Gets the live session-owned task graph. Sessions clone plan tasks when they start so runtime mutations never
-    /// modify preview plan objects.
+    /// modify preview plan objects. The session serializes task-graph reads and writes through one lock so child-plan
+    /// insertion cannot race graph traversal.
     /// </summary>
-    public IReadOnlyList<ExecutionTask> Tasks => _rootTask?.GetAllTasks() ?? Array.Empty<ExecutionTask>();
+    public IReadOnlyList<ExecutionTask> Tasks => WithGraphReadLock(() => _rootTask?.GetAllTasks() ?? Array.Empty<ExecutionTask>());
 
     public DateTimeOffset StartedAt { get; }
 
@@ -183,11 +189,11 @@ public sealed class ExecutionSession
     /// <summary>
     /// Gets the single root task that represents the overall task graph for this session.
     /// </summary>
-    public ExecutionTask RootTask => _rootTask ?? throw new InvalidOperationException("Session has no root task.");
+    public ExecutionTask RootTask => WithGraphReadLock(() => _rootTask ?? throw new InvalidOperationException("Session has no root task."));
 
     public IReadOnlyList<ExecutionTaskId> GetTaskSubtreeIds(ExecutionTaskId taskId)
     {
-        return GetTask(taskId).GetSubtreeIds();
+        return WithGraphReadLock(() => GetTaskCore(taskId).GetSubtreeIds());
     }
 
     public ExecutionTaskMetrics GetTaskMetrics(ExecutionTaskId? taskId, DateTimeOffset? now = null)
@@ -280,17 +286,21 @@ public sealed class ExecutionSession
         }
 
         /* Tree-walk lookup is acceptable here because this method is called infrequently for UI-driven log panel
-           selection, not on the scheduler hot path. */
-        return _rootTask?.FindTask(taskId.Value)?.LogStream;
+           selection, not on the scheduler hot path. The shared graph lock still keeps the tree stable while the walk
+           runs. */
+        return WithGraphReadLock(() => _rootTask?.FindTask(taskId.Value)?.LogStream);
     }
 
     public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
     {
-        /* Public state writes update execution state only. Semantic outcome is derived separately so direct execution,
-           child aggregation, and failure propagation can share one runtime model without overloading one enum with two
-           meanings. */
-        SetTaskStateCore(taskId, state, statusReason);
-        RefreshAncestorTaskStates(taskId);
+        WithGraphWriteLock(() =>
+        {
+            /* Public state writes update execution state only. Semantic outcome is derived separately so direct
+               execution, child aggregation, and failure propagation can share one runtime model without overloading one
+               enum with two meanings. */
+            SetTaskStateCore(taskId, state, statusReason);
+            RefreshAncestorTaskStates(taskId);
+        });
     }
 
     /// <summary>
@@ -299,31 +309,34 @@ public sealed class ExecutionSession
     /// </summary>
     public void FailScopeFromTask(ExecutionTaskId failedTaskId, string? statusReason = null)
     {
-        /* A failed subtree keeps lifecycle and semantic outcome separate: the failing task completes with Result=Failed,
-           untouched descendants complete with Result=Skipped, and sibling subtrees that already began real work are
-           marked Interrupted while still allowing active descendant work to unwind. */
-        ExecutionTask failedTask = GetTask(failedTaskId);
-        CompleteTaskWithOutcome(failedTaskId, ExecutionTaskOutcome.Failed, statusReason);
-        failedTask.SkipUnfinishedDescendants(failedTask.BuildInheritedDescendantReason(ExecutionTaskOutcome.Failed, statusReason));
-
-        ExecutionTask currentAncestor = failedTask;
-        ExecutionTaskId failedSiblingRootId = failedTaskId;
-        while (currentAncestor.Parent != null)
+        WithGraphWriteLock(() =>
         {
-            currentAncestor = currentAncestor.Parent;
-            foreach (ExecutionTask child in currentAncestor.Children)
+            /* A failed subtree keeps lifecycle and semantic outcome separate: the failing task completes with
+               Result=Failed, untouched descendants complete with Result=Skipped, and sibling subtrees that already began
+               real work are marked Interrupted while still allowing active descendant work to unwind. */
+            ExecutionTask failedTask = GetTaskCore(failedTaskId);
+            CompleteTaskWithOutcomeCore(failedTaskId, ExecutionTaskOutcome.Failed, statusReason);
+            failedTask.SkipUnfinishedDescendants(failedTask.BuildInheritedDescendantReason(ExecutionTaskOutcome.Failed, statusReason));
+
+            ExecutionTask currentAncestor = failedTask;
+            ExecutionTaskId failedSiblingRootId = failedTaskId;
+            while (currentAncestor.Parent != null)
             {
-                if (child.Id == failedSiblingRootId)
+                currentAncestor = currentAncestor.Parent;
+                foreach (ExecutionTask child in currentAncestor.Children)
                 {
-                    continue;
+                    if (child.Id == failedSiblingRootId)
+                    {
+                        continue;
+                    }
+
+                    child.InterruptSiblingSubtree(failedSiblingRootId);
                 }
 
-                child.InterruptSiblingSubtree(failedSiblingRootId);
+                CompleteTaskWithOutcomeCore(currentAncestor.Id, ExecutionTaskOutcome.Failed, statusReason);
+                failedSiblingRootId = currentAncestor.Id;
             }
-
-            CompleteTaskWithOutcome(currentAncestor.Id, ExecutionTaskOutcome.Failed, statusReason);
-            failedSiblingRootId = currentAncestor.Id;
-        }
+        });
     }
 
     /// <summary>
@@ -337,7 +350,6 @@ public sealed class ExecutionSession
             .SetTag("child.plan.title", childPlan.Title)
             .SetTag("child.plan.task.count", childPlan.Tasks.Count);
 
-        _ = GetTask(parentTaskId);
         InsertedExecutionTasks insertedTasks;
         using (PerformanceActivityScope insertActivity = PerformanceTelemetry.StartActivity("ExecutionSession.MergeChildTasks.InsertUnderParent"))
         {
@@ -346,22 +358,30 @@ public sealed class ExecutionSession
                 .SetTag("inserted.root.id", insertedTasks.RootTaskId.Value);
         }
 
-        List<ExecutionTaskId> insertedTaskIds = new();
+        ChildTaskMergeResult mergeResult;
         using (PerformanceActivityScope addTasksActivity = PerformanceTelemetry.StartActivity("ExecutionSession.MergeChildTasks.AddTasks"))
         {
-            /* Dependency IDs copy through cloning as value types, so inserted tasks already carry the correct
-               dependency set from the child plan — no re-wiring needed. */
-            foreach (ExecutionTask insertedTask in insertedTasks.Tasks)
+            mergeResult = WithGraphWriteLock(() =>
             {
-                AddTask(insertedTask);
-                insertedTaskIds.Add(insertedTask.Id);
-            }
+                _ = GetTaskCore(parentTaskId);
+                List<ExecutionTaskId> insertedTaskIds = new();
 
-            addTasksActivity.SetTag("inserted.task.count", insertedTaskIds.Count);
+                /* Dependency IDs copy through cloning as value types, so inserted tasks already carry the correct
+                   dependency set from the child plan — no re-wiring needed. */
+                foreach (ExecutionTask insertedTask in insertedTasks.Tasks)
+                {
+                    AddTaskCore(insertedTask);
+                    insertedTaskIds.Add(insertedTask.Id);
+                }
+
+                addTasksActivity.SetTag("inserted.task.count", insertedTaskIds.Count);
+                return new ChildTaskMergeResult(GetTaskCore(insertedTasks.RootTaskId), insertedTasks.Tasks, insertedTaskIds);
+            });
         }
 
+        /* Notify the scheduler only after the entire child subtree has been attached under the graph lock so the next
+           traversal sees a coherent post-merge tree. */
         TaskGraphChanged?.Invoke();
-        ChildTaskMergeResult mergeResult = new(GetTask(insertedTasks.RootTaskId), insertedTasks.Tasks, insertedTaskIds);
         activity.SetTag("inserted.root.title", mergeResult.RootTask.Title)
             .SetTag("inserted.task.count", mergeResult.InsertedTaskIds.Count);
         return mergeResult;
@@ -544,7 +564,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal IReadOnlyList<ExecutionTask> GetSchedulerReadyTasks()
     {
-        return RootTask.GetSchedulerReadyBranchRoots();
+        return WithGraphReadLock(() => RootTask.GetSchedulerReadyBranchRoots());
     }
 
     /// <summary>
@@ -552,29 +572,32 @@ public sealed class ExecutionSession
     /// </summary>
     internal void RefreshSchedulerPendingReasons()
     {
-        foreach (ExecutionTask task in Tasks)
+        WithGraphWriteLock(() =>
         {
-            ExecutionTaskState currentState = task.State;
-            if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
+            foreach (ExecutionTask task in Tasks)
             {
-                continue;
-            }
+                ExecutionTaskState currentState = task.State;
+                if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
+                {
+                    continue;
+                }
 
-            if (task.Outcome != null)
-            {
-                throw new InvalidOperationException($"Task '{task.Id}' cannot return to pending readiness while it already has semantic outcome '{task.Outcome}'.");
-            }
+                if (task.Outcome != null)
+                {
+                    throw new InvalidOperationException($"Task '{task.Id}' cannot return to pending readiness while it already has semantic outcome '{task.Outcome}'.");
+                }
 
-            TaskStartState startState = task.GetTaskStartState();
-            string? waitingReason = task.GetSchedulingPendingReason();
-            if (startState is TaskStartState.NoStartableWork or TaskStartState.Running or TaskStartState.WaitingForExecutionLock)
-            {
-                continue;
-            }
+                TaskStartState startState = task.GetTaskStartState();
+                string? waitingReason = task.GetSchedulingPendingReason();
+                if (startState is TaskStartState.NoStartableWork or TaskStartState.Running or TaskStartState.WaitingForExecutionLock)
+                {
+                    continue;
+                }
 
-            SetTaskStateCore(task.Id, ExecutionTaskState.Pending, waitingReason);
-            RefreshAncestorTaskStates(task.Id);
-        }
+                SetTaskStateCore(task.Id, ExecutionTaskState.Pending, waitingReason);
+                RefreshAncestorTaskStates(task.Id);
+            }
+        });
     }
 
     /// <summary>
@@ -582,12 +605,12 @@ public sealed class ExecutionSession
     /// </summary>
     internal IReadOnlyList<ExecutionTaskId> GetIncompleteSchedulableTaskIds()
     {
-        return Tasks
+        return WithGraphReadLock(() => Tasks
             .Where(task => task.GetTaskStartState() != TaskStartState.NoStartableWork)
-            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork)
+            .Where(task => task.ParentId == null || GetTaskCore(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork)
             .Select(task => task.Id)
             .Where(taskId => !IsTaskTerminal(taskId))
-            .ToList();
+            .ToList());
     }
 
     /// <summary>
@@ -605,28 +628,31 @@ public sealed class ExecutionSession
             throw new ArgumentNullException(nameof(isTaskTrackedAsRunning));
         }
 
-        foreach (ExecutionTask task in Tasks.Where(task => task.GetTaskStartState() != TaskStartState.NoStartableWork)
-            .Where(task => task.ParentId == null || GetTask(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork))
+        WithGraphWriteLock(() =>
         {
-            if (task.State == ExecutionTaskState.Completed)
+            foreach (ExecutionTask task in Tasks.Where(task => task.GetTaskStartState() != TaskStartState.NoStartableWork)
+                .Where(task => task.ParentId == null || GetTaskCore(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork))
             {
-                continue;
+                if (task.State == ExecutionTaskState.Completed)
+                {
+                    continue;
+                }
+
+                bool taskExecutionIsStillActive = task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock || isTaskTrackedAsRunning(task.Id);
+                ExecutionTaskOutcome nextOutcome = taskExecutionIsStillActive
+                    ? userCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted
+                    : ExecutionTaskOutcome.Skipped;
+                string reason = taskExecutionIsStillActive ? runningTaskReason : skippedTaskReason;
+
+                if (preserveRunningTerminalOutcomes && taskExecutionIsStillActive)
+                {
+                    CompleteTaskLifecycleCore(task.Id, nextOutcome, reason);
+                    continue;
+                }
+
+                CompleteTaskLifecycleCore(task.Id, nextOutcome, reason);
             }
-
-            bool taskExecutionIsStillActive = task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock || isTaskTrackedAsRunning(task.Id);
-            ExecutionTaskOutcome nextOutcome = taskExecutionIsStillActive
-                ? userCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted
-                : ExecutionTaskOutcome.Skipped;
-            string reason = taskExecutionIsStillActive ? runningTaskReason : skippedTaskReason;
-
-            if (preserveRunningTerminalOutcomes && taskExecutionIsStillActive)
-            {
-                CompleteTaskLifecycle(task.Id, nextOutcome, reason);
-                continue;
-            }
-
-            CompleteTaskLifecycle(task.Id, nextOutcome, reason);
-        }
+        });
     }
 
     /// <summary>
@@ -1131,6 +1157,81 @@ public sealed class ExecutionSession
     /// </summary>
     public ExecutionTask GetTask(ExecutionTaskId taskId)
     {
+        return WithGraphReadLock(() => GetTaskCore(taskId));
+    }
+
+    /// <summary>
+    /// Runs one task-graph mutation while holding the shared write lock. The lock scope must stay limited to graph
+    /// structure and graph-derived state only; task execution and external waits stay outside this lock.
+    /// </summary>
+    private void WithGraphWriteLock(Action action)
+    {
+        _graphLock.EnterWriteLock();
+        try
+        {
+            action();
+        }
+        finally
+        {
+            _graphLock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Runs one task-graph mutation while holding the shared write lock and returns its result.
+    /// </summary>
+    private T WithGraphWriteLock<T>(Func<T> action)
+    {
+        _graphLock.EnterWriteLock();
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            _graphLock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Runs one task-graph read while holding the shared read lock so concurrent traversal stays coherent without
+    /// blocking every other reader.
+    /// </summary>
+    private void WithGraphReadLock(Action action)
+    {
+        _graphLock.EnterReadLock();
+        try
+        {
+            action();
+        }
+        finally
+        {
+            _graphLock.ExitReadLock();
+        }
+    }
+
+    /// <summary>
+    /// Runs one task-graph read while holding the shared read lock and returns its result.
+    /// </summary>
+    private T WithGraphReadLock<T>(Func<T> action)
+    {
+        _graphLock.EnterReadLock();
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            _graphLock.ExitReadLock();
+        }
+    }
+
+    /// <summary>
+    /// Resolves one live task from the current root without taking the graph lock. Callers must already hold the graph
+    /// lock when using this helper.
+    /// </summary>
+    private ExecutionTask GetTaskCore(ExecutionTaskId taskId)
+    {
         ExecutionTask? task = _rootTask?.FindTask(taskId);
         if (task == null)
         {
@@ -1146,7 +1247,7 @@ public sealed class ExecutionSession
     /// </summary>
     public string GetTaskDisplayPath(ExecutionTaskId taskId)
     {
-        return GetTask(taskId).GetDisplayPath();
+        return WithGraphReadLock(() => GetTaskCore(taskId).GetDisplayPath());
     }
 
     /// <summary>
@@ -1154,16 +1255,76 @@ public sealed class ExecutionSession
     /// </summary>
     public bool IsTaskTerminal(ExecutionTaskId taskId)
     {
-        return GetTask(taskId).IsTerminal;
+        return WithGraphReadLock(() => GetTaskCore(taskId).IsTerminal);
     }
 
     private void SetTaskStateCore(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason)
     {
-        ExecutionTask task = GetTask(taskId);
+        ExecutionTask task = GetTaskCore(taskId);
         if (task.TransitionState(state, statusReason))
         {
             TaskStateChanged?.Invoke(taskId, state, task.Outcome, statusReason);
         }
+    }
+
+    /// <summary>
+    /// Records one semantic outcome change while the caller already holds the graph lock.
+    /// </summary>
+    private void SetTaskOutcomeCore(ExecutionTaskId taskId, ExecutionTaskOutcome? outcome, string? statusReason = null)
+    {
+        ExecutionTask task = GetTaskCore(taskId);
+        if (task.TransitionOutcome(outcome, statusReason))
+        {
+            TaskStateChanged?.Invoke(taskId, task.State, task.Outcome, task.StatusReason);
+        }
+    }
+
+    /// <summary>
+    /// Interrupts one task while the caller already holds the graph lock.
+    /// </summary>
+    private void InterruptTaskCore(ExecutionTaskId taskId, string? statusReason = null)
+    {
+        GetTaskCore(taskId).Interrupt(statusReason);
+        RefreshAncestorTaskStates(taskId);
+    }
+
+    /// <summary>
+    /// Completes one task lifecycle while the caller already holds the graph lock.
+    /// </summary>
+    private void CompleteTaskLifecycleCore(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
+    {
+        GetTaskCore(taskId).CompleteLifecycle(successOutcome, statusReason);
+        RefreshAncestorTaskStates(taskId);
+    }
+
+    /// <summary>
+    /// Completes one task snapshot while the caller already holds the graph lock.
+    /// </summary>
+    private void SetTaskSnapshotCore(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    {
+        ExecutionTask task = GetTaskCore(taskId);
+        if (task.TransitionSnapshot(state, outcome, statusReason))
+        {
+            TaskStateChanged?.Invoke(taskId, state, outcome, statusReason);
+        }
+    }
+
+    /// <summary>
+    /// Relays one task-changed notification while the caller already holds the graph lock.
+    /// </summary>
+    private void NotifyTaskChangedCore(ExecutionTaskId taskId)
+    {
+        ExecutionTask task = GetTaskCore(taskId);
+        TaskStateChanged?.Invoke(taskId, task.State, task.Outcome, task.StatusReason);
+    }
+
+    /// <summary>
+    /// Completes one task with one explicit semantic outcome while the caller already holds the graph lock.
+    /// </summary>
+    private void CompleteTaskWithOutcomeCore(ExecutionTaskId taskId, ExecutionTaskOutcome outcome, string? statusReason = null)
+    {
+        GetTaskCore(taskId).CompleteWithOutcome(outcome, statusReason);
+        RefreshAncestorTaskStates(taskId);
     }
 
     /// <summary>
@@ -1172,11 +1333,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal void SetTaskOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome? outcome, string? statusReason = null)
     {
-        ExecutionTask task = GetTask(taskId);
-        if (task.TransitionOutcome(outcome, statusReason))
-        {
-            TaskStateChanged?.Invoke(taskId, task.State, task.Outcome, task.StatusReason);
-        }
+        WithGraphWriteLock(() => SetTaskOutcomeCore(taskId, outcome, statusReason));
     }
 
     /// <summary>
@@ -1186,8 +1343,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal void InterruptTask(ExecutionTaskId taskId, string? statusReason = null)
     {
-        GetTask(taskId).Interrupt(statusReason);
-        RefreshAncestorTaskStates(taskId);
+        WithGraphWriteLock(() => InterruptTaskCore(taskId, statusReason));
     }
 
     /// <summary>
@@ -1196,8 +1352,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal void CompleteTaskLifecycle(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
     {
-        GetTask(taskId).CompleteLifecycle(successOutcome, statusReason);
-        RefreshAncestorTaskStates(taskId);
+        WithGraphWriteLock(() => CompleteTaskLifecycleCore(taskId, successOutcome, statusReason));
     }
 
     /// <summary>
@@ -1206,11 +1361,7 @@ public sealed class ExecutionSession
     /// </summary>
     private void SetTaskSnapshot(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
-        ExecutionTask task = GetTask(taskId);
-        if (task.TransitionSnapshot(state, outcome, statusReason))
-        {
-            TaskStateChanged?.Invoke(taskId, state, outcome, statusReason);
-        }
+        WithGraphWriteLock(() => SetTaskSnapshotCore(taskId, state, outcome, statusReason));
     }
 
     /// <summary>
@@ -1220,8 +1371,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal void NotifyTaskChanged(ExecutionTaskId taskId)
     {
-        ExecutionTask task = GetTask(taskId);
-        TaskStateChanged?.Invoke(taskId, task.State, task.Outcome, task.StatusReason);
+        WithGraphWriteLock(() => NotifyTaskChangedCore(taskId));
     }
 
     /// <summary>
@@ -1231,8 +1381,7 @@ public sealed class ExecutionSession
     /// </summary>
     internal void CompleteTaskWithOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome outcome, string? statusReason = null)
     {
-        GetTask(taskId).CompleteWithOutcome(outcome, statusReason);
-        RefreshAncestorTaskStates(taskId);
+        WithGraphWriteLock(() => CompleteTaskWithOutcomeCore(taskId, outcome, statusReason));
     }
 
     private TimeSpan GetSessionDuration(DateTimeOffset? now)
@@ -1365,6 +1514,14 @@ public sealed class ExecutionSession
     /// references need wiring here.
     /// </summary>
     private void AddTask(ExecutionTask task)
+    {
+        WithGraphWriteLock(() => AddTaskCore(task));
+    }
+
+    /// <summary>
+    /// Attaches one task to the live session graph while the caller already holds the graph lock.
+    /// </summary>
+    private void AddTaskCore(ExecutionTask task)
     {
         /* Duplicate detection walks the tree instead of checking a dictionary index. This is only called during plan
            initialization and child-task merging, not on the scheduler hot path. */
