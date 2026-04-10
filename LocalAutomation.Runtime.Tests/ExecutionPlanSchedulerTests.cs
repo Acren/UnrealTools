@@ -341,7 +341,7 @@ public sealed class ExecutionPlanSchedulerTests
             });
         }, sharedLock);
 
-        // Act: execute once and capture whichever sibling body actually started first.
+        // Act: execute once and capture whichever sibling body actually acquires the shared lock and starts first.
         (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         ExecutionTaskId winnerTaskId = await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -390,7 +390,7 @@ public sealed class ExecutionPlanSchedulerTests
                 });
             }, sharedLock);
 
-            // Act: rebuild and run the same authored shape repeatedly, recording the first-starting sibling each time.
+            // Act: rebuild and run the same authored shape repeatedly, recording the sibling body that acquires the shared lock first.
             (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
             Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
             ExecutionTaskId winnerTaskId = await winnerSource.Task.WaitAsync(TimeSpan.FromSeconds(1));
