@@ -309,6 +309,67 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
+    /// Confirms that equal-priority siblings contending for the same execution lock should be admitted to lock wait one
+    /// at a time in declared order instead of dispatching both worker executions and letting thread timing choose the
+    /// eventual lock winner.
+    /// </summary>
+    [Fact]
+    public async Task EqualPriorityLockContendersShouldBeAdmittedOneAtATimeInDeclaredOrder()
+    {
+        // Arrange: hold the shared lock in one branch so the scheduler has to decide which equally ready contender to
+        // admit first while the lock is still unavailable.
+        ExecutionLock sharedLock = new("lock-admission-order");
+        TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId lockHolderTaskId = default;
+        ExecutionTaskId firstVisibleTaskId = default;
+        ExecutionTaskId secondVisibleTaskId = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Lock Holder").Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder), out lockHolderTaskId);
+                scope.Task("First", out firstVisibleTaskId).Run(_ => Task.FromResult(OperationResult.Succeeded()));
+                scope.Task("Second", out secondVisibleTaskId).Run(_ => Task.FromResult(OperationResult.Succeeded()));
+            });
+        }, sharedLock);
+
+        // Act: start the scheduler, wait until the lock holder definitely owns the shared lock, then wait until the
+        // declared-first contender has been admitted into explicit lock wait.
+        (_, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        try
+        {
+            await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            await session.GetTask(lockHolderTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => firstVisibleTaskId != default
+                    && session.GetTask(firstVisibleTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                TimeSpan.FromSeconds(1),
+                "Timed out waiting for the declared-first contender to enter explicit lock wait.");
+
+            // Assert: the scheduler should admit only the declared-first contender while the lock remains unavailable.
+            // The declared-second contender should still be pending and should not own an active worker execution yet.
+            Assert.NotEqual(default, firstVisibleTaskId);
+            Assert.NotEqual(default, secondVisibleTaskId);
+            ExecutionTask firstVisibleTask = session.GetTask(firstVisibleTaskId);
+            ExecutionTask secondVisibleTask = session.GetTask(secondVisibleTaskId);
+            Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, firstVisibleTask.State);
+            Assert.True(firstVisibleTask.HasActiveExecution);
+            Assert.Equal(ExecutionTaskState.Pending, secondVisibleTask.State);
+            Assert.False(secondVisibleTask.HasActiveExecution);
+        }
+        finally
+        {
+            // Cleanup: always release the lock holder so the red test does not leave background work running after the
+            // admission-state assertion fails.
+            releaseLockHolder.TrySetResult(true);
+            await executeTask;
+        }
+    }
+
+    /// <summary>
     /// Confirms that equally ready sibling body tasks start in declared order when a shared lock forces the scheduler to
     /// choose exactly one winner first.
     /// </summary>
