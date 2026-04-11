@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
@@ -6,6 +7,50 @@ namespace LocalAutomation.Runtime.Tests;
 
 public sealed class ExecutionPlanBuilderFluentTests
 {
+    /// <summary>
+    /// Confirms that one authored task cannot declare a static child scope after attaching its own Run(...) body.
+    /// Dynamic children created at runtime from inside the body remain a separate behavior and are not covered here.
+    /// </summary>
+    [Fact]
+    public void RunWithStaticallyDefinedChildrenThrows()
+    {
+        // Arrange: author one visible task that incorrectly mixes a direct body with statically declared children.
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(steps => steps
+                .Task("Parent")
+                    .Run(() => Task.CompletedTask)
+                    .Children(children => children
+                        .Task("Child")
+                            .Run(() => Task.CompletedTask)));
+        });
+
+        // Act + Assert: plan authoring should reject the mixed static shape before runtime execution begins.
+        Assert.Throws<InvalidOperationException>(() => RuntimeTestUtilities.BuildPlan(operation));
+    }
+
+    /// <summary>
+    /// Confirms that one authored task cannot attach its own Run(...) body after already declaring a static child scope.
+    /// Dynamic children created at runtime from inside the body remain a separate behavior and are not covered here.
+    /// </summary>
+    [Fact]
+    public void StaticallyDefinedChildrenWithRunThrows()
+    {
+        // Arrange: author one visible task that incorrectly mixes static children with a direct body in the opposite order.
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(steps => steps
+                .Task("Parent")
+                    .Children(children => children
+                        .Task("Child")
+                            .Run(() => Task.CompletedTask))
+                    .Run(() => Task.CompletedTask));
+        });
+
+        // Act + Assert: plan authoring should reject the mixed static shape regardless of fluent call order.
+        Assert.Throws<InvalidOperationException>(() => RuntimeTestUtilities.BuildPlan(operation));
+    }
+
     /// <summary>
     /// Confirms that fluent Then(...) chaining inside a sequenced scope depends on the previous authored task node.
     /// </summary>

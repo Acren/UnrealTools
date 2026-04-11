@@ -261,6 +261,12 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     public bool IsHiddenInGraph => _spec.IsHiddenInGraph;
 
+    /// <summary>
+    /// Returns whether this authored task already owns a directly attached Run(...) body.
+    /// Builder-time validation uses this to keep one task from mixing a static authored subtree with direct body work.
+    /// </summary>
+    internal bool HasAuthoredBody => _spec.ExecuteAsync != null;
+
     public BufferedLogStream LogStream { get; }
 
     /// <summary>

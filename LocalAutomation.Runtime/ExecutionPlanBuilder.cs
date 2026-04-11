@@ -180,6 +180,10 @@ public sealed class ExecutionPlanBuilder
         _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
         _ = build ?? throw new ArgumentNullException(nameof(build));
 
+        /* Static child scopes and direct Run(...) bodies are mutually exclusive on one authored task. Dynamic children
+           inserted later from inside Run(...) remain valid because they do not pass through this build-time path. */
+        ValidateTaskCanAcceptStaticChildren(parentTask);
+
         ParentBuildState parentState = GetParentState(parentTask.Id);
         ExecutionTaskScopeBuilder scopeBuilder = new(this, parentTask.Id, mode, parentState.CompletionFrontier);
         build(scopeBuilder);
@@ -194,6 +198,10 @@ public sealed class ExecutionPlanBuilder
     {
         _ = task ?? throw new ArgumentNullException(nameof(task));
         Func<ExecutionTaskContext, Task<OperationResult>> resolvedExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
+
+        /* A direct Run(...) body can own dynamic child insertion at runtime, but it cannot share the same authored task
+           with a statically declared child subtree because that makes builder-time sequencing ambiguous. */
+        ValidateTaskCanAttachBody(task);
 
         task.SetExecuteAsync(resolvedExecuteAsync);
         ParentBuildState parentState = GetParentState(task.Id);
@@ -222,6 +230,10 @@ public sealed class ExecutionPlanBuilder
         _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
         Operation resolvedChildOperation = childOperation ?? throw new ArgumentNullException(nameof(childOperation));
         Func<OperationParameters> createChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters));
+
+        /* Author-time child-operation expansion also creates a static child subtree, so it obeys the same mutual-
+           exclusion rule as plain Child(...) and Children(...). */
+        ValidateTaskCanAcceptStaticChildren(parentTask);
 
         OperationParameters childParameters = createChildParameters();
         ExecutionPlan childPlan = _buildChildPlan(resolvedChildOperation, childParameters)
@@ -256,10 +268,46 @@ public sealed class ExecutionPlanBuilder
     /// </summary>
     private ExecutionTaskBuilder CreateRelativeTask(ExecutionTaskId parentId, string title, string? description, IReadOnlyList<ExecutionTaskId> dependencyFrontier, IList<ExecutionTaskId>? lastTaskIds = null)
     {
+        /* Every statically authored child task funnels through this helper, so the body-vs-static-children invariant only
+           needs one enforcement point for Child(...), Children(...), Then(...), and scoped child authoring. */
+        ValidateTaskCanAcceptStaticChildren(GetDefinition(parentId));
+
         ExecutionTask task = CreateItem(GenerateTaskId(), title, description, parentId);
         AddTaskDefinition(task);
         WireDependencies(task, dependencyFrontier);
         return new ExecutionTaskBuilder(this, task, parentId, lastTaskIds);
+    }
+
+    /// <summary>
+    /// Rejects builder-time static child authoring beneath a task that already owns a direct Run(...) body.
+    /// Runtime-inserted children remain valid because they are attached later by the live session, not the plan builder.
+    /// </summary>
+    private static void ValidateTaskCanAcceptStaticChildren(ExecutionTask parentTask)
+    {
+        if (parentTask.HasAuthoredBody)
+        {
+            throw new InvalidOperationException($"Task '{parentTask.Title}' ({parentTask.Id}) cannot declare static child tasks after attaching Run(...). Add children dynamically from inside Run(...) instead, or remove the direct body from the parent task.");
+        }
+    }
+
+    /// <summary>
+    /// Rejects attaching Run(...) to a task that already owns statically authored children in the current builder state.
+    /// </summary>
+    private void ValidateTaskCanAttachBody(ExecutionTask task)
+    {
+        if (HasAuthoredStaticChildren(task.Id))
+        {
+            throw new InvalidOperationException($"Task '{task.Title}' ({task.Id}) cannot attach Run(...) after declaring static child tasks. Keep the parent as a static container, or add children dynamically from inside Run(...). ");
+        }
+    }
+
+    /// <summary>
+    /// Returns whether the current authored plan already contains any statically declared direct child beneath the
+    /// supplied parent task id.
+    /// </summary>
+    private bool HasAuthoredStaticChildren(ExecutionTaskId parentTaskId)
+    {
+        return _items.Any(item => item.ParentId == parentTaskId);
     }
 
     /// <summary>
