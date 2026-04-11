@@ -177,14 +177,53 @@ internal sealed class ExecutionGraphProjection
     }
 
     /// <summary>
-    /// Enumerates the raw task ids owned by the provided visible subtree so sibling dependency staging can treat hidden
-    /// descendants as part of their visible ancestor's stage.
+    /// Returns the visible nodes that this visible node effectively depends on after descendant raw-task dependencies are
+    /// rolled up to visible owners. Dependencies that remain inside the same visible subtree are excluded because they do
+    /// not affect sibling staging or inter-node edges outside that subtree.
     /// </summary>
-    public IEnumerable<RuntimeExecutionTaskId> EnumerateVisibleSubtreeRawTaskIds(RuntimeExecutionTaskId rootId)
+    public IReadOnlyList<RuntimeExecutionTaskId> GetVisibleDependencyIds(RuntimeExecutionTaskId visibleNodeId)
     {
-        foreach (RuntimeExecutionTaskId taskId in EnumerateOwnedTaskSubtreeIds(rootId))
+        HashSet<RuntimeExecutionTaskId> dependencyIds = new();
+        foreach (RuntimeExecutionTaskId rawTaskId in EnumerateOwnedTaskSubtreeIds(visibleNodeId))
         {
-            yield return taskId;
+            RuntimeExecutionTask rawTask = GetRawTask(rawTaskId);
+            foreach (RuntimeExecutionTaskId dependencyId in rawTask.Dependencies)
+            {
+                RuntimeExecutionTaskId? visibleDependencyId = ResolveVisibleTaskId(dependencyId);
+                if (visibleDependencyId is not RuntimeExecutionTaskId resolvedVisibleDependencyId)
+                {
+                    continue;
+                }
+
+                /* Rolled-up dependencies should only represent constraints outside the current visible subtree. When one
+                   descendant depends on another descendant that is still rendered inside the same container, containment
+                   already communicates that relationship and the parent container must not look externally blocked by its
+                   own children. */
+                if (resolvedVisibleDependencyId == visibleNodeId || IsVisibleAncestor(visibleNodeId, resolvedVisibleDependencyId))
+                {
+                    continue;
+                }
+
+                dependencyIds.Add(resolvedVisibleDependencyId);
+            }
+        }
+
+        return dependencyIds.ToList();
+    }
+
+    /// <summary>
+    /// Enumerates the visible node ids in the provided visible subtree, including the root container itself. Layout uses
+    /// this to remap rolled-up descendant dependencies back to the direct visible sibling container that owns them.
+    /// </summary>
+    public IEnumerable<RuntimeExecutionTaskId> EnumerateVisibleSubtreeNodeIds(RuntimeExecutionTaskId rootId)
+    {
+        yield return rootId;
+        foreach (RuntimeExecutionTaskId childId in GetDirectChildIds(rootId))
+        {
+            foreach (RuntimeExecutionTaskId descendantId in EnumerateVisibleSubtreeNodeIds(childId))
+            {
+                yield return descendantId;
+            }
         }
     }
 

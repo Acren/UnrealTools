@@ -181,7 +181,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Returns the packaged project-plugin example output directory.
+        /// Returns the Deploy Plugin child-operation output directory used for logs and reports for the project-plugin
+        /// package branch. The packaged build itself now comes from the prepared project's staged-build directory.
         /// </summary>
         private static string GetProjectPluginPackagePath(DeploymentWorkspaceState state)
         {
@@ -189,7 +190,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Returns the packaged engine-plugin example output directory.
+        /// Returns the Deploy Plugin child-operation output directory used for logs and reports for the engine-plugin
+        /// package branch. The packaged build itself now comes from the prepared project's staged-build directory.
         /// </summary>
         private static string GetEnginePluginPackagePath(DeploymentWorkspaceState state)
         {
@@ -197,7 +199,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Returns the blueprint-only package output directory.
+        /// Returns the Deploy Plugin child-operation output directory used for logs and reports for the blueprint-only
+        /// package branch. The packaged build itself now comes from the prepared project's staged-build directory.
         /// </summary>
         private static string GetBlueprintPackagePath(DeploymentWorkspaceState state)
         {
@@ -205,7 +208,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Returns the demo package output directory.
+        /// Returns the Deploy Plugin child-operation output directory used for logs and reports for the demo package
+        /// branch. The packaged build itself now comes from the prepared project's staged-build directory.
         /// </summary>
         private static string GetDemoPackageOutputPath(DeploymentWorkspaceState state)
         {
@@ -230,12 +234,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Returns the packaged Windows build path for one package output root and validates that the expected executable
-        /// tree exists before later launch or archive steps proceed.
+        /// Returns the packaged Windows build path from one prepared project's staged-build directory and validates that
+        /// the expected executable tree exists before later launch or archive steps proceed.
         /// </summary>
-        private static string GetRequiredPackagePath(DeploymentWorkspaceState state, string packageOutputPath, string failureMessage)
+        private static string GetRequiredPackagePath(Project project, DeploymentWorkspaceState state, string failureMessage)
         {
-            string packagePath = Path.Combine(packageOutputPath, state.Engine.GetWindowsPlatformName());
+            string packagePath = project.GetStagedBuildWindowsPath(state.Engine);
             if (!PackagePaths.Instance.IsTargetDirectory(packagePath))
             {
                 throw new InvalidOperationException($"{failureMessage}: {packagePath}");
@@ -271,11 +275,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Creates one validated packaged-build target from a known workspace-relative package output root.
+        /// Creates one validated packaged-build target from one prepared project's staged-build output.
         /// </summary>
-        private static Package CreateRequiredPackage(DeploymentWorkspaceState state, string packageOutputPath, string failureMessage)
+        private static Package CreateRequiredPackage(Project project, DeploymentWorkspaceState state, string failureMessage)
         {
-            return new Package(GetRequiredPackagePath(state, packageOutputPath, failureMessage));
+            return new Package(GetRequiredPackagePath(project, state, failureMessage));
+        }
+
+        /// <summary>
+        /// Clears one prepared project's staged-build output before a new package-only BuildCookRun pass so later
+        /// package discovery cannot accidentally consume stale packaged files from an earlier deploy run.
+        /// </summary>
+        private static void DeleteExistingStagedPackageOutput(Project project, DeploymentWorkspaceState state)
+        {
+            string packagePath = project.GetStagedBuildWindowsPath(state.Engine);
+            FileUtils.DeleteDirectoryIfExists(packagePath);
         }
 
         /// <summary>
@@ -314,132 +328,210 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                subtree to finish because joins target the visible task ids rather than hidden body-task ids. */
             root.Children(global::LocalAutomation.Runtime.ExecutionChildMode.Parallel, steps =>
             {
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareWorkspace = steps.Task("Prepare Workspace")
-                    .Describe("Create the isolated engine-specific workspace from the prepared source")
-                    .Run(PrepareStepAsync);
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareInputs = steps.Task("Prepare Inputs")
+                    .Describe("Create the engine workspace and stage the plugin inputs used by the later deploy branches");
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareWorkspace = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder stagePlugin = default!;
+                prepareInputs.Children(inputScope =>
+                {
+                    prepareWorkspace = inputScope.Task("Prepare Workspace")
+                        .Describe("Create the isolated engine-specific workspace from the prepared source")
+                        .Run(PrepareStepAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder stagePlugin = steps.Task("Stage Plugin")
-                    .Describe("Create the staged plugin copy used for packaging and archiving")
-                    .After(prepareWorkspace.Id)
-                    .Run(StagingStepAsync);
+                    stagePlugin = inputScope.Task("Stage Plugin")
+                        .Describe("Create the staged plugin copy used for packaging and archiving")
+                        .After(prepareWorkspace.Id)
+                        .Run(StagingStepAsync);
+                });
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder buildPlugin = steps.Task("Build Distributable Plugin")
                     .Describe("Package the staged plugin into the distributable plugin payload used by later project and engine validation")
                     .After(stagePlugin.Id)
                     .Run(BuildPlugin);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder materializeProjectPluginBase = steps.Task("Materialize Project-Plugin Base")
-                    .Describe("Copy the shared code example base from the workspace project before the built plugin is installed into it")
-                    .After(prepareWorkspace.Id)
-                    .Run(MaterializeProjectPluginBaseAsync);
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareSharedBase = steps.Task("Prepare Shared Project-Plugin Base")
+                    .Describe("Materialize, populate, and prebuild the shared code example base that later package branches clone or package directly");
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder materializeProjectPluginBase = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder installProjectPluginBase = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildExampleBase = default!;
+                prepareSharedBase.Children(sharedBaseScope =>
+                {
+                    materializeProjectPluginBase = sharedBaseScope.Task("Materialize Project-Plugin Base")
+                        .Describe("Copy the shared code example base from the workspace project before the built plugin is installed into it")
+                        .After(prepareWorkspace.Id)
+                        .Run(MaterializeProjectPluginBaseAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder installProjectPluginBase = steps.Task("Install Distributable Plugin Into Project-Plugin Base")
-                    .Describe("Copy the built distributable plugin into the shared project-plugin base before downstream package variants clone it")
-                    .After(materializeProjectPluginBase.Id, buildPlugin.Id)
-                    .Run(InstallDistributablePluginIntoProjectPluginBaseAsync);
+                    installProjectPluginBase = sharedBaseScope.Task("Install Distributable Plugin Into Project-Plugin Base")
+                        .Describe("Copy the built distributable plugin into the shared project-plugin base before downstream package variants clone it")
+                        .After(materializeProjectPluginBase.Id, buildPlugin.Id)
+                        .Run(InstallDistributablePluginIntoProjectPluginBaseAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildExampleBase = steps.Task("Prebuild Project-Plugin Base")
-                    .Describe("Compile the shared code example base once so downstream package variants can reuse editor outputs with -nocompileeditor")
-                    .After(installProjectPluginBase.Id)
-                    .Run(PrebuildProjectPluginBaseAsync);
+                    buildExampleBase = sharedBaseScope.Task("Prebuild Project-Plugin Base")
+                        .Describe("Compile the shared code example base once so downstream package variants can reuse editor outputs with -nocompileeditor")
+                        .After(installProjectPluginBase.Id)
+                        .Run(PrebuildProjectPluginBaseAsync);
+                });
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder testEditor = steps.Task("Test Project-Plugin Base Editor")
-                    .Describe("Launch and validate the prebuilt project-plugin base in the editor before downstream packaging completes")
-                    .After(buildExampleBase.Id)
-                    .When(automationOptions.RunTests, "Run Tests is off.")
-                    .Run(context => TestProjectPluginBaseEditorAsync(context, automationOptions));
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder validateSharedBase = steps.Task("Validate Shared Project-Plugin Base")
+                    .Describe("Run optional validation branches against the shared prebuilt project-plugin base before package flows continue");
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testEditor = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testStandalone = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareClangVariant = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder clangCheck = default!;
+                validateSharedBase.Children(global::LocalAutomation.Runtime.ExecutionChildMode.Parallel, validationScope =>
+                {
+                    testEditor = validationScope.Task("Test Project-Plugin Base Editor")
+                        .Describe("Launch and validate the prebuilt project-plugin base in the editor before downstream packaging completes")
+                        .After(buildExampleBase.Id)
+                        .When(automationOptions.RunTests, "Run Tests is off.")
+                        .Run(context => TestProjectPluginBaseEditorAsync(context, automationOptions));
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder testStandalone = steps.Task("Test Project-Plugin Base Standalone")
-                    .Describe("Launch and validate the prebuilt project-plugin base in standalone mode before downstream packaging completes")
-                    .After(buildExampleBase.Id)
-                    .When(automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Test Standalone is off." : "Run Tests is off.")
-                    .Run(context => TestProjectPluginBaseStandaloneAsync(context, automationOptions));
+                    testStandalone = validationScope.Task("Test Project-Plugin Base Standalone")
+                        .Describe("Launch and validate the prebuilt project-plugin base in standalone mode before downstream packaging completes")
+                        .After(buildExampleBase.Id)
+                        .When(automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Test Standalone is off." : "Run Tests is off.")
+                        .Run(context => TestProjectPluginBaseStandaloneAsync(context, automationOptions));
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareClangVariant = steps.Task("Prepare Clang Validation Variant")
-                    .Describe("Clone the prebuilt project-plugin base for the optional Clang validation branch")
-                    .After(buildExampleBase.Id)
-                    .When(deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.")
-                    .Run(PrepareClangVariantAsync);
+                    prepareClangVariant = validationScope.Task("Prepare Clang Validation Variant")
+                        .Describe("Clone the prebuilt project-plugin base for the optional Clang validation branch")
+                        .After(buildExampleBase.Id)
+                        .When(deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.")
+                        .Run(PrepareClangVariantAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder clangCheck = steps.Task("Run Clang Validation")
-                    .Describe("Rebuild the packaged plugin in the Clang validation variant to verify the distributable plugin payload under Clang")
-                    .After(prepareClangVariant.Id)
-                    .When(deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.")
-                    .Run(RunClangCompileCheck);
+                    clangCheck = validationScope.Task("Run Clang Validation")
+                        .Describe("Rebuild the packaged plugin in the Clang validation variant to verify the distributable plugin payload under Clang")
+                        .After(prepareClangVariant.Id)
+                        .When(deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.")
+                        .Run(RunClangCompileCheck);
+                });
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageProjectPlugin = steps.Task("Package Project-Plugin Example")
-                    .Describe("Package the shared prebuilt code example with the built plugin still installed at project level after variant cloning finishes")
-                    .Run(PackageProjectPluginExampleAsync);
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder preparePackageVariants = steps.Task("Prepare Package Variants")
+                    .Describe("Clone and mutate the shared prebuilt project-plugin base into the engine and blueprint packaging variants before the package flows begin");
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareEngineVariant = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareBlueprintDemoVariant = default!;
+                preparePackageVariants.Children(global::LocalAutomation.Runtime.ExecutionChildMode.Parallel, variantScope =>
+                {
+                    prepareEngineVariant = variantScope.Task("Prepare Engine-Plugin Variant")
+                        .Describe("Clone the prebuilt project-plugin base and remove the project-level plugin so packaging resolves the built plugin from the engine install")
+                        .After(buildExampleBase.Id)
+                        .Run(PrepareEnginePluginVariantAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder testProjectPlugin = steps.Task("Test Project-Plugin Example")
-                    .Describe("Launch and validate the packaged code example that keeps the built plugin installed at project level")
-                    .After(packageProjectPlugin.Id)
-                    .When(automationOptions.RunTests && deployOptions.TestPackageWithProjectPlugin, automationOptions.RunTests ? "Test Package With Project Plugin is off." : "Run Tests is off.")
-                    .Run(context => TestProjectPluginExampleAsync(context, automationOptions));
+                    prepareBlueprintDemoVariant = variantScope.Task("Prepare Blueprint And Demo Variant")
+                        .Describe("Clone the prebuilt project-plugin base, remove the project-level plugin, convert to blueprint-only, and prune plugins for blueprint and demo packaging")
+                        .After(buildExampleBase.Id)
+                        .Run(PrepareBlueprintDemoVariantAsync);
+                });
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder installEnginePlugin = steps.Task("Install Built Plugin To Engine")
-                    .Describe("Install the built plugin into the engine marketplace folder once the project-plugin example package is sealed")
-                    .After(packageProjectPlugin.Id)
-                    .Run(InstallBuiltPluginToEngineAsync);
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageProjectPluginFlow = steps.Task("Project-Plugin Package Flow")
+                    .Describe("Build, package, validate, and then promote the example that keeps the built plugin installed at project level");
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildProjectPluginPackageTarget = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageProjectPlugin = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testProjectPlugin = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder installEnginePlugin = default!;
+                packageProjectPluginFlow.Children(flowScope =>
+                {
+                    buildProjectPluginPackageTarget = flowScope.Task("Build Project-Plugin Package Target")
+                        .Describe("Build the shared project-plugin example target after all package variants have finished cloning the shared base")
+                        .Run(BuildProjectPluginExampleTargetAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareEngineVariant = steps.Task("Prepare Engine-Plugin Variant")
-                    .Describe("Clone the prebuilt project-plugin base and remove the project-level plugin so packaging resolves the built plugin from the engine install")
-                    .After(buildExampleBase.Id)
-                    .Run(PrepareEnginePluginVariantAsync);
+                    packageProjectPlugin = flowScope.Task("Package Project-Plugin Example")
+                        .Describe("Package the shared prebuilt code example with the built plugin still installed at project level after variant cloning finishes")
+                        .After(buildProjectPluginPackageTarget.Id)
+                        .Run(PackageProjectPluginExampleAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageEnginePlugin = steps.Task("Package Engine-Plugin Example")
-                    .Describe("Package the code example variant that resolves the built plugin from the engine install")
-                    .After(prepareEngineVariant.Id, installEnginePlugin.Id)
-                    .Run(PackageEnginePluginExampleAsync);
+                    testProjectPlugin = flowScope.Task("Test Project-Plugin Example")
+                        .Describe("Launch and validate the packaged code example that keeps the built plugin installed at project level")
+                        .After(packageProjectPlugin.Id)
+                        .When(automationOptions.RunTests && deployOptions.TestPackageWithProjectPlugin, automationOptions.RunTests ? "Test Package With Project Plugin is off." : "Run Tests is off.")
+                        .Run(context => TestProjectPluginExampleAsync(context, automationOptions));
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder testEnginePlugin = steps.Task("Test Engine-Plugin Example")
-                    .Describe("Launch and validate the packaged code example that resolves the built plugin from the engine install")
-                    .After(packageEnginePlugin.Id)
-                    .When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.")
-                    .Run(context => TestEnginePluginExampleAsync(context, automationOptions));
+                    installEnginePlugin = flowScope.Task("Install Built Plugin To Engine")
+                        .Describe("Install the built plugin into the engine marketplace folder once the project-plugin example package is sealed")
+                        .After(packageProjectPlugin.Id)
+                        .Run(InstallBuiltPluginToEngineAsync);
+                });
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareBlueprintDemoVariant = steps.Task("Prepare Blueprint And Demo Variant")
-                    .Describe("Clone the prebuilt project-plugin base, remove the project-level plugin, convert to blueprint-only, and prune plugins for blueprint and demo packaging")
-                    .After(buildExampleBase.Id)
-                    .Run(PrepareBlueprintDemoVariantAsync);
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder enginePluginFlow = steps.Task("Engine-Plugin Package Flow")
+                    .Describe("Build, package, and validate the example that loads the built plugin from the engine install after its prepared variant is ready");
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildEnginePluginPackageTarget = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageEnginePlugin = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testEnginePlugin = default!;
+                enginePluginFlow.Children(flowScope =>
+                {
+                    buildEnginePluginPackageTarget = flowScope.Task("Build Engine-Plugin Package Target")
+                        .Describe("Build the engine-plugin example target after the engine variant is prepared and the built plugin is installed into the engine")
+                        .After(prepareEngineVariant.Id, installEnginePlugin.Id)
+                        .Run(BuildEnginePluginExampleTargetAsync);
+
+                    packageEnginePlugin = flowScope.Task("Package Engine-Plugin Example")
+                        .Describe("Package the code example variant that resolves the built plugin from the engine install")
+                        .After(buildEnginePluginPackageTarget.Id)
+                        .Run(PackageEnginePluginExampleAsync);
+
+                    testEnginePlugin = flowScope.Task("Test Engine-Plugin Example")
+                        .Describe("Launch and validate the packaged code example that resolves the built plugin from the engine install")
+                        .After(packageEnginePlugin.Id)
+                        .When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.")
+                        .Run(context => TestEnginePluginExampleAsync(context, automationOptions));
+                });
+
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder blueprintDemoFlow = steps.Task("Blueprint And Demo Flow")
+                    .Describe("Build, package, validate, and archive the blueprint and shipping demo outputs after the prepared variant is ready");
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildBlueprintPackageTarget = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageBlueprint = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder testBlueprint = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder buildDemoTarget = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageDemo = default!;
+                blueprintDemoFlow.Children(flowScope =>
+                {
+                    buildBlueprintPackageTarget = flowScope.Task("Build Blueprint-Only Package Target")
+                        .Describe("Build the blueprint-only example target after the blueprint/demo variant is prepared and the built plugin is installed into the engine")
+                        .After(prepareBlueprintDemoVariant.Id, installEnginePlugin.Id)
+                        .Run(BuildBlueprintOnlyExampleTargetAsync);
+
+                    packageBlueprint = flowScope.Task("Package Blueprint-Only Example")
+                        .Describe("Package the blueprint-only example variant that resolves the built plugin from the engine install")
+                        .After(buildBlueprintPackageTarget.Id)
+                        .Run(PackageBlueprintOnlyExampleAsync);
+
+                    testBlueprint = flowScope.Task("Test Blueprint-Only Example")
+                        .Describe("Launch and validate the packaged blueprint-only example that resolves the built plugin from the engine install")
+                        .After(packageBlueprint.Id)
+                        .When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.")
+                        .Run(context => TestBlueprintOnlyExampleAsync(context, automationOptions));
+
+                    buildDemoTarget = flowScope.Task("Build Demo Package Target")
+                        .Describe("Build the shipping demo target from the prepared blueprint/demo variant after the development blueprint package has finished")
+                        .After(packageBlueprint.Id)
+                        .Run(BuildDemoExecutableTargetAsync);
+
+                    packageDemo = flowScope.Task("Package Demo Executable")
+                        .Describe("Package the shipping demo executable from the prepared blueprint/demo variant")
+                        .After(buildDemoTarget.Id)
+                        .Run(PackageDemoExecutableAsync);
+                });
 
                 /* The project-plugin example package can reuse the prebuilt project-plugin base directly, but only once every branch that
                    clones that base has finished copying it. That keeps the shared base read-only while the prepare tasks
                    fan out in parallel and avoids racing UAT writes against file copies. */
-                packageProjectPlugin.After(prepareClangVariant.Id, prepareEngineVariant.Id, prepareBlueprintDemoVariant.Id);
+                buildProjectPluginPackageTarget.After(prepareClangVariant.Id, prepareEngineVariant.Id, prepareBlueprintDemoVariant.Id);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageBlueprint = steps.Task("Package Blueprint-Only Example")
-                    .Describe("Package the blueprint-only example variant that resolves the built plugin from the engine install")
-                    .After(prepareBlueprintDemoVariant.Id, installEnginePlugin.Id)
-                    .Run(PackageBlueprintOnlyExampleAsync);
-
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder testBlueprint = steps.Task("Test Blueprint-Only Example")
-                    .Describe("Launch and validate the packaged blueprint-only example that resolves the built plugin from the engine install")
-                    .After(packageBlueprint.Id)
-                    .When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.")
-                    .Run(context => TestBlueprintOnlyExampleAsync(context, automationOptions));
-
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageDemo = steps.Task("Package Demo Executable")
-                    .Describe("Package the shipping demo executable from the prepared blueprint/demo variant")
-                    .After(packageBlueprint.Id)
-                    .Run(PackageDemoExecutableAsync);
-
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder archivePluginSource = steps.Task("Archive Staged Plugin Source")
+                steps.Task("Archive Staged Plugin Source")
                     .Describe("Archive the staged source-style plugin payload as soon as the staging copy is ready")
                     .After(stagePlugin.Id)
                     .Run(ArchivePluginSourceAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder archivePluginBuild = steps.Task("Archive Distributable Plugin")
+                steps.Task("Archive Distributable Plugin")
                     .Describe("Archive the packaged distributable plugin payload as soon as the built plugin output is ready")
                     .After(buildPlugin.Id)
                     .Run(ArchivePluginBuildAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder archiveExampleProject = steps.Task("Archive Example Project Payload")
+                steps.Task("Archive Example Project Payload")
                     .Describe("Archive the example-project payload from a dedicated archive copy once the blueprint and demo variant is prepared")
                     .After(prepareBlueprintDemoVariant.Id)
                     .Run(ArchiveExampleProjectAsync);
 
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder archiveDemoPackage = steps.Task("Archive Demo Executable")
+                steps.Task("Archive Demo Executable")
                     .Describe("Archive the packaged demo executable as soon as the demo output exists")
                     .After(packageDemo.Id)
                     .Run(ArchiveDemoPackageAsync);
@@ -808,12 +900,25 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Builds the prepared project's game target so later package-only BuildCookRun passes have the staged game receipt
-        /// they expect in Binaries/Win64 even when the project descriptor itself no longer has modules.
+        /// Creates the explicit package-only BuildCookRun request used by Deploy Plugin prepared-project branches. Deploy
+        /// Plugin always reads packaged outputs from staged builds now, so these requests never enable UAT archive mode.
         /// </summary>
-        private Task RunPreparedProjectBuildAsync(Project project, DeploymentWorkspaceState state, string outputPath, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
+        private static BuildCookRunProjectRequest CreatePreparedProjectPackageRequest(BuildConfiguration configuration, bool noDebugInfo = false)
+        {
+            return new BuildCookRunProjectRequest(
+                BuildCookRunProjectPhases.Cook | BuildCookRunProjectPhases.Stage | BuildCookRunProjectPhases.Pak | BuildCookRunProjectPhases.Package,
+                configuration: configuration,
+                noDebugInfo: noDebugInfo);
+        }
+
+        /// <summary>
+        /// Builds one prepared project's game target so the later package-only BuildCookRun step has the staged game
+        /// receipt it expects in Binaries/Win64 even when the project descriptor itself no longer has modules.
+        /// </summary>
+        private Task RunPreparedProjectBuildAsync(Project project, DeploymentWorkspaceState state, string outputPath, BuildConfiguration configuration, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
         {
             global::LocalAutomation.Runtime.OperationParameters parameters = CreateExampleProjectBuildCookRunParams(project, state, outputPath);
+            parameters.GetOptions<BuildConfigurationOptions>().Configuration = configuration;
 
             /* Stage still validates the game's target receipt when any enabled plugin contributes code, so the split build
                step must always compile the game target explicitly before package-only BuildCookRun takes over. */
@@ -826,26 +931,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Runs the split package flow for one prepared example-project variant. The flow first builds the game's UBT
-        /// target so staging has the expected receipt, then it runs a package-only BuildCookRun command without holding
-        /// the shared Unreal build lock through cook and package phases.
+        /// Runs the package-only BuildCookRun pass for one prepared example-project variant after its explicit target-build
+        /// step has already completed. The staged package output is cleared here so package discovery cannot consume stale
+        /// files from an earlier deploy run.
         /// </summary>
-        private async Task RunPackageProjectAsync(Project project, DeploymentWorkspaceState state, string outputPath, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage, bool prebuildTarget = true)
+        private Task RunPreparedProjectPackageAsync(Project project, DeploymentWorkspaceState state, string outputPath, BuildConfiguration configuration, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage, bool noDebugInfo = false)
         {
             FileUtils.DeleteDirectoryIfExists(outputPath);
+            DeleteExistingStagedPackageOutput(project, state);
             global::LocalAutomation.Runtime.OperationParameters parameters = CreateExampleProjectBuildCookRunParams(project, state, outputPath);
-            if (prebuildTarget)
-            {
-                await RunPreparedProjectBuildAsync(project, state, outputPath, context, "Build project target for packaging failed");
-            }
+            parameters.GetOptions<BuildConfigurationOptions>().Configuration = configuration;
 
-            await RunChildOperationAsync(
+            return RunChildOperationAsync(
                 CreateBuildCookRunProjectOperation(
-                    "Package Prepared Project",
-                    new BuildCookRunProjectRequest(
-                        BuildCookRunProjectPhases.Cook | BuildCookRunProjectPhases.Stage | BuildCookRunProjectPhases.Pak | BuildCookRunProjectPhases.Package,
-                        useArchiveOptions: true,
-                        useCookOptions: true)),
+                    configuration == BuildConfiguration.Shipping ? "Package Demo Project" : "Package Prepared Project",
+                    CreatePreparedProjectPackageRequest(configuration, noDebugInfo: noDebugInfo)),
                 parameters,
                 context,
                 required: true,
@@ -893,15 +993,27 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
+        /// Scheduler wrapper for building the shared prebuilt project-plugin base after every sibling branch has finished
+        /// cloning that base for its own later package variant.
+        /// </summary>
+        private async Task BuildProjectPluginExampleTargetAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Building project-plugin example target");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project exampleProjectBase = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for project-plugin target build");
+            await RunPreparedProjectBuildAsync(exampleProjectBase, state, GetProjectPluginPackagePath(state), BuildConfiguration.Development, context, "Build project-plugin example target failed");
+        }
+
+        /// <summary>
         /// Scheduler wrapper for packaging the shared prebuilt project-plugin base with the plugin installed at project
-        /// level once every sibling branch has finished cloning that base.
+        /// level once its explicit target-build step has finished.
         /// </summary>
         private async Task PackageProjectPluginExampleAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging project-plugin example");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             using Project exampleProjectBase = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for project-plugin packaging");
-            await RunPackageProjectAsync(exampleProjectBase, state, GetProjectPluginPackagePath(state), context, "Package project-plugin example failed");
+            await RunPreparedProjectPackageAsync(exampleProjectBase, state, GetProjectPluginPackagePath(state), BuildConfiguration.Development, context, "Package project-plugin example failed");
         }
 
         /// <summary>
@@ -911,7 +1023,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing project-plugin example");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
-            Package projectPluginPackage = CreateRequiredPackage(state, GetProjectPluginPackagePath(state), "Project-plugin package output is not available for launch");
+            using Project exampleProjectBase = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for launch validation");
+            Package projectPluginPackage = CreateRequiredPackage(exampleProjectBase, state, "Project-plugin package output is not available for launch");
             await RunLaunchPackageAsync(projectPluginPackage, state.Engine, automationOptions, context, "Launch and test with project plugin failed", GetWorkspacePath(state.WorkspacePath, "ProjectPluginLaunchOutput"));
         }
 
@@ -931,6 +1044,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
+        /// Scheduler wrapper for building the engine-plugin example target once the engine variant is ready and the built
+        /// plugin has been installed into the engine.
+        /// </summary>
+        private async Task BuildEnginePluginExampleTargetAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Building engine-plugin example target");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project engineVariant = CreateRequiredProject(GetEnginePluginVariantPath(state), "Engine-plugin variant is not available for target build");
+            await RunPreparedProjectBuildAsync(engineVariant, state, GetEnginePluginPackagePath(state), BuildConfiguration.Development, context, "Build engine-plugin example target failed");
+        }
+
+        /// <summary>
         /// Scheduler wrapper for packaging the engine-plugin example.
         /// </summary>
         private async Task PackageEnginePluginExampleAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -938,7 +1063,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging engine-plugin example");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             using Project engineVariant = CreateRequiredProject(GetEnginePluginVariantPath(state), "Engine-plugin variant is not available for packaging");
-            await RunPackageProjectAsync(engineVariant, state, GetEnginePluginPackagePath(state), context, "Package engine-plugin example failed");
+            await RunPreparedProjectPackageAsync(engineVariant, state, GetEnginePluginPackagePath(state), BuildConfiguration.Development, context, "Package engine-plugin example failed");
         }
 
         /// <summary>
@@ -948,8 +1073,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing engine-plugin example");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
-            Package enginePluginPackage = CreateRequiredPackage(state, GetEnginePluginPackagePath(state), "Engine-plugin package output is not available for launch");
+            using Project engineVariant = CreateRequiredProject(GetEnginePluginVariantPath(state), "Engine-plugin variant is not available for launch validation");
+            Package enginePluginPackage = CreateRequiredPackage(engineVariant, state, "Engine-plugin package output is not available for launch");
             await RunLaunchPackageAsync(enginePluginPackage, state.Engine, automationOptions, context, "Launch and test engine-plugin example failed", GetWorkspacePath(state.WorkspacePath, "EnginePluginLaunchOutput"));
+        }
+
+        /// <summary>
+        /// Scheduler wrapper for building the blueprint-only example target after the blueprint/demo variant is ready and
+        /// the built plugin has been installed into the engine.
+        /// </summary>
+        private async Task BuildBlueprintOnlyExampleTargetAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Building blueprint-only example target");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project blueprintVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for target build");
+            await RunPreparedProjectBuildAsync(blueprintVariant, state, GetBlueprintPackagePath(state), BuildConfiguration.Development, context, "Build blueprint-only example target failed");
         }
 
         /// <summary>
@@ -961,10 +1099,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             using Project blueprintVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for packaging");
 
-            /* Unreal still treats the package as code-based when enabled plugins contribute modules, even after the host
-               project descriptor is converted to blueprint-only, so this branch still needs the explicit game-target build
-               step before the lock-free package-only BuildCookRun pass. */
-            await RunPackageProjectAsync(blueprintVariant, state, GetBlueprintPackagePath(state), context, "Package blueprint-only example failed");
+            await RunPreparedProjectPackageAsync(blueprintVariant, state, GetBlueprintPackagePath(state), BuildConfiguration.Development, context, "Package blueprint-only example failed");
         }
 
         /// <summary>
@@ -974,8 +1109,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing blueprint-only example");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
-            Package package = CreateRequiredPackage(state, GetBlueprintPackagePath(state), "Blueprint package output is not available for launch");
+            using Project blueprintVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for launch validation");
+            Package package = CreateRequiredPackage(blueprintVariant, state, "Blueprint package output is not available for launch");
             await RunLaunchPackageAsync(package, state.Engine, automationOptions, context, "Launch and test blueprint-only example failed", GetWorkspacePath(state.WorkspacePath, "BlueprintLaunchOutput"));
+        }
+
+        /// <summary>
+        /// Builds the shipping demo target from the prepared blueprint/demo variant after the development blueprint package
+        /// has finished mutating that shared variant.
+        /// </summary>
+        private async Task BuildDemoExecutableTargetAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Building demo executable target");
+            DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
+            using Project demoVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for demo target build");
+            await RunPreparedProjectBuildAsync(demoVariant, state, GetDemoPackageOutputPath(state), BuildConfiguration.Shipping, context, "Build demo project target for packaging failed");
         }
 
         /// <summary>
@@ -987,34 +1135,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Packaging demo executable");
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
             string demoPackagePath = GetDemoPackageOutputPath(state);
-            FileUtils.DeleteDirectoryIfExists(demoPackagePath);
 
             using Project demoVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for demo packaging");
-            global::LocalAutomation.Runtime.OperationParameters demoPackageParams = CreateExampleProjectBuildCookRunParams(demoVariant, state, demoPackagePath);
-
-            demoPackageParams.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Shipping;
-            demoPackageParams.GetOptions<PackageOptions>().NoDebugInfo = true;
-
-            /* The shipping demo still needs a game receipt when any enabled plugin contains code, so build the shipping
-               target first and then reuse that output during the package-only BuildCookRun pass. */
-            await RunChildOperationAsync(
-                new BuildProjectTarget(),
-                demoPackageParams,
-                context,
-                required: true,
-                failureMessage: "Build demo project target for packaging failed");
-
-            await RunChildOperationAsync(
-                CreateBuildCookRunProjectOperation(
-                    "Package Demo Project",
-                    new BuildCookRunProjectRequest(
-                        BuildCookRunProjectPhases.Cook | BuildCookRunProjectPhases.Stage | BuildCookRunProjectPhases.Pak | BuildCookRunProjectPhases.Package,
-                        useArchiveOptions: true,
-                        useCookOptions: true)),
-                demoPackageParams,
-                context,
-                required: true,
-                failureMessage: "Package demo executable failed");
+            await RunPreparedProjectPackageAsync(demoVariant, state, demoPackagePath, BuildConfiguration.Shipping, context, "Package demo executable failed", noDebugInfo: true);
         }
 
         /// <summary>
@@ -1171,7 +1294,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             DeploymentWorkspaceState state = context.GetOperationState<DeploymentWorkspaceState>();
-            Package demoPackage = CreateRequiredPackage(state, GetDemoPackageOutputPath(state), "Demo package output is not available for archiving");
+            using Project demoVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for demo archive validation");
+            Package demoPackage = CreateRequiredPackage(demoVariant, state, "Demo package output is not available for archiving");
             string archivePrefix = await BuildArchivePrefixAsync(state);
             string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
             string demoPackageZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "DemoPackage.zip");

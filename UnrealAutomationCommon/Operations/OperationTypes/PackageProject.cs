@@ -31,7 +31,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         /// <summary>
         /// Full project packaging remains a single BuildCookRun command for callers outside Deploy Plugin, but the shared
-        /// phase request now makes the build portion explicit so other workflows can split it when needed.
+        /// request now carries the exact BuildCookRun command settings directly so the base class does not need to read
+        /// package or cook option models.
         /// </summary>
         protected override BuildCookRunProjectRequest GetBuildCookRunRequest(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
@@ -44,7 +45,20 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 phases |= BuildCookRunProjectPhases.Build;
             }
 
-            return new BuildCookRunProjectRequest(phases, useArchiveOptions: true, useCookOptions: true);
+            PackageOptions packageOptions = operationParameters.GetOptions<PackageOptions>();
+            CookOptions cookOptions = operationParameters.GetOptions<CookOptions>();
+            BuildConfiguration cookerConfiguration = cookOptions.CookerConfiguration;
+            Engine engine = GetRequiredTargetEngineInstall(operationParameters);
+
+            /* Package Project still exposes the user-facing package and cook option sets, but it now translates those
+               values into one self-contained BuildCookRun request before the shared base assembles UAT arguments. */
+            return new BuildCookRunProjectRequest(
+                phases,
+                configuration: operationParameters.GetOptions<BuildConfigurationOptions>().Configuration,
+                noDebugInfo: packageOptions.NoDebugInfo,
+                archiveDirectory: packageOptions.Archive ? GetOutputPath(operationParameters) : null,
+                unrealExePath: cookerConfiguration != BuildConfiguration.Development ? engine.GetEditorCmdExe(cookerConfiguration) : null,
+                additionalCookerOptions: cookOptions.WaitForAttach ? "-waitforattach" : null);
         }
 
         protected override string GetOperationName()

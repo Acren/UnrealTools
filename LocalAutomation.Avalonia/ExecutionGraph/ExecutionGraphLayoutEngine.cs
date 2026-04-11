@@ -90,11 +90,11 @@ internal sealed class ExecutionGraphLayoutEngine
         }
 
         HashSet<RuntimeExecutionTaskId> visibleChildIds = childIds.ToHashSet();
-        Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> siblingOwnerByTaskId = BuildSiblingOwnerMap(childIds);
+        Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> siblingOwnerByVisibleNodeId = BuildSiblingOwnerMap(childIds);
         Dictionary<RuntimeExecutionTaskId, HashSet<RuntimeExecutionTaskId>> remainingDependencies = childIds.ToDictionary(
             childId => childId,
-            childId => _projection.GetRawTask(childId).Dependencies
-                .Select(dependencyId => siblingOwnerByTaskId.TryGetValue(dependencyId, out RuntimeExecutionTaskId ownerId) ? ownerId : default)
+            childId => _projection.GetVisibleDependencyIds(childId)
+                .Select(dependencyId => siblingOwnerByVisibleNodeId.TryGetValue(dependencyId, out RuntimeExecutionTaskId ownerId) ? ownerId : default)
                 .Where(ownerId => ownerId != default && ownerId != childId && visibleChildIds.Contains(ownerId))
                 .ToHashSet());
         List<RuntimeExecutionTaskId> remainingChildIds = childIds.ToList();
@@ -127,17 +127,18 @@ internal sealed class ExecutionGraphLayoutEngine
     }
 
     /// <summary>
-    /// Maps every raw task id inside the provided sibling subtrees back to the direct visible sibling that owns that raw
-    /// task.
+    /// Maps every visible node inside the provided sibling subtrees back to the direct visible sibling container that
+    /// owns that node. Rolled-up descendant dependencies use this to decide whether one sibling group should stage after
+    /// another sibling group even when the actual dependency lives on a deeper child node.
     /// </summary>
     private Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> BuildSiblingOwnerMap(IReadOnlyList<RuntimeExecutionTaskId> childIds)
     {
         Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> ownerMap = new();
         foreach (RuntimeExecutionTaskId childId in childIds)
         {
-            foreach (RuntimeExecutionTaskId subtreeTaskId in _projection.EnumerateVisibleSubtreeRawTaskIds(childId))
+            foreach (RuntimeExecutionTaskId subtreeNodeId in _projection.EnumerateVisibleSubtreeNodeIds(childId))
             {
-                ownerMap[subtreeTaskId] = childId;
+                ownerMap[subtreeNodeId] = childId;
             }
         }
 

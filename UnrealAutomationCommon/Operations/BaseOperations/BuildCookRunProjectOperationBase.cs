@@ -22,16 +22,25 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
     }
 
     /// <summary>
-    /// Describes one project BuildCookRun invocation in terms of enabled phases and the option groups that should still
-    /// influence the generated command.
+    /// Describes one complete project BuildCookRun invocation in terms of enabled phases and the explicit command
+    /// settings that should shape the generated UAT arguments.
     /// </summary>
     public readonly struct BuildCookRunProjectRequest
     {
-        public BuildCookRunProjectRequest(BuildCookRunProjectPhases phases, bool useArchiveOptions = false, bool useCookOptions = false)
+        public BuildCookRunProjectRequest(
+            BuildCookRunProjectPhases phases,
+            BuildConfiguration configuration = BuildConfiguration.Development,
+            bool noDebugInfo = false,
+            string? archiveDirectory = null,
+            string? unrealExePath = null,
+            string? additionalCookerOptions = null)
         {
             Phases = phases;
-            UseArchiveOptions = useArchiveOptions;
-            UseCookOptions = useCookOptions;
+            Configuration = configuration;
+            NoDebugInfo = noDebugInfo;
+            ArchiveDirectory = archiveDirectory;
+            UnrealExePath = unrealExePath;
+            AdditionalCookerOptions = additionalCookerOptions;
         }
 
         /// <summary>
@@ -40,14 +49,29 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         public BuildCookRunProjectPhases Phases { get; }
 
         /// <summary>
-        /// Controls whether package archive settings should add BuildCookRun archive arguments.
+        /// The client and server configuration BuildCookRun should use for this invocation.
         /// </summary>
-        public bool UseArchiveOptions { get; }
+        public BuildConfiguration Configuration { get; }
 
         /// <summary>
-        /// Controls whether cook-specific options such as cooker configuration and wait-for-attach should be applied.
+        /// Controls whether BuildCookRun should omit debug symbols from the packaged output.
         /// </summary>
-        public bool UseCookOptions { get; }
+        public bool NoDebugInfo { get; }
+
+        /// <summary>
+        /// When non-empty, instructs BuildCookRun to emit its archive layout to this directory.
+        /// </summary>
+        public string? ArchiveDirectory { get; }
+
+        /// <summary>
+        /// Overrides the cooker executable path when one specific cooker configuration should drive the cook.
+        /// </summary>
+        public string? UnrealExePath { get; }
+
+        /// <summary>
+        /// Supplies extra raw cooker arguments for flows that need one targeted cooker behavior toggle.
+        /// </summary>
+        public string? AdditionalCookerOptions { get; }
 
         /// <summary>
         /// Returns whether this invocation still enters the compile phase and therefore needs the shared Unreal build lock.
@@ -97,7 +121,7 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
 
         /// <summary>
         /// Builds one BuildCookRun command from the shared request model so concrete operations only need to describe the
-        /// enabled phases and option usage, not the UAT argument plumbing.
+        /// enabled phases and explicit command settings, not the UAT argument plumbing.
         /// </summary>
         protected override Command BuildCommand(ValidatedOperationParameters operationParameters)
         {
@@ -110,25 +134,29 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             arguments.SetKeyPath("project", project.UProjectPath);
             ApplyPhaseArguments(arguments, request);
 
-            string configuration = operationParameters.GetOptions<BuildConfigurationOptions>().Configuration.ToString();
+            string configuration = request.Configuration.ToString();
             arguments.SetKeyValue("clientconfig", configuration);
             arguments.SetKeyValue("serverconfig", configuration);
 
-            PackageOptions packageOptions = operationParameters.GetOptions<PackageOptions>();
-            if (packageOptions.NoDebugInfo)
+            if (request.NoDebugInfo)
             {
                 arguments.SetFlag("NoDebugInfo");
             }
 
-            if (request.UseArchiveOptions && packageOptions.Archive)
+            if (!string.IsNullOrWhiteSpace(request.ArchiveDirectory))
             {
                 arguments.SetFlag("archive");
-                arguments.SetKeyPath("archivedirectory", GetOutputPath(operationParameters));
+                arguments.SetKeyPath("archivedirectory", request.ArchiveDirectory!);
             }
 
-            if (request.UseCookOptions)
+            if (!string.IsNullOrWhiteSpace(request.UnrealExePath))
             {
-                ApplyCookOptions(arguments, operationParameters, engine);
+                arguments.SetKeyPath("unrealexe", request.UnrealExePath!);
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.AdditionalCookerOptions))
+            {
+                arguments.SetKeyValue("additionalcookeroptions", request.AdditionalCookerOptions!);
             }
 
             arguments.ApplyCommonUATArguments(engine);
@@ -166,24 +194,6 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
                 arguments.SetFlag("package");
             }
         }
-
-        /// <summary>
-        /// Applies cooker-specific overrides only for requests that actually enter cook-driven packaging phases.
-        /// </summary>
-        private static void ApplyCookOptions(Arguments arguments, ValidatedOperationParameters operationParameters, Engine engine)
-        {
-            BuildConfiguration cookerConfiguration = operationParameters.GetOptions<CookOptions>().CookerConfiguration;
-            if (cookerConfiguration != BuildConfiguration.Development)
-            {
-                string unrealExe = engine.GetEditorCmdExe(cookerConfiguration);
-                arguments.SetKeyPath("unrealexe", unrealExe);
-            }
-
-            if (operationParameters.GetOptions<CookOptions>().WaitForAttach)
-            {
-                arguments.SetKeyValue("additionalcookeroptions", "-waitforattach");
-            }
-        }
     }
 
     /// <summary>
@@ -204,18 +214,15 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         }
 
         /// <summary>
-        /// Configurable BuildCookRun invocations expose the full set of project BuildCookRun option groups because deploy
-        /// flows may reuse the same operation shape for build-only and package-only child calls.
+        /// Configurable BuildCookRun invocations only need additional argument passthrough because the preconfigured
+        /// request already carries the command settings that would otherwise come from operation-specific option sets.
         /// </summary>
         protected override IEnumerable<Type> GetDeclaredOptionSetTypes(IOperationTarget target)
         {
             return base.GetDeclaredOptionSetTypes(target)
                 .Concat(new[]
                 {
-                    typeof(AdditionalArgumentsOptions),
-                    typeof(BuildConfigurationOptions),
-                    typeof(PackageOptions),
-                    typeof(CookOptions)
+                    typeof(AdditionalArgumentsOptions)
                 });
         }
 

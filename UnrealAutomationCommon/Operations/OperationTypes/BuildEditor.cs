@@ -10,15 +10,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
     public class BuildEditor : BuildCookRunProjectOperationBase
     {
         /// <summary>
-        /// BuildCookRun editor builds always expose build configuration selection.
+        /// BuildCookRun editor builds only need build configuration selection now that the shared BuildCookRun base no
+        /// longer inspects package options on behalf of concrete operations.
         /// </summary>
         protected override System.Collections.Generic.IEnumerable<System.Type> GetDeclaredOptionSetTypes(global::LocalAutomation.Runtime.IOperationTarget target)
         {
             return base.GetDeclaredOptionSetTypes(target)
                 .Concat(new[]
                 {
-                    typeof(OperationOptionTypes.BuildConfigurationOptions),
-                    typeof(OperationOptionTypes.PackageOptions)
+                    typeof(OperationOptionTypes.BuildConfigurationOptions)
                 });
         }
 
@@ -28,7 +28,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// </summary>
         protected override BuildCookRunProjectRequest GetBuildCookRunRequest(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
-            return new BuildCookRunProjectRequest(BuildCookRunProjectPhases.Build);
+            return new BuildCookRunProjectRequest(
+                BuildCookRunProjectPhases.Build,
+                configuration: operationParameters.GetOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration);
         }
 
         protected override string GetOperationName()
