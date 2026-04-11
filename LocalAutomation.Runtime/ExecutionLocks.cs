@@ -18,7 +18,7 @@ public static class ExecutionLocks
 
     /// <summary>
     /// Tries to acquire all provided execution locks immediately and returns one releaser that frees them in reverse
-    /// order. The scheduler uses this to keep lock-blocked work in Pending until the callback can truly start.
+    /// order. The scheduler uses this to keep untouched lock contenders queued until the callback can truly start.
     /// </summary>
     public static bool TryAcquire(IEnumerable<ExecutionLock> executionLocks, out IAsyncDisposable handle)
     {

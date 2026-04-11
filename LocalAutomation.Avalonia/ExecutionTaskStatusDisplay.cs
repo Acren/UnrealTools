@@ -9,7 +9,8 @@ namespace LocalAutomation.Avalonia;
 public enum ExecutionTaskDisplayStatus
 {
     Planned,
-    Pending,
+    Queued,
+    WaitingForDependencies,
     AwaitingLock,
     Running,
     Completed,
@@ -48,7 +49,8 @@ public static class ExecutionTaskStatusDisplay
         return state switch
         {
             ExecutionTaskState.Planned => ExecutionTaskDisplayStatus.Planned,
-            ExecutionTaskState.Pending => ExecutionTaskDisplayStatus.Pending,
+            ExecutionTaskState.Queued => ExecutionTaskDisplayStatus.Queued,
+            ExecutionTaskState.WaitingForDependencies => ExecutionTaskDisplayStatus.WaitingForDependencies,
             ExecutionTaskState.WaitingForExecutionLock => ExecutionTaskDisplayStatus.AwaitingLock,
             ExecutionTaskState.Running => ExecutionTaskDisplayStatus.Running,
             ExecutionTaskState.Completed => ExecutionTaskDisplayStatus.Completed,
@@ -61,7 +63,8 @@ public static class ExecutionTaskStatusDisplay
         return status switch
         {
             ExecutionTaskDisplayStatus.Completed => "Done",
-            ExecutionTaskDisplayStatus.Pending => "Pending",
+            ExecutionTaskDisplayStatus.Queued => "Queued",
+            ExecutionTaskDisplayStatus.WaitingForDependencies => "Waiting for dependencies",
             ExecutionTaskDisplayStatus.AwaitingLock => "Awaiting lock",
             ExecutionTaskDisplayStatus.Running => "Running",
             ExecutionTaskDisplayStatus.Failed => "Failed",

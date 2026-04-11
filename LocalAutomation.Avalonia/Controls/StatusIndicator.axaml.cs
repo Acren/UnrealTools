@@ -17,7 +17,7 @@ public partial class StatusIndicator : UserControl
     /// Identifies the semantic status value rendered by the indicator.
     /// </summary>
     public static readonly StyledProperty<global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus> StatusProperty =
-        AvaloniaProperty.Register<StatusIndicator, global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus>(nameof(Status), global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Pending);
+        AvaloniaProperty.Register<StatusIndicator, global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus>(nameof(Status), global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Queued);
 
     /// <summary>
     /// Identifies whether the text label should be shown next to the dot.
@@ -139,13 +139,16 @@ public partial class StatusIndicator : UserControl
     }
 
     /// <summary>
-    /// Applies the shared status classes consumed by the XAML styles. Planned/Pending, explicit lock-waiting, and the
+    /// Applies the shared status classes consumed by the XAML styles. Planned/queued, dependency-blocked, explicit
+    /// lock-waiting, and the
     /// inactive terminal states each have grouped styling so the graph can distinguish untouched, resource-blocked, and
     /// inactive work cleanly.
     /// </summary>
     private static void ApplyStatusClasses(Classes classes, global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus status)
     {
-        classes.Set("pending", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Pending);
+        classes.Set("pending", status is global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Queued or global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.WaitingForDependencies);
+        classes.Set("queued", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Queued);
+        classes.Set("waiting-for-dependencies", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.WaitingForDependencies);
         classes.Set("awaiting-lock", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.AwaitingLock);
         classes.Set("planned", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Planned);
         classes.Set("skipped", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Skipped);

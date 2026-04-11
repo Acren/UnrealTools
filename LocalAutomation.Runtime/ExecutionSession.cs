@@ -583,7 +583,7 @@ public sealed class ExecutionSession
             foreach (ExecutionTask task in Tasks)
             {
                 ExecutionTaskState currentState = task.State;
-                if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
+                if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock or ExecutionTaskState.WaitingForDependencies)
                 {
                     continue;
                 }
@@ -600,7 +600,14 @@ public sealed class ExecutionSession
                     continue;
                 }
 
-                SetTaskStateCore(task.Id, ExecutionTaskState.Pending, waitingReason);
+                /* Untouched queued work stays Queued, while previously started subtrees with no active local work can
+                   surface WaitingForDependencies when their current frontier is blocked only by dependencies outside the
+                   subtree. Waiting-for-parent cases remain queued because their blocker is structural ordering rather than
+                   an external prerequisite. */
+                ExecutionTaskState nextState = startState == TaskStartState.WaitingForDependencies && task.HasStartedWorkInSubtree()
+                    ? ExecutionTaskState.WaitingForDependencies
+                    : ExecutionTaskState.Queued;
+                SetTaskStateCore(task.Id, nextState, waitingReason);
                 RefreshAncestorTaskStates(task.Id);
             }
         });
@@ -699,7 +706,7 @@ public sealed class ExecutionSession
         else
         {
             /* Lock-waiting must become visible immediately at admission time on the authored task that declared the lock.
-               If this transition waits for the worker coroutine to begin, the authored task can still read as Pending or
+               If this transition waits for the worker coroutine to begin, the authored task can still read as Queued or
                get rolled into Running through descendant-derived state before the explicit wait state is ever observed. */
             SetTaskWaitingForExecutionLock(visibleStartedTask.Id);
         }
@@ -1423,6 +1430,7 @@ public sealed class ExecutionSession
             }
 
             TaskStartState parentStartState = currentParent.GetTaskStartState();
+            bool subtreeHasStarted = currentParent.HasStartedWorkInSubtree();
             bool ownTaskIsRunning = currentParent.State == ExecutionTaskState.Running && parentStartState == TaskStartState.Running;
             /* Direct task-level lock wait only exists before that task's own body has ever entered Running. Once an
                executable parent has already started, the same WaitingForExecutionLock state can also be a rolled-up child
@@ -1433,11 +1441,16 @@ public sealed class ExecutionSession
                no task is currently running, no sibling branch is runnable, and every reachable non-terminal blocker is
                an admitted execution-lock waiter. Downstream work that only waits on unfinished tasks inside the same
                subtree does not widen that frontier. */
-            bool subtreeIsPureExecutionLockWait = !ownTaskIsRunning && IsPureExecutionLockBlockedSubtree(currentParent);
-            bool ownTaskIsQueued = parentStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
+            bool subtreeIsPureExecutionLockWait = subtreeHasStarted && !ownTaskIsRunning && IsPureExecutionLockBlockedSubtree(currentParent);
+            /* WaitingForDependencies is reserved for started subtrees that are currently idle locally and whose reachable
+               frontier is blocked only by dependencies outside the subtree. Untouched queued work still uses Queued even
+               when the scheduler-facing start reason is also WaitingForDependencies. */
+            bool subtreeIsPureDependencyWait = subtreeHasStarted && !ownTaskIsRunning && !ownTaskIsWaitingForExecutionLock && IsPureDependencyBlockedSubtree(currentParent);
+            bool ownTaskIsQueued = currentParent.State == ExecutionTaskState.Queued && parentStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
             bool anyChildRunning = childTasks.Any(task => task.State == ExecutionTaskState.Running);
             bool anyChildWaitingForExecutionLock = childTasks.Any(task => task.State == ExecutionTaskState.WaitingForExecutionLock);
-            bool anyPending = childTasks.Any(task => task.State is ExecutionTaskState.Pending or ExecutionTaskState.Planned);
+            bool anyChildWaitingForDependencies = childTasks.Any(task => task.State == ExecutionTaskState.WaitingForDependencies);
+            bool anyQueued = childTasks.Any(task => task.State is ExecutionTaskState.Queued or ExecutionTaskState.Planned);
             ExecutionTask? failedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Failed);
             ExecutionTask? cancelledTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Cancelled);
             ExecutionTask? interruptedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Interrupted);
@@ -1463,18 +1476,24 @@ public sealed class ExecutionSession
                    present blocker visible without claiming that untouched downstream tasks are independently pending. */
                 parentState = ExecutionTaskState.WaitingForExecutionLock;
             }
+            else if (subtreeIsPureDependencyWait)
+            {
+                /* Started subtrees with no active local work should surface external dependency wait directly instead of
+                   looking Running just because earlier sibling work already completed. */
+                parentState = ExecutionTaskState.WaitingForDependencies;
+            }
             else if (ownTaskIsRunning || anyChildRunning || anyChildWaitingForExecutionLock)
             {
                 parentState = ExecutionTaskState.Running;
             }
-            else if (ownTaskIsQueued || anyPending)
+            else if (ownTaskIsQueued || anyQueued || anyChildWaitingForDependencies)
             {
-                /* Pending is reserved for scopes whose subtree has not started yet. Once a scope or any descendant has
-                   started, the scope remains in an active non-queued state until the entire subtree reaches a terminal
-                   outcome, unless the subtree is in the pure execution-lock wait shape handled above. */
-                parentState = currentParent.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock || currentParent.Outcome != null
+                /* Queued is reserved for untouched subtrees whose next reachable work has not started yet. Once a scope
+                   or any descendant has started, the scope must stay in a started state such as Running,
+                   WaitingForExecutionLock, or WaitingForDependencies until the subtree reaches a terminal outcome. */
+                parentState = subtreeHasStarted || currentParent.Outcome != null
                     ? ExecutionTaskState.Running
-                    : ExecutionTaskState.Pending;
+                    : ExecutionTaskState.Queued;
             }
             else
             {
@@ -1483,7 +1502,7 @@ public sealed class ExecutionSession
 
             ExecutionTaskOutcome? parentOutcome = currentParent.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped
                 ? currentParent.Outcome
-                : ownTaskIsRunning || ownTaskIsWaitingForExecutionLock || ownTaskIsQueued || anyPending || anyChildRunning || anyChildWaitingForExecutionLock
+                : ownTaskIsRunning || ownTaskIsWaitingForExecutionLock || ownTaskIsQueued || subtreeIsPureDependencyWait || anyQueued || anyChildRunning || anyChildWaitingForExecutionLock || anyChildWaitingForDependencies
                     ? null
                     : failedTask != null
                     ? ExecutionTaskOutcome.Failed
@@ -1512,6 +1531,13 @@ public sealed class ExecutionSession
                 parentReason = "Waiting for execution lock.";
             }
 
+            if (parentOutcome == null && parentState == ExecutionTaskState.WaitingForDependencies)
+            {
+                /* Started-but-idle dependency wait needs its own explicit label so container scopes do not look actively
+                   Running when they are merely stalled on outside prerequisites. */
+                parentReason = "Waiting for dependencies.";
+            }
+
             if (parentOutcome == ExecutionTaskOutcome.Completed && childTasks.Any(childTask => childTask.State != ExecutionTaskState.Completed))
             {
                 throw new InvalidOperationException($"Task '{currentParent.Id}' cannot roll up to completed while child work is still non-terminal.");
@@ -1525,7 +1551,7 @@ public sealed class ExecutionSession
     /// <summary>
     /// Returns whether the subtree's currently reachable frontier is blocked only on execution locks. Runnable work,
     /// running work, or dependency waits whose unfinished blockers live outside the subtree all disqualify the rollup.
-    /// Pending work blocked only by unfinished tasks inside the same subtree is downstream of the frontier and is
+    /// Queued work blocked only by unfinished tasks inside the same subtree is downstream of the frontier and is
     /// intentionally ignored.
     /// </summary>
     private bool IsPureExecutionLockBlockedSubtree(ExecutionTask subtreeRoot)
@@ -1554,7 +1580,7 @@ public sealed class ExecutionSession
                 continue;
             }
 
-            if (task.State != ExecutionTaskState.Pending)
+            if (task.State is not (ExecutionTaskState.Queued or ExecutionTaskState.Planned))
             {
                 continue;
             }
@@ -1571,6 +1597,67 @@ public sealed class ExecutionSession
         }
 
         return hasExecutionLockWaiter;
+    }
+
+    /// <summary>
+    /// Returns whether the subtree's currently reachable frontier is blocked only on dependencies outside that subtree.
+    /// Running work, lock wait, runnable work, or parent-scope gating all disqualify this rollup. Queued descendants
+    /// blocked only by unfinished tasks inside the same subtree are downstream of the frontier and are intentionally
+    /// ignored.
+    /// </summary>
+    private bool IsPureDependencyBlockedSubtree(ExecutionTask subtreeRoot)
+    {
+        if (subtreeRoot.GetSchedulerReadyBranchRoots().Count > 0)
+        {
+            return false;
+        }
+
+        bool hasExternalDependencyWaiter = false;
+        foreach (ExecutionTask task in subtreeRoot.GetAllTasks())
+        {
+            if (task.Id == subtreeRoot.Id || task.State == ExecutionTaskState.Completed)
+            {
+                continue;
+            }
+
+            if (task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
+            {
+                return false;
+            }
+
+            if (task.State == ExecutionTaskState.WaitingForDependencies)
+            {
+                hasExternalDependencyWaiter = true;
+                continue;
+            }
+
+            if (task.State is not (ExecutionTaskState.Queued or ExecutionTaskState.Planned))
+            {
+                continue;
+            }
+
+            if (task.CanStartOwnWork())
+            {
+                return false;
+            }
+
+            if (!task.AreDependenciesSatisfied())
+            {
+                if (task.HasUnsatisfiedDependenciesOutsideSubtree(subtreeRoot))
+                {
+                    hasExternalDependencyWaiter = true;
+                }
+
+                continue;
+            }
+
+            if (!task.AreAncestorsOpen())
+            {
+                return false;
+            }
+        }
+
+        return hasExternalDependencyWaiter;
     }
 
     /// <summary>

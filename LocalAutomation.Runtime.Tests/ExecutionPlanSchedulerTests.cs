@@ -417,7 +417,7 @@ public sealed class ExecutionPlanSchedulerTests
             ExecutionTask secondVisibleTask = session.GetTask(secondVisibleTaskId);
             Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, firstVisibleTask.State);
             Assert.True(firstVisibleTask.HasActiveExecution);
-            Assert.Equal(ExecutionTaskState.Pending, secondVisibleTask.State);
+            Assert.Equal(ExecutionTaskState.Queued, secondVisibleTask.State);
             Assert.False(secondVisibleTask.HasActiveExecution);
         }
         finally
@@ -893,7 +893,7 @@ public sealed class ExecutionPlanSchedulerTests
             /* Once both contenders are ready together, the longer outer branch should be the one admitted into lock wait
                first. The shorter branch should still be queued behind that admitted waiter. */
             Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, session.GetTask(longChildBodyTaskId).State);
-            Assert.Equal(ExecutionTaskState.Pending, session.GetTask(shortChildBodyTaskId).State);
+            Assert.Equal(ExecutionTaskState.Queued, session.GetTask(shortChildBodyTaskId).State);
 
             releaseLockHolder.TrySetResult(true);
             winnerTaskId = await contenderWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -1085,11 +1085,11 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
-    /// Confirms that a container scope with no running descendants stays pending while its child is still blocked on an
+    /// Confirms that a container scope with no started work stays queued while its child is still blocked on an
     /// unsatisfied dependency.
     /// </summary>
     [Fact]
-    public async Task ParentScopeStaysPendingWhileChildWaitsForDependencies()
+    public async Task ParentScopeStaysQueuedWhileChildWaitsForDependencies()
     {
         // Arrange: the branch child depends on a separate body task that is still running.
         TaskCompletionSource<bool> releaseDependency = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1113,11 +1113,11 @@ public sealed class ExecutionPlanSchedulerTests
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         await session.GetTask(dependencyTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-        // Assert: both the waiting child and its parent scope should still read as pending.
+        // Assert: both the untouched waiting child and its untouched parent scope should still read as queued.
         ExecutionTask waitingChild = session.GetTask(waitingChildTaskId);
         ExecutionTask parentScope = session.GetTask(waitingChild.ParentId!.Value);
-        Assert.Equal(ExecutionTaskState.Pending, waitingChild.State);
-        Assert.Equal(ExecutionTaskState.Pending, parentScope.State);
+        Assert.Equal(ExecutionTaskState.Queued, waitingChild.State);
+        Assert.Equal(ExecutionTaskState.Queued, parentScope.State);
 
         // Cleanup: release the dependency so the run can complete.
         releaseDependency.TrySetResult(true);

@@ -165,7 +165,7 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
                     ? ExecutionTaskDisplayStatus.Cancelled
                     : Session?.Outcome == RuntimeExecutionTaskOutcome.Interrupted
                         ? ExecutionTaskDisplayStatus.Interrupted
-                    : ExecutionTaskDisplayStatus.Pending;
+                    : ExecutionTaskDisplayStatus.Queued;
 
     /// <summary>
     /// Replaces the currently displayed log entries for the selected graph node or current tab-wide log view.

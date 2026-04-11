@@ -8,11 +8,11 @@ namespace LocalAutomation.Runtime.Tests;
 public sealed class ExecutionTaskLifecycleInvariantTests
 {
     /// <summary>
-    /// Confirms that once a scope has started and its only prerequisite has completed, the scope should stay Running
-    /// until the remaining blocked descendant work reaches a terminal outcome instead of falling back to Pending.
+    /// Confirms that once a scope has started and its only prerequisite has completed, the scope should surface
+    /// WaitingForDependencies when its remaining reachable work is blocked only by an unfinished task outside the scope.
     /// </summary>
     [Fact]
-    public async Task StartedScopeWithSatisfiedPrerequisiteStaysRunning()
+    public async Task StartedScopeWithSatisfiedPrerequisiteWaitsForDependencies()
     {
         /* Keep one unrelated task running so the blocked child stays non-terminal after the scope already started. */
         TaskCompletionSource<bool> releaseBlocker = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -58,7 +58,7 @@ public sealed class ExecutionTaskLifecycleInvariantTests
         });
 
         /* Wait until the blocker is running and both prerequisite plus first child have already completed. That leaves
-           the started scope non-terminal but momentarily idle, which is exactly the illegal post-start Pending case. */
+           the started scope non-terminal but momentarily idle, which is exactly the illegal post-start queued case. */
         (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         try
@@ -67,10 +67,11 @@ public sealed class ExecutionTaskLifecycleInvariantTests
             await session.GetTask(prepareSharedSourceTaskId).WaitForCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
             await session.GetTask(completedChildTaskId).WaitForCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-            /* The prerequisite is already terminal and the scope already started real descendant work, so Pending is no
-               longer a legal state for the scope. */
+            /* The prerequisite is already terminal and the scope already started real descendant work, so the scope is no
+               longer merely queued. With no local work still active, the remaining external blocker should surface as
+               WaitingForDependencies. */
             Assert.Equal(ExecutionTaskOutcome.Completed, session.GetTask(prepareSharedSourceTaskId).Outcome);
-            Assert.Equal(ExecutionTaskState.Running, session.GetTask(startedScopeTaskId).State);
+            Assert.Equal(ExecutionTaskState.WaitingForDependencies, session.GetTask(startedScopeTaskId).State);
         }
         finally
         {
@@ -84,11 +85,11 @@ public sealed class ExecutionTaskLifecycleInvariantTests
     }
 
     /// <summary>
-    /// Confirms that once a parent scope has started and one child already completed, the parent must stay Running until
-    /// the remaining blocked child work reaches a terminal outcome.
+    /// Confirms that once a parent scope has started and one child already completed, the parent should surface
+    /// WaitingForDependencies when its only remaining child work is blocked by an unfinished task outside that parent.
     /// </summary>
     [Fact]
-    public async Task StartedParentScopeStaysRunningAfterChildCompletes()
+    public async Task StartedParentScopeWaitsForDependenciesAfterChildCompletes()
     {
         /* Keep one unrelated task running so the second child remains blocked after the first child already finished. */
         TaskCompletionSource<bool> releaseBlocker = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -128,7 +129,7 @@ public sealed class ExecutionTaskLifecycleInvariantTests
         });
 
         /* Wait until the blocker is running and the first child already completed. That leaves the parent scope started,
-           non-terminal, and incorrectly reported as Pending by the current runtime. */
+           non-terminal, and locally idle because its only remaining child work is blocked on an external dependency. */
         (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         try
@@ -136,9 +137,10 @@ public sealed class ExecutionTaskLifecycleInvariantTests
             await session.GetTask(blockerTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
             await session.GetTask(completedChildTaskId).WaitForCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-            /* A child cannot legally be completed while its still-open parent scope has fallen back to Pending. */
+            /* The parent already has completed child work, so it is no longer merely queued. With no local running work
+               left, its current blocker should surface as dependency wait instead of a generic running state. */
             Assert.Equal(ExecutionTaskOutcome.Completed, session.GetTask(completedChildTaskId).Outcome);
-            Assert.Equal(ExecutionTaskState.Running, session.GetTask(parentScopeTaskId).State);
+            Assert.Equal(ExecutionTaskState.WaitingForDependencies, session.GetTask(parentScopeTaskId).State);
         }
         finally
         {

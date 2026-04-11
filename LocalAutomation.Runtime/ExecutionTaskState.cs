@@ -11,10 +11,15 @@ public enum ExecutionTaskState
     Planned,
 
     /// <summary>
-    /// The task subtree has not started running yet, but some work is queued or waiting on dependencies or parent
-    /// readiness.
+    /// The task subtree has not started running yet, and its next reachable work is still untouched queued work.
     /// </summary>
-    Pending,
+    Queued,
+
+    /// <summary>
+    /// The task subtree has already started earlier, but no work inside it is currently active and the remaining
+    /// reachable frontier is blocked on dependencies outside the subtree.
+    /// </summary>
+    WaitingForDependencies,
 
     /// <summary>
     /// The task has been admitted into active execution and is now blocked only on acquiring its declared execution

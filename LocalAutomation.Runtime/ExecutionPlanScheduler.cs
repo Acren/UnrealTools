@@ -296,7 +296,7 @@ public sealed class ExecutionPlanScheduler
         HashSet<string> admittedLockSets = new(StringComparer.Ordinal);
         using PerformanceActivityScope readyActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartReadyItems")
             .SetTag("running.count", _session.Tasks.Count(task => task.HasActiveExecution))
-            .SetTag("pending.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.Pending))
+            .SetTag("queued.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.Queued))
             .SetTag("lock_wait.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.WaitingForExecutionLock));
         if (_lastCompletedTaskId != null)
         {
