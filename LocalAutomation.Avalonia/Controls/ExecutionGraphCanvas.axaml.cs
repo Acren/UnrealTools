@@ -574,7 +574,7 @@ public partial class ExecutionGraphCanvas : UserControl
                 continue;
             }
 
-            DetachGroupIntrinsicWidthObserver(groupControl);
+            DetachIntrinsicWidthObserver(groupControl);
             _structureCanvas!.Children.Remove(groupControl);
             _renderedGroupControls.Remove(taskId);
             removedCount++;
@@ -596,7 +596,7 @@ public partial class ExecutionGraphCanvas : UserControl
                 continue;
             }
 
-            DetachTaskIntrinsicWidthObserver(taskControl);
+            DetachIntrinsicWidthObserver(taskControl);
             _taskCanvas!.Children.Remove(taskControl);
             _renderedTaskControls.Remove(taskId);
             removedCount++;
@@ -618,7 +618,7 @@ public partial class ExecutionGraphCanvas : UserControl
                 continue;
             }
 
-            DetachTaskIntrinsicWidthObserver(staleTaskControl);
+            DetachIntrinsicWidthObserver(staleTaskControl);
             _taskCanvas?.Children.Remove(staleTaskControl);
             recreatedForRoleChangeCount++;
         }
@@ -639,7 +639,7 @@ public partial class ExecutionGraphCanvas : UserControl
                 continue;
             }
 
-            DetachGroupIntrinsicWidthObserver(staleGroupControl);
+            DetachIntrinsicWidthObserver(staleGroupControl);
             _structureCanvas?.Children.Remove(staleGroupControl);
             recreatedForRoleChangeCount++;
         }
@@ -875,7 +875,7 @@ public partial class ExecutionGraphCanvas : UserControl
         };
 
         container.Invoked += ExecutionNode_Click;
-        AttachGroupIntrinsicWidthObserver(container);
+        AttachIntrinsicWidthObserver(container);
 
         Canvas.SetLeft(container, group.X);
         Canvas.SetTop(container, group.Y);
@@ -907,7 +907,7 @@ public partial class ExecutionGraphCanvas : UserControl
         };
 
         card.Invoked += ExecutionNode_Click;
-        AttachTaskIntrinsicWidthObserver(card);
+        AttachIntrinsicWidthObserver(card);
 
         Canvas.SetLeft(card, node.X);
         Canvas.SetTop(card, node.Y);
@@ -926,69 +926,36 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-    /// Attaches one retained group control to its intrinsic-width property so the canvas can batch relayout from real
-    /// visible-header width changes.
+    /// Attaches one retained node control to its intrinsic-width property so the canvas can batch relayout from real
+    /// visible-content width changes.
     /// </summary>
-    private void AttachGroupIntrinsicWidthObserver(ExecutionGroupContainer container)
+    private void AttachIntrinsicWidthObserver(ExecutionGraphNodeControlBase control)
     {
-        ((INotifyPropertyChanged)container).PropertyChanged += HandleGroupIntrinsicWidthChanged;
+        ((INotifyPropertyChanged)control).PropertyChanged += HandleIntrinsicWidthChanged;
     }
 
     /// <summary>
-    /// Removes the intrinsic-width observer for a retained group control leaving the visible layer.
+    /// Removes the intrinsic-width observer for a retained node control leaving the visible layer.
     /// </summary>
-    private void DetachGroupIntrinsicWidthObserver(ExecutionGroupContainer container)
+    private void DetachIntrinsicWidthObserver(ExecutionGraphNodeControlBase control)
     {
-        ((INotifyPropertyChanged)container).PropertyChanged -= HandleGroupIntrinsicWidthChanged;
+        ((INotifyPropertyChanged)control).PropertyChanged -= HandleIntrinsicWidthChanged;
     }
 
     /// <summary>
-    /// Attaches one retained task card to its intrinsic-width property so leaf width changes also flow through the same
-    /// batched relayout path as groups.
-    /// </summary>
-    private void AttachTaskIntrinsicWidthObserver(ExecutionTaskCard card)
-    {
-        ((INotifyPropertyChanged)card).PropertyChanged += HandleTaskIntrinsicWidthChanged;
-    }
-
-    /// <summary>
-    /// Removes the intrinsic-width observer for a retained task card leaving the visible layer.
-    /// </summary>
-    private void DetachTaskIntrinsicWidthObserver(ExecutionTaskCard card)
-    {
-        ((INotifyPropertyChanged)card).PropertyChanged -= HandleTaskIntrinsicWidthChanged;
-    }
-
-    /// <summary>
-    /// Observes intrinsic width changes from one retained group control and forwards them into the coalesced graph width
+    /// Observes intrinsic width changes from one retained node control and forwards them into the coalesced graph width
     /// update queue.
     /// </summary>
-    private void HandleGroupIntrinsicWidthChanged(object? sender, PropertyChangedEventArgs e)
+    private void HandleIntrinsicWidthChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!string.Equals(e.PropertyName, nameof(ExecutionGroupContainer.IntrinsicNodeWidth), StringComparison.Ordinal) ||
-            sender is not ExecutionGroupContainer container ||
-            container.DataContext is not ExecutionNodeViewModel node)
+        if (!string.Equals(e.PropertyName, nameof(ExecutionGraphNodeControlBase.IntrinsicNodeWidth), StringComparison.Ordinal) ||
+            sender is not ExecutionGraphNodeControlBase control ||
+            control.DataContext is not ExecutionNodeViewModel node)
         {
             return;
         }
 
-        EnqueuePendingNodeWidthUpdate(node.Id, container.IntrinsicNodeWidth);
-    }
-
-    /// <summary>
-    /// Observes intrinsic width changes from one retained task card and forwards them into the same coalesced graph width
-    /// update queue used by group containers.
-    /// </summary>
-    private void HandleTaskIntrinsicWidthChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (!string.Equals(e.PropertyName, nameof(ExecutionTaskCard.IntrinsicNodeWidth), StringComparison.Ordinal) ||
-            sender is not ExecutionTaskCard card ||
-            card.DataContext is not ExecutionNodeViewModel node)
-        {
-            return;
-        }
-
-        EnqueuePendingNodeWidthUpdate(node.Id, card.IntrinsicNodeWidth);
+        EnqueuePendingNodeWidthUpdate(node.Id, control.IntrinsicNodeWidth);
     }
 
     /// <summary>
