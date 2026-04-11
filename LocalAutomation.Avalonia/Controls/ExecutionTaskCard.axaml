@@ -144,29 +144,35 @@
                                                   BorderThickness="{Binding FrameBorderThickness, RelativeSource={RelativeSource AncestorType=controls:ExecutionTaskCard}}"
                                                   CornerRadius="8"
                                                   IsHitTestVisible="False" />
-                    <!-- Center the title/status block within the card so shorter cards do not feel top-weighted. -->
-                    <Grid RowDefinitions="Auto,Auto,Auto"
-                          RowSpacing="6"
-                          Margin="18,10,18,10"
-                          VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Task.Title}"
-                                   FontSize="14"
-                                   FontWeight="SemiBold"
-                                Foreground="#F2F5F8"
-                                MaxHeight="40"
-                                TextWrapping="Wrap"
-                                VerticalAlignment="Center" />
-                        <controls:StatusIndicator Grid.Row="1"
-                                                  Status="{Binding Task.DisplayStatus}"
-                                                  ShowLabel="True"
-                                                  DotSize="6"
-                                                 LabelFontSize="11"
-                                                VerticalAlignment="Center" />
-                        <controls:ExecutionMetricsStrip Grid.Row="2"
-                                                        Metrics="{Binding Task.Metrics}"
-                                                        VerticalAlignment="Center" />
-                  </Grid>
-            </Grid>
+                    <!-- Keep the real visible card content as the intrinsic-width source so the graph can react to actual
+                         card-width changes instead of guessing from task property names. -->
+                    <controls:IntrinsicSizeHost x:Name="ContentIntrinsicHost"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Center">
+                        <!-- Center the title/status block within the card so shorter cards do not feel top-weighted. -->
+                        <Grid RowDefinitions="Auto,Auto,Auto"
+                              RowSpacing="6"
+                              Margin="18,10,18,10"
+                              VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Task.Title}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Foreground="#F2F5F8"
+                                       MaxHeight="40"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center" />
+                            <controls:StatusIndicator Grid.Row="1"
+                                                      Status="{Binding Task.DisplayStatus}"
+                                                      ShowLabel="True"
+                                                      DotSize="6"
+                                                      LabelFontSize="11"
+                                                      VerticalAlignment="Center" />
+                            <controls:ExecutionMetricsStrip Grid.Row="2"
+                                                            Metrics="{Binding Task.Metrics}"
+                                                            VerticalAlignment="Center" />
+                        </Grid>
+                    </controls:IntrinsicSizeHost>
+             </Grid>
         </Border>
 
         <!-- Keep the tooltip markup declarative with the task-card visuals instead of constructing it in canvas code. -->

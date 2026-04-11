@@ -28,6 +28,7 @@ internal sealed class ExecutionGraphLayoutState
         {
             _measuredNodeWidths[taskId] = width;
         }
+
     }
 
     /// <summary>
@@ -89,15 +90,5 @@ internal sealed class ExecutionGraphLayoutState
         return _measuredNodeWidths.TryGetValue(taskId, out double width)
             ? width
             : ExecutionGraphLayoutSettings.NodeMinWidth;
-    }
-
-    /// <summary>
-    /// Returns whether one node still needs a live measurement pass before layout can trust its width.
-    /// </summary>
-    public bool NeedsMeasurement(RuntimeExecutionTaskId taskId, bool isContainer)
-    {
-        /* Group containers keep dynamic header content that can widen as metrics and status labels change, so they always
-           opt back into measurement instead of trusting an older cached width. */
-        return isContainer || !_measuredNodeWidths.ContainsKey(taskId);
     }
 }

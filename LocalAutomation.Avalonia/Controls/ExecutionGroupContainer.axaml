@@ -125,9 +125,11 @@
                     Classes="group-header-shell"
                     ClipToBounds="False"
                     CornerRadius="10,10,0,0">
-                <controls:MeasuredSizeHost x:Name="HeaderMeasureHost"
-                                           HorizontalAlignment="Left"
-                                           VerticalAlignment="Center">
+                <!-- Keep the real visible header row as the intrinsic-width source so the graph can react to the actual
+                     header content width instead of rebuilding hidden duplicate controls or guessing from task properties. -->
+                <controls:IntrinsicSizeHost x:Name="HeaderIntrinsicHost"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center">
                     <!-- Center the title/status row within the header so the compact status indicator shares the same
                          visual baseline as the title. -->
                     <Grid ColumnDefinitions="Auto,Auto,Auto"
@@ -152,7 +154,7 @@
                                                         Metrics="{Binding Task.Metrics}"
                                                         VerticalAlignment="Center" />
                     </Grid>
-                </controls:MeasuredSizeHost>
+                </controls:IntrinsicSizeHost>
             </Border>
         </Border>
 

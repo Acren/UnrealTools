@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using LocalAutomation.Avalonia.ExecutionGraph;
 using LocalAutomation.Avalonia.ViewModels;
 using LocalAutomation.Core;
 
@@ -19,7 +20,10 @@ public partial class ExecutionTaskCard : UserControl
     private static readonly Thickness DefaultBorderThickness = new(1.5);
     private bool _isHovered;
     private bool _isPressed;
+    private bool _subscriptionsAttached;
     private ExecutionNodeViewModel? _observedNode;
+    private double _intrinsicNodeWidth = ExecutionGraphLayoutSettings.NodeMinWidth;
+    private IntrinsicSizeHost? _contentIntrinsicHost;
 
     /// <summary>
     /// Identifies the rendered height for the task card.
@@ -36,6 +40,14 @@ public partial class ExecutionTaskCard : UserControl
             control => control.FrameBorderThickness);
 
     /// <summary>
+    /// Identifies the card's current intrinsic width resolved from its real visible content.
+    /// </summary>
+    public static readonly DirectProperty<ExecutionTaskCard, double> IntrinsicNodeWidthProperty =
+        AvaloniaProperty.RegisterDirect<ExecutionTaskCard, double>(
+            nameof(IntrinsicNodeWidth),
+            control => control.IntrinsicNodeWidth);
+
+    /// <summary>
     /// Creates the XAML-backed execution-graph task card control.
     /// </summary>
     public ExecutionTaskCard()
@@ -49,6 +61,8 @@ public partial class ExecutionTaskCard : UserControl
         clickSurface.PointerReleased += ClickSurface_PointerReleased;
 
         DataContextChanged += HandleDataContextChanged;
+        AttachedToVisualTree += HandleAttachedToVisualTree;
+        DetachedFromVisualTree += HandleDetachedFromVisualTree;
     }
 
     /// <summary>
@@ -73,11 +87,23 @@ public partial class ExecutionTaskCard : UserControl
         : DefaultBorderThickness;
 
     /// <summary>
+    /// Gets the card's current intrinsic width resolved from its real visible content.
+    /// </summary>
+    public double IntrinsicNodeWidth
+    {
+        get => _intrinsicNodeWidth;
+        private set => SetAndRaise(IntrinsicNodeWidthProperty, ref _intrinsicNodeWidth, value);
+    }
+
+    /// <summary>
     /// Loads the compiled Avalonia markup for the task card.
     /// </summary>
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
+        _contentIntrinsicHost = this.FindControl<IntrinsicSizeHost>("ContentIntrinsicHost")
+            ?? throw new InvalidOperationException("ExecutionTaskCard intrinsic content host was not initialized.");
+        ((INotifyPropertyChanged)_contentIntrinsicHost).PropertyChanged += HandleContentIntrinsicHostPropertyChanged;
     }
 
     /// <summary>
@@ -157,21 +183,30 @@ public partial class ExecutionTaskCard : UserControl
     private void HandleDataContextChanged(object? sender, EventArgs e)
     {
         Thickness previousThickness = FrameBorderThickness;
-        if (_observedNode != null)
-        {
-            _observedNode.PropertyChanged -= HandleObservedNodePropertyChanged;
-            _observedNode.Task.PropertyChanged -= HandleObservedTaskPropertyChanged;
-        }
-
+        DetachObservedNodeSubscriptions();
         _observedNode = DataContext as ExecutionNodeViewModel;
-        if (_observedNode != null)
-        {
-            _observedNode.PropertyChanged += HandleObservedNodePropertyChanged;
-            _observedNode.Task.PropertyChanged += HandleObservedTaskPropertyChanged;
-        }
+        AttachObservedNodeSubscriptions();
 
         ApplySemanticClasses();
+        UpdateIntrinsicNodeWidthIfNeeded();
         RaisePropertyChanged(FrameBorderThicknessProperty, previousThickness, FrameBorderThickness);
+    }
+
+    /// <summary>
+    /// Restores view-model subscriptions when a retained task card re-enters the visual tree with the same data context.
+    /// </summary>
+    private void HandleAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        AttachObservedNodeSubscriptions();
+    }
+
+    /// <summary>
+    /// Releases task and node subscriptions when the control leaves the visual tree so removed retained controls and any
+    /// other transient visual-tree instances do not stay alive through shared task-view-model event handlers.
+    /// </summary>
+    private void HandleDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        DetachObservedNodeSubscriptions();
     }
 
     /// <summary>
@@ -235,5 +270,61 @@ public partial class ExecutionTaskCard : UserControl
         /* Let the extracted control own the timer and conic brush creation while the task card only forwards whether the
            current task status should display the animated accent treatment. */
         animatedBorderChrome.IsAnimated = _observedNode.Task.State == global::LocalAutomation.Runtime.ExecutionTaskState.Running;
+    }
+
+    /// <summary>
+    /// Recomputes the intrinsic width whenever the real visible content host reports a new unconstrained desired width.
+    /// </summary>
+    private void HandleContentIntrinsicHostPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!string.Equals(e.PropertyName, nameof(IntrinsicSizeHost.IntrinsicWidth), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        UpdateIntrinsicNodeWidthIfNeeded();
+    }
+
+    /// <summary>
+    /// Stores the latest intrinsic card width derived from the real visible content block.
+    /// </summary>
+    private void UpdateIntrinsicNodeWidthIfNeeded()
+    {
+        if (_contentIntrinsicHost == null)
+        {
+            return;
+        }
+
+        IntrinsicNodeWidth = Math.Max(ExecutionGraphLayoutSettings.NodeMinWidth, _contentIntrinsicHost.IntrinsicWidth);
+    }
+
+    /// <summary>
+    /// Hooks the current node and task view models exactly once while the control is alive in the visual tree.
+    /// </summary>
+    private void AttachObservedNodeSubscriptions()
+    {
+        if (_subscriptionsAttached || _observedNode == null)
+        {
+            return;
+        }
+
+        _observedNode.PropertyChanged += HandleObservedNodePropertyChanged;
+        _observedNode.Task.PropertyChanged += HandleObservedTaskPropertyChanged;
+        _subscriptionsAttached = true;
+    }
+
+    /// <summary>
+    /// Unhooks the current node and task view models when the control is detached or rebound.
+    /// </summary>
+    private void DetachObservedNodeSubscriptions()
+    {
+        if (!_subscriptionsAttached || _observedNode == null)
+        {
+            return;
+        }
+
+        _observedNode.PropertyChanged -= HandleObservedNodePropertyChanged;
+        _observedNode.Task.PropertyChanged -= HandleObservedTaskPropertyChanged;
+        _subscriptionsAttached = false;
     }
 }

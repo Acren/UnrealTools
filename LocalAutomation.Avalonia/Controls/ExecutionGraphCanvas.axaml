@@ -5,8 +5,8 @@
              x:DataType="vm:ExecutionGraphViewModel"
              UseLayoutRounding="True">
     <Grid>
-        <!-- Keep the visible graph surface unchanged until one hidden attached measurement pass has produced the final
-             node widths and relaid out the graph. -->
+        <!-- The visible graph surface is now the single width source. Node controls report intrinsic width changes from
+             their real content, and the canvas batches relayout from those live width signals. -->
         <Border x:Name="ViewportHost"
                 Background="Transparent"
                 UseLayoutRounding="True"
@@ -41,14 +41,5 @@
                 </Grid>
             </Border>
         </Border>
-
-        <!-- Keep the measurement host attached to the visual tree so Avalonia can fully realize composite control widths
-             while remaining invisible and non-interactive to the user. -->
-        <Canvas x:Name="MeasurementCanvas"
-                Width="0"
-                Height="0"
-                IsHitTestVisible="False"
-                Opacity="0"
-                ClipToBounds="True" />
     </Grid>
 </UserControl>

@@ -294,17 +294,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Returns whether the provided node still needs one hidden-host measurement pass before the layout can trust its
-    /// rendered width.
-    /// </summary>
-    internal bool NeedsMeasuredNodeWidth(RuntimeExecutionTaskId taskId)
-    {
-        bool isContainer = _layoutResult.NodeLayouts.TryGetValue(taskId, out ExecutionNodeLayout? layout)
-            ? layout.IsContainer
-            : _projection.HasChildren(taskId);
-        return _layoutState.NeedsMeasurement(taskId, isContainer);
-    }
-
     /// <summary>
     /// Rebuilds the visible node and edge view-model collections from the latest projection and layout snapshots.
     /// </summary>

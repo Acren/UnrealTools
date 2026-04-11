@@ -339,11 +339,13 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         /* Graph refresh must reuse one consistent session snapshot so task view-model lookup and graph-node creation
-           cannot diverge while runtime child tasks are being merged into the live session. */
+           cannot diverge while runtime child tasks are being merged into the live session. Refresh metrics before the
+           graph rebuild so the next visible-width reconciliation sees the same current header content the user will
+           actually render, rather than rebuilding once from stale metrics and catching up later. */
         List<RuntimeExecutionTask> taskSnapshot = session.Tasks.ToList();
         runtimeTab.SetTasks(taskSnapshot);
-        runtimeTab.Graph.SetGraph(taskSnapshot);
         runtimeTab.RebuildMetricsFromSession();
+        runtimeTab.Graph.SetGraph(taskSnapshot);
         RebuildTabSelectedLogEntries(runtimeTab);
         if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
         {
