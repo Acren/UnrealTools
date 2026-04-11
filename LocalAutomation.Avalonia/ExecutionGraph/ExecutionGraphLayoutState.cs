@@ -31,25 +31,25 @@ internal sealed class ExecutionGraphLayoutState
     }
 
     /// <summary>
-    /// Imports reusable measured widths from another layout state for the visible leaf nodes in the provided snapshot.
+    /// Imports reusable measured widths from another layout state for the visible nodes in the provided snapshot.
     /// </summary>
-    public void ImportRetainedLeafWidths(ExecutionGraphLayoutState? sourceState, IReadOnlyList<RuntimeExecutionTask>? tasks, bool revealHiddenTasks)
+    public void ImportRetainedVisibleWidths(ExecutionGraphLayoutState? sourceState, IReadOnlyList<RuntimeExecutionTask>? tasks, bool revealHiddenTasks)
     {
         if (sourceState == null || tasks == null)
         {
             return;
         }
 
-        foreach ((RuntimeExecutionTaskId taskId, double width) in sourceState.ExportRetainedLeafWidths(tasks, revealHiddenTasks))
+        foreach ((RuntimeExecutionTaskId taskId, double width) in sourceState.ExportRetainedVisibleWidths(tasks, revealHiddenTasks))
         {
             _measuredNodeWidths[taskId] = width;
         }
     }
 
     /// <summary>
-    /// Returns the reusable measured widths for the visible leaf nodes in a future graph snapshot.
+    /// Returns the reusable measured widths for the visible nodes in a future graph snapshot.
     /// </summary>
-    public Dictionary<RuntimeExecutionTaskId, double> ExportRetainedLeafWidths(IReadOnlyList<RuntimeExecutionTask> tasks, bool revealHiddenTasks)
+    public Dictionary<RuntimeExecutionTaskId, double> ExportRetainedVisibleWidths(IReadOnlyList<RuntimeExecutionTask> tasks, bool revealHiddenTasks)
     {
         if (tasks == null)
         {
@@ -57,10 +57,11 @@ internal sealed class ExecutionGraphLayoutState
         }
 
         /* Width reuse should follow the next visible graph shape rather than the raw authored hierarchy. Building the
-           same visible projection here keeps leaf-width retention aligned with hidden-task collapsing rules. */
+           same visible projection here keeps cached widths aligned with hidden-task collapsing rules for both leaf cards
+           and retained group containers, so structural refreshes can keep stable widths on the first layout pass. */
         ExecutionGraphProjection projection = ExecutionGraphProjection.Create(tasks, revealHiddenTasks);
         return _measuredNodeWidths
-            .Where(entry => projection.HasVisibleTask(entry.Key) && !projection.HasChildren(entry.Key))
+            .Where(entry => projection.HasVisibleTask(entry.Key))
             .ToDictionary(entry => entry.Key, entry => entry.Value);
     }
 

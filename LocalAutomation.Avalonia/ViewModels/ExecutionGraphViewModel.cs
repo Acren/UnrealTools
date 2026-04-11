@@ -168,7 +168,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
         _sourceTasks = tasks?.ToList();
         Dictionary<RuntimeExecutionTaskId, double> retainedMeasuredNodeWidths = tasks == null
             ? new Dictionary<RuntimeExecutionTaskId, double>()
-            : _layoutState.ExportRetainedLeafWidths(tasks, RevealHiddenTasks);
+            : _layoutState.ExportRetainedVisibleWidths(tasks, RevealHiddenTasks);
         IsUpdatingGraph = true;
         try
         {
@@ -225,7 +225,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     /// </summary>
     public void ImportMeasuredNodeWidthsFrom(ExecutionGraphViewModel? sourceGraph, IReadOnlyList<RuntimeExecutionTask>? tasks)
     {
-        _layoutState.ImportRetainedLeafWidths(sourceGraph?._layoutState, tasks, RevealHiddenTasks);
+        _layoutState.ImportRetainedVisibleWidths(sourceGraph?._layoutState, tasks, RevealHiddenTasks);
     }
 
     /// <summary>
