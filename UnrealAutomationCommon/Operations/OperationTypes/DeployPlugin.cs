@@ -344,13 +344,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Run(StagingStepAsync);
                 });
 
+                /* This follow-up step only needs the sequential input-preparation group to be complete, so it depends on
+                   the parent task instead of the group's last child task. */
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder buildPlugin = steps.Task("Build Distributable Plugin")
                     .Describe("Package the staged plugin into the distributable plugin payload used by later project and engine validation")
-                    .After(stagePlugin.Id)
+                    .After(prepareInputs.Id)
                     .Run(BuildPlugin);
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareSharedBase = steps.Task("Prepare Shared Project-Plugin Base")
-                    .Describe("Materialize, populate, and prebuild the shared code example base that later package branches clone or package directly");
+                    .Describe("Materialize, populate, and prebuild the shared code example base that later package branches clone or package directly")
+                    .After(prepareWorkspace.Id);
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder materializeProjectPluginBase = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder installProjectPluginBase = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder buildExampleBase = default!;
@@ -358,7 +361,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     materializeProjectPluginBase = sharedBaseScope.Task("Materialize Project-Plugin Base")
                         .Describe("Copy the shared code example base from the workspace project before the built plugin is installed into it")
-                        .After(prepareWorkspace.Id)
                         .Run(MaterializeProjectPluginBaseAsync);
 
                     installProjectPluginBase = sharedBaseScope.Task("Install Distributable Plugin Into Project-Plugin Base")
@@ -372,8 +374,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Run(PrebuildProjectPluginBaseAsync);
                 });
 
+                /* The validation children all fan out from the shared prebuilt base, so the common dependency belongs on
+                   the validation parent group instead of being repeated on each child task. */
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder validateSharedBase = steps.Task("Validate Shared Project-Plugin Base")
-                    .Describe("Run optional validation branches against the shared prebuilt project-plugin base before package flows continue");
+                    .Describe("Run optional validation branches against the shared prebuilt project-plugin base before package flows continue")
+                    .After(prepareSharedBase.Id);
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder testEditor = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder testStandalone = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareClangVariant = default!;
@@ -382,19 +387,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     testEditor = validationScope.Task("Test Project-Plugin Base Editor")
                         .Describe("Launch and validate the prebuilt project-plugin base in the editor before downstream packaging completes")
-                        .After(buildExampleBase.Id)
                         .When(automationOptions.RunTests, "Run Tests is off.")
                         .Run(context => TestProjectPluginBaseEditorAsync(context, automationOptions));
 
                     testStandalone = validationScope.Task("Test Project-Plugin Base Standalone")
                         .Describe("Launch and validate the prebuilt project-plugin base in standalone mode before downstream packaging completes")
-                        .After(buildExampleBase.Id)
                         .When(automationOptions.RunTests && deployOptions.TestStandalone, automationOptions.RunTests ? "Test Standalone is off." : "Run Tests is off.")
                         .Run(context => TestProjectPluginBaseStandaloneAsync(context, automationOptions));
 
                     prepareClangVariant = validationScope.Task("Prepare Clang Validation Variant")
                         .Describe("Clone the prebuilt project-plugin base for the optional Clang validation branch")
-                        .After(buildExampleBase.Id)
                         .When(deployOptions.RunClangCompileCheck, "Run Clang Compile Check is off.")
                         .Run(PrepareClangVariantAsync);
 
@@ -405,25 +407,29 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Run(RunClangCompileCheck);
                 });
 
+                /* These variant clones are independent siblings with the same prerequisite, so the shared dependency is
+                   authored once on the parent group and inherited by each sequentially independent child declaration. */
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder preparePackageVariants = steps.Task("Prepare Package Variants")
-                    .Describe("Clone and mutate the shared prebuilt project-plugin base into the engine and blueprint packaging variants before the package flows begin");
+                    .Describe("Clone and mutate the shared prebuilt project-plugin base into the engine and blueprint packaging variants before the package flows begin")
+                    .After(prepareSharedBase.Id);
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareEngineVariant = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareBlueprintDemoVariant = default!;
                 preparePackageVariants.Children(global::LocalAutomation.Runtime.ExecutionChildMode.Parallel, variantScope =>
                 {
                     prepareEngineVariant = variantScope.Task("Prepare Engine-Plugin Variant")
                         .Describe("Clone the prebuilt project-plugin base and remove the project-level plugin so packaging resolves the built plugin from the engine install")
-                        .After(buildExampleBase.Id)
                         .Run(PrepareEnginePluginVariantAsync);
 
                     prepareBlueprintDemoVariant = variantScope.Task("Prepare Blueprint And Demo Variant")
                         .Describe("Clone the prebuilt project-plugin base, remove the project-level plugin, convert to blueprint-only, and prune plugins for blueprint and demo packaging")
-                        .After(buildExampleBase.Id)
                         .Run(PrepareBlueprintDemoVariantAsync);
                 });
 
+                /* The sequential project-plugin flow starts only after every branch that clones the shared base has
+                   finished copying it, so the join is declared on the parent flow instead of only on its first child. */
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder packageProjectPluginFlow = steps.Task("Project-Plugin Package Flow")
-                    .Describe("Build, package, validate, and then promote the example that keeps the built plugin installed at project level");
+                    .Describe("Build, package, validate, and then promote the example that keeps the built plugin installed at project level")
+                    .After(prepareClangVariant.Id, preparePackageVariants.Id);
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder buildProjectPluginPackageTarget = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder packageProjectPlugin = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder testProjectPlugin = default!;
@@ -452,7 +458,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 });
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder enginePluginFlow = steps.Task("Engine-Plugin Package Flow")
-                    .Describe("Build, package, and validate the example that loads the built plugin from the engine install after its prepared variant is ready");
+                    .Describe("Build, package, and validate the example that loads the built plugin from the engine install after its prepared variant is ready")
+                    .After(prepareEngineVariant.Id, installEnginePlugin.Id);
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder buildEnginePluginPackageTarget = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder packageEnginePlugin = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder testEnginePlugin = default!;
@@ -460,7 +467,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     buildEnginePluginPackageTarget = flowScope.Task("Build Engine-Plugin Package Target")
                         .Describe("Build the engine-plugin example target after the engine variant is prepared and the built plugin is installed into the engine")
-                        .After(prepareEngineVariant.Id, installEnginePlugin.Id)
                         .Run(BuildEnginePluginExampleTargetAsync);
 
                     packageEnginePlugin = flowScope.Task("Package Engine-Plugin Example")
@@ -476,7 +482,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 });
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder blueprintDemoFlow = steps.Task("Blueprint And Demo Flow")
-                    .Describe("Build, package, validate, and archive the blueprint and shipping demo outputs after the prepared variant is ready");
+                    .Describe("Build, package, validate, and archive the blueprint and shipping demo outputs after the prepared variant is ready")
+                    .After(prepareBlueprintDemoVariant.Id, installEnginePlugin.Id);
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder buildBlueprintPackageTarget = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder packageBlueprint = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder testBlueprint = default!;
@@ -486,7 +493,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 {
                     buildBlueprintPackageTarget = flowScope.Task("Build Blueprint-Only Package Target")
                         .Describe("Build the blueprint-only example target after the blueprint/demo variant is prepared and the built plugin is installed into the engine")
-                        .After(prepareBlueprintDemoVariant.Id, installEnginePlugin.Id)
                         .Run(BuildBlueprintOnlyExampleTargetAsync);
 
                     packageBlueprint = flowScope.Task("Package Blueprint-Only Example")
@@ -511,14 +517,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Run(PackageDemoExecutableAsync);
                 });
 
-                /* The project-plugin example package can reuse the prebuilt project-plugin base directly, but only once every branch that
-                   clones that base has finished copying it. That keeps the shared base read-only while the prepare tasks
-                   fan out in parallel and avoids racing UAT writes against file copies. */
-                buildProjectPluginPackageTarget.After(prepareClangVariant.Id, prepareEngineVariant.Id, prepareBlueprintDemoVariant.Id);
-
+                /* Staged-source archiving waits for the sequential input-preparation group instead of naming its final
+                   child task directly because the parent task already represents full subtree completion. */
                 steps.Task("Archive Staged Plugin Source")
                     .Describe("Archive the staged source-style plugin payload as soon as the staging copy is ready")
-                    .After(stagePlugin.Id)
+                    .After(prepareInputs.Id)
                     .Run(ArchivePluginSourceAsync);
 
                 steps.Task("Archive Distributable Plugin")
