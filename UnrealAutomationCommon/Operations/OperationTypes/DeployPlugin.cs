@@ -369,7 +369,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Run(InstallDistributablePluginIntoProjectPluginBaseAsync);
 
                     buildExampleBase = sharedBaseScope.Task("Prebuild Project-Plugin Base")
-                        .Describe("Compile the shared code example base once so downstream package variants can reuse editor outputs with -nocompileeditor")
+                        .Describe("Build the shared code example editor target once so downstream package variants can reuse editor outputs with -nocompileeditor")
                         .After(installProjectPluginBase.Id)
                         .Run(PrebuildProjectPluginBaseAsync);
                 });
@@ -799,8 +799,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Builds the shared project-plugin base once so later packaging variants can reuse its editor binaries through
-        /// `-nocompileeditor` instead of recompiling the same code for every branch.
+        /// Builds the shared project-plugin base's editor target once so later packaging variants can reuse its editor
+        /// binaries through `-nocompileeditor` without waiting on AutomationTool's singleton lock.
         /// </summary>
         private async Task PrebuildProjectPluginBaseAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
@@ -812,7 +812,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             buildExampleProjectParams.Target = exampleProject;
             buildExampleProjectParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "PrebuildProjectPluginBaseOutput");
             buildExampleProjectParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
-            await RunChildOperationAsync<BuildEditor>(buildExampleProjectParams, context, required: true, failureMessage: "Failed to prebuild project-plugin base with modules", hideChildOperationRootInGraph: true);
+            await RunChildOperationAsync<BuildEditorTarget>(buildExampleProjectParams, context, required: true, failureMessage: "Failed to prebuild project-plugin base editor target", hideChildOperationRootInGraph: true);
         }
 
         /// <summary>
