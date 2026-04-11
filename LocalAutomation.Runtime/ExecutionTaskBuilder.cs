@@ -101,6 +101,17 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 
     /// <summary>
+    /// Declares the execution locks that this specific task body must hold while it runs. Task-authored locks apply only
+    /// to this task, so callers can model contention precisely without forcing unrelated sibling tasks in the same
+    /// operation to inherit the same lock set.
+    /// </summary>
+    public ExecutionTaskBuilder WithExecutionLocks(params ExecutionLock[] executionLocks)
+    {
+        _task.SetExecutionLocks(executionLocks ?? Array.Empty<ExecutionLock>());
+        return this;
+    }
+
+    /// <summary>
     /// Attaches the async execution body for this task.
     /// </summary>
     public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task> executeAsync)

@@ -680,7 +680,7 @@ public sealed class ExecutionSession
         ExecutionTask startedTask = task.ResolveTaskToStart();
         ExecutionTask visibleStartedTask = task;
         ExecutionTaskContext startedContext = startedTask.Id == task.Id ? context : context.CreateForTask(startedTask);
-        IReadOnlyList<ExecutionLock> executionLocks = startedTask.Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(startedTask.Title, startedTask.OperationParameters, startedTask.DeclaredOptionTypes));
+        IReadOnlyList<ExecutionLock> executionLocks = startedTask.GetDeclaredExecutionLocks();
         ILogger taskLogger = createLogger(startedTask.Id);
 
         if (executionLocks.Count == 0)

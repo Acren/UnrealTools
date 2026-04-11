@@ -172,14 +172,13 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
                         var lockHolderOperation = new ExecutionTestCommon.InlineOperation(
                             lockHolderRoot =>
                             {
-                                lockHolderRoot.Run(async _ =>
+                                lockHolderRoot.WithExecutionLocks(sharedLock).Run(async _ =>
                                 {
                                     lockHolderStarted.TrySetResult(true);
                                     await releaseLockHolder.Task.WaitAsync(TimeSpan.FromSeconds(5));
                                 });
                             },
-                            operationName: "Lock Holder Child Operation",
-                            executionLocks: new[] { sharedLock });
+                            operationName: "Lock Holder Child Operation");
 
                         OperationParameters lockHolderParameters = lockHolderOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
                         OperationResult lockHolderResult = await context.RunChildOperationAsync((Operation)lockHolderOperation, lockHolderParameters);
@@ -208,10 +207,9 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
                                             childRoot =>
                                             {
                                                 insertedChildRootTaskId = childRoot.Id;
-                                                childRoot.Run(() => Task.CompletedTask);
+                                                childRoot.WithExecutionLocks(sharedLock).Run(() => Task.CompletedTask);
                                             },
-                                            operationName: "Inserted Child Operation",
-                                            executionLocks: new[] { sharedLock });
+                                            operationName: "Inserted Child Operation");
 
                                         OperationParameters childParameters = childOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
                                         OperationResult childResult = await context.RunChildOperationAsync((Operation)childOperation, childParameters);

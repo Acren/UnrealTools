@@ -59,6 +59,7 @@ internal record TaskSpec(
     string DisabledReason,
     OperationParameters OperationParameters,
     IReadOnlyList<Type> DeclaredOptionTypes,
+    IReadOnlyList<ExecutionLock> DeclaredExecutionLocks,
     Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync,
     bool IsOperationRoot,
     bool IsHiddenInGraph);
@@ -175,6 +176,12 @@ public class ExecutionTask : INotifyPropertyChanged
     public OperationParameters OperationParameters => _spec.OperationParameters;
 
     public IReadOnlyList<Type> DeclaredOptionTypes => _spec.DeclaredOptionTypes;
+
+    /// <summary>
+    /// Gets any execution locks authored directly on this task body. An empty list means the task falls back to the
+    /// owning operation's declared locks instead.
+    /// </summary>
+    public IReadOnlyList<ExecutionLock> DeclaredExecutionLocks => _spec.DeclaredExecutionLocks;
 
     /// <summary>
     /// Gets the current execution lifecycle status for this task scope.
@@ -474,7 +481,22 @@ public class ExecutionTask : INotifyPropertyChanged
             return Array.Empty<ExecutionLock>();
         }
 
-        return nextStartTask.Operation.GetDeclaredExecutionLocks(new ValidatedOperationParameters(nextStartTask.Title, nextStartTask.OperationParameters, nextStartTask.DeclaredOptionTypes));
+        return nextStartTask.GetDeclaredExecutionLocks();
+    }
+
+    /// <summary>
+    /// Returns the execution locks that the runtime should hold while this specific task body executes. Task-authored
+    /// locks take priority so inline builder-authored tasks can express contention surgically, and otherwise the task
+    /// falls back to the owning operation's declared lock policy.
+    /// </summary>
+    internal IReadOnlyList<ExecutionLock> GetDeclaredExecutionLocks()
+    {
+        if (_spec.DeclaredExecutionLocks.Count > 0)
+        {
+            return _spec.DeclaredExecutionLocks;
+        }
+
+        return Operation.GetDeclaredExecutionLocks(CreateValidatedOperationParameters());
     }
 
     /// <summary>
@@ -624,11 +646,36 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Assigns execution locks directly to this authored task body so tests and other builder-authored tasks can model
+    /// contention at the exact task that should acquire the lock.
+    /// </summary>
+    internal void SetExecutionLocks(IReadOnlyList<ExecutionLock> executionLocks)
+    {
+        _ = executionLocks ?? throw new ArgumentNullException(nameof(executionLocks));
+        _spec = _spec with
+        {
+            DeclaredExecutionLocks = executionLocks
+                .Where(executionLock => executionLock != null)
+                .Distinct()
+                .ToList()
+        };
+    }
+
+    /// <summary>
     /// Attaches one executable body directly to this authored task during plan building.
     /// </summary>
     internal void SetExecuteAsync(Func<ExecutionTaskContext, Task<OperationResult>> executeAsync)
     {
         _spec = _spec with { ExecuteAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync)) };
+    }
+
+    /// <summary>
+    /// Builds the validated parameter view that both operation-declared locks and task execution use for this specific
+    /// task identity.
+    /// </summary>
+    private ValidatedOperationParameters CreateValidatedOperationParameters()
+    {
+        return new ValidatedOperationParameters(Title, OperationParameters, DeclaredOptionTypes);
     }
 
     /// <summary>

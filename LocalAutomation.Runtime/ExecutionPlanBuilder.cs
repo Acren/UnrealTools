@@ -299,6 +299,7 @@ public sealed class ExecutionPlanBuilder
             DisabledReason: string.Empty,
             OperationParameters: OperationParameters,
             DeclaredOptionTypes: _declaredOptionTypes,
+            DeclaredExecutionLocks: Array.Empty<ExecutionLock>(),
             ExecuteAsync: null,
             IsOperationRoot: parentId == null,
             IsHiddenInGraph: false);

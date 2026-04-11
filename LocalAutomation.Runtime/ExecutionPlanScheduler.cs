@@ -293,6 +293,7 @@ public sealed class ExecutionPlanScheduler
         bool startedAny = false;
         int startedCount = 0;
         int passCount = 0;
+        HashSet<string> admittedLockSets = new(StringComparer.Ordinal);
         using PerformanceActivityScope readyActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartReadyItems")
             .SetTag("running.count", _session.Tasks.Count(task => task.HasActiveExecution))
             .SetTag("pending.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.Pending))
@@ -321,6 +322,15 @@ public sealed class ExecutionPlanScheduler
             foreach (ExecutionTask task in readyTasks)
             {
                 if (task.HasActiveExecution)
+                {
+                    continue;
+                }
+
+                /* Scheduler order must also determine which contender is allowed to wait on a shared execution lock.
+                   Once one branch already owns or waits on a specific lock set in this pass, later same-lock contenders
+                   stay pending until a later wake-up instead of entering a worker-thread race for eventual lock ownership. */
+                string? lockSetKey = GetExecutionLockSetKey(task.GetExecutionLocksForNextStart());
+                if (lockSetKey != null && (!admittedLockSets.Add(lockSetKey) || HasWaitingContenderForLockSet(task, lockSetKey)))
                 {
                     continue;
                 }
@@ -380,6 +390,36 @@ public sealed class ExecutionPlanScheduler
         readyActivity.SetTag("started.count", startedCount);
         readyActivity.SetTag("pass.count", passCount);
         return startedAny;
+    }
+
+    /// <summary>
+    /// Returns one deterministic key for one declared execution-lock set. An empty lock set returns null so lock-free
+    /// work is never throttled by
+    /// lock-admission policy.
+    /// </summary>
+    private static string? GetExecutionLockSetKey(IReadOnlyList<ExecutionLock> executionLocks)
+    {
+        if (executionLocks.Count == 0)
+        {
+            return null;
+        }
+
+        return string.Join("\u001F", executionLocks
+            .Select(executionLock => executionLock.Key)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(key => key, StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// Returns whether another branch is already the admitted waiter for the same lock set. Scheduler turns may repeat
+    /// while a lock holder is still running, so the scheduler must keep later contenders pending until the current waiter
+    /// either acquires the lock or leaves the wait state.
+    /// </summary>
+    private bool HasWaitingContenderForLockSet(ExecutionTask candidateTask, string lockSetKey)
+    {
+        return _session.Tasks.Any(task => task.Id != candidateTask.Id
+            && task.State == ExecutionTaskState.WaitingForExecutionLock
+            && string.Equals(GetExecutionLockSetKey(task.GetDeclaredExecutionLocks()), lockSetKey, StringComparison.Ordinal));
     }
 
     /// <summary>

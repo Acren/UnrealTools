@@ -240,10 +240,10 @@ public sealed class ExecutionPlanSchedulerTests
         {
             root.Children(ExecutionChildMode.Parallel, scope =>
             {
-                scope.Task("Branch A").Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchATaskId);
-                scope.Task("Branch B", out branchBVisibleTaskId).Run(_ => Task.FromResult(OperationResult.Succeeded()), out branchBTaskId);
+                scope.Task("Branch A").WithExecutionLocks(sharedLock).Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchATaskId);
+                scope.Task("Branch B", out branchBVisibleTaskId).WithExecutionLocks(sharedLock).Run(_ => Task.FromResult(OperationResult.Succeeded()), out branchBTaskId);
             });
-        }, sharedLock);
+        });
 
         // Act: start the scheduler and wait until the lock holder is definitely running.
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
@@ -285,10 +285,10 @@ public sealed class ExecutionPlanSchedulerTests
         {
             root.Children(ExecutionChildMode.Parallel, scope =>
             {
-                scope.Task("Branch A").Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchATaskId);
-                scope.Task("Branch B", out branchBVisibleTaskId).Run(_ => Task.FromResult(OperationResult.Succeeded()), out branchBTaskId);
+                scope.Task("Branch A").WithExecutionLocks(sharedLock).Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchATaskId);
+                scope.Task("Branch B", out branchBVisibleTaskId).WithExecutionLocks(sharedLock).Run(_ => Task.FromResult(OperationResult.Succeeded()), out branchBTaskId);
             });
-        }, sharedLock);
+        });
 
         // Act: wait until branch A is definitely running so branch B is forced to remain in lock wait.
         (_, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
@@ -316,41 +316,101 @@ public sealed class ExecutionPlanSchedulerTests
     [Fact]
     public async Task EqualPriorityLockContendersShouldBeAdmittedOneAtATimeInDeclaredOrder()
     {
-        // Arrange: hold the shared lock in one branch so the scheduler has to decide which equally ready contender to
-        // admit first while the lock is still unavailable.
+        // Arrange: use three sibling child operations whose root body tasks each declare the same shared lock. The outer
+        // test operation itself stays lock-free so the contention matches real production semantics more closely.
         ExecutionLock sharedLock = new("lock-admission-order");
         TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ExecutionTaskId lockHolderTaskId = default;
+        TaskCompletionSource<bool> allowSecondInsertion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId lockHolderVisibleTaskId = default;
         ExecutionTaskId firstVisibleTaskId = default;
         ExecutionTaskId secondVisibleTaskId = default;
+
+        Operation lockHolderOperation = new ExecutionTestCommon.InlineOperation(
+            root =>
+            {
+                lockHolderVisibleTaskId = root.Id;
+                root.WithExecutionLocks(sharedLock).Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder));
+            },
+            operationName: "Lock Holder Child Operation");
+
+        Operation firstOperation = new ExecutionTestCommon.InlineOperation(
+            root =>
+            {
+                firstVisibleTaskId = root.Id;
+                root.WithExecutionLocks(sharedLock).Run(_ => Task.FromResult(OperationResult.Succeeded()));
+            },
+            operationName: "First Child Operation");
+
+        Operation secondOperation = new ExecutionTestCommon.InlineOperation(
+            root =>
+            {
+                secondVisibleTaskId = root.Id;
+                root.WithExecutionLocks(sharedLock).Run(_ => Task.FromResult(OperationResult.Succeeded()));
+            },
+            operationName: "Second Child Operation");
 
         Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
             root.Children(ExecutionChildMode.Parallel, scope =>
             {
-                scope.Task("Lock Holder").Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder), out lockHolderTaskId);
-                scope.Task("First", out firstVisibleTaskId).Run(_ => Task.FromResult(OperationResult.Succeeded()));
-                scope.Task("Second", out secondVisibleTaskId).Run(_ => Task.FromResult(OperationResult.Succeeded()));
+                scope.Task("Lock Holder")
+                    .Run(async context =>
+                    {
+                        OperationParameters childParameters = lockHolderOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                        OperationResult childResult = await context.RunChildOperationAsync(lockHolderOperation, childParameters);
+                        if (!childResult.Success)
+                        {
+                            throw new InvalidOperationException(childResult.FailureReason ?? "Lock holder child operation failed.");
+                        }
+                    });
+                scope.Task("First")
+                    .Run(async context =>
+                    {
+                        await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        OperationParameters childParameters = firstOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                        OperationResult childResult = await context.RunChildOperationAsync(firstOperation, childParameters);
+                        if (!childResult.Success)
+                        {
+                            throw new InvalidOperationException(childResult.FailureReason ?? "First child operation failed.");
+                        }
+                    });
+                scope.Task("Second")
+                    .Run(async context =>
+                    {
+                        await allowSecondInsertion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        OperationParameters childParameters = secondOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                        OperationResult childResult = await context.RunChildOperationAsync(secondOperation, childParameters);
+                        if (!childResult.Success)
+                        {
+                            throw new InvalidOperationException(childResult.FailureReason ?? "Second child operation failed.");
+                        }
+                    });
             });
-        }, sharedLock);
+        });
 
-        // Act: start the scheduler, wait until the lock holder definitely owns the shared lock, then wait until the
-        // declared-first contender has been admitted into explicit lock wait.
+        // Act: start the scheduler, wait until the lock-holder child operation owns the shared lock, then insert the
+        // second contender only after the declared-first contender is already the active waiter.
         (_, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         try
         {
             await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            await session.GetTask(lockHolderTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            await session.GetTask(lockHolderVisibleTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
             await RuntimeTestUtilities.WaitForConditionAsync(
                 () => firstVisibleTaskId != default
+                    && session.Tasks.Any(task => task.Id == firstVisibleTaskId)
                     && session.GetTask(firstVisibleTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
                 TimeSpan.FromSeconds(1),
                 "Timed out waiting for the declared-first contender to enter explicit lock wait.");
+            allowSecondInsertion.TrySetResult(true);
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => secondVisibleTaskId != default && session.Tasks.Any(task => task.Id == secondVisibleTaskId),
+                TimeSpan.FromSeconds(1),
+                "Timed out waiting for the declared-second contender to be inserted.");
 
-            // Assert: the scheduler should admit only the declared-first contender while the lock remains unavailable.
-            // The declared-second contender should still be pending and should not own an active worker execution yet.
+            // Assert: while the first child operation is already the active waiter for this lock set, the later second
+            // child operation should remain pending and should not own an active worker execution yet.
             Assert.NotEqual(default, firstVisibleTaskId);
             Assert.NotEqual(default, secondVisibleTaskId);
             ExecutionTask firstVisibleTask = session.GetTask(firstVisibleTaskId);
@@ -364,6 +424,7 @@ public sealed class ExecutionPlanSchedulerTests
         {
             // Cleanup: always release the lock holder so the red test does not leave background work running after the
             // admission-state assertion fails.
+            allowSecondInsertion.TrySetResult(true);
             releaseLockHolder.TrySetResult(true);
             await executeTask;
         }
@@ -387,20 +448,20 @@ public sealed class ExecutionPlanSchedulerTests
         {
             root.Children(ExecutionChildMode.Parallel, scope =>
             {
-                scope.Task("First").Run(async context =>
+                scope.Task("First").WithExecutionLocks(sharedLock).Run(async context =>
                 {
                     firstStarted.TrySetResult(context.TaskId);
                     await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     return OperationResult.Succeeded();
                 }, out firstTaskId);
-                scope.Task("Second").Run(async context =>
+                scope.Task("Second").WithExecutionLocks(sharedLock).Run(async context =>
                 {
                     firstStarted.TrySetResult(context.TaskId);
                     await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     return OperationResult.Succeeded();
                 }, out secondTaskId);
             });
-        }, sharedLock);
+        });
 
         // Act: execute once and capture whichever sibling body actually acquires the shared lock and starts first.
         (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
@@ -436,20 +497,20 @@ public sealed class ExecutionPlanSchedulerTests
             {
                 root.Children(ExecutionChildMode.Parallel, scope =>
                 {
-                    scope.Task("First").Run(async context =>
+                    scope.Task("First").WithExecutionLocks(sharedLock).Run(async context =>
                     {
                         winnerSource.TrySetResult(context.TaskId);
                         await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                         return OperationResult.Succeeded();
                     }, out firstTaskId);
-                    scope.Task("Second").Run(async context =>
+                    scope.Task("Second").WithExecutionLocks(sharedLock).Run(async context =>
                     {
                         winnerSource.TrySetResult(context.TaskId);
                         await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                         return OperationResult.Succeeded();
                     }, out secondTaskId);
                 });
-            }, sharedLock);
+            });
 
             // Act: rebuild and run the same authored shape repeatedly, recording the sibling body that acquires the shared lock first.
             (ExecutionPlan plan, _, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
@@ -493,14 +554,13 @@ public sealed class ExecutionPlanSchedulerTests
                         Operation lockHolderOperation = new ExecutionTestCommon.InlineOperation(
                             lockHolderRoot =>
                             {
-                                lockHolderRoot.Run(async _ =>
+                                lockHolderRoot.WithExecutionLocks(sharedLock).Run(async _ =>
                                 {
                                     lockHolderStarted.TrySetResult(true);
                                     await releaseLockHolder.Task.WaitAsync(TimeSpan.FromSeconds(5));
                                 });
                             },
-                            operationName: "Lock Holder Child Operation",
-                            executionLocks: new[] { sharedLock });
+                            operationName: "Lock Holder Child Operation");
 
                         OperationParameters lockHolderParameters = lockHolderOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
                         OperationResult lockHolderResult = await context.RunChildOperationAsync(lockHolderOperation, lockHolderParameters);
@@ -522,6 +582,7 @@ public sealed class ExecutionPlanSchedulerTests
                                 contenderRoot.Children(ExecutionChildMode.Parallel, parallel =>
                                 {
                                     parallel.Task("Branch A")
+                                        .WithExecutionLocks(sharedLock)
                                         .Run(async childContext =>
                                         {
                                             contenderWinner.TrySetResult(childContext.TaskId);
@@ -529,6 +590,7 @@ public sealed class ExecutionPlanSchedulerTests
                                         }, out branchAChildBodyTaskId);
 
                                     parallel.Task("Branch B")
+                                        .WithExecutionLocks(sharedLock)
                                         .Run(async childContext =>
                                         {
                                             contenderWinner.TrySetResult(childContext.TaskId);
@@ -538,8 +600,7 @@ public sealed class ExecutionPlanSchedulerTests
                                         .Run(() => Task.CompletedTask);
                                 });
                             },
-                            operationName: "Contenders Child Operation",
-                            executionLocks: new[] { sharedLock });
+                            operationName: "Contenders Child Operation");
 
                         OperationParameters contendersParameters = contendersOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
                         OperationResult contendersResult = await context.RunChildOperationAsync(contendersOperation, contendersParameters);
@@ -688,14 +749,13 @@ public sealed class ExecutionPlanSchedulerTests
                         Operation lockHolderOperation = new ExecutionTestCommon.InlineOperation(
                             lockHolderRoot =>
                             {
-                                lockHolderRoot.Run(async _ =>
+                                lockHolderRoot.WithExecutionLocks(sharedLock).Run(async _ =>
                                 {
                                     lockHolderStarted.TrySetResult(true);
                                     await releaseLockHolder.Task.WaitAsync(TimeSpan.FromSeconds(5));
                                 });
                             },
-                            operationName: "Lock Holder Child Operation",
-                            executionLocks: new[] { sharedLock });
+                            operationName: "Lock Holder Child Operation");
 
                         OperationParameters lockHolderParameters = lockHolderOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
                         OperationResult lockHolderResult = await context.RunChildOperationAsync(lockHolderOperation, lockHolderParameters);
@@ -718,14 +778,13 @@ public sealed class ExecutionPlanSchedulerTests
                                     shortChildRoot =>
                                     {
                                         shortChildRootTaskId = shortChildRoot.Id;
-                                        shortChildRoot.Run(async childContext =>
+                                        shortChildRoot.WithExecutionLocks(sharedLock).Run(async childContext =>
                                         {
                                             contenderWinner.TrySetResult(childContext.TaskId);
                                             await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                                         }, out shortChildBodyTaskId);
                                     },
-                                    operationName: "Short Child Operation",
-                                    executionLocks: new[] { sharedLock });
+                                    operationName: "Short Child Operation");
 
                                 OperationParameters shortChildParameters = shortChildOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
                                 OperationResult shortChildResult = await context.RunChildOperationAsync(shortChildOperation, shortChildParameters);
@@ -746,14 +805,13 @@ public sealed class ExecutionPlanSchedulerTests
                                     longChildRoot =>
                                     {
                                         longChildRootTaskId = longChildRoot.Id;
-                                        longChildRoot.Run(async childContext =>
+                                        longChildRoot.WithExecutionLocks(sharedLock).Run(async childContext =>
                                         {
                                             contenderWinner.TrySetResult(childContext.TaskId);
                                             await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
                                         }, out longChildBodyTaskId);
                                     },
-                                    operationName: "Long Child Operation",
-                                    executionLocks: new[] { sharedLock });
+                                    operationName: "Long Child Operation");
 
                                 OperationParameters longChildParameters = longChildOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
                                 OperationResult longChildResult = await context.RunChildOperationAsync(longChildOperation, longChildParameters);
@@ -810,10 +868,9 @@ public sealed class ExecutionPlanSchedulerTests
     [Fact]
     public async Task WaitingTaskStartsPromptlyAfterExecutionLockRelease()
     {
-        /* Keep the shared lock on the outer operation so the direct lock holder and waiting task contend for the same
-           lock, but move the higher-priority follow-up work into a separate lock-free child operation instance. That
-           makes lock release and follow-up readiness happen on the same completed task without a parent waiting on its own
-           same-lock child operation. */
+        /* Apply the shared lock only to the direct lock holder and waiting task so the higher-priority follow-up work
+           remains lock-free in a separate child operation. That makes lock release and follow-up readiness happen on the
+           same completed task without a parent waiting on its own same-lock child operation. */
         ExecutionLock sharedLock = new("lock-release-wakeup-lock");
         TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -854,6 +911,7 @@ public sealed class ExecutionPlanSchedulerTests
             root.Children(ExecutionChildMode.Parallel, scope =>
             {
                 scope.Task("Lock Holder")
+                    .WithExecutionLocks(sharedLock)
                     .Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder), out lockHolderTaskId);
 
                 /* This host task has no body of its own. Its imported child operation stays lock-free, but it becomes
@@ -869,14 +927,14 @@ public sealed class ExecutionPlanSchedulerTests
                             return parameters;
                         });
 
-                scope.Task("Waiting Task", out waitingVisibleTaskId).Run(async context =>
+                scope.Task("Waiting Task", out waitingVisibleTaskId).WithExecutionLocks(sharedLock).Run(async context =>
                 {
                     waitingTaskStarted.TrySetResult(context.TaskId);
                     await releaseWaitingTask.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     return OperationResult.Succeeded();
                 }, out waitingTaskId);
             });
-        }, sharedLock);
+        });
 
         /* The waiting task is already ready from the start but cannot acquire the shared lock while the lock holder
            runs. Once the lock holder completes, the scheduler should retry the waiting task promptly even though the
@@ -1038,15 +1096,15 @@ public sealed class ExecutionPlanSchedulerTests
             {
                 scope.Task("Branch A").Children(branchScope =>
                 {
-                    branchScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchABodyTaskId);
+                    branchScope.Task("Active Work").WithExecutionLocks(sharedLock).Run(RuntimeTestUtilities.RunUntilReleased(branchAStarted, releaseBranchA), out branchABodyTaskId);
                 });
 
                 scope.Task("Branch B", out branchBVisibleTaskId).Children(branchScope =>
                 {
-                    branchScope.Task("Active Work").Run(RuntimeTestUtilities.RunUntilReleased(branchBStarted, releaseBranchB), out branchBBodyTaskId);
+                    branchScope.Task("Active Work").WithExecutionLocks(sharedLock).Run(RuntimeTestUtilities.RunUntilReleased(branchBStarted, releaseBranchB), out branchBBodyTaskId);
                 });
             });
-        }, sharedLock);
+        });
 
         // Act: start the scheduler and wait until branch A is definitely running with the shared lock.
         (ExecutionPlan plan, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
@@ -1093,22 +1151,22 @@ public sealed class ExecutionPlanSchedulerTests
         {
             root.Children(scope =>
             {
-                scope.Task("Body").Run(RuntimeTestUtilities.RunUntilReleased(sessionAStarted, releaseSessionA), out sessionABodyTaskId);
+                scope.Task("Body").WithExecutionLocks(sharedLock).Run(RuntimeTestUtilities.RunUntilReleased(sessionAStarted, releaseSessionA), out sessionABodyTaskId);
             });
-        }, sharedLock);
+        });
 
         Operation operationB = new RuntimeTestUtilities.InlineOperation(root =>
         {
             root.Children(scope =>
             {
-                scope.Task("Body").Run(async _ =>
+                scope.Task("Body").WithExecutionLocks(sharedLock).Run(async _ =>
                 {
                     sessionBStarted.TrySetResult(true);
                     await releaseSessionB.Task.WaitAsync(TimeSpan.FromSeconds(5));
                     return OperationResult.Succeeded();
                 }, out sessionBBodyTaskId);
             });
-        }, sharedLock);
+        });
 
         /* Start session A first so it definitely holds the shared lock before session B begins. Session B should then be
            blocked only by that external lock holder. */

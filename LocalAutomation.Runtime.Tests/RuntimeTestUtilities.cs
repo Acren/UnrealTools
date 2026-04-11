@@ -14,8 +14,8 @@ internal static class RuntimeTestUtilities
     /// </summary>
     internal sealed class InlineOperation : ExecutionTestCommon.InlineOperation
     {
-        public InlineOperation(Action<ExecutionTaskBuilder> buildPlan, params ExecutionLock[] executionLocks)
-            : base(buildPlan, "Scheduler Test Operation", null, executionLocks)
+        public InlineOperation(Action<ExecutionTaskBuilder> buildPlan)
+            : base(buildPlan, "Scheduler Test Operation", null)
         {
         }
     }

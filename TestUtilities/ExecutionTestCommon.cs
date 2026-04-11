@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using LocalAutomation.Runtime;
 
 namespace TestUtilities;
@@ -11,25 +10,24 @@ namespace TestUtilities;
 internal static class ExecutionTestCommon
 {
     /// <summary>
-    /// Minimal inline operation wrapper that lets tests define plan shape through the normal runtime operation pipeline.
+    /// Minimal lock-free inline operation wrapper that lets tests define plan shape through the normal runtime operation
+    /// pipeline. Tests that need lock contention should declare locks on individual authored tasks instead of applying
+    /// one blanket lock policy to the whole synthetic operation.
     /// </summary>
     internal class InlineOperation : Operation<TestTarget>
     {
         private readonly Action<ExecutionTaskBuilder>? _buildPlan;
-        private readonly IReadOnlyList<ExecutionLock> _executionLocks;
         private readonly string _operationName;
         private readonly Func<ValidatedOperationParameters, string?>? _checkRequirements;
 
         public InlineOperation(
             Action<ExecutionTaskBuilder>? buildPlan = null,
             string operationName = "Test Operation",
-            Func<ValidatedOperationParameters, string?>? checkRequirements = null,
-            params ExecutionLock[] executionLocks)
+            Func<ValidatedOperationParameters, string?>? checkRequirements = null)
         {
             _buildPlan = buildPlan;
             _operationName = string.IsNullOrWhiteSpace(operationName) ? "Test Operation" : operationName;
             _checkRequirements = checkRequirements;
-            _executionLocks = executionLocks ?? Array.Empty<ExecutionLock>();
         }
 
         /// <summary>
@@ -56,14 +54,6 @@ internal static class ExecutionTestCommon
         protected override string? CheckRequirementsSatisfied(ValidatedOperationParameters operationParameters)
         {
             return _checkRequirements?.Invoke(operationParameters) ?? base.CheckRequirementsSatisfied(operationParameters);
-        }
-
-        /// <summary>
-        /// Applies the same optional execution locks to every body task in the authored test operation.
-        /// </summary>
-        protected override IEnumerable<ExecutionLock> GetExecutionLocks(ValidatedOperationParameters operationParameters)
-        {
-            return _executionLocks;
         }
     }
 
