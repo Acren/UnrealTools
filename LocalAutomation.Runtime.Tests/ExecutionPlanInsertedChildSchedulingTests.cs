@@ -24,6 +24,8 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
         TaskCompletionSource<bool> traversalFailed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using CancellationTokenSource stopTraversal = new();
         ExecutionTaskId traversalTargetTaskId = default;
+        ExecutionTaskId insertedChildRootTaskId = default;
+        ExecutionTaskId[] trackedInsertedTraversalTaskIds = new ExecutionTaskId[4];
 
         var operation = new RuntimeTestUtilities.InlineOperation(root =>
         {
@@ -39,6 +41,8 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
                     var childOperation = new ExecutionTestCommon.InlineOperation(
                         childRoot =>
                         {
+                            insertedChildRootTaskId = childRoot.Id;
+
                             /* Insert a small authored subtree in one merge so the writer side stays active long enough for
                                the deterministic concurrent reader to overlap the same live child list without falling
                                back to hundreds of separate child-operation calls. */
@@ -46,11 +50,17 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
                             {
                                 for (int index = 0; index < 24; index += 1)
                                 {
+                                    ExecutionTaskId insertedTaskId = default;
                                     insertedScope.Task($"Inserted Traversal Task {index}")
                                         .Run(async _ =>
                                         {
                                             await Task.Yield();
-                                        });
+                                        }, out insertedTaskId);
+
+                                    if (index < trackedInsertedTraversalTaskIds.Length)
+                                    {
+                                        trackedInsertedTraversalTaskIds[index] = insertedTaskId;
+                                    }
                                 }
                             });
                         },
@@ -81,23 +91,40 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
 
         (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime((Operation)operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
-        Task traversalTask = Task.Run(() =>
+        Task traversalTask = Task.Factory.StartNew(() =>
         {
             /* Keep traversing the live graph until the operation finishes so the old unfixed runtime reliably performs
-               concurrent reads while the task body is merging its child operation into the same session tree. */
+               concurrent reads while the task body is merging its child operation into the same session tree. Run the
+               traversal on a dedicated long-running worker and stop only after the reader has observed concrete inserted
+               child milestones, so the test does not rely on an arbitrary wall-clock overlap window. */
             traversalStarted.TrySetResult(true);
             try
             {
                 while (!stopTraversal.Token.IsCancellationRequested)
                 {
-                    _ = session.GetTaskDisplayPath(traversalTargetTaskId);
+                    for (int index = 0; index < 32 && !stopTraversal.Token.IsCancellationRequested; index += 1)
+                    {
+                        _ = session.GetTaskDisplayPath(traversalTargetTaskId);
+                    }
+
+                    if (insertedChildRootTaskId != default && session.Tasks.Any(task => task.Id == insertedChildRootTaskId))
+                    {
+                        ExecutionTaskId[] trackedTaskIds = trackedInsertedTraversalTaskIds.Where(taskId => taskId != default).ToArray();
+                        int completedTrackedInsertedTasks = trackedTaskIds.Count(taskId => session.Tasks.Any(task => task.Id == taskId && task.State == ExecutionTaskState.Completed));
+                        if (trackedTaskIds.Length > 0 && completedTrackedInsertedTasks >= trackedTaskIds.Length)
+                        {
+                            return;
+                        }
+                    }
+
+                    Thread.Yield();
                 }
             }
             catch (Exception ex)
             {
                 traversalFailed.TrySetException(ex);
             }
-        }, stopTraversal.Token);
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
         try
         {
@@ -107,18 +134,9 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
             await traversalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             allowInsertion.TrySetResult(true);
 
-            /* Keep the explicit overlap window short and deliberate. The deterministic reader only needs to be active
-               while the child merge is in flight; after that, stop the reader so the test does not conflate the race
-               itself with long-running concurrent traversal noise. */
-            await Task.Delay(TimeSpan.FromMilliseconds(250));
-            stopTraversal.Cancel();
-            try
-            {
-                await traversalTask;
-            }
-            catch (OperationCanceledException)
-            {
-            }
+            /* Wait for the dedicated reader to observe the inserted-child root plus a small set of inserted task
+               completions. This keeps the overlap tied to concrete live-graph progress instead of a wall-clock delay. */
+            await traversalTask.WaitAsync(TimeSpan.FromSeconds(5));
 
             /* This should complete cleanly. Before the traversal fix, the bounded overlap window can still fault with
                collection-modified or related live-graph traversal exceptions. */

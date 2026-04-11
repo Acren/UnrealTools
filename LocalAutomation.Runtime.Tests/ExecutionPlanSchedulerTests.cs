@@ -731,6 +731,9 @@ public sealed class ExecutionPlanSchedulerTests
            operations and block on the same lock before the scheduler has to choose one winner. */
         ExecutionLock sharedLock = new("inserted-child-dependent-priority-lock");
         TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseContenderGates = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> shortChildGateStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> longChildGateStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<ExecutionTaskId> contenderWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -778,11 +781,26 @@ public sealed class ExecutionPlanSchedulerTests
                                     shortChildRoot =>
                                     {
                                         shortChildRootTaskId = shortChildRoot.Id;
-                                        shortChildRoot.WithExecutionLocks(sharedLock).Run(async childContext =>
+                                        shortChildRoot.Children(childScope =>
                                         {
-                                            contenderWinner.TrySetResult(childContext.TaskId);
-                                            await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
-                                        }, out shortChildBodyTaskId);
+                                            /* Hold both inserted child operations at the same pre-lock boundary so the
+                                               scheduler must choose between two simultaneously ready contenders instead of
+                                               inheriting whichever child operation happened to finish inserting first. */
+                                            ExecutionTaskBuilder shortReadyGate = childScope.Task("Ready Gate");
+                                            shortReadyGate.Run(async _ =>
+                                            {
+                                                shortChildGateStarted.TrySetResult(true);
+                                                await releaseContenderGates.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                            });
+
+                                            shortReadyGate.Then("Lock Body")
+                                                .WithExecutionLocks(sharedLock)
+                                                .Run(async childContext =>
+                                                {
+                                                    contenderWinner.TrySetResult(childContext.TaskId);
+                                                    await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                                }, out shortChildBodyTaskId);
+                                        });
                                     },
                                     operationName: "Short Child Operation");
 
@@ -805,11 +823,25 @@ public sealed class ExecutionPlanSchedulerTests
                                     longChildRoot =>
                                     {
                                         longChildRootTaskId = longChildRoot.Id;
-                                        longChildRoot.WithExecutionLocks(sharedLock).Run(async childContext =>
+                                        longChildRoot.Children(childScope =>
                                         {
-                                            contenderWinner.TrySetResult(childContext.TaskId);
-                                            await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
-                                        }, out longChildBodyTaskId);
+                                            /* Mirror the short branch's pre-lock gate so both concrete contenders
+                                               become ready from the same explicit release point. */
+                                            ExecutionTaskBuilder longReadyGate = childScope.Task("Ready Gate");
+                                            longReadyGate.Run(async _ =>
+                                            {
+                                                longChildGateStarted.TrySetResult(true);
+                                                await releaseContenderGates.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                            });
+
+                                            longReadyGate.Then("Lock Body")
+                                                .WithExecutionLocks(sharedLock)
+                                                .Run(async childContext =>
+                                                {
+                                                    contenderWinner.TrySetResult(childContext.TaskId);
+                                                    await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                                }, out longChildBodyTaskId);
+                                        });
                                     },
                                     operationName: "Long Child Operation");
 
@@ -826,30 +858,49 @@ public sealed class ExecutionPlanSchedulerTests
             });
         });
 
-        /* Wait until the lock holder definitely owns the shared lock and both inserted child-operation roots exist.
-           That isolates the arbitration point to the scheduler's next winner choice after release. */
+        /* Wait until the lock holder definitely owns the shared lock and both inserted child operations have reached the
+           same explicit pre-lock gate. That isolates the arbitration point to the scheduler's downstream-priority choice
+           instead of whichever child operation happened to finish inserting first. */
         (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         ExecutionTaskId winnerTaskId;
         try
         {
             await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await shortChildGateStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await longChildGateStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await RuntimeTestUtilities.WaitForConditionAsync(
                 () => shortChildRootTaskId != default
                     && longChildRootTaskId != default
+                    && shortChildBodyTaskId != default
+                    && longChildBodyTaskId != default
                     && session.Tasks.Any(task => task.Id == shortChildRootTaskId)
-                    && session.Tasks.Any(task => task.Id == longChildRootTaskId),
+                    && session.Tasks.Any(task => task.Id == longChildRootTaskId)
+                    && session.Tasks.Any(task => task.Id == shortChildBodyTaskId)
+                    && session.Tasks.Any(task => task.Id == longChildBodyTaskId),
                 TimeSpan.FromSeconds(5),
                 "Timed out waiting for both inserted child operations to reach the shared-lock boundary.");
 
             Assert.NotEqual(default, shortChildBodyTaskId);
             Assert.NotEqual(default, longChildBodyTaskId);
 
+            releaseContenderGates.TrySetResult(true);
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => session.GetTask(longChildBodyTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                TimeSpan.FromSeconds(1),
+                "Timed out waiting for the long branch contender to become the admitted lock waiter.");
+
+            /* Once both contenders are ready together, the longer outer branch should be the one admitted into lock wait
+               first. The shorter branch should still be queued behind that admitted waiter. */
+            Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, session.GetTask(longChildBodyTaskId).State);
+            Assert.Equal(ExecutionTaskState.Pending, session.GetTask(shortChildBodyTaskId).State);
+
             releaseLockHolder.TrySetResult(true);
             winnerTaskId = await contenderWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
         }
         finally
         {
+            releaseContenderGates.TrySetResult(true);
             releaseLockHolder.TrySetResult(true);
             releaseWinner.TrySetResult(true);
         }
