@@ -897,6 +897,19 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Returns whether this task's own executable body is the task currently waiting on an execution lock. Direct task
+    /// lock wait happens before the task has ever reached Running, so StartedAt remains unset. Rolled-up descendant lock
+    /// wait can also use the WaitingForExecutionLock state, but those parents already have StartedAt once their own body
+    /// began executing.
+    /// </summary>
+    internal bool IsOwnWorkWaitingForExecutionLock()
+    {
+        return _spec.ExecuteAsync != null
+            && State == ExecutionTaskState.WaitingForExecutionLock
+            && StartedAt == null;
+    }
+
+    /// <summary>
     /// Returns whether every ancestor container for this task is structurally open, meaning none have completed or been
     /// assigned a doomed outcome, and all ancestor dependencies are satisfied.
     /// </summary>
@@ -1107,10 +1120,49 @@ public class ExecutionTask : INotifyPropertyChanged
         if (State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock && nextState is ExecutionTaskState.Pending or ExecutionTaskState.Planned)
         {
             /* Once a task or any descendant in its subtree has started, queued states are no longer legal. Container
-               scopes must remain Running until they complete or fail, even if later descendant work is only waiting on
-               dependencies or parent readiness. */
+               scopes must remain in an active non-queued state until they complete or fail, even if later descendant
+               work is only waiting on dependencies, parent readiness, or execution locks. */
             throw new InvalidOperationException($"Task '{Id}' cannot transition from running back to queued state '{nextState}'.");
         }
+    }
+
+    /// <summary>
+    /// Returns whether this task has at least one currently unsatisfied dependency whose blocking task lies outside the
+    /// specified subtree. Tasks blocked only by unfinished work inside the same subtree are downstream of that subtree's
+    /// current frontier and therefore should not widen ancestor rollup state on their own.
+    /// </summary>
+    internal bool HasUnsatisfiedDependenciesOutsideSubtree(ExecutionTask subtreeRoot)
+    {
+        if (subtreeRoot == null)
+        {
+            throw new ArgumentNullException(nameof(subtreeRoot));
+        }
+
+        ExecutionTask root = GetTreeRoot();
+        return Dependencies.Any(dependencyId => HasUnsatisfiedDependencyOutsideSubtree(root, subtreeRoot, dependencyId));
+    }
+
+    /// <summary>
+    /// Follows one dependency chain until it reaches the first still-unsatisfied blocker. Disabled dependencies delegate
+    /// to their own dependencies so disabled-through chains only count as external blockers when the first unfinished
+    /// real blocker lies outside the inspected subtree.
+    /// </summary>
+    private static bool HasUnsatisfiedDependencyOutsideSubtree(ExecutionTask root, ExecutionTask subtreeRoot, ExecutionTaskId dependencyId)
+    {
+        ExecutionTask dependencyTask = root.FindTask(dependencyId)
+            ?? throw new InvalidOperationException($"Dependency task '{dependencyId}' not found in the execution tree.");
+
+        if (dependencyTask.Outcome == ExecutionTaskOutcome.Completed)
+        {
+            return false;
+        }
+
+        if (dependencyTask.Outcome == ExecutionTaskOutcome.Disabled)
+        {
+            return dependencyTask.Dependencies.Any(nextDependencyId => HasUnsatisfiedDependencyOutsideSubtree(root, subtreeRoot, nextDependencyId));
+        }
+
+        return subtreeRoot.FindTask(dependencyId) == null;
     }
 
     /// <summary>

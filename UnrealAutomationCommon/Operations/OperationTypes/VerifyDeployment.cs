@@ -172,7 +172,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PackageProjectAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             VerificationState state = context.GetOperationState<VerificationState>();
-            await RunChildOperationAsync(new PackageProject(), CreateExampleProjectParams(state, outputPathOverride: state.PackageOutputPath), context, required: true, failureMessage: "Failed to package example project");
+            await RunChildOperationAsync(new PackageProject(), CreateExampleProjectParams(state, outputPathOverride: state.PackageOutputPath), context, required: true, failureMessage: "Failed to package example project", hideChildOperationRootInGraph: true);
         }
 
         private async Task TestPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
@@ -202,7 +202,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private Task RunExampleProjectOperationAsync<TOperation>(VerificationState state, AutomationOptions automationOptions, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
             where TOperation : global::LocalAutomation.Runtime.Operation, new()
         {
-            return RunChildOperationAsync<TOperation>(CreateExampleProjectParams(state, automationOptions), context, required: true, failureMessage: failureMessage);
+            return RunChildOperationAsync<TOperation>(CreateExampleProjectParams(state, automationOptions), context, required: true, failureMessage: failureMessage, hideChildOperationRootInGraph: true);
         }
 
         public readonly struct ExampleProjectZipInfo

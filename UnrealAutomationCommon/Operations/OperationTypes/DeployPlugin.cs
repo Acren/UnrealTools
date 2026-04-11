@@ -697,7 +697,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             launchEditorParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             launchEditorParams.SetOptions(automationOptions);
 
-            await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context, required: true, failureMessage: "Failed to launch project-plugin base in editor");
+            await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context, required: true, failureMessage: "Failed to launch project-plugin base in editor", hideChildOperationRootInGraph: true);
             activity.SetTag("result", "Completed");
         }
 
@@ -718,7 +718,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             launchStandaloneParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             launchStandaloneParams.SetOptions(automationOptions);
 
-            await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context, required: true, failureMessage: "Failed to launch project-plugin base in standalone");
+            await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context, required: true, failureMessage: "Failed to launch project-plugin base in standalone", hideChildOperationRootInGraph: true);
             activity.SetTag("result", "Completed");
         }
 
@@ -745,7 +745,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             using (PerformanceActivityScope childRunActivity = PerformanceTelemetry.StartActivity("DeployPlugin.BuildPlugin.RunChild"))
             {
-                await RunChildOperationAsync<PackagePlugin>(buildPluginParams, context, required: true, failureMessage: "Plugin build failed");
+                await RunChildOperationAsync<PackagePlugin>(buildPluginParams, context, required: true, failureMessage: "Plugin build failed", hideChildOperationRootInGraph: true);
                 childRunActivity.SetTag("child.operation", nameof(PackagePlugin));
             }
 
@@ -809,7 +809,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             buildExampleProjectParams.Target = exampleProject;
             buildExampleProjectParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "PrebuildProjectPluginBaseOutput");
             buildExampleProjectParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
-            await RunChildOperationAsync<BuildEditor>(buildExampleProjectParams, context, required: true, failureMessage: "Failed to prebuild project-plugin base with modules");
+            await RunChildOperationAsync<BuildEditor>(buildExampleProjectParams, context, required: true, failureMessage: "Failed to prebuild project-plugin base with modules", hideChildOperationRootInGraph: true);
         }
 
         /// <summary>
@@ -927,7 +927,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 parameters,
                 context,
                 required: true,
-                failureMessage: failureMessage);
+                failureMessage: failureMessage,
+                hideChildOperationRootInGraph: true);
         }
 
         /// <summary>
@@ -949,7 +950,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 parameters,
                 context,
                 required: true,
-                failureMessage: failureMessage);
+                failureMessage: failureMessage,
+                hideChildOperationRootInGraph: true);
         }
 
         /// <summary>
@@ -957,7 +959,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// </summary>
         private Task RunLaunchPackageAsync(Package package, Engine engine, AutomationOptions automationOptions, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage, string outputPath)
         {
-            return RunChildOperationAsync<LaunchPackage>(CreatePackageLaunchParams(package, engine, automationOptions, outputPath), context, required: true, failureMessage: failureMessage);
+            return RunChildOperationAsync<LaunchPackage>(CreatePackageLaunchParams(package, engine, automationOptions, outputPath), context, required: true, failureMessage: failureMessage, hideChildOperationRootInGraph: true);
         }
 
         // Rebuild the packaged plugin in-place with Clang so validation matches the project-plugin flow Fab uses.
@@ -988,7 +990,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Compiler = UbtCompiler.Clang
             });
 
-            await RunChildOperationAsync<BuildPlugin>(clangBuildParams, context, required: true, failureMessage: "Clang compile check failed");
+            await RunChildOperationAsync<BuildPlugin>(clangBuildParams, context, required: true, failureMessage: "Clang compile check failed", hideChildOperationRootInGraph: true);
             activity.SetTag("child.result", "Succeeded");
         }
 

@@ -57,9 +57,9 @@ internal sealed class ExecutionTaskRuntimeServices
 
     internal ExecutionSessionId SessionId => _session.Id;
 
-    internal Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext)
+    internal Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext, bool hideChildOperationRootInGraph)
     {
-        return _session.RunChildOperationAsync(operation, operationParameters, parentContext, _scheduler);
+        return _session.RunChildOperationAsync(operation, operationParameters, parentContext, _scheduler, hideChildOperationRootInGraph);
     }
 }
 
@@ -129,11 +129,12 @@ public sealed class ExecutionTaskContext
 
     /// <summary>
     /// Runs a nested child operation through the same live runtime services without exposing session or scheduler objects
-    /// directly to task code.
+    /// directly to task code. Callers can hide the imported child root when the current task is only a thin wrapper around
+    /// one child operation and showing both nodes would add duplicate graph noise.
     /// </summary>
-    public Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters)
+    public Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters, bool hideChildOperationRootInGraph = false)
     {
-        return GetRequiredRuntime().RunChildOperationAsync(operation, operationParameters, this);
+        return GetRequiredRuntime().RunChildOperationAsync(operation, operationParameters, this, hideChildOperationRootInGraph);
     }
 
     /// <summary>

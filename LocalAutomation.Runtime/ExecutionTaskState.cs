@@ -23,8 +23,8 @@ public enum ExecutionTaskState
     WaitingForExecutionLock,
 
     /// <summary>
-    /// The task itself is running or at least one descendant is still active. Parent tasks remain Running until their
-    /// entire subtree reaches a terminal state.
+    /// The task itself is running or the subtree still has active work that is not in the pure execution-lock wait
+    /// shape. Parent tasks use this state for mixed in-progress subtrees, including runnable work and non-lock blockers.
     /// </summary>
     Running,
 

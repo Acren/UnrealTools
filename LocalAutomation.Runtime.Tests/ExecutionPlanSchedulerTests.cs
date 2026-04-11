@@ -1125,11 +1125,11 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
-    /// Confirms that a container scope with a child blocked only on a contended execution lock stays pending until one of
-    /// its descendants actually starts running.
+    /// Confirms that the immediate parent branch of a lock-blocked child rolls up to the explicit lock-wait state, while
+    /// a wider enclosing parallel scope still stays running when a sibling branch is actively executing.
     /// </summary>
     [Fact]
-    public async Task ParentScopeStaysPendingWhileChildWaitsForExecutionLock()
+    public async Task ImmediateParentBranchRollsUpWaitingForExecutionLockWhileSharedParentKeepsRunning()
     {
         // Arrange: each branch contains one active child, but branch A holds the shared lock open first.
         ExecutionLock sharedLock = new("parent-pending-lock");
@@ -1163,22 +1163,111 @@ public sealed class ExecutionPlanSchedulerTests
         await branchAStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await session.GetTask(branchABodyTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-        // Assert: the real runnable child that declares the shared lock should surface the explicit lock-wait state,
-        // while its containing authored branch task and enclosing parallel scope both stay Running because that subtree
-        // is already in progress.
+        // Assert: the real runnable child that declares the shared lock should surface the explicit lock-wait state, and
+        // its immediate authored parent branch should bubble up the same blocker because nothing else in that branch can
+        // run. The shared parent task above both branches must still stay Running because sibling branch A is actively
+        // executing.
         Assert.NotEqual(default, branchBVisibleTaskId);
         ExecutionTask branchBVisibleTask = session.GetTask(branchBVisibleTaskId);
         ExecutionTask branchBActiveWorkTask = session.GetTask(branchBBodyTaskId);
-        ExecutionTask branchBParallelScope = session.GetTask(branchBVisibleTask.ParentId!.Value);
+        ExecutionTask sharedParentTask = session.GetTask(branchBVisibleTask.ParentId!.Value);
         Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, branchBActiveWorkTask.State);
-        Assert.Equal(ExecutionTaskState.Running, branchBVisibleTask.State);
-        Assert.Equal(ExecutionTaskState.Running, branchBParallelScope.State);
+        Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, branchBVisibleTask.State);
+        Assert.Equal(ExecutionTaskState.Running, sharedParentTask.State);
 
         // Cleanup: release both branches in sequence so the run can complete if the scheduler eventually starts branch B.
         releaseBranchA.TrySetResult(true);
         await branchBStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         releaseBranchB.TrySetResult(true);
         await executeTask;
+    }
+
+    /// <summary>
+    /// Confirms that an executable parent task awaiting a hidden child operation returns to Running once that hidden
+    /// child actually acquires its execution lock and starts running.
+    /// </summary>
+    [Fact]
+    public async Task ExecutableParentReturnsToRunningAfterHiddenChildLeavesExecutionLockWait()
+    {
+        /* Hold the shared lock in one sibling branch first so the parent task's hidden child operation must initially
+           surface WaitingForExecutionLock through the visible parent task before the child can later start running. */
+        ExecutionLock sharedLock = new("hidden-child-running-parent-state-lock");
+        TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseHiddenChild = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId lockHolderTaskId = default;
+        ExecutionTaskId parentVisibleTaskId = default;
+        ExecutionTaskId hiddenChildRootTaskId = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Lock Holder")
+                    .WithExecutionLocks(sharedLock)
+                    .Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder), out lockHolderTaskId);
+
+                scope.Task("Visible Parent Task", out parentVisibleTaskId)
+                    .Run(async context =>
+                    {
+                        /* Keep the shape generic: the visible parent task is running its own body while the real
+                           lock-taking work lives in a hidden child-operation root inserted beneath that parent. */
+                        Operation hiddenChildOperation = new ExecutionTestCommon.InlineOperation(
+                            childRoot =>
+                            {
+                                hiddenChildRootTaskId = childRoot.Id;
+                                childRoot.WithExecutionLocks(sharedLock).Run(async _ =>
+                                {
+                                    await releaseHiddenChild.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                    return OperationResult.Succeeded();
+                                });
+                            },
+                            operationName: "Hidden Child Operation");
+
+                        OperationParameters hiddenChildParameters = hiddenChildOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                        OperationResult childResult = await context.RunChildOperationAsync(hiddenChildOperation, hiddenChildParameters, hideChildOperationRootInGraph: true);
+                        if (!childResult.Success)
+                        {
+                            throw new InvalidOperationException(childResult.FailureReason ?? "Hidden child operation failed.");
+                        }
+                    });
+            });
+        });
+
+        /* Start the scheduler, wait until the sibling lock holder is definitely active, then wait until the hidden child
+           operation has been inserted and is visibly blocked on the shared execution lock through the parent task. */
+        (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        try
+        {
+            await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await session.GetTask(lockHolderTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => hiddenChildRootTaskId != default
+                    && session.Tasks.Any(task => task.Id == hiddenChildRootTaskId)
+                    && session.GetTask(hiddenChildRootTaskId).State == ExecutionTaskState.WaitingForExecutionLock
+                    && session.GetTask(parentVisibleTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                TimeSpan.FromSeconds(5),
+                "Timed out waiting for the hidden child operation to enter explicit lock wait through the visible parent.");
+
+            /* Once the lock holder releases the shared lock, the hidden child should enter Running. The visible parent is
+               still executing its own body while awaiting that child result, so it should return to Running instead of
+               remaining stuck in the rolled-up WaitingForExecutionLock state. */
+            releaseLockHolder.TrySetResult(true);
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => session.GetTask(hiddenChildRootTaskId).State == ExecutionTaskState.Running,
+                TimeSpan.FromSeconds(5),
+                "Timed out waiting for the hidden child operation to start running after the shared lock was released.");
+
+            Assert.Equal(ExecutionTaskState.Running, session.GetTask(parentVisibleTaskId).State);
+        }
+        finally
+        {
+            /* Always release every held branch so a red assertion does not strand the background scheduler run. */
+            releaseLockHolder.TrySetResult(true);
+            releaseHiddenChild.TrySetResult(true);
+            await executeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
     }
 
     /// <summary>

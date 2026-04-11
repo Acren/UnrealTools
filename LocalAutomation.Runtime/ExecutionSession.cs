@@ -343,17 +343,22 @@ public sealed class ExecutionSession
     /// Inserts one child plan beneath the currently executing task in the live session graph using the shared
     /// task-insertion path.
     /// </summary>
-    public ChildTaskMergeResult MergeChildTasks(ExecutionTaskId parentTaskId, ExecutionPlan childPlan)
+    public ChildTaskMergeResult MergeChildTasks(ExecutionTaskId parentTaskId, ExecutionPlan childPlan, bool hideChildRootInGraph = false)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.MergeChildTasks")
             .SetTag("parent.task.id", parentTaskId.Value)
             .SetTag("child.plan.title", childPlan.Title)
-            .SetTag("child.plan.task.count", childPlan.Tasks.Count);
+            .SetTag("child.plan.task.count", childPlan.Tasks.Count)
+            .SetTag("child.root.hidden", hideChildRootInGraph);
 
         InsertedExecutionTasks insertedTasks;
         using (PerformanceActivityScope insertActivity = PerformanceTelemetry.StartActivity("ExecutionSession.MergeChildTasks.InsertUnderParent"))
         {
-            insertedTasks = ExecutionTaskInsertion.InsertUnderParent(childPlan, parentTaskId);
+            ExecutionTask childRoot = childPlan.Tasks.Single(task => task.ParentId == null);
+            ChildOperationRootOverrides? rootOverrides = hideChildRootInGraph
+                ? new ChildOperationRootOverrides(childRoot.Title, childRoot.Description, isHiddenInGraph: true)
+                : null;
+            insertedTasks = ExecutionTaskInsertion.InsertUnderParent(childPlan, parentTaskId, rootOverrides);
             insertActivity.SetTag("inserted.task.count", insertedTasks.Tasks.Count)
                 .SetTag("inserted.root.id", insertedTasks.RootTaskId.Value);
         }
@@ -390,7 +395,7 @@ public sealed class ExecutionSession
     /// <summary>
     /// Builds, attaches, and waits for one nested child operation within the current live session graph.
     /// </summary>
-    internal async Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext, ExecutionPlanScheduler scheduler)
+    internal async Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext, ExecutionPlanScheduler scheduler, bool hideChildOperationRootInGraph = false)
     {
         if (operation == null)
         {
@@ -416,7 +421,8 @@ public sealed class ExecutionSession
             .SetTag("parent.task.id", parentContext.TaskId.Value)
             .SetTag("parent.task.title", parentContext.Title)
             .SetTag("child.operation", operation.OperationName)
-            .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty);
+            .SetTag("target.type", operationParameters.Target?.GetType().Name ?? string.Empty)
+            .SetTag("child.root.hidden", hideChildOperationRootInGraph);
 
         /* Child-operation orchestration can fail before any inserted task ever appears in the live graph, so log each
            stage explicitly to show whether the child plan was built, merged, awaited, and completed. */
@@ -445,7 +451,7 @@ public sealed class ExecutionSession
         ChildTaskMergeResult mergeResult;
         using (PerformanceActivityScope mergeActivity = PerformanceTelemetry.StartActivity("ExecutionSession.RunChildOperation.MergeTasks"))
         {
-            mergeResult = MergeChildTasks(parentContext.TaskId, childPlan);
+            mergeResult = MergeChildTasks(parentContext.TaskId, childPlan, hideChildOperationRootInGraph);
             mergeActivity.SetTag("inserted.task.count", mergeResult.InsertedTaskIds.Count)
                 .SetTag("inserted.root.id", mergeResult.RootTask.Id.Value)
                 .SetTag("inserted.root.title", mergeResult.RootTask.Title);
@@ -1418,7 +1424,16 @@ public sealed class ExecutionSession
 
             TaskStartState parentStartState = currentParent.GetTaskStartState();
             bool ownTaskIsRunning = currentParent.State == ExecutionTaskState.Running && parentStartState == TaskStartState.Running;
-            bool ownTaskIsWaitingForExecutionLock = currentParent.State == ExecutionTaskState.WaitingForExecutionLock && parentStartState == TaskStartState.WaitingForExecutionLock;
+            /* Direct task-level lock wait only exists before that task's own body has ever entered Running. Once an
+               executable parent has already started, the same WaitingForExecutionLock state can also be a rolled-up child
+               wait and must not keep masking later descendant Running transitions as if the parent itself were still the
+               direct lock waiter. */
+            bool ownTaskIsWaitingForExecutionLock = currentParent.IsOwnWorkWaitingForExecutionLock();
+            /* Parent scopes can also surface WaitingForExecutionLock when the subtree frontier is purely lock-blocked:
+               no task is currently running, no sibling branch is runnable, and every reachable non-terminal blocker is
+               an admitted execution-lock waiter. Downstream work that only waits on unfinished tasks inside the same
+               subtree does not widen that frontier. */
+            bool subtreeIsPureExecutionLockWait = !ownTaskIsRunning && IsPureExecutionLockBlockedSubtree(currentParent);
             bool ownTaskIsQueued = parentStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
             bool anyChildRunning = childTasks.Any(task => task.State == ExecutionTaskState.Running);
             bool anyChildWaitingForExecutionLock = childTasks.Any(task => task.State == ExecutionTaskState.WaitingForExecutionLock);
@@ -1438,8 +1453,14 @@ public sealed class ExecutionSession
             {
                 /* When an authored task itself owns the declared execution lock, its explicit lock-wait state should stay
                    visible even if the concrete hidden body task beneath it is also the executing node that will later run
-                   under that lock. Ancestor scopes above this task still observe the descendant wait as in-progress work
-                   and therefore remain Running. */
+                   under that lock. */
+                parentState = ExecutionTaskState.WaitingForExecutionLock;
+            }
+            else if (subtreeIsPureExecutionLockWait)
+            {
+                /* A pure lock-blocked subtree has already started real work, but the only currently reachable blocker is
+                   execution-lock contention. Surfacing the same explicit wait state at the parent makes the subtree's
+                   present blocker visible without claiming that untouched downstream tasks are independently pending. */
                 parentState = ExecutionTaskState.WaitingForExecutionLock;
             }
             else if (ownTaskIsRunning || anyChildRunning || anyChildWaitingForExecutionLock)
@@ -1449,8 +1470,8 @@ public sealed class ExecutionSession
             else if (ownTaskIsQueued || anyPending)
             {
                 /* Pending is reserved for scopes whose subtree has not started yet. Once a scope or any descendant has
-                   started, the scope remains Running until the entire subtree reaches a terminal outcome, even if more
-                   descendant work is temporarily blocked on dependencies or parent readiness. */
+                   started, the scope remains in an active non-queued state until the entire subtree reaches a terminal
+                   outcome, unless the subtree is in the pure execution-lock wait shape handled above. */
                 parentState = currentParent.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock || currentParent.Outcome != null
                     ? ExecutionTaskState.Running
                     : ExecutionTaskState.Pending;
@@ -1484,6 +1505,13 @@ public sealed class ExecutionSession
                 parentReason ??= "All child tasks are disabled.";
             }
 
+            if (parentOutcome == null && parentState == ExecutionTaskState.WaitingForExecutionLock)
+            {
+                /* Rolled-up lock wait uses the same user-facing reason as direct task-level lock wait so callers do not
+                   need a second label path to explain the current blocker. */
+                parentReason = "Waiting for execution lock.";
+            }
+
             if (parentOutcome == ExecutionTaskOutcome.Completed && childTasks.Any(childTask => childTask.State != ExecutionTaskState.Completed))
             {
                 throw new InvalidOperationException($"Task '{currentParent.Id}' cannot roll up to completed while child work is still non-terminal.");
@@ -1492,6 +1520,57 @@ public sealed class ExecutionSession
             SetTaskSnapshot(currentParent.Id, parentState, parentOutcome, parentReason);
             currentParent = currentParent.Parent;
         }
+    }
+
+    /// <summary>
+    /// Returns whether the subtree's currently reachable frontier is blocked only on execution locks. Runnable work,
+    /// running work, or dependency waits whose unfinished blockers live outside the subtree all disqualify the rollup.
+    /// Pending work blocked only by unfinished tasks inside the same subtree is downstream of the frontier and is
+    /// intentionally ignored.
+    /// </summary>
+    private bool IsPureExecutionLockBlockedSubtree(ExecutionTask subtreeRoot)
+    {
+        if (subtreeRoot.GetSchedulerReadyBranchRoots().Count > 0)
+        {
+            return false;
+        }
+
+        bool hasExecutionLockWaiter = false;
+        foreach (ExecutionTask task in subtreeRoot.GetAllTasks())
+        {
+            if (task.Id == subtreeRoot.Id || task.State == ExecutionTaskState.Completed)
+            {
+                continue;
+            }
+
+            if (task.State == ExecutionTaskState.Running)
+            {
+                return false;
+            }
+
+            if (task.State == ExecutionTaskState.WaitingForExecutionLock)
+            {
+                hasExecutionLockWaiter = true;
+                continue;
+            }
+
+            if (task.State != ExecutionTaskState.Pending)
+            {
+                continue;
+            }
+
+            if (task.CanStartOwnWork())
+            {
+                return false;
+            }
+
+            if (!task.AreDependenciesSatisfied() && task.HasUnsatisfiedDependenciesOutsideSubtree(subtreeRoot))
+            {
+                return false;
+            }
+        }
+
+        return hasExecutionLockWaiter;
     }
 
     /// <summary>
