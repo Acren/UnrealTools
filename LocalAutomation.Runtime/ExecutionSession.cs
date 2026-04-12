@@ -22,19 +22,12 @@ public sealed class ExecutionSession
     private readonly TaskCompletionSource<bool> _completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private ExecutionTask? _rootTask;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
-    private readonly Operation _operation;
-    private readonly OperationParameters _operationParameters;
-    private readonly List<string> _errors = new();
-    private readonly List<string> _warnings = new();
-    private int _sessionWarningCount;
-    private int _sessionErrorCount;
     /* The live task graph needs one session-scoped synchronization boundary, but graph traversal happens much more
        often than graph mutation. A recursive reader/writer lock keeps traversal coherent while still letting the
        scheduler's write-side updates break through tight concurrent read loops such as the inserted-child traversal
        regression scenario. */
     private readonly ReaderWriterLockSlim _graphLock = new(LockRecursionPolicy.SupportsRecursion);
     private readonly SessionLogger _sessionLogger;
-    private bool _hasBegunExecution;
     private Task<OperationResult>? _currentTask;
 
     /// <summary>
@@ -49,21 +42,10 @@ public sealed class ExecutionSession
             throw new ArgumentNullException(nameof(plan));
         }
 
-        /* The root authored task already carries the concrete operation and parameter snapshot, so the live session can
-           derive its top-level execution context directly from the plan it owns instead of requiring a second wrapper
-           object to hold the same runtime identity. */
-        ExecutionTask rootTask = plan.Tasks.Single(task => task.ParentId == null);
-        _operation = rootTask.Operation;
-        _operationParameters = rootTask.OperationParameters;
         StartedAt = DateTimeOffset.Now;
         _sessionLogger = new SessionLogger(this);
 
-        /* Sessions own runtime-ready initialization so schedulers can treat the live graph as the single source of
-           truth instead of reapplying startup state on every execution path. */
-        _hasBegunExecution = true;
         InitializeFromPlan(plan);
-        OperationName = _operation.OperationName;
-        TargetName = _operationParameters.Target?.DisplayName ?? string.Empty;
     }
 
     public event Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?, string?>? TaskStateChanged;
@@ -105,9 +87,9 @@ public sealed class ExecutionSession
         get => Outcome == null ? null : Outcome == ExecutionTaskOutcome.Completed;
     }
 
-    public string OperationName { get; }
+    public string OperationName => RootTask.Operation.OperationName;
 
-    public string TargetName { get; }
+    public string TargetName => RootTask.OperationParameters.Target?.DisplayName ?? string.Empty;
 
     /// <summary>
     /// Gets the session-scoped logger that writes into this session's buffered log streams while still mirroring output
@@ -126,38 +108,42 @@ public sealed class ExecutionSession
             throw new InvalidOperationException("Task is already running");
         }
 
+        ExecutionTask rootTask = RootTask;
+        Operation operation = rootTask.Operation;
+        OperationParameters operationParameters = rootTask.OperationParameters;
+
         /* Top-level execution owns the concrete output directory lifecycle so each run starts from a clean workspace
            before any schedulable task body begins. */
-        string outputPath = _operation.GetOutputPath(_operationParameters);
+        string outputPath = operation.GetOutputPath(operationParameters);
         if (Directory.Exists(outputPath))
         {
             Directory.Delete(outputPath, recursive: true);
         }
 
         EventStreamLogger eventLogger = CreateAggregatingLogger();
-        string? requirementsError = _operation.CheckRequirementsSatisfied(_operationParameters);
+        string? requirementsError = operation.CheckRequirementsSatisfied(operationParameters);
         if (requirementsError != null)
         {
             /* Requirement failures are normal failed results, not exceptions. Log the concrete validation message here so
                parent bodies and the UI can surface the actual reason even when no task body ever starts. */
-            eventLogger.LogError("Operation '{OperationName}' requirements failed: {RequirementsError}", _operation.OperationName, requirementsError);
+            eventLogger.LogError("Operation '{OperationName}' requirements failed: {RequirementsError}", operation.OperationName, requirementsError);
             CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Failed, requirementsError);
             CompleteExecution();
             return;
         }
 
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.Run")
-            .SetTag("operation.name", _operation.OperationName)
+            .SetTag("operation.name", operation.OperationName)
             .SetTag("session.id", Id.Value)
             .SetTag("task.count", Tasks.Count);
-        using IDisposable operationTimingScope = eventLogger.BeginSection(_operation.OperationName);
+        using IDisposable operationTimingScope = eventLogger.BeginSection(operation.OperationName);
         _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, this).ExecuteAsync(_cancellationTokenSource.Token));
         try
         {
             OperationResult result = await _currentTask.ConfigureAwait(false);
             activity.SetTag("scheduler.result", result.Outcome.ToString());
             using PerformanceActivityScope finalizeActivity = PerformanceTelemetry.StartActivity("ExecutionSession.Run.FinalizeOutcome")
-                .SetTag("operation.name", _operation.OperationName)
+                .SetTag("operation.name", operation.OperationName)
                 .SetTag("incoming.result", result.Outcome.ToString());
             OperationResult finalizedResult = FinalizeOutcome(result, eventLogger);
             CompleteRootTaskIfNeeded(finalizedResult.Outcome, finalizedResult.FailureReason);
@@ -184,7 +170,7 @@ public sealed class ExecutionSession
         }
         finally
         {
-            _sessionLogger.LogDebug("'{OperationName}' task ended", _operation.OperationName);
+            _sessionLogger.LogDebug("'{OperationName}' task ended", operation.OperationName);
             _currentTask = null;
             CompleteExecution();
         }
@@ -211,10 +197,15 @@ public sealed class ExecutionSession
 
         if (taskId == null)
         {
-            activity.SetTag("scope", "session")
-                .SetTag("warning.count", _sessionWarningCount)
-                .SetTag("error.count", _sessionErrorCount);
-            return new ExecutionTaskMetrics(GetSessionDuration(now), _sessionWarningCount, _sessionErrorCount);
+            return WithGraphReadLock(() =>
+            {
+                ExecutionTaskMetrics rootMetrics = (_rootTask ?? throw new InvalidOperationException("Session has no root task."))
+                    .GetSubtreeMetrics(now);
+                activity.SetTag("scope", "session")
+                    .SetTag("warning.count", rootMetrics.WarningCount)
+                    .SetTag("error.count", rootMetrics.ErrorCount);
+                return new ExecutionTaskMetrics(GetSessionDuration(now), rootMetrics.WarningCount, rootMetrics.ErrorCount);
+            });
         }
 
         return WithGraphReadLock(() =>
@@ -279,14 +270,9 @@ public sealed class ExecutionSession
             .SetTag("error.delta", errorDelta);
         WithGraphWriteLock(() =>
         {
-            _sessionWarningCount += warningDelta;
-            _sessionErrorCount += errorDelta;
-            if (taskId == null)
-            {
-                return;
-            }
-
-            ExecutionTask task = GetTaskCore(taskId.Value);
+            ExecutionTask task = taskId == null
+                ? _rootTask ?? throw new InvalidOperationException("Session has no root task.")
+                : GetTaskCore(taskId.Value);
             task.LogStream.Add(entry);
             ApplyTaskLogMetrics(task, warningDelta, errorDelta);
         });
@@ -301,8 +287,6 @@ public sealed class ExecutionSession
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.ResetCachedLogMetrics");
         WithGraphWriteLock(() =>
         {
-            _sessionWarningCount = 0;
-            _sessionErrorCount = 0;
             if (_rootTask == null)
             {
                 activity.SetTag("task.count", 0);
@@ -606,11 +590,11 @@ public sealed class ExecutionSession
 
         if (_cancellationTokenSource.IsCancellationRequested)
         {
-            _sessionLogger.LogDebug("Cancellation was already requested for operation '{OperationName}'.", _operation.OperationName);
+            _sessionLogger.LogDebug("Cancellation was already requested for operation '{OperationName}'.", OperationName);
             return currentTask;
         }
 
-        _sessionLogger.LogWarning("Cancelling operation '{OperationName}'", _operation.OperationName);
+        _sessionLogger.LogWarning("Cancelling operation '{OperationName}'", OperationName);
         _cancellationTokenSource.Cancel();
         return currentTask;
     }
@@ -946,15 +930,6 @@ public sealed class ExecutionSession
             _sessionLogger,
             (level, output) =>
             {
-                if (level >= LogLevel.Error)
-                {
-                    _errors.Add(output);
-                }
-                else if (level == LogLevel.Warning)
-                {
-                    _warnings.Add(output);
-                }
-
                 _sessionLogger.Log(level, output);
             });
     }
@@ -1015,7 +990,12 @@ public sealed class ExecutionSession
     /// </summary>
     private OperationResult FinalizeOutcome(OperationResult result, ILogger logger)
     {
-        return FinalizeOutcome(_operation, result, logger, _sessionLogger, _warnings.Count, _errors.Count);
+        return WithGraphReadLock(() =>
+        {
+            ExecutionTask rootTask = _rootTask ?? throw new InvalidOperationException("Session has no root task.");
+            ExecutionTaskMetrics metrics = rootTask.GetSubtreeMetrics();
+            return FinalizeOutcome(rootTask.Operation, result, logger, _sessionLogger, metrics.WarningCount, metrics.ErrorCount);
+        });
     }
 
     /// <summary>
@@ -1672,7 +1652,7 @@ public sealed class ExecutionSession
             throw new InvalidOperationException($"Execution session already contains task '{task.Id}'.");
         }
 
-        task.InitializeRuntimeState(_hasBegunExecution, NotifyTaskChanged);
+        task.InitializeRuntimeState(NotifyTaskChanged);
 
         if (task.ParentId is ExecutionTaskId parentId)
         {

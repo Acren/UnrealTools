@@ -97,7 +97,6 @@ public class ExecutionTask : INotifyPropertyChanged
     private Task<OperationResult>? _activeExecutionTask;
     private readonly Dictionary<Type, object> _stateByType = new();
     private readonly object _stateWaitSyncRoot = new();
-    private readonly HashSet<ExecutionTaskState> _reachedStates = new();
     private readonly Dictionary<ExecutionTaskState, List<TaskCompletionSource<bool>>> _stateWaiters = new();
 
     /// <summary>
@@ -123,7 +122,10 @@ public class ExecutionTask : INotifyPropertyChanged
         _outcome = spec.Enabled ? null : ExecutionTaskOutcome.Disabled;
         ResetSubtreeMetrics();
         ResetSubtreeSchedulingRollup();
-        ResetReachedStates(_state);
+        lock (_stateWaitSyncRoot)
+        {
+            _stateWaiters.Clear();
+        }
     }
 
     private readonly List<ExecutionTask> _children;
@@ -411,7 +413,8 @@ public class ExecutionTask : INotifyPropertyChanged
     internal bool HasStartedWorkInSubtree() => _subtreeHasStartedWork;
 
     /// <summary>
-    /// Waits until this task reaches the requested runtime state at least once during the current session lifetime.
+    /// Waits until this task is currently in the requested runtime state or transitions into it later during the current
+    /// session lifetime.
     /// </summary>
     public Task WaitForStateAsync(ExecutionTaskState targetState, CancellationToken cancellationToken = default)
     {
@@ -424,7 +427,7 @@ public class ExecutionTask : INotifyPropertyChanged
         CancellationTokenRegistration cancellationRegistration = default;
         lock (_stateWaitSyncRoot)
         {
-            if (_reachedStates.Contains(targetState))
+            if (_state == targetState)
             {
                 return Task.CompletedTask;
             }
@@ -630,15 +633,14 @@ public class ExecutionTask : INotifyPropertyChanged
         RaisePropertyChanged(nameof(ChildTaskIds));
     }
 
-    internal void InitializeRuntimeState(bool hasBegunExecution, Action<ExecutionTaskId> onTaskChanged)
+    internal void InitializeRuntimeState(Action<ExecutionTaskId> onTaskChanged)
     {
         _onTaskChanged = onTaskChanged ?? throw new ArgumentNullException(nameof(onTaskChanged));
 
-        /* Sessions reset only lifecycle state here. Semantic outcome stays separate so disabled tasks can still render as
-           Disabled while the scheduler treats them as already finished. */
-        ExecutionTaskState initialState = Enabled
-            ? (hasBegunExecution ? ExecutionTaskState.Queued : ExecutionTaskState.Planned)
-            : ExecutionTaskState.Completed;
+        /* Live session tasks always begin in queued runtime state once the session clones and attaches them. Semantic
+           outcome stays separate so disabled tasks can still render as Disabled while the scheduler treats them as
+           already finished. */
+        ExecutionTaskState initialState = Enabled ? ExecutionTaskState.Queued : ExecutionTaskState.Completed;
         State = initialState;
         StatusReason = Enabled ? string.Empty : DisabledReason;
         Outcome = Enabled ? null : ExecutionTaskOutcome.Disabled;
@@ -650,7 +652,10 @@ public class ExecutionTask : INotifyPropertyChanged
         {
             _activeExecutionTask = null;
         }
-        ResetReachedStates(initialState);
+        lock (_stateWaitSyncRoot)
+        {
+            _stateWaiters.Clear();
+        }
     }
 
     /// <summary>
@@ -833,8 +838,7 @@ public class ExecutionTask : INotifyPropertyChanged
         List<TaskCompletionSource<bool>> failedWaiters = new();
         lock (_stateWaitSyncRoot)
         {
-            bool reachedNewState = _reachedStates.Add(state);
-            if (reachedNewState && _stateWaiters.TryGetValue(state, out List<TaskCompletionSource<bool>>? matchingWaiters))
+            if (_stateWaiters.TryGetValue(state, out List<TaskCompletionSource<bool>>? matchingWaiters))
             {
                 completedWaiters.AddRange(matchingWaiters);
                 _stateWaiters.Remove(state);
@@ -844,15 +848,7 @@ public class ExecutionTask : INotifyPropertyChanged
             {
                 foreach ((ExecutionTaskState waiterState, List<TaskCompletionSource<bool>> waiters) in _stateWaiters.ToList())
                 {
-                    if (_reachedStates.Contains(waiterState))
-                    {
-                        completedWaiters.AddRange(waiters);
-                    }
-                    else
-                    {
-                        failedWaiters.AddRange(waiters);
-                    }
-
+                    failedWaiters.AddRange(waiters);
                     _stateWaiters.Remove(waiterState);
                 }
             }
@@ -912,19 +908,6 @@ public class ExecutionTask : INotifyPropertyChanged
 
         field = value;
         RaisePropertyChanged(propertyName);
-    }
-
-    /// <summary>
-    /// Resets the reached-state set when a live session reinitializes this task for a new run.
-    /// </summary>
-    private void ResetReachedStates(ExecutionTaskState initialState)
-    {
-        lock (_stateWaitSyncRoot)
-        {
-            _reachedStates.Clear();
-            _reachedStates.Add(initialState);
-            _stateWaiters.Clear();
-        }
     }
 
     /// <summary>
