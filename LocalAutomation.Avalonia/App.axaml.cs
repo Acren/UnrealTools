@@ -10,8 +10,7 @@ using LocalAutomationApplicationHost = LocalAutomation.Application.LocalAutomati
 namespace LocalAutomation.Avalonia;
 
 /// <summary>
-/// Wires the Avalonia application lifetime to a placeholder main window so the new shell can coexist with the
-/// legacy WPF app during the migration.
+/// Wires the shared Avalonia shell to the launcher-provided identity and application services.
 /// </summary>
 public partial class App : AvaloniaApplication
 {
