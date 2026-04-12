@@ -266,12 +266,18 @@ public sealed class ExecutionPlanScheduler
     /// </summary>
     private void HandleSessionTaskChanged(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.HandleSessionTaskChanged")
+            .SetTag("task.id", taskId.Value)
+            .SetTag("task.state", state.ToString())
+            .SetTag("task.outcome", outcome?.ToString() ?? string.Empty);
         NormalizeRunningTaskTerminalOutcome(taskId, state, outcome, statusReason);
 
         /* Running tasks only stop promptly when their shared execution token is cancelled. Session state alone is not
            enough because process-backed work observes cancellation through the task context token, so any externally
            forced terminal state must trigger the same cancellation path that user cancellation uses. */
-        if (ShouldCancelExecutionForTerminalOutcome(taskId, state, outcome))
+        bool shouldCancelExecution = ShouldCancelExecutionForTerminalOutcome(taskId, state, outcome);
+        activity.SetTag("execution.cancel.requested", shouldCancelExecution);
+        if (shouldCancelExecution)
         {
             ApplyStopReason(ResolveStopReason(outcome));
             RequestExecutionCancellation();

@@ -1183,6 +1183,81 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
+    /// Confirms that a started scope with one completed child, one child explicitly waiting for an execution lock, and
+    /// one downstream queued child behind that lock waiter should still surface WaitingForExecutionLock instead of
+    /// falling back to a generic running state.
+    /// </summary>
+    [Fact]
+    public async Task StartedScopeWithLockWaitChildAndDownstreamQueuedChildRollsUpWaitingForExecutionLock()
+    {
+        /* Hold a shared execution lock outside the packaging scope so the middle child becomes the admitted lock waiter
+           while the final child remains merely queued behind that blocked work. */
+        ExecutionLock sharedLock = new("scope-rollup-lock");
+        TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId lockHolderTaskId = default;
+        ExecutionTaskId packagingScopeTaskId = default;
+        ExecutionTaskId stageTaskId = default;
+        ExecutionTaskId buildTaskId = default;
+        ExecutionTaskId archiveTaskId = default;
+
+        /* Keep the shape as small as possible:
+           - Stage completes immediately,
+           - Build is the only reachable frontier and waits on the shared lock,
+           - Archive stays queued because it depends on Build finishing. */
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Lock Holder")
+                    .WithExecutionLocks(sharedLock)
+                    .Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder), out lockHolderTaskId);
+
+                scope.Task("Parent Scope", out packagingScopeTaskId).Children(parentScope =>
+                {
+                    parentScope.Task("Completed Child")
+                        .Run(() => Task.CompletedTask, out stageTaskId);
+
+                    parentScope.Task("Lock-Wait Child")
+                        .After(stageTaskId)
+                        .WithExecutionLocks(sharedLock)
+                        .Run(() => Task.CompletedTask, out buildTaskId);
+
+                    parentScope.Task("Downstream Queued Child")
+                        .After(buildTaskId)
+                        .Run(() => Task.CompletedTask, out archiveTaskId);
+                });
+            });
+        });
+
+        /* Wait until the external lock holder is definitely running, the first child already completed, and the build
+           child is visibly blocked on the shared lock. At that point the archive child should still be queued behind the
+           blocked build task, and the parent scope should surface the lock wait rather than a generic running state. */
+        (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        try
+        {
+            await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await session.GetTask(lockHolderTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await session.GetTask(stageTaskId).WaitForCompletionAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => session.GetTask(buildTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                TimeSpan.FromSeconds(5),
+                "Timed out waiting for the build child to enter explicit lock wait.");
+
+            Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, session.GetTask(buildTaskId).State);
+            Assert.Equal(ExecutionTaskState.Queued, session.GetTask(archiveTaskId).State);
+            Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, session.GetTask(packagingScopeTaskId).State);
+        }
+        finally
+        {
+            /* Always release the external lock holder so a red assertion does not strand the background scheduler run. */
+            releaseLockHolder.TrySetResult(true);
+            await executeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    /// <summary>
     /// Confirms that an executable parent task awaiting a hidden child operation returns to Running once that hidden
     /// child actually acquires its execution lock and starts running.
     /// </summary>

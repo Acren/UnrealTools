@@ -273,6 +273,10 @@ public sealed class ExecutionSession
         (int warningDelta, int errorDelta) = GetLogCountDeltas(entry);
         ExecutionTaskId? taskId = ExecutionTaskId.FromNullable(entry.TaskId);
 
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.AddLogEntry")
+            .SetTag("task.id", taskId?.Value ?? string.Empty)
+            .SetTag("warning.delta", warningDelta)
+            .SetTag("error.delta", errorDelta);
         WithGraphWriteLock(() =>
         {
             _sessionWarningCount += warningDelta;
@@ -294,19 +298,24 @@ public sealed class ExecutionSession
     /// </summary>
     public void ResetCachedLogMetrics()
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.ResetCachedLogMetrics");
         WithGraphWriteLock(() =>
         {
             _sessionWarningCount = 0;
             _sessionErrorCount = 0;
             if (_rootTask == null)
             {
+                activity.SetTag("task.count", 0);
                 return;
             }
 
-            foreach (ExecutionTask task in _rootTask.GetAllTasks())
+            IReadOnlyList<ExecutionTask> tasks = _rootTask.GetAllTasks();
+            foreach (ExecutionTask task in tasks)
             {
                 task.ResetSubtreeLogCounts();
             }
+
+            activity.SetTag("task.count", tasks.Count);
         });
     }
 
@@ -325,6 +334,9 @@ public sealed class ExecutionSession
 
     public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.SetTaskState")
+            .SetTag("task.id", taskId.Value)
+            .SetTag("task.state", state.ToString());
         WithGraphWriteLock(() =>
         {
             /* Public state writes update execution state only. Semantic outcome is derived separately so direct
@@ -341,6 +353,8 @@ public sealed class ExecutionSession
     /// </summary>
     public void FailScopeFromTask(ExecutionTaskId failedTaskId, string? statusReason = null)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.FailScopeFromTask")
+            .SetTag("task.id", failedTaskId.Value);
         WithGraphWriteLock(() =>
         {
             /* A failed subtree keeps lifecycle and semantic outcome separate: the failing task completes with
@@ -410,6 +424,10 @@ public sealed class ExecutionSession
                     AddTaskCore(insertedTask);
                     insertedTaskIds.Add(insertedTask.Id);
                 }
+
+                RebuildSubtreeSchedulingRollups(insertedTasks.Tasks);
+                RefreshTaskAndAncestorTimingMetrics(GetTaskCore(insertedTasks.RootTaskId));
+                RefreshAncestorTaskStates(insertedTasks.RootTaskId);
 
                 addTasksActivity.SetTag("inserted.task.count", insertedTaskIds.Count);
                 return new ChildTaskMergeResult(GetTaskCore(insertedTasks.RootTaskId), insertedTasks.Tasks, insertedTaskIds);
@@ -610,9 +628,14 @@ public sealed class ExecutionSession
     /// </summary>
     internal void RefreshSchedulerPendingReasons()
     {
+        using PerformanceActivityScope refreshActivity = PerformanceTelemetry.StartActivity("ExecutionSession.RefreshSchedulerPendingReasons");
         WithGraphWriteLock(() =>
         {
-            foreach (ExecutionTask task in Tasks)
+            IReadOnlyList<ExecutionTask> tasks = Tasks;
+            int changedTaskCount = 0;
+            refreshActivity.SetTag("task.count", tasks.Count);
+
+            foreach (ExecutionTask task in tasks)
             {
                 ExecutionTaskState currentState = task.State;
                 if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock or ExecutionTaskState.WaitingForDependencies)
@@ -639,9 +662,16 @@ public sealed class ExecutionSession
                 ExecutionTaskState nextState = startState == TaskStartState.WaitingForDependencies && task.HasStartedWorkInSubtree()
                     ? ExecutionTaskState.WaitingForDependencies
                     : ExecutionTaskState.Queued;
+                if (task.State != nextState || !string.Equals(task.StatusReason, waitingReason ?? string.Empty, StringComparison.Ordinal))
+                {
+                    changedTaskCount += 1;
+                }
+
                 SetTaskStateCore(task.Id, nextState, waitingReason);
                 RefreshAncestorTaskStates(task.Id);
             }
+
+            refreshActivity.SetTag("changed.task.count", changedTaskCount);
         });
     }
 
@@ -651,8 +681,8 @@ public sealed class ExecutionSession
     internal IReadOnlyList<ExecutionTaskId> GetIncompleteSchedulableTaskIds()
     {
         return WithGraphReadLock(() => Tasks
-            .Where(task => task.GetTaskStartState() != TaskStartState.NoStartableWork)
-            .Where(task => task.ParentId == null || GetTaskCore(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork)
+            .Where(task => task.HasActiveExecution || task.GetTaskStartState() != TaskStartState.NoStartableWork)
+            .Where(task => task.HasActiveExecution || task.ParentId == null || GetTaskCore(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork)
             .Select(task => task.Id)
             .Where(taskId => !IsTaskTerminal(taskId))
             .ToList());
@@ -673,10 +703,13 @@ public sealed class ExecutionSession
             throw new ArgumentNullException(nameof(isTaskTrackedAsRunning));
         }
 
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.CancelOutstandingSchedulableTasks")
+            .SetTag("user.cancelled", userCancelled)
+            .SetTag("preserve.running.terminal.outcomes", preserveRunningTerminalOutcomes);
         WithGraphWriteLock(() =>
         {
-            foreach (ExecutionTask task in Tasks.Where(task => task.GetTaskStartState() != TaskStartState.NoStartableWork)
-                .Where(task => task.ParentId == null || GetTaskCore(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork))
+            foreach (ExecutionTask task in Tasks.Where(task => task.HasActiveExecution || task.GetTaskStartState() != TaskStartState.NoStartableWork)
+                .Where(task => task.HasActiveExecution || task.ParentId == null || GetTaskCore(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork))
             {
                 if (task.State == ExecutionTaskState.Completed)
                 {
@@ -1319,8 +1352,9 @@ public sealed class ExecutionSession
         ExecutionTask task = GetTaskCore(taskId);
         if (task.TransitionState(state, statusReason))
         {
+            task.RecomputeSubtreeSchedulingRollup();
             RefreshTaskAndAncestorTimingMetrics(task);
-            TaskStateChanged?.Invoke(taskId, state, task.Outcome, statusReason);
+            InvokeTaskStateChangedUnderLock(taskId, state, task.Outcome, statusReason);
         }
     }
 
@@ -1332,7 +1366,7 @@ public sealed class ExecutionSession
         ExecutionTask task = GetTaskCore(taskId);
         if (task.TransitionOutcome(outcome, statusReason))
         {
-            TaskStateChanged?.Invoke(taskId, task.State, task.Outcome, task.StatusReason);
+            InvokeTaskStateChangedUnderLock(taskId, task.State, task.Outcome, task.StatusReason);
         }
     }
 
@@ -1360,11 +1394,7 @@ public sealed class ExecutionSession
     private void SetTaskSnapshotCore(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
         ExecutionTask task = GetTaskCore(taskId);
-        if (task.TransitionSnapshot(state, outcome, statusReason))
-        {
-            RefreshTaskAndAncestorTimingMetrics(task);
-            TaskStateChanged?.Invoke(taskId, state, outcome, statusReason);
-        }
+        ApplyTaskSnapshotCore(task, state, outcome, statusReason, refreshTimingMetrics: true);
     }
 
     /// <summary>
@@ -1373,8 +1403,50 @@ public sealed class ExecutionSession
     private void NotifyTaskChangedCore(ExecutionTaskId taskId)
     {
         ExecutionTask task = GetTaskCore(taskId);
+        task.RecomputeSubtreeSchedulingRollup();
         RefreshTaskAndAncestorTimingMetrics(task);
-        TaskStateChanged?.Invoke(taskId, task.State, task.Outcome, task.StatusReason);
+        InvokeTaskStateChangedUnderLock(taskId, task.State, task.Outcome, task.StatusReason);
+    }
+
+    /// <summary>
+    /// Applies one combined lifecycle/result snapshot to the supplied task. Callers may skip timing refresh when they are
+    /// only updating an ancestor's rolled-up visible state after timing has already been recomputed for the originating
+    /// task change.
+    /// </summary>
+    private bool ApplyTaskSnapshotCore(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason, bool refreshTimingMetrics)
+    {
+        if (!task.TransitionSnapshot(state, outcome, statusReason))
+        {
+            return false;
+        }
+
+        if (refreshTimingMetrics)
+        {
+            RefreshTaskAndAncestorTimingMetrics(task);
+        }
+
+        InvokeTaskStateChangedUnderLock(task.Id, state, outcome, statusReason);
+        return true;
+    }
+
+    /// <summary>
+    /// Invokes task-state subscribers synchronously while the caller still owns the graph write lock so the timing tree
+    /// can separate under-lock subscriber work from the surrounding graph mutation and rollup work.
+    /// </summary>
+    private void InvokeTaskStateChangedUnderLock(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    {
+        Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?, string?>? taskStateChanged = TaskStateChanged;
+        if (taskStateChanged == null)
+        {
+            return;
+        }
+
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.TaskStateChanged.InvokeUnderLock")
+            .SetTag("task.id", taskId.Value)
+            .SetTag("task.state", state.ToString())
+            .SetTag("task.outcome", outcome?.ToString() ?? string.Empty)
+            .SetTag("subscriber.count", taskStateChanged.GetInvocationList().Length);
+        taskStateChanged.Invoke(taskId, state, outcome, statusReason);
     }
 
     /// <summary>
@@ -1392,6 +1464,9 @@ public sealed class ExecutionSession
     /// </summary>
     internal void SetTaskOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome? outcome, string? statusReason = null)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.SetTaskOutcome")
+            .SetTag("task.id", taskId.Value)
+            .SetTag("task.outcome", outcome?.ToString() ?? string.Empty);
         WithGraphWriteLock(() => SetTaskOutcomeCore(taskId, outcome, statusReason));
     }
 
@@ -1402,6 +1477,8 @@ public sealed class ExecutionSession
     /// </summary>
     internal void InterruptTask(ExecutionTaskId taskId, string? statusReason = null)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.InterruptTask")
+            .SetTag("task.id", taskId.Value);
         WithGraphWriteLock(() => InterruptTaskCore(taskId, statusReason));
     }
 
@@ -1411,6 +1488,9 @@ public sealed class ExecutionSession
     /// </summary>
     internal void CompleteTaskLifecycle(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.CompleteTaskLifecycle")
+            .SetTag("task.id", taskId.Value)
+            .SetTag("task.outcome", successOutcome.ToString());
         WithGraphWriteLock(() => CompleteTaskLifecycleCore(taskId, successOutcome, statusReason));
     }
 
@@ -1420,6 +1500,10 @@ public sealed class ExecutionSession
     /// </summary>
     private void SetTaskSnapshot(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.SetTaskSnapshot")
+            .SetTag("task.id", taskId.Value)
+            .SetTag("task.state", state.ToString())
+            .SetTag("task.outcome", outcome?.ToString() ?? string.Empty);
         WithGraphWriteLock(() => SetTaskSnapshotCore(taskId, state, outcome, statusReason));
     }
 
@@ -1430,6 +1514,8 @@ public sealed class ExecutionSession
     /// </summary>
     internal void NotifyTaskChanged(ExecutionTaskId taskId)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.NotifyTaskChanged")
+            .SetTag("task.id", taskId.Value);
         WithGraphWriteLock(() => NotifyTaskChangedCore(taskId));
     }
 
@@ -1440,6 +1526,9 @@ public sealed class ExecutionSession
     /// </summary>
     internal void CompleteTaskWithOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome outcome, string? statusReason = null)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.CompleteTaskWithOutcome")
+            .SetTag("task.id", taskId.Value)
+            .SetTag("task.outcome", outcome.ToString());
         WithGraphWriteLock(() => CompleteTaskWithOutcomeCore(taskId, outcome, statusReason));
     }
 
@@ -1489,249 +1578,57 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Derives lifecycle and semantic outcome for parent tasks from their child-task progress.
+    /// Propagates task-owned subtree rollups upward through ancestor scopes and refreshes only the ancestors whose
+    /// rolled-up visible state or cached scheduler summary actually changed.
     /// </summary>
     private void RefreshAncestorTaskStates(ExecutionTaskId taskId)
     {
-        ExecutionTask? currentParent = GetTask(taskId).Parent;
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.RefreshAncestorTaskStates")
+            .SetTag("task.id", taskId.Value);
+        int ancestorCount = 0;
+        int totalChildCount = 0;
+        int changedSnapshotCount = 0;
+        int changedRollupCount = 0;
+        ExecutionTask task = GetTask(taskId);
+        task.RecomputeSubtreeSchedulingRollup();
+        ExecutionTask? currentParent = task.Parent;
         while (currentParent != null)
         {
+            ancestorCount += 1;
             IReadOnlyList<ExecutionTask> childTasks = currentParent.Children;
+            totalChildCount += childTasks.Count;
             if (childTasks.Count == 0)
             {
                 currentParent = currentParent.Parent;
                 continue;
             }
 
-            TaskStartState parentStartState = currentParent.GetTaskStartState();
-            bool subtreeHasStarted = currentParent.HasStartedWorkInSubtree();
-            bool ownTaskIsRunning = currentParent.State == ExecutionTaskState.Running && parentStartState == TaskStartState.Running;
-            /* Direct task-level lock wait only exists before that task's own body has ever entered Running. Once an
-               executable parent has already started, the same WaitingForExecutionLock state can also be a rolled-up child
-               wait and must not keep masking later descendant Running transitions as if the parent itself were still the
-               direct lock waiter. */
-            bool ownTaskIsWaitingForExecutionLock = currentParent.IsOwnWorkWaitingForExecutionLock();
-            /* Parent scopes can also surface WaitingForExecutionLock when the subtree frontier is purely lock-blocked:
-               no task is currently running, no sibling branch is runnable, and every reachable non-terminal blocker is
-               an admitted execution-lock waiter. Downstream work that only waits on unfinished tasks inside the same
-               subtree does not widen that frontier. */
-            bool subtreeIsPureExecutionLockWait = subtreeHasStarted && !ownTaskIsRunning && IsPureExecutionLockBlockedSubtree(currentParent);
-            /* WaitingForDependencies is reserved for started subtrees that are currently idle locally and whose reachable
-               frontier is blocked only by dependencies outside the subtree. Untouched queued work still uses Queued even
-               when the scheduler-facing start reason is also WaitingForDependencies. */
-            bool subtreeIsPureDependencyWait = subtreeHasStarted && !ownTaskIsRunning && !ownTaskIsWaitingForExecutionLock && IsPureDependencyBlockedSubtree(currentParent);
-            bool ownTaskIsQueued = currentParent.State == ExecutionTaskState.Queued && parentStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
-            bool anyChildRunning = childTasks.Any(task => task.State == ExecutionTaskState.Running);
-            bool anyChildWaitingForExecutionLock = childTasks.Any(task => task.State == ExecutionTaskState.WaitingForExecutionLock);
-            bool anyChildWaitingForDependencies = childTasks.Any(task => task.State == ExecutionTaskState.WaitingForDependencies);
-            bool anyQueued = childTasks.Any(task => task.State is ExecutionTaskState.Queued or ExecutionTaskState.Planned);
-            ExecutionTask? failedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Failed);
-            ExecutionTask? cancelledTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Cancelled);
-            ExecutionTask? interruptedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Interrupted);
-            ExecutionTask? skippedTask = childTasks.FirstOrDefault(task => task.Outcome == ExecutionTaskOutcome.Skipped);
-            bool allDisabled = childTasks.All(task => task.Outcome == ExecutionTaskOutcome.Disabled);
-
-            ExecutionTaskState parentState;
-            if (currentParent.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped)
+            bool rollupChanged = currentParent.RecomputeSubtreeSchedulingRollup();
+            (ExecutionTaskState parentState, ExecutionTaskOutcome? parentOutcome, string? parentReason) = currentParent.ComputeVisibleSnapshotFromChildren();
+            bool snapshotChanged = ApplyTaskSnapshotCore(currentParent, parentState, parentOutcome, parentReason, refreshTimingMetrics: false);
+            bool postSnapshotRollupChanged = snapshotChanged && currentParent.RecomputeSubtreeSchedulingRollup();
+            if (snapshotChanged)
             {
-                parentState = ExecutionTaskState.Completed;
-            }
-            else if (ownTaskIsWaitingForExecutionLock)
-            {
-                /* When an authored task itself owns the declared execution lock, its explicit lock-wait state should stay
-                   visible even if the concrete hidden body task beneath it is also the executing node that will later run
-                   under that lock. */
-                parentState = ExecutionTaskState.WaitingForExecutionLock;
-            }
-            else if (subtreeIsPureExecutionLockWait)
-            {
-                /* A pure lock-blocked subtree has already started real work, but the only currently reachable blocker is
-                   execution-lock contention. Surfacing the same explicit wait state at the parent makes the subtree's
-                   present blocker visible without claiming that untouched downstream tasks are independently pending. */
-                parentState = ExecutionTaskState.WaitingForExecutionLock;
-            }
-            else if (subtreeIsPureDependencyWait)
-            {
-                /* Started subtrees with no active local work should surface external dependency wait directly instead of
-                   looking Running just because earlier sibling work already completed. */
-                parentState = ExecutionTaskState.WaitingForDependencies;
-            }
-            else if (ownTaskIsRunning || anyChildRunning || anyChildWaitingForExecutionLock)
-            {
-                parentState = ExecutionTaskState.Running;
-            }
-            else if (ownTaskIsQueued || anyQueued || anyChildWaitingForDependencies)
-            {
-                /* Queued is reserved for untouched subtrees whose next reachable work has not started yet. Once a scope
-                   or any descendant has started, the scope must stay in a started state such as Running,
-                   WaitingForExecutionLock, or WaitingForDependencies until the subtree reaches a terminal outcome. */
-                parentState = subtreeHasStarted || currentParent.Outcome != null
-                    ? ExecutionTaskState.Running
-                    : ExecutionTaskState.Queued;
-            }
-            else
-            {
-                parentState = ExecutionTaskState.Completed;
+                changedSnapshotCount += 1;
             }
 
-            ExecutionTaskOutcome? parentOutcome = currentParent.Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped
-                ? currentParent.Outcome
-                : ownTaskIsRunning || ownTaskIsWaitingForExecutionLock || ownTaskIsQueued || subtreeIsPureDependencyWait || anyQueued || anyChildRunning || anyChildWaitingForExecutionLock || anyChildWaitingForDependencies
-                    ? null
-                    : failedTask != null
-                    ? ExecutionTaskOutcome.Failed
-                    : cancelledTask != null
-                        ? ExecutionTaskOutcome.Cancelled
-                        : interruptedTask != null
-                            ? ExecutionTaskOutcome.Interrupted
-                        : allDisabled
-                            ? ExecutionTaskOutcome.Disabled
-                            : skippedTask != null
-                                ? ExecutionTaskOutcome.Skipped
-                                : ExecutionTaskOutcome.Completed;
-            string? parentReason = failedTask?.StatusReason;
-            parentReason ??= cancelledTask?.StatusReason;
-            parentReason ??= interruptedTask?.StatusReason;
-            parentReason ??= skippedTask?.StatusReason;
-            if (allDisabled)
+            if (rollupChanged || postSnapshotRollupChanged)
             {
-                parentReason ??= "All child tasks are disabled.";
+                changedRollupCount += 1;
             }
 
-            if (parentOutcome == null && parentState == ExecutionTaskState.WaitingForExecutionLock)
+            if (!snapshotChanged && !rollupChanged)
             {
-                /* Rolled-up lock wait uses the same user-facing reason as direct task-level lock wait so callers do not
-                   need a second label path to explain the current blocker. */
-                parentReason = "Waiting for execution lock.";
+                break;
             }
 
-            if (parentOutcome == null && parentState == ExecutionTaskState.WaitingForDependencies)
-            {
-                /* Started-but-idle dependency wait needs its own explicit label so container scopes do not look actively
-                   Running when they are merely stalled on outside prerequisites. */
-                parentReason = "Waiting for dependencies.";
-            }
-
-            if (parentOutcome == ExecutionTaskOutcome.Completed && childTasks.Any(childTask => childTask.State != ExecutionTaskState.Completed))
-            {
-                throw new InvalidOperationException($"Task '{currentParent.Id}' cannot roll up to completed while child work is still non-terminal.");
-            }
-
-            SetTaskSnapshot(currentParent.Id, parentState, parentOutcome, parentReason);
             currentParent = currentParent.Parent;
         }
-    }
 
-    /// <summary>
-    /// Returns whether the subtree's currently reachable frontier is blocked only on execution locks. Runnable work,
-    /// running work, or dependency waits whose unfinished blockers live outside the subtree all disqualify the rollup.
-    /// Queued work blocked only by unfinished tasks inside the same subtree is downstream of the frontier and is
-    /// intentionally ignored.
-    /// </summary>
-    private bool IsPureExecutionLockBlockedSubtree(ExecutionTask subtreeRoot)
-    {
-        if (subtreeRoot.GetSchedulerReadyBranchRoots().Count > 0)
-        {
-            return false;
-        }
-
-        bool hasExecutionLockWaiter = false;
-        foreach (ExecutionTask task in subtreeRoot.GetAllTasks())
-        {
-            if (task.Id == subtreeRoot.Id || task.State == ExecutionTaskState.Completed)
-            {
-                continue;
-            }
-
-            if (task.State == ExecutionTaskState.Running)
-            {
-                return false;
-            }
-
-            if (task.State == ExecutionTaskState.WaitingForExecutionLock)
-            {
-                hasExecutionLockWaiter = true;
-                continue;
-            }
-
-            if (task.State is not (ExecutionTaskState.Queued or ExecutionTaskState.Planned))
-            {
-                continue;
-            }
-
-            if (task.CanStartOwnWork())
-            {
-                return false;
-            }
-
-            if (!task.AreDependenciesSatisfied() && task.HasUnsatisfiedDependenciesOutsideSubtree(subtreeRoot))
-            {
-                return false;
-            }
-        }
-
-        return hasExecutionLockWaiter;
-    }
-
-    /// <summary>
-    /// Returns whether the subtree's currently reachable frontier is blocked only on dependencies outside that subtree.
-    /// Running work, lock wait, runnable work, or parent-scope gating all disqualify this rollup. Queued descendants
-    /// blocked only by unfinished tasks inside the same subtree are downstream of the frontier and are intentionally
-    /// ignored.
-    /// </summary>
-    private bool IsPureDependencyBlockedSubtree(ExecutionTask subtreeRoot)
-    {
-        if (subtreeRoot.GetSchedulerReadyBranchRoots().Count > 0)
-        {
-            return false;
-        }
-
-        bool hasExternalDependencyWaiter = false;
-        foreach (ExecutionTask task in subtreeRoot.GetAllTasks())
-        {
-            if (task.Id == subtreeRoot.Id || task.State == ExecutionTaskState.Completed)
-            {
-                continue;
-            }
-
-            if (task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
-            {
-                return false;
-            }
-
-            if (task.State == ExecutionTaskState.WaitingForDependencies)
-            {
-                hasExternalDependencyWaiter = true;
-                continue;
-            }
-
-            if (task.State is not (ExecutionTaskState.Queued or ExecutionTaskState.Planned))
-            {
-                continue;
-            }
-
-            if (task.CanStartOwnWork())
-            {
-                return false;
-            }
-
-            if (!task.AreDependenciesSatisfied())
-            {
-                if (task.HasUnsatisfiedDependenciesOutsideSubtree(subtreeRoot))
-                {
-                    hasExternalDependencyWaiter = true;
-                }
-
-                continue;
-            }
-
-            if (!task.AreAncestorsOpen())
-            {
-                return false;
-            }
-        }
-
-        return hasExternalDependencyWaiter;
+        activity.SetTag("ancestor.count", ancestorCount)
+            .SetTag("child.count", totalChildCount)
+            .SetTag("changed.snapshot.count", changedSnapshotCount)
+            .SetTag("changed.rollup.count", changedRollupCount);
     }
 
     /// <summary>
@@ -1745,6 +1642,11 @@ public sealed class ExecutionSession
         foreach (ExecutionTask task in plan.Tasks)
         {
             AddTask(task.CloneForSession());
+        }
+
+        if (_rootTask != null)
+        {
+            RebuildSubtreeSchedulingRollups(_rootTask.GetAllTasks());
         }
     }
 
@@ -1787,6 +1689,19 @@ public sealed class ExecutionSession
             }
 
             _rootTask = task;
+        }
+
+    }
+
+    /// <summary>
+    /// Rebuilds cached scheduler rollups for a fully attached subtree from the leaves upward so each parent observes
+    /// already-updated child summaries instead of a partially wired intermediate tree.
+    /// </summary>
+    private static void RebuildSubtreeSchedulingRollups(IEnumerable<ExecutionTask> tasks)
+    {
+        foreach (ExecutionTask task in tasks.OrderByDescending(GetTaskDepth))
+        {
+            task.RecomputeSubtreeSchedulingRollup();
         }
     }
 }

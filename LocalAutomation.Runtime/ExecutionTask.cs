@@ -89,6 +89,10 @@ public class ExecutionTask : INotifyPropertyChanged
     private int _subtreeActiveTimingCount;
     private DateTimeOffset? _subtreeStartedAt;
     private DateTimeOffset? _subtreeFinishedAt;
+    private bool _subtreeHasStartedWork;
+    /* Cached ancestor-independent scheduler frontier for this subtree. WaitingForParent is never stored here because it
+       depends on scopes above this task and is applied only when callers ask for the effective scheduler-facing state. */
+    private TaskStartState _subtreeStartState;
     private readonly object _activeExecutionSyncRoot = new();
     private Task<OperationResult>? _activeExecutionTask;
     private readonly Dictionary<Type, object> _stateByType = new();
@@ -118,6 +122,7 @@ public class ExecutionTask : INotifyPropertyChanged
         _statusReason = spec.Enabled ? string.Empty : spec.DisabledReason;
         _outcome = spec.Enabled ? null : ExecutionTaskOutcome.Disabled;
         ResetSubtreeMetrics();
+        ResetSubtreeSchedulingRollup();
         ResetReachedStates(_state);
     }
 
@@ -292,6 +297,16 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Resets the task-owned scheduler rollup that summarizes the subtree's current frontier and whether execution has
+    /// started anywhere beneath this task.
+    /// </summary>
+    internal void ResetSubtreeSchedulingRollup()
+    {
+        _subtreeHasStartedWork = false;
+        _subtreeStartState = TaskStartState.NoStartableWork;
+    }
+
+    /// <summary>
     /// Applies one warning/error delta to this task's cached subtree counts.
     /// </summary>
     internal void ApplySubtreeLogDelta(int warningDelta, int errorDelta)
@@ -368,6 +383,32 @@ public class ExecutionTask : INotifyPropertyChanged
         TimeSpan duration = resolvedEnd - _subtreeStartedAt.Value;
         return duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
     }
+
+    /// <summary>
+    /// Recomputes the cached scheduler rollup for this task from one local own-work state plus the already-cached subtree
+    /// start states on its direct children. The cached start state never stores WaitingForParent because that depends on
+    /// ancestors above this task rather than on the subtree rooted at this task.
+    /// </summary>
+    internal bool RecomputeSubtreeSchedulingRollup()
+    {
+        bool nextHasStartedWork = HasStarted;
+        TaskStartState nextSubtreeStartState = GetOwnWorkStartStateIgnoringAncestors();
+        foreach (ExecutionTask child in _children)
+        {
+            nextHasStartedWork |= child._subtreeHasStartedWork;
+            nextSubtreeStartState = CombineSubtreeStartStates(nextSubtreeStartState, child._subtreeStartState);
+        }
+
+        bool changed = nextHasStartedWork != _subtreeHasStartedWork || nextSubtreeStartState != _subtreeStartState;
+        _subtreeHasStartedWork = nextHasStartedWork;
+        _subtreeStartState = nextSubtreeStartState;
+        return changed;
+    }
+
+    /// <summary>
+    /// Returns whether any task in this subtree has already transitioned out of untouched planned or queued work.
+    /// </summary>
+    internal bool HasStartedWorkInSubtree() => _subtreeHasStartedWork;
 
     /// <summary>
     /// Waits until this task reaches the requested runtime state at least once during the current session lifetime.
@@ -460,61 +501,12 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns the current scheduler-facing start state for this task subtree. Walks children and dependencies via
-    /// direct object references without requiring external session lookup.
+    /// Returns the current scheduler-facing start state for this task subtree by combining the cached local subtree
+    /// frontier with the current ancestor gating above this task.
     /// </summary>
     internal TaskStartState GetTaskStartState()
     {
-        if (State == ExecutionTaskState.Completed)
-        {
-            return TaskStartState.NoStartableWork;
-        }
-
-        if ((_spec.ExecuteAsync != null && State == ExecutionTaskState.WaitingForExecutionLock)
-            || _children.Any(child => child.GetTaskStartState() == TaskStartState.WaitingForExecutionLock))
-        {
-            return TaskStartState.WaitingForExecutionLock;
-        }
-
-        if (CanStartOwnWork())
-        {
-            return TaskStartState.Ready;
-        }
-
-        if (_children.Any(child => child.GetTaskStartState() == TaskStartState.Ready))
-        {
-            return TaskStartState.Ready;
-        }
-
-        if ((_spec.ExecuteAsync != null && State == ExecutionTaskState.Running) || _children.Any(child => child.GetTaskStartState() == TaskStartState.Running))
-        {
-            return TaskStartState.Running;
-        }
-
-        if (_spec.ExecuteAsync != null && State == ExecutionTaskState.Queued)
-        {
-            if (!AreDependenciesSatisfied())
-            {
-                return TaskStartState.WaitingForDependencies;
-            }
-
-            if (!AreAncestorsOpen())
-            {
-                return TaskStartState.WaitingForParent;
-            }
-        }
-
-        if (_children.Any(child => child.GetTaskStartState() == TaskStartState.WaitingForDependencies))
-        {
-            return TaskStartState.WaitingForDependencies;
-        }
-
-        if (_children.Any(child => child.GetTaskStartState() == TaskStartState.WaitingForParent))
-        {
-            return TaskStartState.WaitingForParent;
-        }
-
-        return TaskStartState.NoStartableWork;
+        return GetEffectiveSubtreeStartState(_subtreeStartState);
     }
 
     /// <summary>
@@ -530,6 +522,7 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         List<ExecutionTask> readyChildBranches = _children
+            .Where(child => child.GetTaskStartState() == TaskStartState.Ready)
             .SelectMany(child => child.GetSchedulerReadyBranchRoots())
             .ToList();
 
@@ -652,6 +645,7 @@ public class ExecutionTask : INotifyPropertyChanged
         StartedAt = null;
         FinishedAt = null;
         ResetSubtreeMetrics();
+        ResetSubtreeSchedulingRollup();
         lock (_activeExecutionSyncRoot)
         {
             _activeExecutionTask = null;
@@ -1004,10 +998,48 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal bool CanStartOwnWork()
     {
+        return CanStartOwnWorkIgnoringAncestors() && AreAncestorsOpen();
+    }
+
+    /// <summary>
+    /// Returns the current local own-work scheduler state for this task body while intentionally ignoring ancestor
+    /// gating. WaitingForParent is therefore never produced here.
+    /// </summary>
+    private TaskStartState GetOwnWorkStartStateIgnoringAncestors()
+    {
+        if (_spec.ExecuteAsync == null || State == ExecutionTaskState.Completed)
+        {
+            return TaskStartState.NoStartableWork;
+        }
+
+        if (IsOwnWorkWaitingForExecutionLock())
+        {
+            return TaskStartState.WaitingForExecutionLock;
+        }
+
+        if (CanStartOwnWorkIgnoringAncestors())
+        {
+            return TaskStartState.Ready;
+        }
+
+        if (IsOwnWorkRunning())
+        {
+            return TaskStartState.Running;
+        }
+
+        return IsOwnWorkWaitingForDependencies()
+            ? TaskStartState.WaitingForDependencies
+            : TaskStartState.NoStartableWork;
+    }
+
+    /// <summary>
+    /// Returns whether this task's directly attached runnable work is locally ready once ancestor gating is ignored.
+    /// </summary>
+    private bool CanStartOwnWorkIgnoringAncestors()
+    {
         return _spec.ExecuteAsync != null
             && State == ExecutionTaskState.Queued
-            && AreDependenciesSatisfied()
-            && AreAncestorsOpen();
+            && AreDependenciesSatisfied();
     }
 
     /// <summary>
@@ -1021,6 +1053,85 @@ public class ExecutionTask : INotifyPropertyChanged
         return _spec.ExecuteAsync != null
             && State == ExecutionTaskState.WaitingForExecutionLock
             && StartedAt == null;
+    }
+
+    /// <summary>
+    /// Returns whether this task's directly attached runnable work is actively running instead of merely reflecting a
+    /// rolled-up descendant-running state.
+    /// </summary>
+    internal bool IsOwnWorkRunning()
+    {
+        return _spec.ExecuteAsync != null
+            && State == ExecutionTaskState.Running
+            && StartedAt != null
+            && FinishedAt == null;
+    }
+
+    /// <summary>
+    /// Returns whether this task's own runnable body is still untouched queued work that is blocked on dependencies.
+    /// </summary>
+    private bool IsOwnWorkWaitingForDependencies()
+    {
+        return _spec.ExecuteAsync != null
+            && State == ExecutionTaskState.Queued
+            && !AreDependenciesSatisfied();
+    }
+
+    /// <summary>
+    /// Returns whether descendant work beneath this task may start once ancestor gating above this task is ignored.
+    /// Descendants are blocked when this scope itself is completed, doomed, or still waiting on its own dependencies.
+    /// </summary>
+    private bool IsScopeOpenForDescendantWork()
+    {
+        return State != ExecutionTaskState.Completed
+            && Outcome == null
+            && AreDependenciesSatisfied()
+            && AreAncestorsOpen();
+    }
+
+    /// <summary>
+    /// Combines two ancestor-independent subtree start states using the same priority order the scheduler relies on when
+    /// deciding which visible frontier a subtree currently presents.
+    /// </summary>
+    private static TaskStartState CombineSubtreeStartStates(TaskStartState currentState, TaskStartState candidateState)
+    {
+        return GetSubtreeStartStatePriority(candidateState) > GetSubtreeStartStatePriority(currentState)
+            ? candidateState
+            : currentState;
+    }
+
+    /// <summary>
+    /// Maps one cached ancestor-independent subtree start state into the effective scheduler-facing start state for this
+    /// task by applying the current ancestor gating only when the subtree frontier is locally ready.
+    /// </summary>
+    private TaskStartState GetEffectiveSubtreeStartState(TaskStartState subtreeStartState)
+    {
+        if (subtreeStartState != TaskStartState.Ready)
+        {
+            return subtreeStartState;
+        }
+
+        if (GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.Ready)
+        {
+            return AreAncestorsOpen() ? TaskStartState.Ready : TaskStartState.WaitingForParent;
+        }
+
+        return IsScopeOpenForDescendantWork() ? TaskStartState.Ready : TaskStartState.WaitingForParent;
+    }
+
+    /// <summary>
+    /// Returns the fixed priority for one cached ancestor-independent subtree start state.
+    /// </summary>
+    private static int GetSubtreeStartStatePriority(TaskStartState state)
+    {
+        return state switch
+        {
+            TaskStartState.WaitingForExecutionLock => 4,
+            TaskStartState.Ready => 3,
+            TaskStartState.Running => 2,
+            TaskStartState.WaitingForDependencies => 1,
+            _ => 0
+        };
     }
 
     /// <summary>
@@ -1051,9 +1162,6 @@ public class ExecutionTask : INotifyPropertyChanged
     /// <summary>
     /// Returns the current scheduler-facing pending reason for this task, or null when the task is ready to start.
     /// </summary>
-    /// <summary>
-    /// Returns the current scheduler-facing pending reason for this task, or null when the task is ready to start.
-    /// </summary>
     internal string? GetSchedulingPendingReason()
     {
         if (State is not (ExecutionTaskState.Queued or ExecutionTaskState.WaitingForDependencies or ExecutionTaskState.WaitingForExecutionLock))
@@ -1078,6 +1186,169 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Computes the rolled-up visible lifecycle state, semantic outcome, and user-facing reason for this task from its
+    /// current local task facts plus the already-updated visible state and cached scheduler summaries on its direct
+    /// children.
+    /// </summary>
+    internal (ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? reason) ComputeVisibleSnapshotFromChildren()
+    {
+        bool subtreeHasStarted = HasStarted;
+        bool anyChildReady = false;
+        bool anyChildRunning = false;
+        bool anyChildWaitingForExecutionLock = false;
+        bool anyChildWaitingForDependencies = false;
+        bool anyQueued = false;
+        bool anyChildNonTerminal = false;
+        ExecutionTask? failedTask = null;
+        ExecutionTask? cancelledTask = null;
+        ExecutionTask? interruptedTask = null;
+        ExecutionTask? skippedTask = null;
+        bool allDisabled = _children.Count > 0;
+
+        foreach (ExecutionTask childTask in _children)
+        {
+            subtreeHasStarted |= childTask._subtreeHasStartedWork;
+            anyChildReady |= childTask._subtreeStartState == TaskStartState.Ready;
+            anyChildRunning |= childTask._subtreeStartState == TaskStartState.Running;
+            anyChildWaitingForExecutionLock |= childTask._subtreeStartState == TaskStartState.WaitingForExecutionLock;
+            anyChildWaitingForDependencies |= childTask._subtreeStartState == TaskStartState.WaitingForDependencies
+                && childTask.HasExternalDependencyWaitInSubtree(this);
+            anyQueued |= childTask.State is ExecutionTaskState.Queued or ExecutionTaskState.Planned;
+            anyChildNonTerminal |= childTask.State != ExecutionTaskState.Completed;
+            failedTask ??= childTask.Outcome == ExecutionTaskOutcome.Failed ? childTask : null;
+            cancelledTask ??= childTask.Outcome == ExecutionTaskOutcome.Cancelled ? childTask : null;
+            interruptedTask ??= childTask.Outcome == ExecutionTaskOutcome.Interrupted ? childTask : null;
+            skippedTask ??= childTask.Outcome == ExecutionTaskOutcome.Skipped ? childTask : null;
+            allDisabled &= childTask.Outcome == ExecutionTaskOutcome.Disabled;
+        }
+
+        TaskStartState parentStartState = GetTaskStartState();
+        bool ownTaskIsRunning = State == ExecutionTaskState.Running && parentStartState == TaskStartState.Running;
+        bool ownTaskIsWaitingForExecutionLock = IsOwnWorkWaitingForExecutionLock();
+        bool ownTaskIsQueued = State == ExecutionTaskState.Queued && parentStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
+        bool subtreeIsPureExecutionLockWait = subtreeHasStarted
+            && !ownTaskIsRunning
+            && anyChildWaitingForExecutionLock
+            && !anyChildRunning
+            && !anyChildWaitingForDependencies
+            && !anyChildReady;
+        bool subtreeIsPureDependencyWait = subtreeHasStarted
+            && !ownTaskIsRunning
+            && !ownTaskIsWaitingForExecutionLock
+            && anyChildWaitingForDependencies
+            && !anyChildRunning
+            && !anyChildWaitingForExecutionLock
+            && !anyChildReady;
+
+        ExecutionTaskState parentState;
+        if (Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped)
+        {
+            parentState = ExecutionTaskState.Completed;
+        }
+        else if (ownTaskIsWaitingForExecutionLock)
+        {
+            parentState = ExecutionTaskState.WaitingForExecutionLock;
+        }
+        else if (subtreeIsPureExecutionLockWait)
+        {
+            parentState = ExecutionTaskState.WaitingForExecutionLock;
+        }
+        else if (subtreeIsPureDependencyWait)
+        {
+            parentState = ExecutionTaskState.WaitingForDependencies;
+        }
+        else if (ownTaskIsRunning || anyChildRunning || anyChildWaitingForExecutionLock)
+        {
+            parentState = ExecutionTaskState.Running;
+        }
+        else if (ownTaskIsQueued || anyQueued || anyChildWaitingForDependencies || anyChildNonTerminal)
+        {
+            parentState = subtreeHasStarted || Outcome != null
+                ? ExecutionTaskState.Running
+                : ExecutionTaskState.Queued;
+        }
+        else
+        {
+            parentState = ExecutionTaskState.Completed;
+        }
+
+        ExecutionTaskOutcome? parentOutcome = Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped
+            ? Outcome
+            : ownTaskIsRunning || ownTaskIsWaitingForExecutionLock || ownTaskIsQueued || subtreeIsPureDependencyWait || anyQueued || anyChildRunning || anyChildWaitingForExecutionLock || anyChildWaitingForDependencies || anyChildNonTerminal
+                ? null
+                : failedTask != null
+                    ? ExecutionTaskOutcome.Failed
+                    : cancelledTask != null
+                        ? ExecutionTaskOutcome.Cancelled
+                        : interruptedTask != null
+                            ? ExecutionTaskOutcome.Interrupted
+                            : allDisabled
+                                ? ExecutionTaskOutcome.Disabled
+                                : skippedTask != null
+                                    ? ExecutionTaskOutcome.Skipped
+                                    : ExecutionTaskOutcome.Completed;
+        string? parentReason = failedTask?.StatusReason;
+        parentReason ??= cancelledTask?.StatusReason;
+        parentReason ??= interruptedTask?.StatusReason;
+        parentReason ??= skippedTask?.StatusReason;
+        if (allDisabled)
+        {
+            parentReason ??= "All child tasks are disabled.";
+        }
+
+        if (parentOutcome == null && parentState == ExecutionTaskState.WaitingForExecutionLock)
+        {
+            parentReason = "Waiting for execution lock.";
+        }
+
+        if (parentOutcome == null && parentState == ExecutionTaskState.WaitingForDependencies)
+        {
+            parentReason = "Waiting for dependencies.";
+        }
+
+        if (parentOutcome == ExecutionTaskOutcome.Completed && anyChildNonTerminal)
+        {
+            throw new InvalidOperationException($"Task '{Id}' cannot roll up to completed while child work is still non-terminal.");
+        }
+
+        return (parentState, parentOutcome, parentReason);
+    }
+
+    /// <summary>
+    /// Returns whether this subtree currently contributes a dependency-wait frontier whose blocking dependency lives
+    /// outside the supplied ancestor scope. Queued descendants blocked only by unfinished work inside that scope are
+    /// downstream of the frontier and therefore should not change the ancestor's rolled-up blocker state on their own.
+    /// </summary>
+    internal bool HasExternalDependencyWaitInSubtree(ExecutionTask scopeRoot)
+    {
+        if (scopeRoot == null)
+        {
+            throw new ArgumentNullException(nameof(scopeRoot));
+        }
+
+        if (_subtreeStartState != TaskStartState.WaitingForDependencies)
+        {
+            return false;
+        }
+
+        if (GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.WaitingForDependencies
+            && HasUnsatisfiedDependenciesOutsideScope(scopeRoot))
+        {
+            return true;
+        }
+
+        foreach (ExecutionTask child in _children)
+        {
+            if (child.HasExternalDependencyWaitInSubtree(scopeRoot))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Returns whether this task has reached a terminal runtime state.
     /// </summary>
     internal bool IsTerminal => State == ExecutionTaskState.Completed;
@@ -1095,6 +1366,39 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         return current;
+    }
+
+    /// <summary>
+    /// Returns whether this task has at least one currently unsatisfied dependency whose blocking task lies outside the
+    /// supplied ancestor scope. Disabled dependencies delegate to their own dependencies so disabled-through chains only
+    /// count as external blockers when the first unfinished real blocker lies outside that scope.
+    /// </summary>
+    private bool HasUnsatisfiedDependenciesOutsideScope(ExecutionTask scopeRoot)
+    {
+        ExecutionTask root = GetTreeRoot();
+        return Dependencies.Any(dependencyId => HasUnsatisfiedDependencyOutsideScope(root, scopeRoot, dependencyId));
+    }
+
+    /// <summary>
+    /// Follows one dependency chain until it reaches the first still-unsatisfied blocker and reports whether that real
+    /// blocker lies outside the supplied ancestor scope.
+    /// </summary>
+    private static bool HasUnsatisfiedDependencyOutsideScope(ExecutionTask root, ExecutionTask scopeRoot, ExecutionTaskId dependencyId)
+    {
+        ExecutionTask dependencyTask = root.FindTask(dependencyId)
+            ?? throw new InvalidOperationException($"Dependency task '{dependencyId}' not found in the execution tree.");
+
+        if (dependencyTask.Outcome == ExecutionTaskOutcome.Completed)
+        {
+            return false;
+        }
+
+        if (dependencyTask.Outcome == ExecutionTaskOutcome.Disabled)
+        {
+            return dependencyTask.Dependencies.Any(nextDependencyId => HasUnsatisfiedDependencyOutsideScope(root, scopeRoot, nextDependencyId));
+        }
+
+        return scopeRoot.FindTask(dependencyId) == null;
     }
 
     /// <summary>
@@ -1241,45 +1545,6 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns whether this task has at least one currently unsatisfied dependency whose blocking task lies outside the
-    /// specified subtree. Tasks blocked only by unfinished work inside the same subtree are downstream of that subtree's
-    /// current frontier and therefore should not widen ancestor rollup state on their own.
-    /// </summary>
-    internal bool HasUnsatisfiedDependenciesOutsideSubtree(ExecutionTask subtreeRoot)
-    {
-        if (subtreeRoot == null)
-        {
-            throw new ArgumentNullException(nameof(subtreeRoot));
-        }
-
-        ExecutionTask root = GetTreeRoot();
-        return Dependencies.Any(dependencyId => HasUnsatisfiedDependencyOutsideSubtree(root, subtreeRoot, dependencyId));
-    }
-
-    /// <summary>
-    /// Follows one dependency chain until it reaches the first still-unsatisfied blocker. Disabled dependencies delegate
-    /// to their own dependencies so disabled-through chains only count as external blockers when the first unfinished
-    /// real blocker lies outside the inspected subtree.
-    /// </summary>
-    private static bool HasUnsatisfiedDependencyOutsideSubtree(ExecutionTask root, ExecutionTask subtreeRoot, ExecutionTaskId dependencyId)
-    {
-        ExecutionTask dependencyTask = root.FindTask(dependencyId)
-            ?? throw new InvalidOperationException($"Dependency task '{dependencyId}' not found in the execution tree.");
-
-        if (dependencyTask.Outcome == ExecutionTaskOutcome.Completed)
-        {
-            return false;
-        }
-
-        if (dependencyTask.Outcome == ExecutionTaskOutcome.Disabled)
-        {
-            return dependencyTask.Dependencies.Any(nextDependencyId => HasUnsatisfiedDependencyOutsideSubtree(root, subtreeRoot, nextDependencyId));
-        }
-
-        return subtreeRoot.FindTask(dependencyId) == null;
-    }
-
-    /// <summary>
     /// Guards combined observable state so lifecycle and semantic outcome never describe contradictory execution states.
     /// </summary>
     internal void ValidateObservedState(ExecutionTaskState state, ExecutionTaskOutcome? outcome)
@@ -1352,19 +1617,6 @@ public class ExecutionTask : INotifyPropertyChanged
         {
             throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot be marked interrupted before execution has started in its subtree.");
         }
-    }
-
-    /// <summary>
-    /// Returns whether any task in this subtree has already transitioned out of its untouched planned or pending state.
-    /// </summary>
-    internal bool HasStartedWorkInSubtree()
-    {
-        if (HasStarted)
-        {
-            return true;
-        }
-
-        return _children.Any(child => child.HasStartedWorkInSubtree());
     }
 
     /// <summary>
