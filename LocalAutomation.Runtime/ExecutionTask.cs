@@ -998,7 +998,19 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal bool CanStartOwnWork()
     {
-        return CanStartOwnWorkIgnoringAncestors() && AreAncestorsOpen();
+        return GetEffectiveOwnWorkStartState() == TaskStartState.Ready;
+    }
+
+    /// <summary>
+    /// Returns the scheduler-facing own-work state for this task's executable body after applying ancestor gating. This
+    /// only affects direct work on this task itself and does not fold in any child contribution.
+    /// </summary>
+    private TaskStartState GetEffectiveOwnWorkStartState()
+    {
+        TaskStartState localStartState = GetOwnWorkStartStateIgnoringAncestors();
+        return localStartState != TaskStartState.Ready
+            ? localStartState
+            : AreAncestorsOpen() ? TaskStartState.Ready : TaskStartState.WaitingForParent;
     }
 
     /// <summary>
@@ -1012,34 +1024,24 @@ public class ExecutionTask : INotifyPropertyChanged
             return TaskStartState.NoStartableWork;
         }
 
-        if (IsOwnWorkWaitingForExecutionLock())
+        if (State == ExecutionTaskState.WaitingForExecutionLock && StartedAt == null)
         {
             return TaskStartState.WaitingForExecutionLock;
         }
 
-        if (CanStartOwnWorkIgnoringAncestors())
+        if (State == ExecutionTaskState.Queued && AreDependenciesSatisfied())
         {
             return TaskStartState.Ready;
         }
 
-        if (IsOwnWorkRunning())
+        if (State == ExecutionTaskState.Running && StartedAt != null && FinishedAt == null)
         {
             return TaskStartState.Running;
         }
 
-        return IsOwnWorkWaitingForDependencies()
+        return State == ExecutionTaskState.Queued && !AreDependenciesSatisfied()
             ? TaskStartState.WaitingForDependencies
             : TaskStartState.NoStartableWork;
-    }
-
-    /// <summary>
-    /// Returns whether this task's directly attached runnable work is locally ready once ancestor gating is ignored.
-    /// </summary>
-    private bool CanStartOwnWorkIgnoringAncestors()
-    {
-        return _spec.ExecuteAsync != null
-            && State == ExecutionTaskState.Queued
-            && AreDependenciesSatisfied();
     }
 
     /// <summary>
@@ -1050,31 +1052,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal bool IsOwnWorkWaitingForExecutionLock()
     {
-        return _spec.ExecuteAsync != null
-            && State == ExecutionTaskState.WaitingForExecutionLock
-            && StartedAt == null;
-    }
-
-    /// <summary>
-    /// Returns whether this task's directly attached runnable work is actively running instead of merely reflecting a
-    /// rolled-up descendant-running state.
-    /// </summary>
-    internal bool IsOwnWorkRunning()
-    {
-        return _spec.ExecuteAsync != null
-            && State == ExecutionTaskState.Running
-            && StartedAt != null
-            && FinishedAt == null;
-    }
-
-    /// <summary>
-    /// Returns whether this task's own runnable body is still untouched queued work that is blocked on dependencies.
-    /// </summary>
-    private bool IsOwnWorkWaitingForDependencies()
-    {
-        return _spec.ExecuteAsync != null
-            && State == ExecutionTaskState.Queued
-            && !AreDependenciesSatisfied();
+        return GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.WaitingForExecutionLock;
     }
 
     /// <summary>
@@ -1091,7 +1069,7 @@ public class ExecutionTask : INotifyPropertyChanged
 
     /// <summary>
     /// Combines two ancestor-independent subtree start states using the same priority order the scheduler relies on when
-    /// deciding which visible frontier a subtree currently presents.
+    /// deciding which scheduler frontier a subtree currently presents.
     /// </summary>
     private static TaskStartState CombineSubtreeStartStates(TaskStartState currentState, TaskStartState candidateState)
     {
@@ -1113,7 +1091,7 @@ public class ExecutionTask : INotifyPropertyChanged
 
         if (GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.Ready)
         {
-            return AreAncestorsOpen() ? TaskStartState.Ready : TaskStartState.WaitingForParent;
+            return GetEffectiveOwnWorkStartState();
         }
 
         return IsScopeOpenForDescendantWork() ? TaskStartState.Ready : TaskStartState.WaitingForParent;
@@ -1186,59 +1164,61 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Computes the rolled-up visible lifecycle state, semantic outcome, and user-facing reason for this task from its
-    /// current local task facts plus the already-updated visible state and cached scheduler summaries on its direct
+    /// Computes the rolled-up lifecycle state, semantic outcome, and user-facing reason for this task from its current
+    /// local task facts plus the already-updated rolled-up state and cached scheduler summaries on its direct
     /// children.
     /// </summary>
-    internal (ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? reason) ComputeVisibleSnapshotFromChildren()
+    internal (ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? reason) ComputeRolledUpStateFromChildren()
     {
-        bool subtreeHasStarted = HasStarted;
-        bool anyChildReady = false;
-        bool anyChildRunning = false;
-        bool anyChildWaitingForExecutionLock = false;
-        bool anyChildWaitingForDependencies = false;
-        bool anyQueued = false;
-        bool anyChildNonTerminal = false;
-        ExecutionTask? failedTask = null;
-        ExecutionTask? cancelledTask = null;
-        ExecutionTask? interruptedTask = null;
-        ExecutionTask? skippedTask = null;
-        bool allDisabled = _children.Count > 0;
-
+        bool ownTaskIsWaitingForExecutionLock = IsOwnWorkWaitingForExecutionLock();
+        TaskStartState effectiveStartState = GetTaskStartState();
+        /* Fold the direct-child contribution into one contiguous block here so parent rollup logic can read all child
+           facts in one place without needing a separate helper type that merely transports these locals elsewhere. */
+        bool childHasStartedWork = false;
+        bool hasReadyChild = false;
+        bool hasRunningChild = false;
+        bool hasWaitingForExecutionLockChild = false;
+        bool hasExternalDependencyWaitChild = false;
+        bool hasQueuedChild = false;
+        bool hasNonTerminalChild = false;
+        ExecutionTask? failedChildTask = null;
+        ExecutionTask? cancelledChildTask = null;
+        ExecutionTask? interruptedChildTask = null;
+        ExecutionTask? skippedChildTask = null;
+        bool allChildrenDisabled = _children.Count > 0;
         foreach (ExecutionTask childTask in _children)
         {
-            subtreeHasStarted |= childTask._subtreeHasStartedWork;
-            anyChildReady |= childTask._subtreeStartState == TaskStartState.Ready;
-            anyChildRunning |= childTask._subtreeStartState == TaskStartState.Running;
-            anyChildWaitingForExecutionLock |= childTask._subtreeStartState == TaskStartState.WaitingForExecutionLock;
-            anyChildWaitingForDependencies |= childTask._subtreeStartState == TaskStartState.WaitingForDependencies
+            childHasStartedWork |= childTask._subtreeHasStartedWork;
+            hasReadyChild |= childTask._subtreeStartState == TaskStartState.Ready;
+            hasRunningChild |= childTask._subtreeStartState == TaskStartState.Running;
+            hasWaitingForExecutionLockChild |= childTask._subtreeStartState == TaskStartState.WaitingForExecutionLock;
+            hasExternalDependencyWaitChild |= childTask._subtreeStartState == TaskStartState.WaitingForDependencies
                 && childTask.HasExternalDependencyWaitInSubtree(this);
-            anyQueued |= childTask.State is ExecutionTaskState.Queued or ExecutionTaskState.Planned;
-            anyChildNonTerminal |= childTask.State != ExecutionTaskState.Completed;
-            failedTask ??= childTask.Outcome == ExecutionTaskOutcome.Failed ? childTask : null;
-            cancelledTask ??= childTask.Outcome == ExecutionTaskOutcome.Cancelled ? childTask : null;
-            interruptedTask ??= childTask.Outcome == ExecutionTaskOutcome.Interrupted ? childTask : null;
-            skippedTask ??= childTask.Outcome == ExecutionTaskOutcome.Skipped ? childTask : null;
-            allDisabled &= childTask.Outcome == ExecutionTaskOutcome.Disabled;
+            hasQueuedChild |= childTask.State is ExecutionTaskState.Queued or ExecutionTaskState.Planned;
+            hasNonTerminalChild |= childTask.State != ExecutionTaskState.Completed;
+            failedChildTask ??= childTask.Outcome == ExecutionTaskOutcome.Failed ? childTask : null;
+            cancelledChildTask ??= childTask.Outcome == ExecutionTaskOutcome.Cancelled ? childTask : null;
+            interruptedChildTask ??= childTask.Outcome == ExecutionTaskOutcome.Interrupted ? childTask : null;
+            skippedChildTask ??= childTask.Outcome == ExecutionTaskOutcome.Skipped ? childTask : null;
+            allChildrenDisabled &= childTask.Outcome == ExecutionTaskOutcome.Disabled;
         }
 
-        TaskStartState parentStartState = GetTaskStartState();
-        bool ownTaskIsRunning = State == ExecutionTaskState.Running && parentStartState == TaskStartState.Running;
-        bool ownTaskIsWaitingForExecutionLock = IsOwnWorkWaitingForExecutionLock();
-        bool ownTaskIsQueued = State == ExecutionTaskState.Queued && parentStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
+        bool subtreeHasStarted = HasStarted || childHasStartedWork;
+        bool ownTaskIsRunning = State == ExecutionTaskState.Running && effectiveStartState == TaskStartState.Running;
+        bool ownTaskIsQueued = State == ExecutionTaskState.Queued && effectiveStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
         bool subtreeIsPureExecutionLockWait = subtreeHasStarted
             && !ownTaskIsRunning
-            && anyChildWaitingForExecutionLock
-            && !anyChildRunning
-            && !anyChildWaitingForDependencies
-            && !anyChildReady;
+            && hasWaitingForExecutionLockChild
+            && !hasRunningChild
+            && !hasExternalDependencyWaitChild
+            && !hasReadyChild;
         bool subtreeIsPureDependencyWait = subtreeHasStarted
             && !ownTaskIsRunning
             && !ownTaskIsWaitingForExecutionLock
-            && anyChildWaitingForDependencies
-            && !anyChildRunning
-            && !anyChildWaitingForExecutionLock
-            && !anyChildReady;
+            && hasExternalDependencyWaitChild
+            && !hasRunningChild
+            && !hasWaitingForExecutionLockChild
+            && !hasReadyChild;
 
         ExecutionTaskState parentState;
         if (Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped)
@@ -1257,11 +1237,11 @@ public class ExecutionTask : INotifyPropertyChanged
         {
             parentState = ExecutionTaskState.WaitingForDependencies;
         }
-        else if (ownTaskIsRunning || anyChildRunning || anyChildWaitingForExecutionLock)
+        else if (ownTaskIsRunning || hasRunningChild || hasWaitingForExecutionLockChild)
         {
             parentState = ExecutionTaskState.Running;
         }
-        else if (ownTaskIsQueued || anyQueued || anyChildWaitingForDependencies || anyChildNonTerminal)
+        else if (ownTaskIsQueued || hasQueuedChild || hasExternalDependencyWaitChild || hasNonTerminalChild)
         {
             parentState = subtreeHasStarted || Outcome != null
                 ? ExecutionTaskState.Running
@@ -1274,24 +1254,24 @@ public class ExecutionTask : INotifyPropertyChanged
 
         ExecutionTaskOutcome? parentOutcome = Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Skipped
             ? Outcome
-            : ownTaskIsRunning || ownTaskIsWaitingForExecutionLock || ownTaskIsQueued || subtreeIsPureDependencyWait || anyQueued || anyChildRunning || anyChildWaitingForExecutionLock || anyChildWaitingForDependencies || anyChildNonTerminal
+            : ownTaskIsRunning || ownTaskIsWaitingForExecutionLock || ownTaskIsQueued || subtreeIsPureDependencyWait || hasQueuedChild || hasRunningChild || hasWaitingForExecutionLockChild || hasExternalDependencyWaitChild || hasNonTerminalChild
                 ? null
-                : failedTask != null
+                : failedChildTask != null
                     ? ExecutionTaskOutcome.Failed
-                    : cancelledTask != null
+                    : cancelledChildTask != null
                         ? ExecutionTaskOutcome.Cancelled
-                        : interruptedTask != null
+                        : interruptedChildTask != null
                             ? ExecutionTaskOutcome.Interrupted
-                            : allDisabled
+                            : allChildrenDisabled
                                 ? ExecutionTaskOutcome.Disabled
-                                : skippedTask != null
+                                : skippedChildTask != null
                                     ? ExecutionTaskOutcome.Skipped
                                     : ExecutionTaskOutcome.Completed;
-        string? parentReason = failedTask?.StatusReason;
-        parentReason ??= cancelledTask?.StatusReason;
-        parentReason ??= interruptedTask?.StatusReason;
-        parentReason ??= skippedTask?.StatusReason;
-        if (allDisabled)
+        string? parentReason = failedChildTask?.StatusReason;
+        parentReason ??= cancelledChildTask?.StatusReason;
+        parentReason ??= interruptedChildTask?.StatusReason;
+        parentReason ??= skippedChildTask?.StatusReason;
+        if (allChildrenDisabled)
         {
             parentReason ??= "All child tasks are disabled.";
         }
@@ -1306,7 +1286,7 @@ public class ExecutionTask : INotifyPropertyChanged
             parentReason = "Waiting for dependencies.";
         }
 
-        if (parentOutcome == ExecutionTaskOutcome.Completed && anyChildNonTerminal)
+        if (parentOutcome == ExecutionTaskOutcome.Completed && hasNonTerminalChild)
         {
             throw new InvalidOperationException($"Task '{Id}' cannot roll up to completed while child work is still non-terminal.");
         }

@@ -1410,7 +1410,7 @@ public sealed class ExecutionSession
 
     /// <summary>
     /// Applies one combined lifecycle/result snapshot to the supplied task. Callers may skip timing refresh when they are
-    /// only updating an ancestor's rolled-up visible state after timing has already been recomputed for the originating
+    /// only updating an ancestor's rolled-up runtime state after timing has already been recomputed for the originating
     /// task change.
     /// </summary>
     private bool ApplyTaskSnapshotCore(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason, bool refreshTimingMetrics)
@@ -1579,7 +1579,7 @@ public sealed class ExecutionSession
 
     /// <summary>
     /// Propagates task-owned subtree rollups upward through ancestor scopes and refreshes only the ancestors whose
-    /// rolled-up visible state or cached scheduler summary actually changed.
+    /// rolled-up runtime state or cached scheduler summary actually changed.
     /// </summary>
     private void RefreshAncestorTaskStates(ExecutionTaskId taskId)
     {
@@ -1604,7 +1604,7 @@ public sealed class ExecutionSession
             }
 
             bool rollupChanged = currentParent.RecomputeSubtreeSchedulingRollup();
-            (ExecutionTaskState parentState, ExecutionTaskOutcome? parentOutcome, string? parentReason) = currentParent.ComputeVisibleSnapshotFromChildren();
+            (ExecutionTaskState parentState, ExecutionTaskOutcome? parentOutcome, string? parentReason) = currentParent.ComputeRolledUpStateFromChildren();
             bool snapshotChanged = ApplyTaskSnapshotCore(currentParent, parentState, parentOutcome, parentReason, refreshTimingMetrics: false);
             bool postSnapshotRollupChanged = snapshotChanged && currentParent.RecomputeSubtreeSchedulingRollup();
             if (snapshotChanged)
