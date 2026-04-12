@@ -508,6 +508,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         {
             runtimeTab.Session.LogStream.EntryAdded -= metricsLogHandler;
         }
+
         _attachedSessions.Remove(runtimeTab);
         runtimeTab.DisposeTasks();
 

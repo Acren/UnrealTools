@@ -138,61 +138,61 @@ public sealed class ExecutionTaskContext
     }
 
     /// <summary>
-    /// Stores one strongly typed state value on the nearest operation root so sibling body tasks in the same nested
+    /// Stores one strongly typed data value on the nearest operation root so sibling body tasks in the same nested
     /// operation can share state while logging and execution still stay attached to the currently running task.
     /// </summary>
-    public void SetOperationState<T>(T value) where T : class
+    public void SetOperationData<T>(T value) where T : class
     {
-        GetRequiredOperationRootTask().SetState(value);
+        GetRequiredOperationRootTask().SetData(value);
     }
 
     /// <summary>
-    /// Reads one previously stored state value from the nearest operation root.
+    /// Reads one previously stored data value from the nearest operation root.
     /// </summary>
-    public T GetOperationState<T>() where T : class
+    public T GetOperationData<T>() where T : class
     {
-        if (TryGetOperationState(out T? value))
+        if (TryGetOperationData(out T? value))
         {
-            return value ?? throw new InvalidOperationException($"Operation state '{typeof(T).FullName}' was resolved as null for task '{Title}'.");
+            return value ?? throw new InvalidOperationException($"Operation data '{typeof(T).FullName}' was resolved as null for task '{Title}'.");
         }
 
-        throw new InvalidOperationException($"No operation state of type '{typeof(T).FullName}' is available for task '{Title}'.");
+        throw new InvalidOperationException($"No operation data of type '{typeof(T).FullName}' is available for task '{Title}'.");
     }
 
     /// <summary>
-    /// Tries to read one previously stored state value from the nearest operation root.
+    /// Tries to read one previously stored data value from the nearest operation root.
     /// </summary>
-    public bool TryGetOperationState<T>(out T? value) where T : class
+    public bool TryGetOperationData<T>(out T? value) where T : class
     {
-        return GetRequiredOperationRootTask().TryGetLocalState(out value);
+        return GetRequiredOperationRootTask().TryGetLocalData(out value);
     }
 
     /// <summary>
-    /// Stores one strongly typed state value on the current task so descendant tasks can resolve it structurally through
+    /// Stores one strongly typed data value on the current task so descendant tasks can resolve it structurally through
     /// the ancestor chain.
     /// </summary>
-    public void SetState<T>(T value) where T : class
+    public void SetData<T>(T value) where T : class
     {
-        GetRequiredTask().SetState(value);
+        GetRequiredTask().SetData(value);
     }
 
     /// <summary>
-    /// Reads a previously stored state value from the current task or any ancestor task.
+    /// Reads previously stored data from the current task or any ancestor task.
     /// </summary>
-    public T GetState<T>() where T : class
+    public T GetData<T>() where T : class
     {
-        if (TryGetState(out T? value))
+        if (TryGetData(out T? value))
         {
-            return value ?? throw new InvalidOperationException($"Execution state '{typeof(T).FullName}' was resolved as null for task '{Title}'.");
+            return value ?? throw new InvalidOperationException($"Execution data '{typeof(T).FullName}' was resolved as null for task '{Title}'.");
         }
 
-        throw new InvalidOperationException($"No execution state of type '{typeof(T).FullName}' is available for task '{Title}' or its ancestors.");
+        throw new InvalidOperationException($"No execution data of type '{typeof(T).FullName}' is available for task '{Title}' or its ancestors.");
     }
 
     /// <summary>
-    /// Tries to read one previously stored state value from the current task or any ancestor task.
+    /// Tries to read previously stored data from the current task or any ancestor task.
     /// </summary>
-    public bool TryGetState<T>(out T? value) where T : class
+    public bool TryGetData<T>(out T? value) where T : class
     {
         if (_runtime == null)
         {
@@ -203,7 +203,7 @@ public sealed class ExecutionTaskContext
         ExecutionTask? currentTask = GetRequiredTask();
         while (currentTask != null)
         {
-            if (currentTask.TryGetLocalState(out value))
+            if (currentTask.TryGetLocalData(out value))
             {
                 return true;
             }
@@ -222,7 +222,7 @@ public sealed class ExecutionTaskContext
     {
         if (_runtime == null)
         {
-            throw new InvalidOperationException($"Execution state is only available while task '{Title}' is running inside a live session.");
+            throw new InvalidOperationException($"Execution data is only available while task '{Title}' is running inside a live session.");
         }
 
         return _runtime.GetTask(TaskId);

@@ -147,13 +147,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string packageOutput = Path.Combine(temp, "Package");
             FileUtils.DeleteDirectoryIfExists(packageOutput);
 
-            context.SetOperationState(new VerificationState(plugin, engine, exampleProject, temp, packageOutput));
+            context.SetOperationData(new VerificationState(plugin, engine, exampleProject, temp, packageOutput));
             await Task.CompletedTask;
         }
 
         private async Task TestEditorAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            VerificationState state = context.GetOperationState<VerificationState>();
+            VerificationState state = context.GetOperationData<VerificationState>();
             AutomationOptions automationOptions = context.ValidatedOperationParameters.GetOptions<AutomationOptions>();
 
             context.Logger.LogInformation("Launching and testing example project editor");
@@ -162,7 +162,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task TestStandaloneAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            VerificationState state = context.GetOperationState<VerificationState>();
+            VerificationState state = context.GetOperationData<VerificationState>();
             AutomationOptions automationOptions = context.ValidatedOperationParameters.GetOptions<AutomationOptions>();
 
             context.Logger.LogInformation("Launching and testing standalone");
@@ -171,13 +171,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         private async Task PackageProjectAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            VerificationState state = context.GetOperationState<VerificationState>();
+            VerificationState state = context.GetOperationData<VerificationState>();
             await RunChildOperationAsync(new PackageProject(), CreateExampleProjectParams(state, outputPathOverride: state.PackageOutputPath), context, required: true, failureMessage: "Failed to package example project", hideChildOperationRootInGraph: true);
         }
 
         private async Task TestPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            VerificationState state = context.GetOperationState<VerificationState>();
+            VerificationState state = context.GetOperationData<VerificationState>();
             AutomationOptions automationOptions = context.ValidatedOperationParameters.GetOptions<AutomationOptions>();
 
             await RunExampleProjectOperationAsync<LaunchStagedPackage>(state, automationOptions, context, "Launch and test package failed");

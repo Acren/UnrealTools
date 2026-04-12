@@ -566,6 +566,7 @@ public sealed class ExecutionSession
         });
 
         TaskStateChanged += OnTaskStateChanged;
+
         lock (remainingTaskIds)
         {
             foreach (ExecutionTaskId taskId in remainingTaskIds.ToList())
@@ -1374,17 +1375,6 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Relays one task-changed notification while the caller already holds the graph lock.
-    /// </summary>
-    private void NotifyTaskChangedCore(ExecutionTaskId taskId)
-    {
-        ExecutionTask task = GetTaskCore(taskId);
-        task.RecomputeSubtreeSchedulingRollup();
-        RefreshTaskAndAncestorTimingMetrics(task);
-        InvokeTaskStateChangedUnderLock(taskId, task.State, task.Outcome, task.StatusReason);
-    }
-
-    /// <summary>
     /// Applies one combined lifecycle/result snapshot to the supplied task. Callers may skip timing refresh when they are
     /// only updating an ancestor's rolled-up runtime state after timing has already been recomputed for the originating
     /// task change.
@@ -1405,8 +1395,8 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Re-emits one task-owned state change through the session-wide fanout so existing scheduler and UI consumers can
-    /// keep listening at the session level while task-local observers attach directly to the task itself.
+    /// Re-emits one task-owned state change through the session-wide fanout so scheduler, UI, and any other session-level
+    /// observers can subscribe once per session instead of wiring every task individually.
     /// </summary>
     private void HandleTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string statusReason)
     {
@@ -1414,8 +1404,8 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Invokes task-state subscribers synchronously while the caller still owns the graph write lock so the timing tree
-    /// can separate under-lock subscriber work from the surrounding graph mutation and rollup work.
+    /// Invokes session-level task-state subscribers synchronously while the caller still owns the graph write lock so the
+    /// timing tree can separate under-lock subscriber work from the surrounding graph mutation and rollup work.
     /// </summary>
     private void InvokeTaskStateChangedUnderLock(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
@@ -1489,18 +1479,6 @@ public sealed class ExecutionSession
             .SetTag("task.state", state.ToString())
             .SetTag("task.outcome", outcome?.ToString() ?? string.Empty);
         WithGraphWriteLock(() => SetTaskSnapshotCore(taskId, state, outcome, statusReason));
-    }
-
-    /// <summary>
-    /// Fires the externally visible task-state-changed event after a task-level mutation has already validated and applied
-    /// the new state. Subtree operations on ExecutionTask call this relay so event dispatch stays on the session that owns
-    /// the event surface.
-    /// </summary>
-    internal void NotifyTaskChanged(ExecutionTaskId taskId)
-    {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.NotifyTaskChanged")
-            .SetTag("task.id", taskId.Value);
-        WithGraphWriteLock(() => NotifyTaskChangedCore(taskId));
     }
 
     /// <summary>

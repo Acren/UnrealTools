@@ -95,7 +95,7 @@ public class ExecutionTask : INotifyPropertyChanged
     private TaskStartState _subtreeStartState;
     private readonly object _activeExecutionSyncRoot = new();
     private Task<OperationResult>? _activeExecutionTask;
-    private readonly Dictionary<Type, object> _stateByType = new();
+    private readonly Dictionary<Type, object> _dataByType = new();
     /* Guards the atomic "subscribe then inspect current state" path used by task-local state waiters so they can rely
        directly on the task's own StateChanged event without a second waiter registry. */
     private readonly object _stateChangeSyncRoot = new();
@@ -817,20 +817,20 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Stores optional task-local extension state for operation/runtime helpers. Core per-task runtime data such as
+    /// Stores optional task-local extension data for operation/runtime helpers. Core per-task runtime data such as
     /// lifecycle, subtree metrics, and logs live on dedicated task fields instead of in this extensibility bag.
     /// </summary>
-    internal void SetState<T>(T value) where T : class
+    internal void SetData<T>(T value) where T : class
     {
-        _stateByType[typeof(T)] = value ?? throw new ArgumentNullException(nameof(value));
+        _dataByType[typeof(T)] = value ?? throw new ArgumentNullException(nameof(value));
     }
 
     /// <summary>
-    /// Reads optional task-local extension state previously attached through <see cref="SetState{T}(T)"/>.
+    /// Reads optional task-local extension data previously attached through <see cref="SetData{T}(T)"/>.
     /// </summary>
-    internal bool TryGetLocalState<T>(out T? value) where T : class
+    internal bool TryGetLocalData<T>(out T? value) where T : class
     {
-        if (_stateByType.TryGetValue(typeof(T), out object? rawValue) && rawValue is T typedValue)
+        if (_dataByType.TryGetValue(typeof(T), out object? rawValue) && rawValue is T typedValue)
         {
             value = typedValue;
             return true;

@@ -188,9 +188,10 @@ public sealed class ExecutionPlanSchedulerTests
 
         ExecutionPlan plan = RuntimeTestUtilities.BuildPlan(operation);
         ExecutionSession session = new(new BufferedLogStream(), plan);
-        session.TaskStateChanged += (taskId, state, _, _) =>
+        ExecutionTask explodingBranchTask = session.GetTask(explodingBranchTaskId);
+        explodingBranchTask.StateChanged += (_, state, _, _) =>
         {
-            if (taskId == explodingBranchTaskId && state == ExecutionTaskState.Running)
+            if (state == ExecutionTaskState.Running)
             {
                 throw new InvalidOperationException(injectedFailureMessage);
             }
@@ -687,7 +688,10 @@ public sealed class ExecutionPlanSchedulerTests
         /* Capture the first body task that transitions to Running among the two parallel contenders. The scheduler sets
            Running synchronously when it chooses a task, so this observes start order directly without relying on titles. */
         (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
-        session.TaskStateChanged += OnTaskStateChanged;
+        ExecutionTask shortBranchTask = session.GetTask(shortBranchTaskId);
+        ExecutionTask longBranchTask = session.GetTask(longBranchTaskId);
+        shortBranchTask.StateChanged += OnTaskStateChanged;
+        longBranchTask.StateChanged += OnTaskStateChanged;
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         try
         {
@@ -695,7 +699,8 @@ public sealed class ExecutionPlanSchedulerTests
         }
         finally
         {
-            session.TaskStateChanged -= OnTaskStateChanged;
+            shortBranchTask.StateChanged -= OnTaskStateChanged;
+            longBranchTask.StateChanged -= OnTaskStateChanged;
             releaseWinner.TrySetResult(true);
         }
 
@@ -706,16 +711,16 @@ public sealed class ExecutionPlanSchedulerTests
         Assert.Equal(longBranchTaskId, firstStartedTaskId);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
 
-        void OnTaskStateChanged(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? _, string? __)
+        void OnTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? _, string? __)
         {
             if (state != ExecutionTaskState.Running || firstStartedTaskId != default)
             {
                 return;
             }
 
-            if (taskId == shortBranchTaskId || taskId == longBranchTaskId)
+            if (task.Id == shortBranchTaskId || task.Id == longBranchTaskId)
             {
-                firstStartedTaskId = taskId;
+                firstStartedTaskId = task.Id;
             }
         }
     }
