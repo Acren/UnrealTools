@@ -1334,7 +1334,6 @@ public sealed class ExecutionSession
         {
             task.RecomputeSubtreeSchedulingRollup();
             RefreshTaskAndAncestorTimingMetrics(task);
-            InvokeTaskStateChangedUnderLock(taskId, state, task.Outcome, statusReason);
         }
     }
 
@@ -1344,10 +1343,7 @@ public sealed class ExecutionSession
     private void SetTaskOutcomeCore(ExecutionTaskId taskId, ExecutionTaskOutcome? outcome, string? statusReason = null)
     {
         ExecutionTask task = GetTaskCore(taskId);
-        if (task.TransitionOutcome(outcome, statusReason))
-        {
-            InvokeTaskStateChangedUnderLock(taskId, task.State, task.Outcome, task.StatusReason);
-        }
+        task.TransitionOutcome(outcome, statusReason);
     }
 
     /// <summary>
@@ -1405,8 +1401,16 @@ public sealed class ExecutionSession
             RefreshTaskAndAncestorTimingMetrics(task);
         }
 
-        InvokeTaskStateChangedUnderLock(task.Id, state, outcome, statusReason);
         return true;
+    }
+
+    /// <summary>
+    /// Re-emits one task-owned state change through the session-wide fanout so existing scheduler and UI consumers can
+    /// keep listening at the session level while task-local observers attach directly to the task itself.
+    /// </summary>
+    private void HandleTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string statusReason)
+    {
+        InvokeTaskStateChangedUnderLock(task.Id, state, outcome, statusReason);
     }
 
     /// <summary>
@@ -1652,7 +1656,8 @@ public sealed class ExecutionSession
             throw new InvalidOperationException($"Execution session already contains task '{task.Id}'.");
         }
 
-        task.InitializeRuntimeState(NotifyTaskChanged);
+        task.InitializeRuntimeState();
+        task.StateChanged += HandleTaskStateChanged;
 
         if (task.ParentId is ExecutionTaskId parentId)
         {

@@ -96,8 +96,9 @@ public class ExecutionTask : INotifyPropertyChanged
     private readonly object _activeExecutionSyncRoot = new();
     private Task<OperationResult>? _activeExecutionTask;
     private readonly Dictionary<Type, object> _stateByType = new();
-    private readonly object _stateWaitSyncRoot = new();
-    private readonly Dictionary<ExecutionTaskState, List<TaskCompletionSource<bool>>> _stateWaiters = new();
+    /* Guards the atomic "subscribe then inspect current state" path used by task-local state waiters so they can rely
+       directly on the task's own StateChanged event without a second waiter registry. */
+    private readonly object _stateChangeSyncRoot = new();
 
     /// <summary>
     /// Creates one execution task from an authored specification record. Sessions later clone these tasks into live
@@ -122,16 +123,17 @@ public class ExecutionTask : INotifyPropertyChanged
         _outcome = spec.Enabled ? null : ExecutionTaskOutcome.Disabled;
         ResetSubtreeMetrics();
         ResetSubtreeSchedulingRollup();
-        lock (_stateWaitSyncRoot)
-        {
-            _stateWaiters.Clear();
-        }
     }
 
     private readonly List<ExecutionTask> _children;
-    private Action<ExecutionTaskId>? _onTaskChanged;
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>
+    /// Raised whenever this task's own runtime state snapshot changes. The task owns that state, so task-local
+    /// observers and waiters subscribe here instead of routing through a session-level filter.
+    /// </summary>
+    public event Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?, string>? StateChanged;
 
     /// <summary>
     /// Exposes the authored specification so builders and clone operations can read and override individual properties
@@ -423,9 +425,55 @@ public class ExecutionTask : INotifyPropertyChanged
             return Task.FromCanceled(cancellationToken);
         }
 
-        TaskCompletionSource<bool>? completionSource;
+        TaskCompletionSource<bool> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationTokenRegistration cancellationRegistration = default;
-        lock (_stateWaitSyncRoot)
+        Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?, string>? handler = null;
+
+        void Cleanup()
+        {
+            lock (_stateChangeSyncRoot)
+            {
+                if (handler != null)
+                {
+                    StateChanged -= handler;
+                }
+            }
+
+            cancellationRegistration.Dispose();
+        }
+
+        void CompleteSuccess()
+        {
+            Cleanup();
+            completionSource.TrySetResult(true);
+        }
+
+        void CompleteFailure(ExecutionTaskState? target)
+        {
+            Cleanup();
+            completionSource.TrySetException(CreateUnreachableStateException(target));
+        }
+
+        handler = (task, state, _, _) =>
+        {
+            if (!ReferenceEquals(task, this))
+            {
+                return;
+            }
+
+            if (state == targetState)
+            {
+                CompleteSuccess();
+                return;
+            }
+
+            if (state == ExecutionTaskState.Completed)
+            {
+                CompleteFailure(targetState);
+            }
+        };
+
+        lock (_stateChangeSyncRoot)
         {
             if (_state == targetState)
             {
@@ -437,36 +485,18 @@ public class ExecutionTask : INotifyPropertyChanged
                 return Task.FromException(CreateUnreachableStateException(targetState));
             }
 
-            completionSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!_stateWaiters.TryGetValue(targetState, out List<TaskCompletionSource<bool>>? waiters))
-            {
-                waiters = new List<TaskCompletionSource<bool>>();
-                _stateWaiters[targetState] = waiters;
-            }
-
-            waiters.Add(completionSource);
+            StateChanged += handler;
             if (cancellationToken.CanBeCanceled)
             {
                 cancellationRegistration = cancellationToken.Register(() =>
                 {
-                    lock (_stateWaitSyncRoot)
-                    {
-                        if (_stateWaiters.TryGetValue(targetState, out List<TaskCompletionSource<bool>>? registrations))
-                        {
-                            registrations.Remove(completionSource);
-                            if (registrations.Count == 0)
-                            {
-                                _stateWaiters.Remove(targetState);
-                            }
-                        }
-                    }
-
+                    Cleanup();
                     completionSource.TrySetCanceled(cancellationToken);
                 });
             }
         }
 
-        return AwaitStateAsync(completionSource, cancellationRegistration);
+        return completionSource.Task;
     }
 
     /// <summary>
@@ -633,10 +663,8 @@ public class ExecutionTask : INotifyPropertyChanged
         RaisePropertyChanged(nameof(ChildTaskIds));
     }
 
-    internal void InitializeRuntimeState(Action<ExecutionTaskId> onTaskChanged)
+    internal void InitializeRuntimeState()
     {
-        _onTaskChanged = onTaskChanged ?? throw new ArgumentNullException(nameof(onTaskChanged));
-
         /* Live session tasks always begin in queued runtime state once the session clones and attaches them. Semantic
            outcome stays separate so disabled tasks can still render as Disabled while the scheduler treats them as
            already finished. */
@@ -651,10 +679,6 @@ public class ExecutionTask : INotifyPropertyChanged
         lock (_activeExecutionSyncRoot)
         {
             _activeExecutionTask = null;
-        }
-        lock (_stateWaitSyncRoot)
-        {
-            _stateWaiters.Clear();
         }
     }
 
@@ -834,38 +858,14 @@ public class ExecutionTask : INotifyPropertyChanged
         _startedAt = startedAt;
         _finishedAt = finishedAt;
 
-        List<TaskCompletionSource<bool>> completedWaiters = new();
-        List<TaskCompletionSource<bool>> failedWaiters = new();
-        lock (_stateWaitSyncRoot)
-        {
-            if (_stateWaiters.TryGetValue(state, out List<TaskCompletionSource<bool>>? matchingWaiters))
-            {
-                completedWaiters.AddRange(matchingWaiters);
-                _stateWaiters.Remove(state);
-            }
+        /* Task-local observers should see a self-consistent task snapshot, including the task-owned subtree start-state
+           cache that feeds fatal-cleanup and parent-rollup decisions, before the task-level state-changed event fires. */
+        RecomputeSubtreeSchedulingRollup();
 
-            if (state == ExecutionTaskState.Completed)
-            {
-                foreach ((ExecutionTaskState waiterState, List<TaskCompletionSource<bool>> waiters) in _stateWaiters.ToList())
-                {
-                    failedWaiters.AddRange(waiters);
-                    _stateWaiters.Remove(waiterState);
-                }
-            }
-        }
-
-        foreach (TaskCompletionSource<bool> waiter in completedWaiters)
+        Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?, string>? taskStateChanged;
+        lock (_stateChangeSyncRoot)
         {
-            waiter.TrySetResult(true);
-        }
-
-        if (state == ExecutionTaskState.Completed)
-        {
-            InvalidOperationException unreachableStateException = CreateUnreachableStateException(null);
-            foreach (TaskCompletionSource<bool> waiter in failedWaiters)
-            {
-                waiter.TrySetException(unreachableStateException);
-            }
+            taskStateChanged = StateChanged;
         }
 
         if (stateChanged)
@@ -892,6 +892,8 @@ public class ExecutionTask : INotifyPropertyChanged
         {
             RaisePropertyChanged(nameof(FinishedAt));
         }
+
+        taskStateChanged?.Invoke(this, state, outcome, statusReason);
     }
 
     protected void RaisePropertyChanged([CallerMemberName] string? propertyName = null)
@@ -908,21 +910,6 @@ public class ExecutionTask : INotifyPropertyChanged
 
         field = value;
         RaisePropertyChanged(propertyName);
-    }
-
-    /// <summary>
-    /// Awaits one registered state waiter and always disposes its cancellation registration.
-    /// </summary>
-    private static async Task AwaitStateAsync(TaskCompletionSource<bool> completionSource, CancellationTokenRegistration cancellationRegistration)
-    {
-        try
-        {
-            await completionSource.Task.ConfigureAwait(false);
-        }
-        finally
-        {
-            cancellationRegistration.Dispose();
-        }
     }
 
     /// <summary>
@@ -1614,24 +1601,9 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Fires the task-changed notification through the callback wired during runtime initialization. This decouples
-    /// mutation methods from the session so they operate on the task's own state and notify observers without needing
-    /// a direct session reference.
-    /// </summary>
-    private void RaiseTaskChanged()
-    {
-        if (_onTaskChanged == null)
-        {
-            throw new InvalidOperationException($"Task '{Id}' has no task-changed callback. Was InitializeRuntimeState called?");
-        }
-
-        _onTaskChanged(Id);
-    }
-
-    /// <summary>
     /// Skips every unfinished task in this subtree without disturbing tasks that already reached terminal states. Each
     /// skipped task validates its terminal assignment, transitions to completed, propagates to its own descendants, and
-    /// raises the task-changed notification so events fire from the authoritative event surface.
+    /// raises the task-owned state-changed event so notifications come from the authoritative event surface.
     /// </summary>
     internal void SkipUnfinishedSubtree(string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
     {
@@ -1670,7 +1642,6 @@ public class ExecutionTask : INotifyPropertyChanged
                 /* Started tasks receive an interrupted outcome without forcing lifecycle completion so any active
                    descendant work can finish unwinding naturally. */
                 TransitionOutcome(ExecutionTaskOutcome.Interrupted, reason);
-                RaiseTaskChanged();
             }
             else
             {
@@ -1731,15 +1702,13 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Completes this task's lifecycle and assigns its semantic outcome, then propagates to untouched descendants. The
-    /// task-changed callback fires so the externally visible event surface stays consistent. Ancestor refresh is handled
-    /// by the session-level caller since it requires cross-branch coordination.
+    /// Completes this task's lifecycle and assigns its semantic outcome, then propagates to untouched descendants.
+    /// Ancestor refresh is handled by the session-level caller since it requires cross-branch coordination.
     /// </summary>
     internal void CompleteWithOutcome(ExecutionTaskOutcome outcome, string? statusReason = null)
     {
         ValidateTerminalAssignment(outcome);
         TransitionSnapshot(ExecutionTaskState.Completed, outcome, statusReason);
-        RaiseTaskChanged();
         PropagateTerminalOutcomeToUntouchedDescendants(outcome, statusReason);
     }
 
@@ -1774,7 +1743,6 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         TransitionOutcome(ExecutionTaskOutcome.Interrupted, statusReason);
-        RaiseTaskChanged();
     }
 
     /// <summary>
