@@ -30,9 +30,15 @@
         <Color x:Key="GraphiteDangerBackgroundColor">#24EF8680</Color>
         <Color x:Key="GraphiteWarningColor">#F1D479</Color>
         <Color x:Key="GraphiteWarningBackgroundColor">#20F1D479</Color>
-        <Color x:Key="RuntimeTabRunningColor">#63A8FF</Color>
-        <Color x:Key="RuntimeTabSucceededColor">#7BE37B</Color>
-        <Color x:Key="RuntimeTabFailedColor">#FF5C5C</Color>
+        <!-- Execution-status palette tokens stay semantic and control-agnostic. Individual controls own any extra
+             emphasis through opacity, glow, and stroke thickness instead of requiring separate per-control resources. -->
+        <Color x:Key="ExecutionStatusQueuedColor">#7F8C97</Color>
+        <Color x:Key="ExecutionStatusAwaitingDependencyColor">#C9A86A</Color>
+        <Color x:Key="ExecutionStatusAwaitingLockColor">#9A8FF0</Color>
+        <Color x:Key="ExecutionStatusInactiveColor">#59616A</Color>
+        <Color x:Key="ExecutionStatusRunningColor">#63A8FF</Color>
+        <Color x:Key="ExecutionStatusCompletedColor">#7BE37B</Color>
+        <Color x:Key="ExecutionStatusFailedColor">#FF5C5C</Color>
 
         <SolidColorBrush x:Key="GraphiteBackgroundBrush" Color="{StaticResource GraphiteBackgroundColor}" />
         <SolidColorBrush x:Key="GraphitePanelBrush" Color="{StaticResource GraphitePanelColor}" />
@@ -58,9 +64,13 @@
         <SolidColorBrush x:Key="GraphiteDangerBackgroundBrush" Color="{StaticResource GraphiteDangerBackgroundColor}" />
         <SolidColorBrush x:Key="GraphiteWarningBrush" Color="{StaticResource GraphiteWarningColor}" />
         <SolidColorBrush x:Key="GraphiteWarningBackgroundBrush" Color="{StaticResource GraphiteWarningBackgroundColor}" />
-        <SolidColorBrush x:Key="RuntimeTabRunningBrush" Color="{StaticResource RuntimeTabRunningColor}" />
-        <SolidColorBrush x:Key="RuntimeTabSucceededBrush" Color="{StaticResource RuntimeTabSucceededColor}" />
-        <SolidColorBrush x:Key="RuntimeTabFailedBrush" Color="{StaticResource RuntimeTabFailedColor}" />
+        <SolidColorBrush x:Key="ExecutionStatusQueuedBrush" Color="{StaticResource ExecutionStatusQueuedColor}" />
+        <SolidColorBrush x:Key="ExecutionStatusAwaitingDependencyBrush" Color="{StaticResource ExecutionStatusAwaitingDependencyColor}" />
+        <SolidColorBrush x:Key="ExecutionStatusAwaitingLockBrush" Color="{StaticResource ExecutionStatusAwaitingLockColor}" />
+        <SolidColorBrush x:Key="ExecutionStatusInactiveBrush" Color="{StaticResource ExecutionStatusInactiveColor}" />
+        <SolidColorBrush x:Key="ExecutionStatusRunningBrush" Color="{StaticResource ExecutionStatusRunningColor}" />
+        <SolidColorBrush x:Key="ExecutionStatusCompletedBrush" Color="{StaticResource ExecutionStatusCompletedColor}" />
+        <SolidColorBrush x:Key="ExecutionStatusFailedBrush" Color="{StaticResource ExecutionStatusFailedColor}" />
     </Application.Resources>
     <Application.Styles>
         <themes:FluentTheme>
@@ -378,7 +388,7 @@
             </Setter>
         </Style>
         <Style Selector="Border.runtime-status-dot.running">
-            <Setter Property="Background" Value="{DynamicResource RuntimeTabRunningBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ExecutionStatusRunningBrush}" />
             <Setter Property="BoxShadow" Value="0 0 5 0 #5563A8FF" />
             <!-- Running tasks pulse through brightness only so active work stands out without changing size or glow radius. -->
             <Style.Animations>
@@ -395,11 +405,11 @@
             </Style.Animations>
         </Style>
         <Style Selector="Border.runtime-status-dot.succeeded">
-            <Setter Property="Background" Value="{DynamicResource RuntimeTabSucceededBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ExecutionStatusCompletedBrush}" />
             <Setter Property="BoxShadow" Value="0 0 5 0 #557BE37B" />
         </Style>
         <Style Selector="Border.runtime-status-dot.failed">
-            <Setter Property="Background" Value="{DynamicResource RuntimeTabFailedBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ExecutionStatusFailedBrush}" />
             <Setter Property="BoxShadow" Value="0 0 5 0 #55FF7575" />
         </Style>
 
@@ -408,40 +418,44 @@
              dependency states intentionally stay more subdued so disabled and otherwise non-runnable branches recede
              behind active work. -->
         <Style Selector="Path.execution-edge">
-            <Setter Property="Stroke" Value="#89919A" />
+            <Setter Property="Stroke" Value="{DynamicResource GraphiteTextMutedBrush}" />
             <Setter Property="Opacity" Value="0.68" />
             <Setter Property="StrokeThickness" Value="2" />
         </Style>
         <Style Selector="Path.execution-edge.pending, Path.execution-edge.planned">
-            <Setter Property="Stroke" Value="#7F8C97" />
+            <Setter Property="Stroke" Value="{DynamicResource ExecutionStatusQueuedBrush}" />
             <Setter Property="Opacity" Value="0.5" />
         </Style>
+        <!-- Dependency edges should inherit the same blocker/contender distinction as the target node so graph flow
+             communicates whether work is waiting on an external prerequisite or on local lock contention. -->
+        <Style Selector="Path.execution-edge.awaiting-dependency">
+            <Setter Property="Stroke" Value="{DynamicResource ExecutionStatusAwaitingDependencyBrush}" />
+            <Setter Property="Opacity" Value="0.62" />
+        </Style>
+        <Style Selector="Path.execution-edge.awaiting-lock">
+            <Setter Property="Stroke" Value="{DynamicResource ExecutionStatusAwaitingLockBrush}" />
+            <Setter Property="Opacity" Value="0.66" />
+        </Style>
         <Style Selector="Path.execution-edge.cancelled, Path.execution-edge.interrupted, Path.execution-edge.disabled, Path.execution-edge.skipped">
-            <Setter Property="Stroke" Value="#59616A" />
+            <Setter Property="Stroke" Value="{DynamicResource ExecutionStatusInactiveBrush}" />
             <Setter Property="Opacity" Value="0.34" />
         </Style>
         <Style Selector="Path.execution-edge.running">
-            <Setter Property="Stroke" Value="#63A8FF" />
+            <Setter Property="Stroke" Value="{DynamicResource ExecutionStatusRunningBrush}" />
             <Setter Property="Opacity" Value="0.8" />
         </Style>
         <Style Selector="Path.execution-edge.completed">
-            <Setter Property="Stroke" Value="#7BE37B" />
+            <Setter Property="Stroke" Value="{DynamicResource ExecutionStatusCompletedBrush}" />
             <Setter Property="Opacity" Value="0.76" />
         </Style>
         <Style Selector="Path.execution-edge.failed">
-            <Setter Property="Stroke" Value="#FF5C5C" />
+            <Setter Property="Stroke" Value="{DynamicResource ExecutionStatusFailedBrush}" />
             <Setter Property="Opacity" Value="0.8" />
         </Style>
         <!-- Hover only boosts emphasis and thickness so the existing semantic hue still communicates status. -->
         <Style Selector="Path.execution-edge.hover">
             <Setter Property="Opacity" Value="0.96" />
             <Setter Property="StrokeThickness" Value="3" />
-        </Style>
-        <Style Selector="Path.execution-edge.pending.hover, Path.execution-edge.planned.hover">
-            <Setter Property="Stroke" Value="#9AAAB7" />
-        </Style>
-        <Style Selector="Path.execution-edge.cancelled.hover, Path.execution-edge.interrupted.hover, Path.execution-edge.disabled.hover, Path.execution-edge.skipped.hover">
-            <Setter Property="Stroke" Value="#77818B" />
         </Style>
         <!-- Inputs use the same compact mechanical treatment as the mockup. -->
         <Style Selector="TextBox">

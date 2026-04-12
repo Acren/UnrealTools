@@ -14,9 +14,11 @@ namespace LocalAutomation.Runtime;
 internal enum TaskStartState
 {
     Ready,
-    WaitingForDependencies,
+    AwaitingDependency = 1,
+    WaitingForDependencies = AwaitingDependency,
     WaitingForParent,
-    WaitingForExecutionLock,
+    AwaitingLock,
+    WaitingForExecutionLock = AwaitingLock,
     Running,
     NoStartableWork
 }
@@ -994,9 +996,9 @@ public class ExecutionTask : INotifyPropertyChanged
             return TaskStartState.NoStartableWork;
         }
 
-        if (State == ExecutionTaskState.WaitingForExecutionLock && StartedAt == null)
+        if (State == ExecutionTaskState.AwaitingLock && StartedAt == null)
         {
-            return TaskStartState.WaitingForExecutionLock;
+            return TaskStartState.AwaitingLock;
         }
 
         if (State == ExecutionTaskState.Queued && AreDependenciesSatisfied())
@@ -1010,19 +1012,19 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         return State == ExecutionTaskState.Queued && !AreDependenciesSatisfied()
-            ? TaskStartState.WaitingForDependencies
+            ? TaskStartState.AwaitingDependency
             : TaskStartState.NoStartableWork;
     }
 
     /// <summary>
     /// Returns whether this task's own executable body is the task currently waiting on an execution lock. Direct task
     /// lock wait happens before the task has ever reached Running, so StartedAt remains unset. Rolled-up descendant lock
-    /// wait can also use the WaitingForExecutionLock state, but those parents already have StartedAt once their own body
+    /// wait can also use the AwaitingLock state, but those parents already have StartedAt once their own body
     /// began executing.
     /// </summary>
     internal bool IsOwnWorkWaitingForExecutionLock()
     {
-        return GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.WaitingForExecutionLock;
+        return GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.AwaitingLock;
     }
 
     /// <summary>
@@ -1074,10 +1076,10 @@ public class ExecutionTask : INotifyPropertyChanged
     {
         return state switch
         {
-            TaskStartState.WaitingForExecutionLock => 4,
+            TaskStartState.AwaitingLock => 4,
             TaskStartState.Ready => 3,
             TaskStartState.Running => 2,
-            TaskStartState.WaitingForDependencies => 1,
+            TaskStartState.AwaitingDependency => 1,
             _ => 0
         };
     }
@@ -1112,18 +1114,18 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal string? GetSchedulingPendingReason()
     {
-        if (State is not (ExecutionTaskState.Queued or ExecutionTaskState.WaitingForDependencies or ExecutionTaskState.WaitingForExecutionLock))
+        if (State is not (ExecutionTaskState.Queued or ExecutionTaskState.AwaitingDependency or ExecutionTaskState.AwaitingLock))
         {
             return null;
         }
 
         TaskStartState startState = GetTaskStartState();
-        if (startState == TaskStartState.WaitingForExecutionLock)
+        if (startState == TaskStartState.AwaitingLock)
         {
             return "Waiting for execution lock.";
         }
 
-        if (startState == TaskStartState.WaitingForDependencies)
+        if (startState == TaskStartState.AwaitingDependency)
         {
             return "Waiting for dependencies.";
         }
@@ -1161,8 +1163,8 @@ public class ExecutionTask : INotifyPropertyChanged
             childHasStartedWork |= childTask._subtreeHasStartedWork;
             hasReadyChild |= childTask._subtreeStartState == TaskStartState.Ready;
             hasRunningChild |= childTask._subtreeStartState == TaskStartState.Running;
-            hasWaitingForExecutionLockChild |= childTask._subtreeStartState == TaskStartState.WaitingForExecutionLock;
-            hasExternalDependencyWaitChild |= childTask._subtreeStartState == TaskStartState.WaitingForDependencies
+            hasWaitingForExecutionLockChild |= childTask._subtreeStartState == TaskStartState.AwaitingLock;
+            hasExternalDependencyWaitChild |= childTask._subtreeStartState == TaskStartState.AwaitingDependency
                 && childTask.HasExternalDependencyWaitInSubtree(this);
             hasQueuedChild |= childTask.State is ExecutionTaskState.Queued or ExecutionTaskState.Planned;
             hasNonTerminalChild |= childTask.State != ExecutionTaskState.Completed;
@@ -1175,7 +1177,7 @@ public class ExecutionTask : INotifyPropertyChanged
 
         bool subtreeHasStarted = HasStarted || childHasStartedWork;
         bool ownTaskIsRunning = State == ExecutionTaskState.Running && effectiveStartState == TaskStartState.Running;
-        bool ownTaskIsQueued = State == ExecutionTaskState.Queued && effectiveStartState is TaskStartState.Ready or TaskStartState.WaitingForDependencies or TaskStartState.WaitingForParent;
+        bool ownTaskIsQueued = State == ExecutionTaskState.Queued && effectiveStartState is TaskStartState.Ready or TaskStartState.AwaitingDependency or TaskStartState.WaitingForParent;
         bool subtreeIsPureExecutionLockWait = subtreeHasStarted
             && !ownTaskIsRunning
             && hasWaitingForExecutionLockChild
@@ -1197,15 +1199,15 @@ public class ExecutionTask : INotifyPropertyChanged
         }
         else if (ownTaskIsWaitingForExecutionLock)
         {
-            parentState = ExecutionTaskState.WaitingForExecutionLock;
+            parentState = ExecutionTaskState.AwaitingLock;
         }
         else if (subtreeIsPureExecutionLockWait)
         {
-            parentState = ExecutionTaskState.WaitingForExecutionLock;
+            parentState = ExecutionTaskState.AwaitingLock;
         }
         else if (subtreeIsPureDependencyWait)
         {
-            parentState = ExecutionTaskState.WaitingForDependencies;
+            parentState = ExecutionTaskState.AwaitingDependency;
         }
         else if (ownTaskIsRunning || hasRunningChild || hasWaitingForExecutionLockChild)
         {
@@ -1246,12 +1248,12 @@ public class ExecutionTask : INotifyPropertyChanged
             parentReason ??= "All child tasks are disabled.";
         }
 
-        if (parentOutcome == null && parentState == ExecutionTaskState.WaitingForExecutionLock)
+        if (parentOutcome == null && parentState == ExecutionTaskState.AwaitingLock)
         {
             parentReason = "Waiting for execution lock.";
         }
 
-        if (parentOutcome == null && parentState == ExecutionTaskState.WaitingForDependencies)
+        if (parentOutcome == null && parentState == ExecutionTaskState.AwaitingDependency)
         {
             parentReason = "Waiting for dependencies.";
         }
@@ -1276,12 +1278,12 @@ public class ExecutionTask : INotifyPropertyChanged
             throw new ArgumentNullException(nameof(scopeRoot));
         }
 
-        if (_subtreeStartState != TaskStartState.WaitingForDependencies)
+        if (_subtreeStartState != TaskStartState.AwaitingDependency)
         {
             return false;
         }
 
-        if (GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.WaitingForDependencies
+        if (GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.AwaitingDependency
             && HasUnsatisfiedDependenciesOutsideScope(scopeRoot))
         {
             return true;
@@ -1441,7 +1443,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Returns whether this task has entered real execution instead of remaining untouched queued work.
     /// </summary>
     internal bool HasStarted =>
-        State is ExecutionTaskState.WaitingForDependencies or ExecutionTaskState.WaitingForExecutionLock or ExecutionTaskState.Running
+        State is ExecutionTaskState.AwaitingDependency or ExecutionTaskState.AwaitingLock or ExecutionTaskState.Running
         || StartedAt != null
         || Outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Failed;
 
@@ -1485,7 +1487,7 @@ public class ExecutionTask : INotifyPropertyChanged
             throw new InvalidOperationException($"Task '{Id}' cannot transition from completed execution state back to '{nextState}'.");
         }
 
-        if (State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock or ExecutionTaskState.WaitingForDependencies && nextState is ExecutionTaskState.Queued or ExecutionTaskState.Planned)
+        if (State is ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock or ExecutionTaskState.AwaitingDependency && nextState is ExecutionTaskState.Queued or ExecutionTaskState.Planned)
         {
             /* Once a task or any descendant in its subtree has started, queued states are no longer legal. Container
                scopes must remain in an active non-queued state until they complete or fail, even if later descendant
@@ -1499,7 +1501,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal void ValidateObservedState(ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
-        if (state is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock or ExecutionTaskState.WaitingForDependencies && outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Skipped or ExecutionTaskOutcome.Disabled)
+        if (state is ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock or ExecutionTaskState.AwaitingDependency && outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Skipped or ExecutionTaskOutcome.Disabled)
         {
             throw new InvalidOperationException($"Task '{Id}' cannot be running while reporting semantic outcome '{outcome}'.");
         }

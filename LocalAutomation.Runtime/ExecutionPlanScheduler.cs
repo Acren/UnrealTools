@@ -303,7 +303,7 @@ public sealed class ExecutionPlanScheduler
         using PerformanceActivityScope readyActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartReadyItems")
             .SetTag("running.count", _session.Tasks.Count(task => task.HasActiveExecution))
             .SetTag("queued.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.Queued))
-            .SetTag("lock_wait.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.WaitingForExecutionLock));
+            .SetTag("lock_wait.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.AwaitingLock));
         if (_lastCompletedTaskId != null)
         {
             readyActivity.SetTag("completed.task.id", _lastCompletedTaskId.Value.Value)
@@ -424,7 +424,7 @@ public sealed class ExecutionPlanScheduler
     private bool HasWaitingContenderForLockSet(ExecutionTask candidateTask, string lockSetKey)
     {
         return _session.Tasks.Any(task => task.Id != candidateTask.Id
-            && task.State == ExecutionTaskState.WaitingForExecutionLock
+            && task.State == ExecutionTaskState.AwaitingLock
             && string.Equals(GetExecutionLockSetKey(task.GetDeclaredExecutionLocks()), lockSetKey, StringComparison.Ordinal));
     }
 

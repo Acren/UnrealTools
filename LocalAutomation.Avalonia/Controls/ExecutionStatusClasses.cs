@@ -23,9 +23,9 @@ internal static class ExecutionStatusClasses
     {
         /* Graph styling keys follow the user-facing semantic outcome. Callers pass lifecycle state separately when they
            need active-running affordances such as animation. */
-        classes.Set("pending", status is ExecutionTaskDisplayStatus.Queued or ExecutionTaskDisplayStatus.WaitingForDependencies);
+        classes.Set("pending", status is ExecutionTaskDisplayStatus.Queued or ExecutionTaskDisplayStatus.AwaitingDependency);
         classes.Set("queued", status is ExecutionTaskDisplayStatus.Queued);
-        classes.Set("waiting-for-dependencies", status is ExecutionTaskDisplayStatus.WaitingForDependencies);
+        classes.Set("awaiting-dependency", status is ExecutionTaskDisplayStatus.AwaitingDependency);
         classes.Set("awaiting-lock", status is ExecutionTaskDisplayStatus.AwaitingLock);
         classes.Set("planned", status is ExecutionTaskDisplayStatus.Planned);
         classes.Set("skipped", status is ExecutionTaskDisplayStatus.Skipped);

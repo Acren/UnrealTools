@@ -11,43 +11,54 @@
              Cancelled and Skipped stay in the neutral queued palette, while Disabled and Interrupted deliberately read
              quieter. -->
         <Style Selector="Border.status-indicator-dot.pending, Border.status-indicator-dot.planned, Border.status-indicator-dot.cancelled, Border.status-indicator-dot.skipped">
-            <Setter Property="Background" Value="#7F8C97" />
+            <Setter Property="Background" Value="{DynamicResource ExecutionStatusQueuedBrush}" />
             <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
             <Setter Property="Opacity" Value="0.72" />
         </Style>
+        <!-- Dependency wait needs a distinct external-blocker hue, while lock wait should read as active contention
+             without colliding with the running blue. -->
+        <Style Selector="Border.status-indicator-dot.awaiting-dependency">
+            <Setter Property="Background" Value="{DynamicResource ExecutionStatusAwaitingDependencyBrush}" />
+            <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
+            <Setter Property="Opacity" Value="0.88" />
+        </Style>
         <Style Selector="Border.status-indicator-dot.awaiting-lock">
-            <Setter Property="Background" Value="#8EA8C7" />
+            <Setter Property="Background" Value="{DynamicResource ExecutionStatusAwaitingLockBrush}" />
             <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
             <Setter Property="Opacity" Value="0.84" />
         </Style>
         <Style Selector="Border.status-indicator-dot.interrupted, Border.status-indicator-dot.disabled">
-            <Setter Property="Background" Value="#59616A" />
+            <Setter Property="Background" Value="{DynamicResource ExecutionStatusInactiveBrush}" />
             <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
             <Setter Property="Opacity" Value="0.52" />
         </Style>
         <Style Selector="TextBlock.status-indicator-label">
-            <Setter Property="Foreground" Value="#A9B5C2" />
+            <Setter Property="Foreground" Value="{DynamicResource GraphiteTextSoftBrush}" />
         </Style>
         <Style Selector="TextBlock.status-indicator-label.pending, TextBlock.status-indicator-label.planned, TextBlock.status-indicator-label.cancelled, TextBlock.status-indicator-label.skipped">
-            <Setter Property="Foreground" Value="#9EACB8" />
+            <Setter Property="Foreground" Value="{DynamicResource ExecutionStatusQueuedBrush}" />
             <Setter Property="Opacity" Value="0.82" />
         </Style>
+        <Style Selector="TextBlock.status-indicator-label.awaiting-dependency">
+            <Setter Property="Foreground" Value="{DynamicResource ExecutionStatusAwaitingDependencyBrush}" />
+            <Setter Property="Opacity" Value="0.94" />
+        </Style>
         <Style Selector="TextBlock.status-indicator-label.awaiting-lock">
-            <Setter Property="Foreground" Value="#B8CAE0" />
+            <Setter Property="Foreground" Value="{DynamicResource ExecutionStatusAwaitingLockBrush}" />
             <Setter Property="Opacity" Value="0.92" />
         </Style>
         <Style Selector="TextBlock.status-indicator-label.interrupted, TextBlock.status-indicator-label.disabled">
-            <Setter Property="Foreground" Value="#7B838C" />
+            <Setter Property="Foreground" Value="{DynamicResource ExecutionStatusInactiveBrush}" />
             <Setter Property="Opacity" Value="0.68" />
         </Style>
         <Style Selector="TextBlock.status-indicator-label.running">
-            <Setter Property="Foreground" Value="#A9D2F1" />
+            <Setter Property="Foreground" Value="{DynamicResource ExecutionStatusRunningBrush}" />
         </Style>
         <Style Selector="TextBlock.status-indicator-label.succeeded">
-            <Setter Property="Foreground" Value="#A9D9BE" />
+            <Setter Property="Foreground" Value="{DynamicResource ExecutionStatusCompletedBrush}" />
         </Style>
         <Style Selector="TextBlock.status-indicator-label.failed">
-            <Setter Property="Foreground" Value="#F0AAA5" />
+            <Setter Property="Foreground" Value="{DynamicResource ExecutionStatusFailedBrush}" />
         </Style>
     </UserControl.Styles>
     <!-- One shared status-indicator control keeps tab dots and graph status rows visually aligned while still letting

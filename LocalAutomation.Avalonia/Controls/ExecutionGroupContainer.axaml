@@ -66,19 +66,23 @@
         <Style Selector="Border.group-container-border.pressed">
             <Setter Property="Opacity" Value="0.96" />
         </Style>
-        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment. Awaiting lock gets a
-             slightly more active intermediate treatment, while Interrupted and Disabled keep the more muted inactive
-             treatment. -->
+        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment. Dependency wait gets a
+             muted amber blocker hue, lock wait gets a distinct violet contention hue, and Interrupted/Disabled stay in
+             the quieter inactive treatment. -->
         <Style Selector="Border.group-container-border.pending, Border.group-container-border.planned, Border.group-container-border.cancelled, Border.group-container-border.skipped">
-            <Setter Property="BorderBrush" Value="#7F8C97" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusQueuedBrush}" />
             <Setter Property="Opacity" Value="0.44" />
         </Style>
+        <Style Selector="Border.group-container-border.awaiting-dependency">
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusAwaitingDependencyBrush}" />
+            <Setter Property="Opacity" Value="0.58" />
+        </Style>
         <Style Selector="Border.group-container-border.awaiting-lock">
-            <Setter Property="BorderBrush" Value="#8EA8C7" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusAwaitingLockBrush}" />
             <Setter Property="Opacity" Value="0.56" />
         </Style>
         <Style Selector="Border.group-container-border.interrupted, Border.group-container-border.disabled">
-            <Setter Property="BorderBrush" Value="#59616A" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusInactiveBrush}" />
             <Setter Property="Opacity" Value="0.28" />
         </Style>
         <!-- Let selected groups use the shared frame-emphasis fallback while inactive hover stays quieter than active
@@ -87,13 +91,13 @@
             <Setter Property="Opacity" Value="0.38" />
         </Style>
         <Style Selector="Border.group-container-border.running">
-            <Setter Property="BorderBrush" Value="#63A8FF" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusRunningBrush}" />
         </Style>
         <Style Selector="Border.group-container-border.completed">
-            <Setter Property="BorderBrush" Value="#7BE37B" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusCompletedBrush}" />
         </Style>
         <Style Selector="Border.group-container-border.failed">
-            <Setter Property="BorderBrush" Value="#FF5C5C" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusFailedBrush}" />
         </Style>
     </UserControl.Styles>
     <!-- This control owns the full visual structure of one group node so canvas code only decides placement and z-order. -->

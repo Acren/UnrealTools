@@ -19,22 +19,32 @@ public enum ExecutionTaskState
     /// The task subtree has already started earlier, but no work inside it is currently active and the remaining
     /// reachable frontier is blocked on dependencies outside the subtree.
     /// </summary>
-    WaitingForDependencies,
+    AwaitingDependency = 2,
+
+    /// <summary>
+    /// Backward-compatible alias for <see cref="AwaitingDependency"/>.
+    /// </summary>
+    WaitingForDependencies = AwaitingDependency,
 
     /// <summary>
     /// The task has been admitted into active execution and is now blocked only on acquiring its declared execution
     /// lock set. Parent scopes treat this as in-progress work rather than as untouched queued work.
     /// </summary>
-    WaitingForExecutionLock,
+    AwaitingLock = 3,
+
+    /// <summary>
+    /// Backward-compatible alias for <see cref="AwaitingLock"/>.
+    /// </summary>
+    WaitingForExecutionLock = AwaitingLock,
 
     /// <summary>
     /// The task itself is running or the subtree still has active work that is not in the pure execution-lock wait
     /// shape. Parent tasks use this state for mixed in-progress subtrees, including runnable work and non-lock blockers.
     /// </summary>
-    Running,
+    Running = 4,
 
     /// <summary>
     /// The entire task subtree has reached a terminal state.
     /// </summary>
-    Completed
+    Completed = 5
 }

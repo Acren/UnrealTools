@@ -623,7 +623,7 @@ public sealed class ExecutionSession
             foreach (ExecutionTask task in tasks)
             {
                 ExecutionTaskState currentState = task.State;
-                if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock or ExecutionTaskState.WaitingForDependencies)
+                if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock or ExecutionTaskState.AwaitingDependency)
                 {
                     continue;
                 }
@@ -635,17 +635,17 @@ public sealed class ExecutionSession
 
                 TaskStartState startState = task.GetTaskStartState();
                 string? waitingReason = task.GetSchedulingPendingReason();
-                if (startState is TaskStartState.NoStartableWork or TaskStartState.Running or TaskStartState.WaitingForExecutionLock)
+                if (startState is TaskStartState.NoStartableWork or TaskStartState.Running or TaskStartState.AwaitingLock)
                 {
                     continue;
                 }
 
                 /* Untouched queued work stays Queued, while previously started subtrees with no active local work can
-                   surface WaitingForDependencies when their current frontier is blocked only by dependencies outside the
+                   surface AwaitingDependency when their current frontier is blocked only by dependencies outside the
                    subtree. Waiting-for-parent cases remain queued because their blocker is structural ordering rather than
                    an external prerequisite. */
-                ExecutionTaskState nextState = startState == TaskStartState.WaitingForDependencies && task.HasStartedWorkInSubtree()
-                    ? ExecutionTaskState.WaitingForDependencies
+                ExecutionTaskState nextState = startState == TaskStartState.AwaitingDependency && task.HasStartedWorkInSubtree()
+                    ? ExecutionTaskState.AwaitingDependency
                     : ExecutionTaskState.Queued;
                 if (task.State != nextState || !string.Equals(task.StatusReason, waitingReason ?? string.Empty, StringComparison.Ordinal))
                 {
@@ -701,7 +701,7 @@ public sealed class ExecutionSession
                     continue;
                 }
 
-                bool taskExecutionIsStillActive = task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock || isTaskTrackedAsRunning(task.Id);
+                bool taskExecutionIsStillActive = task.State is ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock || isTaskTrackedAsRunning(task.Id);
                 ExecutionTaskOutcome nextOutcome = taskExecutionIsStillActive
                     ? userCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted
                     : ExecutionTaskOutcome.Skipped;
@@ -781,16 +781,16 @@ public sealed class ExecutionSession
 
     /// <summary>
     /// Acquires the declared execution locks for one already-admitted task. The session owns the visible transition into
-    /// WaitingForExecutionLock, while the task's execution coroutine owns the actual wait and later Running transition.
+    /// AwaitingLock, while the task's execution coroutine owns the actual wait and later Running transition.
     /// </summary>
     private void SetTaskWaitingForExecutionLock(ExecutionTaskId taskId)
     {
-        SetTaskState(taskId, ExecutionTaskState.WaitingForExecutionLock, "Waiting for execution lock.");
+        SetTaskState(taskId, ExecutionTaskState.AwaitingLock, "Waiting for execution lock.");
     }
 
     /// <summary>
     /// Delegates the actual lock wait to task runtime services after the authored task has already published its visible
-    /// WaitingForExecutionLock state at admission time.
+    /// AwaitingLock state at admission time.
     /// </summary>
     private Task<IAsyncDisposable> AcquireExecutionLocksForStartedTaskAsync(ExecutionTaskContext startedContext, ExecutionTask executingTask, IReadOnlyList<ExecutionLock> executionLocks, ILogger taskLogger, CancellationToken cancellationToken)
     {
@@ -854,7 +854,7 @@ public sealed class ExecutionSession
             .ToList();
         foreach (ExecutionTask task in outstandingTasks)
         {
-            if (task.HasActiveExecution || task.State is ExecutionTaskState.Running or ExecutionTaskState.WaitingForExecutionLock)
+            if (task.HasActiveExecution || task.State is ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock)
             {
                 CompleteTaskLifecycle(task.Id, ExecutionTaskOutcome.Interrupted, interruptedReason);
                 continue;

@@ -95,27 +95,30 @@
         <Style Selector="Border.task-card-border.pressed">
             <Setter Property="Opacity" Value="1" />
         </Style>
-        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment. Awaiting lock gets a
-             slightly more active intermediate treatment, while Interrupted and Disabled keep the more muted inactive
-             treatment. -->
+        <!-- Planned, Pending, Cancelled, and Skipped all use the same neutral queued treatment. Dependency wait gets a
+             muted amber blocker hue, lock wait gets a distinct violet contention hue, and Interrupted/Disabled stay in
+             the quieter inactive treatment. -->
         <Style Selector="Border.task-card-border.pending, Border.task-card-border.planned, Border.task-card-border.cancelled, Border.task-card-border.skipped">
-            <Setter Property="BorderBrush" Value="#7F8C97" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusQueuedBrush}" />
+        </Style>
+        <Style Selector="Border.task-card-border.awaiting-dependency">
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusAwaitingDependencyBrush}" />
         </Style>
         <Style Selector="Border.task-card-border.awaiting-lock">
-            <Setter Property="BorderBrush" Value="#5C8EA8C7" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusAwaitingLockBrush}" />
         </Style>
         <Style Selector="Border.task-card-border.interrupted, Border.task-card-border.disabled">
-            <Setter Property="BorderBrush" Value="#59616A" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusInactiveBrush}" />
         </Style>
         <Style Selector="Border.task-card-border.running">
             <!-- Keep a faint continuous stroke under the animated highlights so the card still reads as one border. -->
-            <Setter Property="BorderBrush" Value="#4563A8FF" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusRunningBrush}" />
         </Style>
         <Style Selector="Border.task-card-border.completed">
-            <Setter Property="BorderBrush" Value="#7BE37B" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusCompletedBrush}" />
         </Style>
         <Style Selector="Border.task-card-border.failed">
-            <Setter Property="BorderBrush" Value="#FF5C5C" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ExecutionStatusFailedBrush}" />
         </Style>
     </UserControl.Styles>
     <!-- This control owns the full task-card markup so graph canvas code no longer constructs the inner visual tree. -->

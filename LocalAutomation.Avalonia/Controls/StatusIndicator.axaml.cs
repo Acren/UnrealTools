@@ -146,9 +146,9 @@ public partial class StatusIndicator : UserControl
     /// </summary>
     private static void ApplyStatusClasses(Classes classes, global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus status)
     {
-        classes.Set("pending", status is global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Queued or global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.WaitingForDependencies);
+        classes.Set("pending", status is global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Queued or global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.AwaitingDependency);
         classes.Set("queued", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Queued);
-        classes.Set("waiting-for-dependencies", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.WaitingForDependencies);
+        classes.Set("awaiting-dependency", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.AwaitingDependency);
         classes.Set("awaiting-lock", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.AwaitingLock);
         classes.Set("planned", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Planned);
         classes.Set("skipped", status == global::LocalAutomation.Avalonia.ExecutionTaskDisplayStatus.Skipped);

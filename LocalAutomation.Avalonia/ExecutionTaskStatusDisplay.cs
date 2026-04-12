@@ -10,7 +10,7 @@ public enum ExecutionTaskDisplayStatus
 {
     Planned,
     Queued,
-    WaitingForDependencies,
+    AwaitingDependency,
     AwaitingLock,
     Running,
     Completed,
@@ -50,21 +50,24 @@ public static class ExecutionTaskStatusDisplay
         {
             ExecutionTaskState.Planned => ExecutionTaskDisplayStatus.Planned,
             ExecutionTaskState.Queued => ExecutionTaskDisplayStatus.Queued,
-            ExecutionTaskState.WaitingForDependencies => ExecutionTaskDisplayStatus.WaitingForDependencies,
-            ExecutionTaskState.WaitingForExecutionLock => ExecutionTaskDisplayStatus.AwaitingLock,
+            ExecutionTaskState.AwaitingDependency => ExecutionTaskDisplayStatus.AwaitingDependency,
+            ExecutionTaskState.AwaitingLock => ExecutionTaskDisplayStatus.AwaitingLock,
             ExecutionTaskState.Running => ExecutionTaskDisplayStatus.Running,
             ExecutionTaskState.Completed => ExecutionTaskDisplayStatus.Completed,
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
         };
     }
 
+    /// <summary>
+    /// Returns the short user-facing label shown for a display status in task lists and graph surfaces.
+    /// </summary>
     public static string GetLabel(ExecutionTaskDisplayStatus status)
     {
         return status switch
         {
             ExecutionTaskDisplayStatus.Completed => "Done",
             ExecutionTaskDisplayStatus.Queued => "Queued",
-            ExecutionTaskDisplayStatus.WaitingForDependencies => "Waiting for dependencies",
+            ExecutionTaskDisplayStatus.AwaitingDependency => "Awaiting dependency",
             ExecutionTaskDisplayStatus.AwaitingLock => "Awaiting lock",
             ExecutionTaskDisplayStatus.Running => "Running",
             ExecutionTaskDisplayStatus.Failed => "Failed",
