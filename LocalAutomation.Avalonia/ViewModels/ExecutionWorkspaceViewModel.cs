@@ -294,16 +294,17 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         AttachSessionLogs(runtimeTab, session);
         Action<LogEntry> metricsLogHandler = entry =>
         {
-            /* Task/session metrics only depend on warning and error counts, so skip the UI hop entirely for ordinary log
-               lines instead of posting one callback per info/debug entry during verbose runs. */
-            if (entry.Verbosity != LogLevel.Warning && entry.Verbosity < LogLevel.Error)
+            /* Runtime task metrics only change on warning/error log lines that belong to one concrete task. Ignore every
+               other entry so verbose info/debug output does not post needless UI refreshes. */
+            RuntimeExecutionTaskId? taskId = RuntimeExecutionTaskId.FromNullable(entry.TaskId);
+            if ((entry.Verbosity != LogLevel.Warning && entry.Verbosity < LogLevel.Error) || taskId == null)
             {
                 return;
             }
 
             Dispatcher.UIThread.Post(() =>
             {
-                runtimeTab.ApplyLogEntry(entry);
+                runtimeTab.RefreshTaskMetrics(new[] { taskId.Value });
                 if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
                 {
                     RaisePropertyChanged(nameof(SelectedRuntimeMetrics));
@@ -393,6 +394,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             if (selectedTaskId == null)
             {
                 SelectedRuntimeTab.Session.LogStream.Clear();
+                SelectedRuntimeTab.Session.ResetCachedLogMetrics();
             }
             else
             {
@@ -586,8 +588,8 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 .SetTag("task.outcome", latestOutcome?.ToString() ?? string.Empty)
                 .SetTag("task.status_reason", latestStatusReason ?? string.Empty));
 
-        /* Task view models already react to the underlying runtime model changes. This flush only updates graph-level
-           selection visuals and one shared metrics/header pass, so one burst of runtime transitions costs one UI update. */
+        /* Task view models already react to raw runtime state changes. This flush only updates graph-level selection
+           visuals plus the affected runtime metrics snapshots, so one burst of runtime transitions costs one UI update. */
         foreach (RuntimeExecutionTaskId pendingTaskId in pendingTaskIds)
         {
             runtimeTab.Graph.NotifyTaskStateChanged(pendingTaskId);

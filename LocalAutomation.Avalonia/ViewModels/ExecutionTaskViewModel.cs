@@ -106,35 +106,6 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Updates only the stored warning and error counts while preserving the current duration state.
-    /// </summary>
-    public bool ApplyLogDelta(int warningDelta, int errorDelta)
-    {
-        if (warningDelta == 0 && errorDelta == 0)
-        {
-            return false;
-        }
-
-        return SetMetrics(
-            new RuntimeExecutionTaskMetrics(
-                _metrics.Duration,
-                _metrics.WarningCount + warningDelta,
-                _metrics.ErrorCount + errorDelta));
-    }
-
-    /// <summary>
-    /// Updates only the stored duration while preserving the current warning and error counts.
-    /// </summary>
-    public bool SetDuration(TimeSpan? duration)
-    {
-        return SetMetrics(
-            new RuntimeExecutionTaskMetrics(
-                duration,
-                _metrics.WarningCount,
-                _metrics.ErrorCount));
-    }
-
-    /// <summary>
     /// Disposes session/runtime subscriptions owned by this task view model.
     /// </summary>
     public void Dispose()

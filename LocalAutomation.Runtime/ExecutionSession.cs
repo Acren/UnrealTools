@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -12,8 +13,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Represents one live execution session. The session owns the current task graph and session lifecycle, while each
-/// execution task owns its own mutable runtime state, graph links, and task-scoped log stream.
+/// Represents one live execution session. The session owns graph coordination, locking, and session-wide lifecycle
+/// state, while each execution task owns its own mutable runtime state, subtree metrics, graph links, and task-scoped
+/// log stream.
 /// </summary>
 public sealed class ExecutionSession
 {
@@ -24,6 +26,8 @@ public sealed class ExecutionSession
     private readonly OperationParameters _operationParameters;
     private readonly List<string> _errors = new();
     private readonly List<string> _warnings = new();
+    private int _sessionWarningCount;
+    private int _sessionErrorCount;
     /* The live task graph needs one session-scoped synchronization boundary, but graph traversal happens much more
        often than graph mutation. A recursive reader/writer lock keeps traversal coherent while still letting the
        scheduler's write-side updates break through tight concurrent read loops such as the inserted-child traversal
@@ -70,9 +74,9 @@ public sealed class ExecutionSession
     public ILogStream LogStream { get; }
 
     /// <summary>
-    /// Gets the live session-owned task graph. Sessions clone plan tasks when they start so runtime mutations never
-    /// modify preview plan objects. The session serializes task-graph reads and writes through one lock so child-plan
-    /// insertion cannot race graph traversal.
+    /// Gets the live task graph coordinated by this session. Sessions clone plan tasks when they start so runtime
+    /// mutations never modify preview plan objects, and the cloned task objects then own all per-task runtime data while
+    /// the session serializes graph reads and writes through one lock.
     /// </summary>
     public IReadOnlyList<ExecutionTask> Tasks => WithGraphReadLock(() => _rootTask?.GetAllTasks() ?? Array.Empty<ExecutionTask>());
 
@@ -196,71 +200,68 @@ public sealed class ExecutionSession
         return WithGraphReadLock(() => GetTaskCore(taskId).GetSubtreeIds());
     }
 
+    /// <summary>
+    /// Returns the current metrics for one task subtree or for the whole session. Task metrics come from the cached
+    /// subtree state owned by the live task objects, while session metrics come from session-wide counters.
+    /// </summary>
     public ExecutionTaskMetrics GetTaskMetrics(ExecutionTaskId? taskId, DateTimeOffset? now = null)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.GetTaskMetrics")
+            .SetTag("task.id", taskId?.Value ?? string.Empty);
+
         if (taskId == null)
         {
-            IReadOnlyList<LogEntry> sessionEntries = LogStream.Entries;
-            return new ExecutionTaskMetrics(GetSessionDuration(now), CountWarnings(sessionEntries), CountErrors(sessionEntries));
+            activity.SetTag("scope", "session")
+                .SetTag("warning.count", _sessionWarningCount)
+                .SetTag("error.count", _sessionErrorCount);
+            return new ExecutionTaskMetrics(GetSessionDuration(now), _sessionWarningCount, _sessionErrorCount);
         }
 
-        IReadOnlyList<ExecutionTaskId> subtreeIds = GetTaskSubtreeIds(taskId.Value);
-        HashSet<ExecutionTaskId> subtreeIdSet = new(subtreeIds);
-        IReadOnlyList<LogEntry> sessionLogEntries = LogStream.Entries;
-        IReadOnlyList<LogEntry> subtreeEntries = sessionLogEntries
-            .Where(entry => ExecutionTaskId.FromNullable(entry.TaskId) is ExecutionTaskId entryTaskId && subtreeIdSet.Contains(entryTaskId))
-            .ToList();
-
-        return new ExecutionTaskMetrics(
-            GetTaskDuration(taskId, now),
-            CountWarnings(subtreeEntries),
-            CountErrors(subtreeEntries));
+        return WithGraphReadLock(() =>
+        {
+            ExecutionTask task = GetTaskCore(taskId.Value);
+            ExecutionTaskMetrics metrics = task.GetSubtreeMetrics(now);
+            activity.SetTag("scope", "subtree")
+                .SetTag("warning.count", metrics.WarningCount)
+                .SetTag("error.count", metrics.ErrorCount)
+                .SetTag("duration.available", metrics.Duration != null);
+            return metrics;
+        });
     }
 
+    /// <summary>
+    /// Returns the current subtree duration for one task from the cached timing basis owned by that task.
+    /// </summary>
     public TimeSpan? GetTaskDuration(ExecutionTaskId? taskId, DateTimeOffset? now = null)
     {
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.GetTaskDuration")
+            .SetTag("task.id", taskId?.Value ?? string.Empty);
+
         if (taskId == null)
         {
+            activity.SetTag("scope", "none")
+                .SetTag("duration.available", false);
             return null;
         }
 
-        IReadOnlyList<ExecutionTaskId> subtreeIds = GetTaskSubtreeIds(taskId.Value);
-        DateTimeOffset? effectiveStart = null;
-        DateTimeOffset? effectiveEnd = null;
-        DateTimeOffset timestampNow = now ?? DateTimeOffset.Now;
-
-        foreach (ExecutionTaskId subtreeTaskId in subtreeIds)
+        return WithGraphReadLock(() =>
         {
-            ExecutionTask task = GetTask(subtreeTaskId);
-            if (task.StartedAt != null)
+            TimeSpan? duration = GetTaskCore(taskId.Value).GetSubtreeDuration(now);
+            activity.SetTag("scope", "subtree")
+                .SetTag("duration.available", duration != null);
+            if (duration != null)
             {
-                effectiveStart = effectiveStart == null || task.StartedAt < effectiveStart ? task.StartedAt : effectiveStart;
+                activity.SetTag("duration_ms", duration.Value.TotalMilliseconds.ToString("0.###"));
             }
 
-            /* Lock wait is in-progress scheduler state, but it is not execution time. Only Running extends the live
-               duration clock to 'now'. */
-            if (task.State == ExecutionTaskState.Running)
-            {
-                effectiveEnd = timestampNow;
-                continue;
-            }
-
-            if (task.FinishedAt != null && (effectiveEnd == null || task.FinishedAt > effectiveEnd))
-            {
-                effectiveEnd = task.FinishedAt;
-            }
-        }
-
-        if (effectiveStart == null)
-        {
-            return null;
-        }
-
-        DateTimeOffset resolvedEnd = effectiveEnd ?? timestampNow;
-        TimeSpan duration = resolvedEnd - effectiveStart.Value;
-        return duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
+            return duration;
+        });
     }
 
+    /// <summary>
+    /// Appends one log entry to the session stream and updates the affected session/task metrics caches from that same
+    /// source event instead of rescanning buffered logs later.
+    /// </summary>
     public void AddLogEntry(LogEntry entry)
     {
         if (entry == null)
@@ -269,13 +270,44 @@ public sealed class ExecutionSession
         }
 
         LogStream.Add(entry);
+        (int warningDelta, int errorDelta) = GetLogCountDeltas(entry);
         ExecutionTaskId? taskId = ExecutionTaskId.FromNullable(entry.TaskId);
-        if (taskId == null)
-        {
-            return;
-        }
 
-        GetTask(taskId.Value).LogStream.Add(entry);
+        WithGraphWriteLock(() =>
+        {
+            _sessionWarningCount += warningDelta;
+            _sessionErrorCount += errorDelta;
+            if (taskId == null)
+            {
+                return;
+            }
+
+            ExecutionTask task = GetTaskCore(taskId.Value);
+            task.LogStream.Add(entry);
+            ApplyTaskLogMetrics(task, warningDelta, errorDelta);
+        });
+    }
+
+    /// <summary>
+    /// Clears the cached warning/error metrics that are derived from the session log and task-scoped subtree log counts.
+    /// The owning task objects keep the per-task counters; the session only coordinates resetting them.
+    /// </summary>
+    public void ResetCachedLogMetrics()
+    {
+        WithGraphWriteLock(() =>
+        {
+            _sessionWarningCount = 0;
+            _sessionErrorCount = 0;
+            if (_rootTask == null)
+            {
+                return;
+            }
+
+            foreach (ExecutionTask task in _rootTask.GetAllTasks())
+            {
+                task.ResetSubtreeLogCounts();
+            }
+        });
     }
 
     public BufferedLogStream? GetTaskLogStream(ExecutionTaskId? taskId)
@@ -1179,15 +1211,7 @@ public sealed class ExecutionSession
     /// </summary>
     private void WithGraphWriteLock(Action action)
     {
-        _graphLock.EnterWriteLock();
-        try
-        {
-            action();
-        }
-        finally
-        {
-            _graphLock.ExitWriteLock();
-        }
+        WithGraphLock("ExecutionSession.GraphWriteLock", action, _graphLock.EnterWriteLock, _graphLock.ExitWriteLock);
     }
 
     /// <summary>
@@ -1195,15 +1219,7 @@ public sealed class ExecutionSession
     /// </summary>
     private T WithGraphWriteLock<T>(Func<T> action)
     {
-        _graphLock.EnterWriteLock();
-        try
-        {
-            return action();
-        }
-        finally
-        {
-            _graphLock.ExitWriteLock();
-        }
+        return WithGraphLock("ExecutionSession.GraphWriteLock", action, _graphLock.EnterWriteLock, _graphLock.ExitWriteLock);
     }
 
     /// <summary>
@@ -1212,15 +1228,7 @@ public sealed class ExecutionSession
     /// </summary>
     private void WithGraphReadLock(Action action)
     {
-        _graphLock.EnterReadLock();
-        try
-        {
-            action();
-        }
-        finally
-        {
-            _graphLock.ExitReadLock();
-        }
+        WithGraphLock("ExecutionSession.GraphReadLock", action, _graphLock.EnterReadLock, _graphLock.ExitReadLock);
     }
 
     /// <summary>
@@ -1228,14 +1236,49 @@ public sealed class ExecutionSession
     /// </summary>
     private T WithGraphReadLock<T>(Func<T> action)
     {
-        _graphLock.EnterReadLock();
+        return WithGraphLock("ExecutionSession.GraphReadLock", action, _graphLock.EnterReadLock, _graphLock.ExitReadLock);
+    }
+
+    /// <summary>
+    /// Measures how long one graph operation waited to acquire the session lock and how long that operation then held
+    /// the lock while it executed.
+    /// </summary>
+    private static void WithGraphLock(string activityName, Action action, Action enterLock, Action exitLock)
+    {
+        WithGraphLock(
+            activityName,
+            () =>
+            {
+                action();
+                return true;
+            },
+            enterLock,
+            exitLock);
+    }
+
+    /// <summary>
+    /// Measures graph-lock wait and hold time around one graph operation and returns the caller's result.
+    /// </summary>
+    private static T WithGraphLock<T>(string activityName, Func<T> action, Action enterLock, Action exitLock)
+    {
+        Stopwatch totalStopwatch = Stopwatch.StartNew();
+        Stopwatch waitStopwatch = Stopwatch.StartNew();
+        enterLock();
+        waitStopwatch.Stop();
+
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity(activityName)
+            .SetTag("lock.wait_ms", waitStopwatch.Elapsed.TotalMilliseconds.ToString("0.###"));
+
         try
         {
             return action();
         }
         finally
         {
-            _graphLock.ExitReadLock();
+            TimeSpan holdDuration = totalStopwatch.Elapsed - waitStopwatch.Elapsed;
+            activity.SetTag("lock.hold_ms", holdDuration.TotalMilliseconds.ToString("0.###"))
+                .SetTag("lock.total_ms", totalStopwatch.Elapsed.TotalMilliseconds.ToString("0.###"));
+            exitLock();
         }
     }
 
@@ -1276,6 +1319,7 @@ public sealed class ExecutionSession
         ExecutionTask task = GetTaskCore(taskId);
         if (task.TransitionState(state, statusReason))
         {
+            RefreshTaskAndAncestorTimingMetrics(task);
             TaskStateChanged?.Invoke(taskId, state, task.Outcome, statusReason);
         }
     }
@@ -1318,6 +1362,7 @@ public sealed class ExecutionSession
         ExecutionTask task = GetTaskCore(taskId);
         if (task.TransitionSnapshot(state, outcome, statusReason))
         {
+            RefreshTaskAndAncestorTimingMetrics(task);
             TaskStateChanged?.Invoke(taskId, state, outcome, statusReason);
         }
     }
@@ -1328,6 +1373,7 @@ public sealed class ExecutionSession
     private void NotifyTaskChangedCore(ExecutionTaskId taskId)
     {
         ExecutionTask task = GetTaskCore(taskId);
+        RefreshTaskAndAncestorTimingMetrics(task);
         TaskStateChanged?.Invoke(taskId, task.State, task.Outcome, task.StatusReason);
     }
 
@@ -1404,14 +1450,42 @@ public sealed class ExecutionSession
         return duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
     }
 
-    private static int CountWarnings(IEnumerable<LogEntry> entries)
+    /// <summary>
+    /// Converts one log entry into the warning/error delta that subtree and session metrics should record.
+    /// </summary>
+    private static (int warningDelta, int errorDelta) GetLogCountDeltas(LogEntry entry)
     {
-        return entries.Count(entry => entry.Verbosity == LogLevel.Warning);
+        int warningDelta = entry.Verbosity == LogLevel.Warning ? 1 : 0;
+        int errorDelta = entry.Verbosity >= LogLevel.Error ? 1 : 0;
+        return (warningDelta, errorDelta);
     }
 
-    private static int CountErrors(IEnumerable<LogEntry> entries)
+    /// <summary>
+    /// Applies one warning/error delta to the emitting task and every ancestor that includes that task in its subtree.
+    /// </summary>
+    private static void ApplyTaskLogMetrics(ExecutionTask task, int warningDelta, int errorDelta)
     {
-        return entries.Count(entry => entry.Verbosity >= LogLevel.Error);
+        if (warningDelta == 0 && errorDelta == 0)
+        {
+            return;
+        }
+
+        for (ExecutionTask? currentTask = task; currentTask != null; currentTask = currentTask.Parent)
+        {
+            currentTask.ApplySubtreeLogDelta(warningDelta, errorDelta);
+        }
+    }
+
+    /// <summary>
+    /// Recomputes cached subtree timing metrics for one changed task and then for every ancestor above it so later reads
+    /// can materialize subtree duration without walking the full descendant tree again.
+    /// </summary>
+    private static void RefreshTaskAndAncestorTimingMetrics(ExecutionTask task)
+    {
+        for (ExecutionTask? currentTask = task; currentTask != null; currentTask = currentTask.Parent)
+        {
+            currentTask.RecomputeSubtreeTimingMetrics();
+        }
     }
 
     /// <summary>
@@ -1661,8 +1735,8 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Seeds the session-owned runtime graph from the initial authored plan and then treats the cloned session task
-    /// instances as the authoritative runtime source of truth from that point forward.
+    /// Seeds the live runtime graph from the initial authored plan. The cloned task instances then become the
+    /// authoritative home for all per-task runtime data, while the session keeps only graph/session coordination state.
     /// </summary>
     private void InitializeFromPlan(ExecutionPlan plan)
     {
@@ -1675,9 +1749,9 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Registers one task in the live session graph, wires parent-child object references, and initializes task-owned
-    /// runtime state. Dependency IDs are already part of each cloned task's authored spec, so only parent-child object
-    /// references need wiring here.
+    /// Registers one task in the live session graph, wires parent-child object references, and initializes the task-owned
+    /// runtime state that will stay attached to that task for the rest of the session. Dependency IDs are already part of
+    /// each cloned task's authored spec, so only parent-child object references need wiring here.
     /// </summary>
     private void AddTask(ExecutionTask task)
     {

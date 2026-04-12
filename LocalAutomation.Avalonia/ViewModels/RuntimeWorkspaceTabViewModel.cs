@@ -2,7 +2,6 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using LocalAutomation.Core;
-using Microsoft.Extensions.Logging;
 using RuntimeExecutionSession = LocalAutomation.Runtime.ExecutionSession;
 using RuntimeExecutionTask = LocalAutomation.Runtime.ExecutionTask;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
@@ -206,7 +205,7 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Rebuilds all stored task and session metrics from the current runtime snapshot.
+    /// Rebuilds all stored task metrics from the current runtime snapshot owned by the live execution tasks.
     /// </summary>
     public void RebuildMetricsFromSession(DateTimeOffset? now = null)
     {
@@ -229,43 +228,27 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Applies one new session log entry to the stored metrics that depend on warning and error counts.
-    /// </summary>
-    public void ApplyLogEntry(LogEntry entry)
-    {
-        if (Session == null)
-        {
-            return;
-        }
-
-        (int warningDelta, int errorDelta) = GetLogCountDeltas(entry);
-        if (warningDelta == 0 && errorDelta == 0)
-        {
-            return;
-        }
-
-        RuntimeExecutionTaskId? taskId = RuntimeExecutionTaskId.FromNullable(entry.TaskId);
-        if (taskId == null)
-        {
-            return;
-        }
-
-        RefreshTaskAndAncestorsLogCounts(taskId.Value, warningDelta, errorDelta);
-    }
-
-    /// <summary>
-    /// Refreshes duration-sensitive metrics for the specified tasks and their ancestors after runtime state changes.
+    /// Refreshes the stored runtime metrics for the specified tasks and their ancestors after runtime state or log
+    /// changes.
     /// </summary>
     public void RefreshTaskMetrics(IEnumerable<RuntimeExecutionTaskId> taskIds, DateTimeOffset? now = null)
     {
+        List<RuntimeExecutionTaskId> requestedTaskIds = taskIds?.ToList() ?? new List<RuntimeExecutionTaskId>();
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("RuntimeWorkspaceTab.RefreshTaskMetrics")
+            .SetTag("tab.id", Id)
+            .SetTag("tab.title", Title)
+            .SetTag("requested.task.count", requestedTaskIds.Count)
+            .SetTag("task.id", requestedTaskIds.Count > 0 ? requestedTaskIds[^1].Value : string.Empty);
+
         if (Session == null)
         {
+            activity.SetTag("refresh.skipped", "MissingSession");
             return;
         }
 
         DateTimeOffset timestampNow = now ?? DateTimeOffset.Now;
         HashSet<RuntimeExecutionTaskId> refreshedTaskIds = new();
-        foreach (RuntimeExecutionTaskId taskId in taskIds)
+        foreach (RuntimeExecutionTaskId taskId in requestedTaskIds)
         {
             if (!_tasksById.TryGetValue(taskId, out ExecutionTaskViewModel? taskViewModel))
             {
@@ -277,38 +260,26 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
             {
                 if (_tasksById.TryGetValue(currentTask.Id, out ExecutionTaskViewModel? currentTaskViewModel))
                 {
-                    RefreshTaskDuration(currentTaskViewModel, timestampNow);
+                    currentTaskViewModel.SetMetrics(Session.GetTaskMetrics(currentTask.Id, timestampNow));
                 }
 
                 currentTask = currentTask.Parent;
             }
         }
 
+        activity.SetTag("refreshed.task.count", refreshedTaskIds.Count);
     }
 
     /// <summary>
-    /// Refreshes durations for tasks still marked Running by the runtime model. Parent tasks remain Running while any
-    /// descendant work is still active, so task state is enough to identify every subtree whose displayed duration should
-    /// keep ticking.
+    /// Refreshes metrics for tasks whose subtree duration can still advance according to the runtime snapshot.
     /// </summary>
     public void RefreshLiveTaskDurations(DateTimeOffset? now = null)
     {
-        if (Session == null)
-        {
-            return;
-        }
-
-        DateTimeOffset timestampNow = now ?? DateTimeOffset.Now;
-        foreach (ExecutionTaskViewModel task in _tasksById.Values)
-        {
-            if (task.Task.State != LocalAutomation.Runtime.ExecutionTaskState.Running)
-            {
-                continue;
-            }
-
-            RefreshTaskDuration(task, timestampNow);
-        }
-
+        RefreshTaskMetrics(
+            _tasksById.Values
+                .Where(task => task.Task.State == LocalAutomation.Runtime.ExecutionTaskState.Running)
+                .Select(task => task.Id),
+            now);
     }
 
     /// <summary>
@@ -333,50 +304,4 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SessionStatusForIndicator));
     }
 
-    /// <summary>
-    /// Updates the stored warning and error counts for one task and every ancestor that contains it.
-    /// </summary>
-    private void RefreshTaskAndAncestorsLogCounts(RuntimeExecutionTaskId taskId, int warningDelta, int errorDelta)
-    {
-        if (!_tasksById.TryGetValue(taskId, out ExecutionTaskViewModel? taskViewModel))
-        {
-            return;
-        }
-
-        RuntimeExecutionTask? currentTask = taskViewModel.Task;
-        while (currentTask != null)
-        {
-            if (_tasksById.TryGetValue(currentTask.Id, out ExecutionTaskViewModel? currentTaskViewModel))
-            {
-                currentTaskViewModel.ApplyLogDelta(warningDelta, errorDelta);
-            }
-
-            currentTask = currentTask.Parent;
-        }
-    }
-
-    /// <summary>
-    /// Updates the stored subtree duration for one task from the current runtime session snapshot. The duration may still
-    /// advance because the runtime keeps ancestor tasks in the Running state until their entire descendant subtree
-    /// reaches a terminal state.
-    /// </summary>
-    private void RefreshTaskDuration(ExecutionTaskViewModel taskViewModel, DateTimeOffset timestampNow)
-    {
-        if (Session == null)
-        {
-            return;
-        }
-
-        taskViewModel.SetDuration(Session.GetTaskDuration(taskViewModel.Id, timestampNow));
-    }
-
-    /// <summary>
-    /// Converts one log entry into warning and error deltas for the stored metrics counters.
-    /// </summary>
-    private static (int WarningDelta, int ErrorDelta) GetLogCountDeltas(LogEntry entry)
-    {
-        int warningDelta = entry.Verbosity == LogLevel.Warning ? 1 : 0;
-        int errorDelta = entry.Verbosity >= LogLevel.Error ? 1 : 0;
-        return (warningDelta, errorDelta);
-    }
 }

@@ -66,8 +66,8 @@ internal record TaskSpec(
 
 /// <summary>
 /// Represents one execution-graph node. Authored plans and live sessions share this type, but runtime sessions own their
-/// own cloned task instances so mutable graph state, runtime state, and task-scoped logs never leak back into preview
-/// plan objects.
+/// own cloned task instances so all per-task runtime data — lifecycle state, subtree metrics, graph links, and task-
+/// scoped logs — stays on the task itself instead of being mirrored onto the session.
 /// </summary>
 public class ExecutionTask : INotifyPropertyChanged
 {
@@ -75,14 +75,20 @@ public class ExecutionTask : INotifyPropertyChanged
        enumeration. Builder setters update this field via `_spec = _spec with { ... }`. */
     private TaskSpec _spec;
 
-    /* Runtime-mutable fields that are not part of the authored specification. These track live execution progress
-       and are reset independently when sessions clone tasks or reinitialize for a new run. */
+    /* Runtime-mutable fields that are not part of the authored specification. These track live execution progress and
+       task-owned subtree metrics, and are reset independently when sessions clone tasks or reinitialize for a new run.
+       Sessions coordinate updates under the graph lock, but the per-task data itself lives here on the task. */
     private ExecutionTask? _parent;
     private ExecutionTaskState _state;
     private string _statusReason;
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _finishedAt;
     private ExecutionTaskOutcome? _outcome;
+    private int _subtreeWarningCount;
+    private int _subtreeErrorCount;
+    private int _subtreeActiveTimingCount;
+    private DateTimeOffset? _subtreeStartedAt;
+    private DateTimeOffset? _subtreeFinishedAt;
     private readonly object _activeExecutionSyncRoot = new();
     private Task<OperationResult>? _activeExecutionTask;
     private readonly Dictionary<Type, object> _stateByType = new();
@@ -111,6 +117,7 @@ public class ExecutionTask : INotifyPropertyChanged
         _state = spec.Enabled ? ExecutionTaskState.Planned : ExecutionTaskState.Completed;
         _statusReason = spec.Enabled ? string.Empty : spec.DisabledReason;
         _outcome = spec.Enabled ? null : ExecutionTaskOutcome.Disabled;
+        ResetSubtreeMetrics();
         ResetReachedStates(_state);
     }
 
@@ -267,7 +274,100 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal bool HasAuthoredBody => _spec.ExecuteAsync != null;
 
+    /// <summary>
+    /// Gets the buffered direct log stream owned by this task body.
+    /// </summary>
     public BufferedLogStream LogStream { get; }
+
+    /// <summary>
+    /// Resets the task-owned subtree metric basis for a fresh runtime session.
+    /// </summary>
+    internal void ResetSubtreeMetrics()
+    {
+        _subtreeWarningCount = 0;
+        _subtreeErrorCount = 0;
+        _subtreeActiveTimingCount = 0;
+        _subtreeStartedAt = null;
+        _subtreeFinishedAt = null;
+    }
+
+    /// <summary>
+    /// Applies one warning/error delta to this task's cached subtree counts.
+    /// </summary>
+    internal void ApplySubtreeLogDelta(int warningDelta, int errorDelta)
+    {
+        _subtreeWarningCount += warningDelta;
+        _subtreeErrorCount += errorDelta;
+        if (_subtreeWarningCount < 0 || _subtreeErrorCount < 0)
+        {
+            throw new InvalidOperationException($"Task '{Id}' subtree log counts cannot become negative.");
+        }
+    }
+
+    /// <summary>
+    /// Clears the cached subtree warning/error counts for this task.
+    /// </summary>
+    internal void ResetSubtreeLogCounts()
+    {
+        _subtreeWarningCount = 0;
+        _subtreeErrorCount = 0;
+    }
+
+    /// <summary>
+    /// Recomputes the cached subtree timing basis from this task's own timestamps plus its direct children's cached
+    /// subtree timing basis.
+    /// </summary>
+    internal void RecomputeSubtreeTimingMetrics()
+    {
+        int activeTimingCount = StartedAt != null && FinishedAt == null ? 1 : 0;
+        DateTimeOffset? subtreeStartedAt = StartedAt;
+        DateTimeOffset? subtreeFinishedAt = FinishedAt;
+
+        foreach (ExecutionTask child in _children)
+        {
+            activeTimingCount += child._subtreeActiveTimingCount;
+            if (child._subtreeStartedAt != null && (subtreeStartedAt == null || child._subtreeStartedAt < subtreeStartedAt))
+            {
+                subtreeStartedAt = child._subtreeStartedAt;
+            }
+
+            if (child._subtreeFinishedAt != null && (subtreeFinishedAt == null || child._subtreeFinishedAt > subtreeFinishedAt))
+            {
+                subtreeFinishedAt = child._subtreeFinishedAt;
+            }
+        }
+
+        _subtreeActiveTimingCount = activeTimingCount;
+        _subtreeStartedAt = subtreeStartedAt;
+        _subtreeFinishedAt = subtreeFinishedAt;
+    }
+
+    /// <summary>
+    /// Returns the cached subtree metrics snapshot for this task using the supplied clock when the subtree still has
+    /// started-but-unfinished work.
+    /// </summary>
+    internal ExecutionTaskMetrics GetSubtreeMetrics(DateTimeOffset? now = null)
+    {
+        return new ExecutionTaskMetrics(GetSubtreeDuration(now), _subtreeWarningCount, _subtreeErrorCount);
+    }
+
+    /// <summary>
+    /// Returns the cached subtree duration for this task using the supplied clock when the subtree has started work that
+    /// has not yet completed.
+    /// </summary>
+    internal TimeSpan? GetSubtreeDuration(DateTimeOffset? now = null)
+    {
+        if (_subtreeStartedAt == null)
+        {
+            return null;
+        }
+
+        DateTimeOffset resolvedEnd = _subtreeActiveTimingCount > 0
+            ? now ?? DateTimeOffset.Now
+            : _subtreeFinishedAt ?? now ?? DateTimeOffset.Now;
+        TimeSpan duration = resolvedEnd - _subtreeStartedAt.Value;
+        return duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
+    }
 
     /// <summary>
     /// Waits until this task reaches the requested runtime state at least once during the current session lifetime.
@@ -551,6 +651,7 @@ public class ExecutionTask : INotifyPropertyChanged
         Outcome = Enabled ? null : ExecutionTaskOutcome.Disabled;
         StartedAt = null;
         FinishedAt = null;
+        ResetSubtreeMetrics();
         lock (_activeExecutionSyncRoot)
         {
             _activeExecutionTask = null;
@@ -692,11 +793,18 @@ public class ExecutionTask : INotifyPropertyChanged
         _spec = _spec with { IsHiddenInGraph = isHiddenInGraph };
     }
 
+    /// <summary>
+    /// Stores optional task-local extension state for operation/runtime helpers. Core per-task runtime data such as
+    /// lifecycle, subtree metrics, and logs live on dedicated task fields instead of in this extensibility bag.
+    /// </summary>
     internal void SetState<T>(T value) where T : class
     {
         _stateByType[typeof(T)] = value ?? throw new ArgumentNullException(nameof(value));
     }
 
+    /// <summary>
+    /// Reads optional task-local extension state previously attached through <see cref="SetState{T}(T)"/>.
+    /// </summary>
     internal bool TryGetLocalState<T>(out T? value) where T : class
     {
         if (_stateByType.TryGetValue(typeof(T), out object? rawValue) && rawValue is T typedValue)
