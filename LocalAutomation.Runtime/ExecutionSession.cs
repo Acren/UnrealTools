@@ -140,16 +140,11 @@ public sealed class ExecutionSession
             return;
         }
 
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.Run")
-            .SetTag("operation.name", operation.OperationName)
-            .SetTag("session.id", Id.Value)
-            .SetTag("task.count", Tasks.Count);
         using IDisposable operationTimingScope = eventLogger.BeginSection(operation.OperationName);
         _currentTask = ExecuteOnThread(() => new ExecutionPlanScheduler(eventLogger, this).ExecuteAsync(_cancellationTokenSource.Token));
         try
         {
             OperationResult result = await _currentTask.ConfigureAwait(false);
-            activity.SetTag("scheduler.result", result.Outcome.ToString());
             using PerformanceActivityScope finalizeActivity = PerformanceTelemetry.StartActivity("ExecutionSession.Run.FinalizeOutcome")
                 .SetTag("operation.name", operation.OperationName)
                 .SetTag("incoming.result", result.Outcome.ToString());

@@ -81,16 +81,9 @@ public sealed class ExecutionSessionService
     /// </summary>
     private static async Task RunAsync(LocalAutomation.Runtime.ExecutionSession session)
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSessionService.RunAsync")
-            .SetTag("operation.name", session.OperationName)
-            .SetTag("target.name", session.TargetName)
-            .SetTag("session.id", session.Id.Value)
-            .SetTag("plan.task.count", session.Tasks.Count);
         try
         {
             await session.RunAsync();
-            activity.SetTag("runtime.result", session.Outcome?.ToString() ?? string.Empty)
-                .SetTag("session.outcome", session.Outcome.ToString());
         }
         catch (Exception ex)
         {
@@ -98,13 +91,6 @@ public sealed class ExecutionSessionService
                this fire-and-forget task directly. The app log is the only durable surface that consistently exposes
                unexpected runtime failures to the shell. */
             ApplicationLogger.Logger.LogError(ex, "Execution session '{SessionId}' failed for '{OperationName}'.", session.Id.Value, session.OperationName);
-            activity.SetTag("runtime.result", "Exception")
-                .SetTag("session.outcome", session.Outcome.ToString())
-                .SetTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name);
-        }
-        finally
-        {
-            activity.SetTag("session.is_running", session.IsRunning);
         }
     }
 }
