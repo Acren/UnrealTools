@@ -56,7 +56,7 @@ public sealed class ExecutionSession
         InitializeFromPlan(plan);
     }
 
-    public event Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?, string?>? TaskStateChanged;
+    public event Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?>? TaskStateChanged;
     public event Action? TaskGraphChanged;
 
     public ExecutionSessionId Id { get; }
@@ -135,7 +135,7 @@ public sealed class ExecutionSession
             /* Requirement failures are normal failed results, not exceptions. Log the concrete validation message here so
                parent bodies and the UI can surface the actual reason even when no task body ever starts. */
             eventLogger.LogError("Operation '{OperationName}' requirements failed: {RequirementsError}", operation.OperationName, requirementsError);
-            CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Failed, requirementsError);
+            CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Failed);
             CompleteExecution();
             return;
         }
@@ -149,11 +149,11 @@ public sealed class ExecutionSession
                 .SetTag("operation.name", operation.OperationName)
                 .SetTag("incoming.result", result.Outcome.ToString());
             OperationResult finalizedResult = FinalizeOutcome(result, eventLogger);
-            CompleteRootTaskIfNeeded(finalizedResult.Outcome, finalizedResult.FailureReason);
+            CompleteRootTaskIfNeeded(finalizedResult.Outcome);
         }
         catch (OperationCanceledException)
         {
-            CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Cancelled, "Cancelled.");
+            CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Cancelled);
             throw;
         }
         catch (Exception ex)
@@ -168,7 +168,7 @@ public sealed class ExecutionSession
             /* Any fatal scheduler/session exception must leave the live graph in one coherent terminal state. Mark the
                root failed, cancel running work, and force every remaining task to a terminal outcome before the session
                completion signal is published so the UI never shows a failed root beside still-running descendants. */
-            FailOutstandingTasksAfterFatalException(ex.Message);
+            FailOutstandingTasksAfterFatalException();
             throw;
         }
         finally
@@ -319,7 +319,7 @@ public sealed class ExecutionSession
         return WithGraphReadLock(() => _rootTask?.FindTask(taskId.Value)?.LogStream);
     }
 
-    public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
+    public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.SetTaskState")
             .SetTag("task.id", taskId.Value)
@@ -329,7 +329,7 @@ public sealed class ExecutionSession
             /* Public state writes update execution state only. Semantic outcome is derived separately so direct
                execution, child aggregation, and failure propagation can share one runtime model without overloading one
                enum with two meanings. */
-            SetTaskStateCore(taskId, state, statusReason);
+            SetTaskStateCore(taskId, state);
             RefreshAncestorTaskStates(taskId);
         });
     }
@@ -338,7 +338,7 @@ public sealed class ExecutionSession
     /// Fails one task scope, skips untouched descendants, interrupts started sibling subtrees, and propagates the failure
     /// up through ancestors so scope status follows hierarchy rather than only explicit dependency edges.
     /// </summary>
-    public void FailScopeFromTask(ExecutionTaskId failedTaskId, string? statusReason = null)
+    public void FailScopeFromTask(ExecutionTaskId failedTaskId)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.FailScopeFromTask")
             .SetTag("task.id", failedTaskId.Value);
@@ -348,8 +348,8 @@ public sealed class ExecutionSession
                Result=Failed, untouched descendants complete with Result=Skipped, and sibling subtrees that already began
                real work are marked Interrupted while still allowing active descendant work to unwind. */
             ExecutionTask failedTask = GetTaskCore(failedTaskId);
-            CompleteTaskWithOutcomeCore(failedTaskId, ExecutionTaskOutcome.Failed, statusReason);
-            failedTask.SkipUnfinishedDescendants(failedTask.BuildInheritedDescendantReason(ExecutionTaskOutcome.Failed, statusReason));
+            CompleteTaskWithOutcomeCore(failedTaskId, ExecutionTaskOutcome.Failed);
+            failedTask.SkipUnfinishedDescendants();
 
             ExecutionTask currentAncestor = failedTask;
             ExecutionTaskId failedSiblingRootId = failedTaskId;
@@ -366,7 +366,7 @@ public sealed class ExecutionSession
                     child.InterruptSiblingSubtree(failedSiblingRootId);
                 }
 
-                CompleteTaskWithOutcomeCore(currentAncestor.Id, ExecutionTaskOutcome.Failed, statusReason);
+                CompleteTaskWithOutcomeCore(currentAncestor.Id, ExecutionTaskOutcome.Failed);
                 failedSiblingRootId = currentAncestor.Id;
             }
         });
@@ -510,11 +510,10 @@ public sealed class ExecutionSession
         activity.SetTag("result.outcome", result.Outcome.ToString())
             .SetTag("result.success", result.Success);
         parentContext.Logger.LogDebug(
-            "Child operation '{ChildOperation}' finished beneath task '{ParentTaskId}' with outcome '{Outcome}' and reason '{FailureReason}'.",
+            "Child operation '{ChildOperation}' finished beneath task '{ParentTaskId}' with outcome '{Outcome}'.",
             operation.OperationName,
             parentContext.TaskId,
-            result.Outcome,
-            result.FailureReason ?? string.Empty);
+            result.Outcome);
         return result;
     }
 
@@ -549,7 +548,7 @@ public sealed class ExecutionSession
             completionSource.TrySetResult(true);
         }
 
-        void OnTaskStateChanged(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? __, string? ___)
+        void OnTaskStateChanged(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? __)
         {
             /* Session task-state subscribers can run while the graph write lock is still held, so this callback must not
                perform any additional session graph reads before it acquires its own local completion bookkeeping lock.
@@ -645,7 +644,6 @@ public sealed class ExecutionSession
                 }
 
                 TaskStartState startState = task.GetTaskStartState();
-                string? waitingReason = task.GetSchedulingPendingReason();
                 if (startState is TaskStartState.NoStartableWork or TaskStartState.Running or TaskStartState.AwaitingLock)
                 {
                     continue;
@@ -653,13 +651,13 @@ public sealed class ExecutionSession
 
                 /* Let the task compute its own visible status from the same rollup path ancestor containers use
                    so queued-vs-awaiting-dependency semantics stay centralized in one task-owned projection. */
-                (ExecutionTaskState nextState, _, _) = task.ComputeRolledUpStateFromChildren();
-                if (task.State != nextState || !string.Equals(task.StatusReason, waitingReason ?? string.Empty, StringComparison.Ordinal))
+                (ExecutionTaskState nextState, _) = task.ComputeRolledUpStateFromChildren();
+                if (task.State != nextState)
                 {
                     changedTaskCount += 1;
                 }
 
-                SetTaskStateCore(task.Id, nextState, waitingReason);
+                SetTaskStateCore(task.Id, nextState);
                 RefreshAncestorTaskStates(task.Id);
             }
 
@@ -704,8 +702,6 @@ public sealed class ExecutionSession
     internal void CancelOutstandingSchedulableTasks(
         Func<ExecutionTaskId, bool> isTaskTrackedAsRunning,
         bool userCancelled,
-        string runningTaskReason,
-        string skippedTaskReason,
         bool preserveRunningTerminalOutcomes)
     {
         if (isTaskTrackedAsRunning == null)
@@ -740,15 +736,13 @@ public sealed class ExecutionSession
                 ExecutionTaskOutcome nextOutcome = taskIsInProgress
                     ? userCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted
                     : ExecutionTaskOutcome.Skipped;
-                string reason = taskIsInProgress ? runningTaskReason : skippedTaskReason;
-
                 if (preserveRunningTerminalOutcomes && taskIsInProgress)
                 {
-                    CompleteTaskLifecycleCore(task.Id, nextOutcome, reason);
+                    CompleteTaskLifecycleCore(task.Id, nextOutcome);
                     continue;
                 }
 
-                CompleteTaskLifecycleCore(task.Id, nextOutcome, reason);
+                CompleteTaskLifecycleCore(task.Id, nextOutcome);
             }
         });
     }
@@ -820,7 +814,7 @@ public sealed class ExecutionSession
     /// </summary>
     private void SetTaskWaitingForExecutionLock(ExecutionTaskId taskId)
     {
-        SetTaskState(taskId, ExecutionTaskState.AwaitingLock, "Waiting for execution lock.");
+        SetTaskState(taskId, ExecutionTaskState.AwaitingLock);
     }
 
     /// <summary>
@@ -836,7 +830,7 @@ public sealed class ExecutionSession
     /// Completes the root task when host-level shutdown needs to guarantee a terminal session outcome even if execution
     /// stopped before normal scheduler finalization reached the root.
     /// </summary>
-    private void CompleteRootTaskIfNeeded(ExecutionTaskOutcome outcome, string? statusReason = null)
+    private void CompleteRootTaskIfNeeded(ExecutionTaskOutcome outcome)
     {
         if (_rootTask == null)
         {
@@ -849,14 +843,14 @@ public sealed class ExecutionSession
             return;
         }
 
-        CompleteTaskWithOutcome(rootTask.Id, outcome, statusReason);
+        CompleteTaskWithOutcome(rootTask.Id, outcome);
     }
 
     /// <summary>
     /// Forces the live graph into a coherent terminal state after an unexpected session-level exception. Started work is
     /// interrupted, untouched work is skipped, and the root preserves the failed session outcome.
     /// </summary>
-    private void FailOutstandingTasksAfterFatalException(string? failureReason)
+    private void FailOutstandingTasksAfterFatalException()
     {
         if (_rootTask == null)
         {
@@ -868,17 +862,11 @@ public sealed class ExecutionSession
            declared the session failed. */
         _cancellationTokenSource.Cancel();
 
-        string rootFailureReason = string.IsNullOrWhiteSpace(failureReason)
-            ? "Execution terminated because the scheduler encountered a fatal error."
-            : failureReason;
-        const string interruptedReason = "Interrupted because execution terminated after a fatal scheduler error.";
-        const string skippedReason = "Skipped because execution terminated after a fatal scheduler error.";
-
         /* Mark the root as failed before terminalizing descendants so later ancestor-refresh completion preserves the
            failed session outcome instead of deriving success from the forced descendant completions. */
         if (RootTask.State != ExecutionTaskState.Completed)
         {
-            SetTaskOutcome(RootTask.Id, ExecutionTaskOutcome.Failed, rootFailureReason);
+            SetTaskOutcome(RootTask.Id, ExecutionTaskOutcome.Failed);
         }
 
         /* Finalize descendants from the leaves upward so container refresh sees already-terminal children instead of
@@ -891,14 +879,14 @@ public sealed class ExecutionSession
         {
             if (IsTaskInProgressForForcedTerminalization(task))
             {
-                CompleteTaskLifecycle(task.Id, ExecutionTaskOutcome.Interrupted, interruptedReason);
+                CompleteTaskLifecycle(task.Id, ExecutionTaskOutcome.Interrupted);
                 continue;
             }
 
-            CompleteTaskWithOutcome(task.Id, ExecutionTaskOutcome.Skipped, skippedReason);
+            CompleteTaskWithOutcome(task.Id, ExecutionTaskOutcome.Skipped);
         }
 
-        CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Failed, rootFailureReason);
+        CompleteRootTaskIfNeeded(ExecutionTaskOutcome.Failed);
     }
 
     /// <summary>
@@ -1087,7 +1075,6 @@ public sealed class ExecutionSession
             {
                 aggregateLogger.LogError("{ErrorCount} error(s) encountered", errorCount);
                 result.Outcome = ExecutionTaskOutcome.Failed;
-                result.FailureReason ??= $"{errorCount} error(s) encountered";
             }
 
             if (warningCount > 0)
@@ -1097,7 +1084,6 @@ public sealed class ExecutionSession
                 {
                     aggregateLogger.LogError("Operation fails on warnings");
                     result.Outcome = ExecutionTaskOutcome.Failed;
-                    result.FailureReason ??= "Operation fails on warnings";
                 }
             }
         }
@@ -1226,9 +1212,9 @@ public sealed class ExecutionSession
         /// <summary>
         /// Forwards explicit task-state transitions into the session so graph views can react without parsing log text.
         /// </summary>
-        public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null)
+        public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state)
         {
-            _session.SetTaskState(taskId, state, statusReason);
+            _session.SetTaskState(taskId, state);
         }
 
         /// <summary>
@@ -1421,10 +1407,10 @@ public sealed class ExecutionSession
         return WithGraphReadLock(() => GetTaskCore(taskId).IsTerminal);
     }
 
-    private void SetTaskStateCore(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason)
+    private void SetTaskStateCore(ExecutionTaskId taskId, ExecutionTaskState state)
     {
         ExecutionTask task = GetTaskCore(taskId);
-        if (task.TransitionState(state, statusReason))
+        if (task.TransitionState(state))
         {
             task.RecomputeSubtreeSchedulingRollup();
             RefreshTaskAndAncestorTimingMetrics(task);
@@ -1434,37 +1420,37 @@ public sealed class ExecutionSession
     /// <summary>
     /// Records one semantic outcome change while the caller already holds the graph lock.
     /// </summary>
-    private void SetTaskOutcomeCore(ExecutionTaskId taskId, ExecutionTaskOutcome? outcome, string? statusReason = null)
+    private void SetTaskOutcomeCore(ExecutionTaskId taskId, ExecutionTaskOutcome? outcome)
     {
         ExecutionTask task = GetTaskCore(taskId);
-        task.TransitionOutcome(outcome, statusReason);
+        task.TransitionOutcome(outcome);
     }
 
     /// <summary>
     /// Interrupts one task while the caller already holds the graph lock.
     /// </summary>
-    private void InterruptTaskCore(ExecutionTaskId taskId, string? statusReason = null)
+    private void InterruptTaskCore(ExecutionTaskId taskId)
     {
-        GetTaskCore(taskId).Interrupt(statusReason);
+        GetTaskCore(taskId).Interrupt();
         RefreshAncestorTaskStates(taskId);
     }
 
     /// <summary>
     /// Completes one task lifecycle while the caller already holds the graph lock.
     /// </summary>
-    private void CompleteTaskLifecycleCore(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
+    private void CompleteTaskLifecycleCore(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed)
     {
-        GetTaskCore(taskId).CompleteLifecycle(successOutcome, statusReason);
+        GetTaskCore(taskId).CompleteLifecycle(successOutcome);
         RefreshAncestorTaskStates(taskId);
     }
 
     /// <summary>
     /// Completes one task status update while the caller already holds the graph lock.
     /// </summary>
-    private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
         ExecutionTask task = GetTaskCore(taskId);
-        ApplyTaskStatusCore(task, state, outcome, statusReason, refreshTimingMetrics: true);
+        ApplyTaskStatusCore(task, state, outcome, refreshTimingMetrics: true);
     }
 
     /// <summary>
@@ -1472,9 +1458,9 @@ public sealed class ExecutionSession
     /// only updating an ancestor's rolled-up runtime state after timing has already been recomputed for the originating
     /// task change.
     /// </summary>
-    private bool ApplyTaskStatusCore(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason, bool refreshTimingMetrics)
+    private bool ApplyTaskStatusCore(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, bool refreshTimingMetrics)
     {
-        if (!task.TransitionStatus(state, outcome, statusReason))
+        if (!task.TransitionStatus(state, outcome))
         {
             return false;
         }
@@ -1491,9 +1477,9 @@ public sealed class ExecutionSession
     /// Re-emits one task-owned state change through the session-wide fanout so scheduler, UI, and any other session-level
     /// observers can subscribe once per session instead of wiring every task individually.
     /// </summary>
-    private void HandleTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string statusReason)
+    private void HandleTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
-        Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?, string?>? taskStateChanged = TaskStateChanged;
+        Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?>? taskStateChanged = TaskStateChanged;
         if (taskStateChanged == null)
         {
             return;
@@ -1509,7 +1495,7 @@ public sealed class ExecutionSession
                 .SetTag("task.state", state.ToString())
                 .SetTag("task.outcome", outcome?.ToString() ?? string.Empty)
                 .SetTag("subscriber.count", taskStateChanged.GetInvocationList().Length);
-            taskStateChanged.Invoke(task.Id, state, outcome, statusReason);
+            taskStateChanged.Invoke(task.Id, state, outcome);
         });
     }
 
@@ -1548,9 +1534,9 @@ public sealed class ExecutionSession
     /// <summary>
     /// Completes one task with one explicit semantic outcome while the caller already holds the graph lock.
     /// </summary>
-    private void CompleteTaskWithOutcomeCore(ExecutionTaskId taskId, ExecutionTaskOutcome outcome, string? statusReason = null)
+    private void CompleteTaskWithOutcomeCore(ExecutionTaskId taskId, ExecutionTaskOutcome outcome)
     {
-        GetTaskCore(taskId).CompleteWithOutcome(outcome, statusReason);
+        GetTaskCore(taskId).CompleteWithOutcome(outcome);
         RefreshAncestorTaskStates(taskId);
     }
 
@@ -1558,12 +1544,12 @@ public sealed class ExecutionSession
     /// Records the semantic outcome for one task without changing its current lifecycle status. This lets a scope become
     /// doomed while nested work is still unwinding.
     /// </summary>
-    internal void SetTaskOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome? outcome, string? statusReason = null)
+    internal void SetTaskOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome? outcome)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.SetTaskOutcome")
             .SetTag("task.id", taskId.Value)
             .SetTag("task.outcome", outcome?.ToString() ?? string.Empty);
-        WithGraphWriteLock(() => SetTaskOutcomeCore(taskId, outcome, statusReason));
+        WithGraphWriteLock(() => SetTaskOutcomeCore(taskId, outcome));
     }
 
     /// <summary>
@@ -1571,36 +1557,36 @@ public sealed class ExecutionSession
     /// container state. Running work can keep unwinding, while untouched queued work should use the skipped completion
     /// path instead.
     /// </summary>
-    internal void InterruptTask(ExecutionTaskId taskId, string? statusReason = null)
+    internal void InterruptTask(ExecutionTaskId taskId)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.InterruptTask")
             .SetTag("task.id", taskId.Value);
-        WithGraphWriteLock(() => InterruptTaskCore(taskId, statusReason));
+        WithGraphWriteLock(() => InterruptTaskCore(taskId));
     }
 
     /// <summary>
     /// Completes one task lifecycle while preserving any previously assigned doomed outcome, then refreshes ancestor
     /// container state. The task resolves its own final outcome while the session handles cross-branch ancestor refresh.
     /// </summary>
-    internal void CompleteTaskLifecycle(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
+    internal void CompleteTaskLifecycle(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.CompleteTaskLifecycle")
             .SetTag("task.id", taskId.Value)
             .SetTag("task.outcome", successOutcome.ToString());
-        WithGraphWriteLock(() => CompleteTaskLifecycleCore(taskId, successOutcome, statusReason));
+        WithGraphWriteLock(() => CompleteTaskLifecycleCore(taskId, successOutcome));
     }
 
     /// <summary>
     /// Applies one lifecycle/result update as a single externally visible state change so observers never see torn state
     /// between status and semantic result fields.
     /// </summary>
-    private void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    private void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.SetTaskStatus")
             .SetTag("task.id", taskId.Value)
             .SetTag("task.state", state.ToString())
             .SetTag("task.outcome", outcome?.ToString() ?? string.Empty);
-        WithGraphWriteLock(() => SetTaskStatusCore(taskId, state, outcome, statusReason));
+        WithGraphWriteLock(() => SetTaskStatusCore(taskId, state, outcome));
     }
 
     /// <summary>
@@ -1608,12 +1594,12 @@ public sealed class ExecutionSession
     /// refreshing ancestor container state. The task owns per-subtree work while this session method handles the
     /// cross-branch ancestor refresh that follows.
     /// </summary>
-    internal void CompleteTaskWithOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome outcome, string? statusReason = null)
+    internal void CompleteTaskWithOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome outcome)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.CompleteTaskWithOutcome")
             .SetTag("task.id", taskId.Value)
             .SetTag("task.outcome", outcome.ToString());
-        WithGraphWriteLock(() => CompleteTaskWithOutcomeCore(taskId, outcome, statusReason));
+        WithGraphWriteLock(() => CompleteTaskWithOutcomeCore(taskId, outcome));
     }
 
     private TimeSpan GetSessionDuration(DateTimeOffset? now)
@@ -1688,8 +1674,8 @@ public sealed class ExecutionSession
             }
 
             bool rollupChanged = currentParent.RecomputeSubtreeSchedulingRollup();
-            (ExecutionTaskState parentState, ExecutionTaskOutcome? parentOutcome, string? parentReason) = currentParent.ComputeRolledUpStateFromChildren();
-            bool statusChanged = ApplyTaskStatusCore(currentParent, parentState, parentOutcome, parentReason, refreshTimingMetrics: false);
+            (ExecutionTaskState parentState, ExecutionTaskOutcome? parentOutcome) = currentParent.ComputeRolledUpStateFromChildren();
+            bool statusChanged = ApplyTaskStatusCore(currentParent, parentState, parentOutcome, refreshTimingMetrics: false);
             bool postStatusRollupChanged = statusChanged && currentParent.RecomputeSubtreeSchedulingRollup();
             if (statusChanged)
             {

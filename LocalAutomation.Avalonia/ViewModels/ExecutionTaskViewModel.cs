@@ -78,14 +78,6 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
     public ExecutionTaskDisplayStatus DisplayStatus => ExecutionTaskStatusDisplay.GetDisplayStatus(State, Outcome);
 
     /// <summary>
-    /// Gets the explanatory text associated with the current lifecycle/result state when one exists.
-    /// </summary>
-    public string StatusReason
-    {
-        get => Task.StatusReason;
-    }
-
-    /// <summary>
     /// Gets the stored runtime metrics currently displayed for this task or task subtree.
     /// </summary>
     public RuntimeExecutionTaskMetrics Metrics => _metrics;
@@ -144,7 +136,6 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged(nameof(Outcome));
             RaisePropertyChanged(nameof(Status));
             RaisePropertyChanged(nameof(DisplayStatus));
-            RaisePropertyChanged(nameof(StatusReason));
             return;
         }
 
@@ -161,12 +152,6 @@ public sealed class ExecutionTaskViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged(nameof(Outcome));
             RaisePropertyChanged(nameof(Status));
             RaisePropertyChanged(nameof(DisplayStatus));
-            return;
-        }
-
-        if (string.Equals(propertyName, nameof(RuntimeExecutionTask.StatusReason), StringComparison.Ordinal))
-        {
-            RaisePropertyChanged(nameof(StatusReason));
             return;
         }
     }

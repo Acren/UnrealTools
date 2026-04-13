@@ -22,7 +22,6 @@ public sealed class ExecutionPlanScheduler
         InterruptedByTerminalOutcome
     }
 
-    private const string UnsatisfiedDependenciesReason = "Scheduler could not satisfy the remaining dependencies.";
     private readonly ILogger _logger;
     private readonly IExecutionTaskStateSink? _taskStateSink;
     private readonly ExecutionSession _session;
@@ -70,7 +69,7 @@ public sealed class ExecutionPlanScheduler
                         ApplyStopReason(SchedulerStopReason.UserCancelled);
                     }
 
-                    CancelOutstandingTasks(_stopReason, runningTaskReason: ResolveStopReasonMessage(_stopReason));
+                    CancelOutstandingTasks(_stopReason);
                     break;
                 }
 
@@ -245,10 +244,9 @@ public sealed class ExecutionPlanScheduler
         activity.SetTag("result.outcome", result.Outcome.ToString())
             .SetTag("result.success", result.Success);
         _logger.LogDebug(
-            "Finished inserted-task wait for child operation '{ChildOperation}'. Outcome='{Outcome}', failureReason='{FailureReason}'.",
+            "Finished inserted-task wait for child operation '{ChildOperation}'. Outcome='{Outcome}'.",
             operation.OperationName,
-            result.Outcome,
-            result.FailureReason ?? string.Empty);
+            result.Outcome);
         return result;
     }
 
@@ -264,13 +262,13 @@ public sealed class ExecutionPlanScheduler
     /// Signals the scheduler when task-state changes may unblock downstream work without requiring a task completion to be
     /// the only wake-up source.
     /// </summary>
-    private void HandleSessionTaskChanged(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    private void HandleSessionTaskChanged(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
         using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.HandleSessionTaskChanged")
             .SetTag("task.id", taskId.Value)
             .SetTag("task.state", state.ToString())
             .SetTag("task.outcome", outcome?.ToString() ?? string.Empty);
-        NormalizeRunningTaskTerminalOutcome(taskId, state, outcome, statusReason);
+        NormalizeRunningTaskTerminalOutcome(taskId, state, outcome);
 
         /* Running tasks only stop promptly when their shared execution token is cancelled. Session state alone is not
            enough because process-backed work observes cancellation through the task context token, so any externally
@@ -284,7 +282,7 @@ public sealed class ExecutionPlanScheduler
 
             /* Forced terminal states should also immediately close out untouched queued work so the scheduler does not
                attempt to keep scheduling siblings while already-running tasks are unwinding. */
-            CancelOutstandingTasks(_stopReason, runningTaskReason: statusReason, preserveRunningTerminalOutcomes: true);
+            CancelOutstandingTasks(_stopReason, preserveRunningTerminalOutcomes: true);
         }
 
         SignalWorkAvailable();
@@ -577,14 +575,12 @@ public sealed class ExecutionPlanScheduler
         if (result.Outcome == ExecutionTaskOutcome.Interrupted)
         {
             ApplyStopReason(SchedulerStopReason.InterruptedByTerminalOutcome);
-            _session.InterruptTask(taskId, result.FailureReason);
+            _session.InterruptTask(taskId);
             return;
         }
 
         _encounteredFailure = true;
-        _session.FailScopeFromTask(taskId, string.IsNullOrWhiteSpace(result.FailureReason)
-            ? "The task returned failure."
-            : result.FailureReason);
+        _session.FailScopeFromTask(taskId);
     }
 
     /// <summary>
@@ -596,7 +592,7 @@ public sealed class ExecutionPlanScheduler
         SchedulerStopReason stopReason = ResolveStopReasonOrDefault(SchedulerStopReason.UserCancelled);
         ApplyStopReason(stopReason);
         CompleteTaskWithStopOutcome(taskId, stopReason);
-        CancelOutstandingTasks(stopReason, runningTaskReason: ResolveStopReasonMessage(stopReason));
+        CancelOutstandingTasks(stopReason);
     }
 
     /// <summary>
@@ -613,7 +609,7 @@ public sealed class ExecutionPlanScheduler
         taskLogger.LogError(ex, "Execution task '{TaskTitle}' failed.", failedTask.Title);
 
         _encounteredFailure = true;
-        _session.FailScopeFromTask(taskId, GetFailureReason(ex));
+        _session.FailScopeFromTask(taskId);
     }
 
     /// <summary>
@@ -630,26 +626,21 @@ public sealed class ExecutionPlanScheduler
             }
 
             _logger.LogWarning(
-                "Marking task '{TaskPath}' ({TaskId}) unsatisfied with reason '{Reason}'.",
+                "Marking task '{TaskPath}' ({TaskId}) unsatisfied.",
                 _session.GetTaskDisplayPath(taskId),
-                taskId,
-                UnsatisfiedDependenciesReason);
-            _session.CompleteTaskWithOutcome(taskId, ExecutionTaskOutcome.Skipped, UnsatisfiedDependenciesReason);
+                taskId);
+            _session.CompleteTaskWithOutcome(taskId, ExecutionTaskOutcome.Skipped);
         }
     }
 
     /// <summary>
     /// Marks all remaining runnable tasks after a global cancellation request.
     /// </summary>
-    private void CancelOutstandingTasks(SchedulerStopReason stopReason, string? runningTaskReason = null, bool preserveRunningTerminalOutcomes = false)
+    private void CancelOutstandingTasks(SchedulerStopReason stopReason, bool preserveRunningTerminalOutcomes = false)
     {
         _session.CancelOutstandingSchedulableTasks(
             taskId => _session.GetTask(taskId).HasActiveExecution,
             userCancelled: stopReason == SchedulerStopReason.UserCancelled,
-            runningTaskReason: runningTaskReason ?? ResolveStopReasonMessage(stopReason),
-            skippedTaskReason: stopReason == SchedulerStopReason.UserCancelled
-                ? "Skipped because execution was cancelled."
-                : "Skipped because execution was interrupted.",
             preserveRunningTerminalOutcomes: preserveRunningTerminalOutcomes);
     }
 
@@ -702,8 +693,7 @@ public sealed class ExecutionPlanScheduler
     {
         _session.CompleteTaskLifecycle(
             taskId,
-            stopReason == SchedulerStopReason.UserCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted,
-            ResolveStopReasonMessage(stopReason));
+            stopReason == SchedulerStopReason.UserCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted);
     }
 
     /// <summary>
@@ -714,16 +704,6 @@ public sealed class ExecutionPlanScheduler
         return outcome == ExecutionTaskOutcome.Cancelled
             ? SchedulerStopReason.UserCancelled
             : SchedulerStopReason.InterruptedByTerminalOutcome;
-    }
-
-    /// <summary>
-    /// Returns one user-facing reason string for the current scheduler-wide stop reason.
-    /// </summary>
-    private static string ResolveStopReasonMessage(SchedulerStopReason stopReason)
-    {
-        return stopReason == SchedulerStopReason.UserCancelled
-            ? "Cancelled."
-            : "Interrupted.";
     }
 
     /// <summary>
@@ -746,7 +726,7 @@ public sealed class ExecutionPlanScheduler
     /// the task completed yet. This preserves the intended terminal outcome while task execution still unwinds under
     /// cancellation.
     /// </summary>
-    private void NormalizeRunningTaskTerminalOutcome(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    private void NormalizeRunningTaskTerminalOutcome(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
         if (outcome is not (ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Failed))
         {
@@ -759,7 +739,7 @@ public sealed class ExecutionPlanScheduler
             return;
         }
 
-        _session.SetTaskOutcome(taskId, outcome, statusReason);
+        _session.SetTaskOutcome(taskId, outcome);
     }
 
     /// <summary>
@@ -847,19 +827,6 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Returns the first non-empty status reason, optionally constrained to one semantic outcome.
-    /// </summary>
-    private static string? GetFirstStatusReason(IEnumerable<ExecutionTask> tasks, params ExecutionTaskOutcome[] outcomes)
-    {
-        IEnumerable<ExecutionTask> filteredTasks = outcomes.Length == 0
-            ? tasks
-            : tasks.Where(task => task.Outcome != null && outcomes.Contains(task.Outcome.Value));
-        return filteredTasks
-            .Select(task => task.StatusReason)
-            .FirstOrDefault(reason => !string.IsNullOrWhiteSpace(reason));
-    }
-
-    /// <summary>
     /// Builds the child-operation result from the terminal states reached by the inserted child tasks.
     /// </summary>
     private OperationResult BuildChildOperationResult(Operation operation, IReadOnlyCollection<ExecutionTaskId> childTaskIds)
@@ -895,26 +862,22 @@ public sealed class ExecutionPlanScheduler
            active, so failure/cancellation detection must read Result instead of Status. */
         if (encounteredFailure || tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Failed) || (treatSkippedAsFailure && tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Skipped)))
         {
-            return OperationResult.Failed(failureReason: GetFirstStatusReason(
-                tasks,
-                treatSkippedAsFailure
-                    ? new[] { ExecutionTaskOutcome.Failed, ExecutionTaskOutcome.Skipped }
-                    : new[] { ExecutionTaskOutcome.Failed }));
+            return OperationResult.Failed();
         }
 
         if (tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Interrupted))
         {
-            return OperationResult.Interrupted(failureReason: GetFirstStatusReason(tasks, ExecutionTaskOutcome.Interrupted));
+            return OperationResult.Interrupted();
         }
 
         if (encounteredCancellation || tasks.Any(task => task.Outcome == ExecutionTaskOutcome.Cancelled))
         {
-            return OperationResult.Cancelled(failureReason: GetFirstStatusReason(tasks, ExecutionTaskOutcome.Cancelled));
+            return OperationResult.Cancelled();
         }
 
         if (failOnWarning && warnings != null && warnings.Count > 0)
         {
-            return OperationResult.Failed(failureReason: "Operation fails on warnings");
+            return OperationResult.Failed();
         }
 
         return OperationResult.Succeeded();
@@ -1002,25 +965,14 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Returns the most useful failure reason for task status by preferring the root exception message when one exists.
-    /// </summary>
-    private static string GetFailureReason(Exception exception)
-    {
-        Exception rootException = exception.GetBaseException();
-        return string.IsNullOrWhiteSpace(rootException.Message)
-            ? exception.Message
-            : rootException.Message;
-    }
-
-    /// <summary>
     /// Records one task-status transition in the session and mirrors it through the active task-state sink.
     /// </summary>
-    private void SetState(ExecutionTaskId taskId, ExecutionTaskState state, string? reason = null)
+    private void SetState(ExecutionTaskId taskId, ExecutionTaskState state)
     {
-        _session.SetTaskState(taskId, state, reason);
-        _taskStateSink?.SetTaskState(taskId, state, reason);
+        _session.SetTaskState(taskId, state);
+        _taskStateSink?.SetTaskState(taskId, state);
         string taskPath = _session.GetTaskDisplayPath(taskId);
-        _logger.LogDebug("Execution task '{TaskPath}' ({TaskId}) -> {State}. {Reason}", taskPath, taskId, state, reason ?? string.Empty);
+        _logger.LogDebug("Execution task '{TaskPath}' ({TaskId}) -> {State}.", taskPath, taskId, state);
     }
 
     /// <summary>

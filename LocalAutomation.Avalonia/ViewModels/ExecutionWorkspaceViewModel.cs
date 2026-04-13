@@ -313,9 +313,9 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         };
         _attachedMetricsLogHandlers[runtimeTab] = metricsLogHandler;
         session.LogStream.EntryAdded += metricsLogHandler;
-        session.TaskStateChanged += (taskId, state, outcome, statusReason) =>
+        session.TaskStateChanged += (taskId, state, outcome) =>
         {
-            EnqueuePendingTaskStateChange(runtimeTab, taskId, state, outcome, statusReason);
+            EnqueuePendingTaskStateChange(runtimeTab, taskId, state, outcome);
         };
 
         /* Child-task insertion can arrive in bursts while the runtime is expanding nested work. Queue at most one
@@ -532,7 +532,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
     /// Buffers task-state changes per runtime tab so one burst of scheduler transitions turns into one dispatcher flush
     /// instead of hundreds of tiny UI callbacks that fight with graph rendering for the UI thread.
     /// </summary>
-    private void EnqueuePendingTaskStateChange(RuntimeWorkspaceTabViewModel runtimeTab, RuntimeExecutionTaskId taskId, RuntimeExecutionTaskState state, RuntimeExecutionTaskOutcome? outcome, string? statusReason)
+    private void EnqueuePendingTaskStateChange(RuntimeWorkspaceTabViewModel runtimeTab, RuntimeExecutionTaskId taskId, RuntimeExecutionTaskState state, RuntimeExecutionTaskOutcome? outcome)
     {
         bool shouldPostFlush;
         DateTime postedAtUtc = DateTime.UtcNow;
@@ -553,13 +553,13 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
             return;
         }
 
-        Dispatcher.UIThread.Post(() => FlushPendingTaskStateChanges(runtimeTab, postedAtUtc, state, outcome, statusReason));
+        Dispatcher.UIThread.Post(() => FlushPendingTaskStateChanges(runtimeTab, postedAtUtc, state, outcome));
     }
 
     /// <summary>
     /// Applies one queued batch of task-state changes for a runtime tab on the UI thread.
     /// </summary>
-    private void FlushPendingTaskStateChanges(RuntimeWorkspaceTabViewModel runtimeTab, DateTime postedAtUtc, RuntimeExecutionTaskState latestState, RuntimeExecutionTaskOutcome? latestOutcome, string? latestStatusReason)
+    private void FlushPendingTaskStateChanges(RuntimeWorkspaceTabViewModel runtimeTab, DateTime postedAtUtc, RuntimeExecutionTaskState latestState, RuntimeExecutionTaskOutcome? latestOutcome)
     {
         List<RuntimeExecutionTaskId> pendingTaskIds;
         lock (_pendingTaskStateSyncRoot)
@@ -586,8 +586,7 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 .SetTag("task.batch.count", pendingTaskIds.Count.ToString())
                 .SetTag("task.id", pendingTaskIds[^1].Value)
                 .SetTag("task.state", latestState.ToString())
-                .SetTag("task.outcome", latestOutcome?.ToString() ?? string.Empty)
-                .SetTag("task.status_reason", latestStatusReason ?? string.Empty));
+                .SetTag("task.outcome", latestOutcome?.ToString() ?? string.Empty));
 
         /* Task state alone does not change which log stream is selected. Selected-log scope still rebuilds on true
            selection, tab, and graph-structure changes, while this batch flush only refreshes the rolled-up metrics that

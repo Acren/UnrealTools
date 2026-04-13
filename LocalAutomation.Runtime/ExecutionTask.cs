@@ -16,7 +16,6 @@ internal enum TaskStartState
     Ready,
     AwaitingDependency = 1,
     WaitingForDependencies = AwaitingDependency,
-    WaitingForParent,
     AwaitingLock,
     WaitingForExecutionLock = AwaitingLock,
     Running,
@@ -82,7 +81,6 @@ public class ExecutionTask : INotifyPropertyChanged
        Sessions coordinate updates under the graph lock, but the per-task data itself lives here on the task. */
     private ExecutionTask? _parent;
     private ExecutionTaskState _state;
-    private string _statusReason;
     private DateTimeOffset? _startedAt;
     private DateTimeOffset? _finishedAt;
     private ExecutionTaskOutcome? _outcome;
@@ -91,8 +89,8 @@ public class ExecutionTask : INotifyPropertyChanged
     private int _subtreeActiveTimingCount;
     private DateTimeOffset? _subtreeStartedAt;
     private DateTimeOffset? _subtreeFinishedAt;
-    /* Cached ancestor-independent scheduler frontier for this subtree. WaitingForParent is never stored here because it
-       depends on scopes above this task and is applied only when callers ask for the effective scheduler-facing state. */
+    /* Cached ancestor-independent scheduler frontier for this subtree. Ancestor gating stays outside this cache so the
+       scheduler can update local subtree readiness once and apply scope-open checks only where it actually matters. */
     private TaskStartState _subtreeStartState;
     private readonly object _activeExecutionSyncRoot = new();
     private Task<OperationResult>? _activeExecutionTask;
@@ -120,7 +118,6 @@ public class ExecutionTask : INotifyPropertyChanged
         /* Runtime lifecycle and semantic outcome are tracked separately. Disabled tasks start in a completed lifecycle
            state because no scheduler work remains for them, while their semantic outcome still reports Disabled. */
         _state = spec.Enabled ? ExecutionTaskState.Planned : ExecutionTaskState.Completed;
-        _statusReason = spec.Enabled ? string.Empty : spec.DisabledReason;
         _outcome = spec.Enabled ? null : ExecutionTaskOutcome.Disabled;
         ResetSubtreeMetrics();
         ResetSubtreeSchedulingRollup();
@@ -134,7 +131,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Raised whenever this task's own runtime status changes. The task owns that state, so task-local
     /// observers and waiters subscribe here instead of routing through a session-level filter.
     /// </summary>
-    public event Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?, string>? StateChanged;
+    public event Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?>? StateChanged;
 
     /// <summary>
     /// Exposes the authored specification so builders and clone operations can read and override individual properties
@@ -207,12 +204,6 @@ public class ExecutionTask : INotifyPropertyChanged
     {
         get => _state;
         internal set => SetProperty(ref _state, value);
-    }
-
-    public string StatusReason
-    {
-        get => _statusReason;
-        internal set => SetProperty(ref _statusReason, value ?? string.Empty);
     }
 
     public DateTimeOffset? StartedAt
@@ -389,8 +380,8 @@ public class ExecutionTask : INotifyPropertyChanged
 
     /// <summary>
     /// Recomputes the cached scheduler rollup for this task from one local own-work state plus the already-cached subtree
-    /// start states on its direct children. The cached start state never stores WaitingForParent because that depends on
-    /// ancestors above this task rather than on the subtree rooted at this task.
+    /// start states on its direct children. Ancestor gating is intentionally excluded because schedulability through a
+    /// closed parent scope is derived when callers evaluate the current live ancestor chain.
     /// </summary>
     internal bool RecomputeSubtreeSchedulingRollup()
     {
@@ -418,7 +409,7 @@ public class ExecutionTask : INotifyPropertyChanged
 
         TaskCompletionSource<bool> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationTokenRegistration cancellationRegistration = default;
-        Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?, string>? handler = null;
+        Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?>? handler = null;
 
         void Cleanup()
         {
@@ -445,7 +436,7 @@ public class ExecutionTask : INotifyPropertyChanged
             completionSource.TrySetException(CreateUnreachableStateException(target));
         }
 
-        handler = (task, state, _, _) =>
+        handler = (task, state, _) =>
         {
             if (!ReferenceEquals(task, this))
             {
@@ -525,12 +516,12 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns the current scheduler-facing start state for this task subtree by combining the cached local subtree
-    /// frontier with the current ancestor gating above this task.
+    /// Returns the current cached scheduler frontier for this task subtree while intentionally ignoring ancestor gating
+    /// above this task.
     /// </summary>
     internal TaskStartState GetTaskStartState()
     {
-        return GetEffectiveSubtreeStartState(_subtreeStartState);
+        return _subtreeStartState;
     }
 
     /// <summary>
@@ -545,10 +536,15 @@ public class ExecutionTask : INotifyPropertyChanged
             return Array.Empty<ExecutionTask>();
         }
 
-        List<ExecutionTask> readyChildBranches = _children
-            .Where(child => child.GetTaskStartState() == TaskStartState.Ready)
-            .SelectMany(child => child.GetSchedulerReadyBranchRoots())
-            .ToList();
+        /* Descendant work is only scheduler-ready when this scope itself is open for descendant execution. The cached
+           child frontier stays ancestor-independent, so this method applies the current scope gate directly instead of
+           synthesizing a separate effective start-state enum value. */
+        List<ExecutionTask> readyChildBranches = IsScopeOpenForDescendantWork()
+            ? _children
+                .Where(child => child.GetTaskStartState() == TaskStartState.Ready)
+                .SelectMany(child => child.GetSchedulerReadyBranchRoots())
+                .ToList()
+            : new List<ExecutionTask>();
 
         if (CanStartOwnWork())
         {
@@ -573,11 +569,16 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal ExecutionTask? TryGetNextStartableTask()
     {
-        foreach (ExecutionTask child in _children)
+        /* Child-first traversal should only walk into descendants when this scope is currently open for descendant
+           execution. Locally ready descendants beneath a closed scope stay pending until the ancestor gate opens. */
+        if (IsScopeOpenForDescendantWork())
         {
-            if (child.GetTaskStartState() == TaskStartState.Ready)
+            foreach (ExecutionTask child in _children)
             {
-                return child.TryGetNextStartableTask();
+                if (child.GetTaskStartState() == TaskStartState.Ready)
+                {
+                    return child.TryGetNextStartableTask();
+                }
             }
         }
 
@@ -661,7 +662,6 @@ public class ExecutionTask : INotifyPropertyChanged
            already finished. */
         ExecutionTaskState initialState = Enabled ? ExecutionTaskState.Queued : ExecutionTaskState.Completed;
         State = initialState;
-        StatusReason = Enabled ? string.Empty : DisabledReason;
         Outcome = Enabled ? null : ExecutionTaskOutcome.Disabled;
         StartedAt = null;
         FinishedAt = null;
@@ -835,16 +835,14 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Applies one complete runtime status update and raises property notifications only after the full state is
     /// internally consistent. This prevents observers from seeing torn combinations such as Running plus Result=Completed.
     /// </summary>
-    internal void ApplyRuntimeState(ExecutionTaskState state, string statusReason, ExecutionTaskOutcome? outcome, DateTimeOffset? startedAt, DateTimeOffset? finishedAt)
+    internal void ApplyRuntimeState(ExecutionTaskState state, ExecutionTaskOutcome? outcome, DateTimeOffset? startedAt, DateTimeOffset? finishedAt)
     {
         bool stateChanged = !Equals(_state, state);
-        bool statusReasonChanged = !Equals(_statusReason, statusReason);
         bool outcomeChanged = !Equals(_outcome, outcome);
         bool startedAtChanged = !Equals(_startedAt, startedAt);
         bool finishedAtChanged = !Equals(_finishedAt, finishedAt);
 
         _state = state;
-        _statusReason = statusReason;
         _outcome = outcome;
         _startedAt = startedAt;
         _finishedAt = finishedAt;
@@ -853,7 +851,7 @@ public class ExecutionTask : INotifyPropertyChanged
            rollup that feeds parent rollup decisions, before the task-level state-changed event fires. */
         RecomputeSubtreeSchedulingRollup();
 
-        Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?, string>? taskStateChanged;
+        Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?>? taskStateChanged;
         lock (_stateChangeSyncRoot)
         {
             taskStateChanged = StateChanged;
@@ -862,11 +860,6 @@ public class ExecutionTask : INotifyPropertyChanged
         if (stateChanged)
         {
             RaisePropertyChanged(nameof(State));
-        }
-
-        if (statusReasonChanged)
-        {
-            RaisePropertyChanged(nameof(StatusReason));
         }
 
         if (outcomeChanged)
@@ -884,7 +877,7 @@ public class ExecutionTask : INotifyPropertyChanged
             RaisePropertyChanged(nameof(FinishedAt));
         }
 
-        taskStateChanged?.Invoke(this, state, outcome, statusReason);
+        taskStateChanged?.Invoke(this, state, outcome);
     }
 
     protected void RaisePropertyChanged([CallerMemberName] string? propertyName = null)
@@ -959,24 +952,12 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal bool CanStartOwnWork()
     {
-        return GetEffectiveOwnWorkStartState() == TaskStartState.Ready;
-    }
-
-    /// <summary>
-    /// Returns the scheduler-facing own-work state for this task's executable body after applying ancestor gating. This
-    /// only affects direct work on this task itself and does not fold in any child contribution.
-    /// </summary>
-    private TaskStartState GetEffectiveOwnWorkStartState()
-    {
-        TaskStartState localStartState = GetOwnWorkStartStateIgnoringAncestors();
-        return localStartState != TaskStartState.Ready
-            ? localStartState
-            : AreAncestorsOpen() ? TaskStartState.Ready : TaskStartState.WaitingForParent;
+        return GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.Ready && AreAncestorsOpen();
     }
 
     /// <summary>
     /// Returns the current local own-work scheduler state for this task body while intentionally ignoring ancestor
-    /// gating. WaitingForParent is therefore never produced here.
+    /// gating above this task.
     /// </summary>
     private TaskStartState GetOwnWorkStartStateIgnoringAncestors()
     {
@@ -1040,25 +1021,6 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Maps one cached ancestor-independent subtree start state into the effective scheduler-facing start state for this
-    /// task by applying the current ancestor gating only when the subtree frontier is locally ready.
-    /// </summary>
-    private TaskStartState GetEffectiveSubtreeStartState(TaskStartState subtreeStartState)
-    {
-        if (subtreeStartState != TaskStartState.Ready)
-        {
-            return subtreeStartState;
-        }
-
-        if (GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.Ready)
-        {
-            return GetEffectiveOwnWorkStartState();
-        }
-
-        return IsScopeOpenForDescendantWork() ? TaskStartState.Ready : TaskStartState.WaitingForParent;
-    }
-
-    /// <summary>
     /// Returns the fixed priority for one cached ancestor-independent subtree start state.
     /// </summary>
     private static int GetSubtreeStartStatePriority(TaskStartState state)
@@ -1099,40 +1061,14 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns the current scheduler-facing pending reason for this task, or null when the task is ready to start.
+    /// Computes the rolled-up lifecycle state and semantic outcome for this task from its current local task facts plus
+    /// the already-updated rolled-up state and cached scheduler summaries on its direct children. This is the single
+    /// state-projection path for both direct task refresh and ancestor-container rollup.
     /// </summary>
-    internal string? GetSchedulingPendingReason()
-    {
-        if (State is not (ExecutionTaskState.Queued or ExecutionTaskState.AwaitingDependency or ExecutionTaskState.AwaitingLock))
-        {
-            return null;
-        }
-
-        TaskStartState startState = GetTaskStartState();
-        if (startState == TaskStartState.AwaitingLock)
-        {
-            return "Waiting for execution lock.";
-        }
-
-        if (startState == TaskStartState.AwaitingDependency)
-        {
-            return "Waiting for dependencies.";
-        }
-
-        return startState == TaskStartState.WaitingForParent
-            ? "Waiting for parent scope."
-            : null;
-    }
-
-    /// <summary>
-    /// Computes the rolled-up lifecycle state, semantic outcome, and user-facing reason for this task from its current
-    /// local task facts plus the already-updated rolled-up state and cached scheduler summaries on its direct
-    /// children. This is the single state-projection path for both direct task refresh and ancestor-container rollup.
-    /// </summary>
-    internal (ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? reason) ComputeRolledUpStateFromChildren()
+    internal (ExecutionTaskState state, ExecutionTaskOutcome? outcome) ComputeRolledUpStateFromChildren()
     {
         bool ownTaskIsWaitingForExecutionLock = IsOwnWorkWaitingForExecutionLock();
-        TaskStartState effectiveStartState = GetTaskStartState();
+        TaskStartState subtreeStartState = GetTaskStartState();
         /* Fold the direct-child contribution into one contiguous block here so parent rollup logic can read all child
            facts in one place without needing a separate helper type that merely transports these locals elsewhere. */
         bool childHasStartedWork = false;
@@ -1167,8 +1103,11 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         bool subtreeHasStarted = HasStarted || childHasStartedWork;
-        bool ownTaskIsRunning = State == ExecutionTaskState.Running && effectiveStartState == TaskStartState.Running;
-        bool ownTaskIsQueued = State == ExecutionTaskState.Queued && effectiveStartState is TaskStartState.Ready or TaskStartState.AwaitingDependency or TaskStartState.WaitingForParent;
+        /* The visible scheduler frontier for this subtree comes from the cached subtree rollup, not only from the task's
+           own local body. That preserves parent lock-wait and dependency-wait rollups when descendant work dominates the
+           next reachable frontier while the task itself is still running or queued. */
+        bool ownTaskIsRunning = State == ExecutionTaskState.Running && subtreeStartState == TaskStartState.Running;
+        bool ownTaskIsQueued = State == ExecutionTaskState.Queued && subtreeStartState is TaskStartState.Ready or TaskStartState.AwaitingDependency;
         bool subtreeIsPureExecutionLockWait = subtreeHasStarted
             && !ownTaskIsRunning
             && hasWaitingForExecutionLockChild
@@ -1230,31 +1169,12 @@ public class ExecutionTask : INotifyPropertyChanged
                                 : skippedChildTask != null
                                     ? ExecutionTaskOutcome.Skipped
                                     : ExecutionTaskOutcome.Completed;
-        string? parentReason = failedChildTask?.StatusReason;
-        parentReason ??= cancelledChildTask?.StatusReason;
-        parentReason ??= interruptedChildTask?.StatusReason;
-        parentReason ??= skippedChildTask?.StatusReason;
-        if (allChildrenDisabled)
-        {
-            parentReason ??= "All child tasks are disabled.";
-        }
-
-        if (parentOutcome == null && parentState == ExecutionTaskState.AwaitingLock)
-        {
-            parentReason = "Waiting for execution lock.";
-        }
-
-        if (parentOutcome == null && parentState == ExecutionTaskState.AwaitingDependency)
-        {
-            parentReason = "Waiting for dependencies.";
-        }
-
         if (parentOutcome == ExecutionTaskOutcome.Completed && hasNonTerminalChild)
         {
             throw new InvalidOperationException($"Task '{Id}' cannot roll up to completed while child work is still non-terminal.");
         }
 
-        return (parentState, parentOutcome, parentReason);
+        return (parentState, parentOutcome);
     }
 
     /// <summary>
@@ -1584,54 +1504,31 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Builds the human-readable status reason that untouched descendants inherit when their parent completes with a
-    /// non-success outcome.
-    /// </summary>
-    internal string? BuildInheritedDescendantReason(ExecutionTaskOutcome outcome, string? statusReason)
-    {
-        if (!string.IsNullOrWhiteSpace(statusReason))
-        {
-            return outcome == ExecutionTaskOutcome.Skipped
-                ? statusReason
-                : $"Skipped because parent task '{Id}' {outcome.ToString().ToLowerInvariant()}: {statusReason}";
-        }
-
-        return outcome switch
-        {
-            ExecutionTaskOutcome.Skipped => $"Skipped because parent task '{Id}' was skipped.",
-            ExecutionTaskOutcome.Cancelled => $"Skipped because parent task '{Id}' was cancelled.",
-            ExecutionTaskOutcome.Interrupted => $"Skipped because parent task '{Id}' was interrupted.",
-            ExecutionTaskOutcome.Failed => $"Skipped because parent task '{Id}' failed.",
-            _ => null
-        };
-    }
-
-    /// <summary>
     /// Skips every unfinished task in this subtree without disturbing tasks that already reached terminal states. Each
     /// skipped task validates its terminal assignment, transitions to completed, propagates to its own descendants, and
     /// raises the task-owned state-changed event so notifications come from the authoritative event surface.
     /// </summary>
-    internal void SkipUnfinishedSubtree(string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
+    internal void SkipUnfinishedSubtree(ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
     {
         if (State is ExecutionTaskState.Planned or ExecutionTaskState.Queued)
         {
-            CompleteWithOutcome(skippedOutcome, reason);
+            CompleteWithOutcome(skippedOutcome);
         }
 
         foreach (ExecutionTask child in _children)
         {
-            child.SkipUnfinishedSubtree(reason, skippedOutcome);
+            child.SkipUnfinishedSubtree(skippedOutcome);
         }
     }
 
     /// <summary>
     /// Skips every unfinished descendant beneath this task by walking each direct child subtree.
     /// </summary>
-    internal void SkipUnfinishedDescendants(string? reason, ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
+    internal void SkipUnfinishedDescendants(ExecutionTaskOutcome skippedOutcome = ExecutionTaskOutcome.Skipped)
     {
         foreach (ExecutionTask child in _children)
         {
-            child.SkipUnfinishedSubtree(reason, skippedOutcome);
+            child.SkipUnfinishedSubtree(skippedOutcome);
         }
     }
 
@@ -1639,7 +1536,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Marks one started subtree as interrupted after sibling failure. Started nodes keep their current lifecycle so any
     /// active descendant work can finish unwinding, while untouched nodes become skipped because they never ran.
     /// </summary>
-    internal void MarkSubtreeInterrupted(string? reason)
+    internal void MarkSubtreeInterrupted()
     {
         if (State != ExecutionTaskState.Completed)
         {
@@ -1647,17 +1544,17 @@ public class ExecutionTask : INotifyPropertyChanged
             {
                 /* Started tasks receive an interrupted outcome without forcing lifecycle completion so any active
                    descendant work can finish unwinding naturally. */
-                TransitionOutcome(ExecutionTaskOutcome.Interrupted, reason);
+                TransitionOutcome(ExecutionTaskOutcome.Interrupted);
             }
             else
             {
-                CompleteWithOutcome(ExecutionTaskOutcome.Skipped, reason);
+                CompleteWithOutcome(ExecutionTaskOutcome.Skipped);
             }
         }
 
         foreach (ExecutionTask child in _children)
         {
-            child.MarkSubtreeInterrupted(reason);
+            child.MarkSubtreeInterrupted();
         }
     }
 
@@ -1667,24 +1564,20 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal void InterruptSiblingSubtree(ExecutionTaskId failedSiblingRootId)
     {
-        string reason = HasStartedSubtree
-            ? $"Interrupted because sibling task '{failedSiblingRootId}' failed."
-            : $"Skipped because sibling task '{failedSiblingRootId}' failed.";
-
         if (HasStartedSubtree)
         {
-            MarkSubtreeInterrupted(reason);
+            MarkSubtreeInterrupted();
             return;
         }
 
-        SkipUnfinishedSubtree(reason, ExecutionTaskOutcome.Skipped);
+        SkipUnfinishedSubtree(ExecutionTaskOutcome.Skipped);
     }
 
     /// <summary>
     /// Propagates a terminal outcome to untouched descendants so tasks that never started inherit a completed lifecycle
     /// plus the semantic outcome that explains why they will never run.
     /// </summary>
-    internal void PropagateTerminalOutcomeToUntouchedDescendants(ExecutionTaskOutcome outcome, string? statusReason)
+    internal void PropagateTerminalOutcomeToUntouchedDescendants(ExecutionTaskOutcome outcome)
     {
         /* Descendants that never started inherit a completed lifecycle plus the semantic outcome that explains why they
            will never run. */
@@ -1702,19 +1595,18 @@ public class ExecutionTask : INotifyPropertyChanged
             return;
         }
 
-        string? descendantReason = BuildInheritedDescendantReason(outcome, statusReason);
-        SkipUnfinishedDescendants(descendantReason, descendantOutcome);
+        SkipUnfinishedDescendants(descendantOutcome);
     }
 
     /// <summary>
     /// Completes this task's lifecycle and assigns its semantic outcome, then propagates to untouched descendants.
     /// Ancestor refresh is handled by the session-level caller since it requires cross-branch coordination.
     /// </summary>
-    internal void CompleteWithOutcome(ExecutionTaskOutcome outcome, string? statusReason = null)
+    internal void CompleteWithOutcome(ExecutionTaskOutcome outcome)
     {
         ValidateTerminalAssignment(outcome);
-        TransitionStatus(ExecutionTaskState.Completed, outcome, statusReason);
-        PropagateTerminalOutcomeToUntouchedDescendants(outcome, statusReason);
+        TransitionStatus(ExecutionTaskState.Completed, outcome);
+        PropagateTerminalOutcomeToUntouchedDescendants(outcome);
     }
 
     /// <summary>
@@ -1722,20 +1614,19 @@ public class ExecutionTask : INotifyPropertyChanged
     /// interrupted) that was recorded while descendant work was still unwinding. When no doomed outcome exists, the
     /// provided success outcome is used instead.
     /// </summary>
-    internal void CompleteLifecycle(ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed, string? statusReason = null)
+    internal void CompleteLifecycle(ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed)
     {
         ExecutionTaskOutcome finalOutcome = Outcome is ExecutionTaskOutcome.Failed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted
             ? Outcome.Value
             : successOutcome;
-        string? finalReason = finalOutcome == successOutcome ? statusReason : StatusReason;
-        CompleteWithOutcome(finalOutcome, finalReason);
+        CompleteWithOutcome(finalOutcome);
     }
 
     /// <summary>
     /// Marks this task as semantically interrupted without forcing lifecycle completion, so any active descendant work
     /// can finish unwinding naturally. Ancestor refresh is handled by the session-level caller.
     /// </summary>
-    internal void Interrupt(string? statusReason = null)
+    internal void Interrupt()
     {
         if (State == ExecutionTaskState.Completed)
         {
@@ -1747,17 +1638,16 @@ public class ExecutionTask : INotifyPropertyChanged
             throw new InvalidOperationException($"Task '{Id}' cannot be interrupted before execution has started.");
         }
 
-        TransitionOutcome(ExecutionTaskOutcome.Interrupted, statusReason);
+        TransitionOutcome(ExecutionTaskOutcome.Interrupted);
     }
 
     /// <summary>
     /// Validates and applies a lifecycle state transition on this task. Returns false when the transition is a no-op
-    /// because the task already has the requested state and reason.
+    /// because the task already has the requested state.
     /// </summary>
-    internal bool TransitionState(ExecutionTaskState state, string? statusReason)
+    internal bool TransitionState(ExecutionTaskState state)
     {
-        string normalizedReason = statusReason ?? string.Empty;
-        if (State == state && string.Equals(StatusReason, normalizedReason, StringComparison.Ordinal))
+        if (State == state)
         {
             return false;
         }
@@ -1765,25 +1655,23 @@ public class ExecutionTask : INotifyPropertyChanged
         ValidateStateTransition(state);
         ValidateObservedState(state, Outcome);
         (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(state);
-        ApplyRuntimeState(state, normalizedReason, Outcome, startedAt, finishedAt);
+        ApplyRuntimeState(state, Outcome, startedAt, finishedAt);
         return true;
     }
 
     /// <summary>
     /// Validates and applies a semantic outcome transition on this task. Returns false when the transition is a no-op.
     /// </summary>
-    internal bool TransitionOutcome(ExecutionTaskOutcome? outcome, string? statusReason = null)
+    internal bool TransitionOutcome(ExecutionTaskOutcome? outcome)
     {
-        string normalizedReason = statusReason ?? string.Empty;
-        if (Outcome == outcome && (statusReason == null || string.Equals(StatusReason, normalizedReason, StringComparison.Ordinal)))
+        if (Outcome == outcome)
         {
             return false;
         }
 
         ValidateOutcomeTransition(outcome);
-        string effectiveReason = statusReason != null ? normalizedReason : StatusReason;
         ValidateObservedState(State, outcome);
-        ApplyRuntimeState(State, effectiveReason, outcome, StartedAt, FinishedAt);
+        ApplyRuntimeState(State, outcome, StartedAt, FinishedAt);
         return true;
     }
 
@@ -1791,10 +1679,9 @@ public class ExecutionTask : INotifyPropertyChanged
     /// Validates and applies a combined lifecycle state and semantic outcome transition as a single atomic status update so
     /// observers never see torn state between lifecycle and outcome fields. Returns false when the transition is a no-op.
     /// </summary>
-    internal bool TransitionStatus(ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    internal bool TransitionStatus(ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
-        string normalizedReason = statusReason ?? string.Empty;
-        if (State == state && Outcome == outcome && string.Equals(StatusReason, normalizedReason, StringComparison.Ordinal))
+        if (State == state && Outcome == outcome)
         {
             return false;
         }
@@ -1803,7 +1690,7 @@ public class ExecutionTask : INotifyPropertyChanged
         ValidateOutcomeTransition(outcome);
         ValidateObservedState(state, outcome);
         (DateTimeOffset? startedAt, DateTimeOffset? finishedAt) = ResolveTaskTiming(state);
-        ApplyRuntimeState(state, normalizedReason, outcome, startedAt, finishedAt);
+        ApplyRuntimeState(state, outcome, startedAt, finishedAt);
         return true;
     }
 

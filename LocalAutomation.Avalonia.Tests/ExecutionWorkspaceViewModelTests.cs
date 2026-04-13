@@ -81,7 +81,7 @@ public sealed class ExecutionWorkspaceViewModelTests
                task-state change -> workspace batch queue -> dispatcher-posted flush -> selected-log refresh. */
             foreach (RuntimeExecutionTaskId pendingTaskId in pendingTaskIds)
             {
-                session.SetTaskState(pendingTaskId, RuntimeExecutionTaskState.AwaitingDependency, "Waiting for parent scope.");
+                session.SetTaskState(pendingTaskId, RuntimeExecutionTaskState.AwaitingDependency);
             }
 
             /* Drain the queued workspace callbacks on the Avalonia dispatcher so the assertion observes the fully applied

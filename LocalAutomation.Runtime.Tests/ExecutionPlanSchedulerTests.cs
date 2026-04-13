@@ -41,7 +41,7 @@ public sealed class ExecutionPlanSchedulerTests
                     branchAScope.Task("Active Work").Run(async _ =>
                     {
                         await allowBranchAFailure.Task.WaitAsync(TimeSpan.FromSeconds(1));
-                        return OperationResult.Failed(failureReason: "Branch A failed.");
+                        return OperationResult.Failed();
                     }, out branchAActiveTaskId);
                     branchAScope.Task("Queued Work").Run(() => Task.FromResult(OperationResult.Succeeded()));
                 });
@@ -249,7 +249,7 @@ public sealed class ExecutionPlanSchedulerTests
         ExecutionPlan plan = RuntimeTestUtilities.BuildPlan(operation);
         ExecutionSession session = new(new BufferedLogStream(), plan);
         ExecutionTask explodingBranchTask = session.GetTask(explodingBranchTaskId);
-        explodingBranchTask.StateChanged += (_, state, _, _) =>
+        explodingBranchTask.StateChanged += (_, state, _) =>
         {
             if (state == ExecutionTaskState.Running)
             {
@@ -422,7 +422,7 @@ public sealed class ExecutionPlanSchedulerTests
                         OperationResult childResult = await context.RunChildOperationAsync(lockHolderOperation, childParameters);
                         if (!childResult.Success)
                         {
-                            throw new InvalidOperationException(childResult.FailureReason ?? "Lock holder child operation failed.");
+                            throw new InvalidOperationException($"Lock holder child operation returned '{childResult.Outcome}'.");
                         }
                     });
                 scope.Task("First")
@@ -433,7 +433,7 @@ public sealed class ExecutionPlanSchedulerTests
                         OperationResult childResult = await context.RunChildOperationAsync(firstOperation, childParameters);
                         if (!childResult.Success)
                         {
-                            throw new InvalidOperationException(childResult.FailureReason ?? "First child operation failed.");
+                            throw new InvalidOperationException($"First child operation returned '{childResult.Outcome}'.");
                         }
                     });
                 scope.Task("Second")
@@ -444,7 +444,7 @@ public sealed class ExecutionPlanSchedulerTests
                         OperationResult childResult = await context.RunChildOperationAsync(secondOperation, childParameters);
                         if (!childResult.Success)
                         {
-                            throw new InvalidOperationException(childResult.FailureReason ?? "Second child operation failed.");
+                            throw new InvalidOperationException($"Second child operation returned '{childResult.Outcome}'.");
                         }
                     });
             });
@@ -627,7 +627,7 @@ public sealed class ExecutionPlanSchedulerTests
                         OperationResult lockHolderResult = await context.RunChildOperationAsync(lockHolderOperation, lockHolderParameters);
                         if (!lockHolderResult.Success)
                         {
-                            throw new InvalidOperationException(lockHolderResult.FailureReason ?? "Lock holder child operation failed.");
+                            throw new InvalidOperationException($"Lock holder child operation returned '{lockHolderResult.Outcome}'.");
                         }
                     });
 
@@ -667,7 +667,7 @@ public sealed class ExecutionPlanSchedulerTests
                         OperationResult contendersResult = await context.RunChildOperationAsync(contendersOperation, contendersParameters);
                         if (!contendersResult.Success)
                         {
-                            throw new InvalidOperationException(contendersResult.FailureReason ?? "Contenders child operation failed.");
+                            throw new InvalidOperationException($"Contenders child operation returned '{contendersResult.Outcome}'.");
                         }
                     });
             });
@@ -771,7 +771,7 @@ public sealed class ExecutionPlanSchedulerTests
         Assert.Equal(longBranchTaskId, firstStartedTaskId);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
 
-        void OnTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? _, string? __)
+        void OnTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? _)
         {
             if (state != ExecutionTaskState.Running || firstStartedTaskId != default)
             {
@@ -829,7 +829,7 @@ public sealed class ExecutionPlanSchedulerTests
                         OperationResult lockHolderResult = await context.RunChildOperationAsync(lockHolderOperation, lockHolderParameters);
                         if (!lockHolderResult.Success)
                         {
-                            throw new InvalidOperationException(lockHolderResult.FailureReason ?? "Lock holder child operation failed.");
+                            throw new InvalidOperationException($"Lock holder child operation returned '{lockHolderResult.Outcome}'.");
                         }
                     });
 
@@ -873,7 +873,7 @@ public sealed class ExecutionPlanSchedulerTests
                                 OperationResult shortChildResult = await context.RunChildOperationAsync(shortChildOperation, shortChildParameters);
                                 if (!shortChildResult.Success)
                                 {
-                                    throw new InvalidOperationException(shortChildResult.FailureReason ?? "Short child operation failed.");
+                                    throw new InvalidOperationException($"Short child operation returned '{shortChildResult.Outcome}'.");
                                 }
                             });
 
@@ -914,7 +914,7 @@ public sealed class ExecutionPlanSchedulerTests
                                 OperationResult longChildResult = await context.RunChildOperationAsync(longChildOperation, longChildParameters);
                                 if (!longChildResult.Success)
                                 {
-                                    throw new InvalidOperationException(longChildResult.FailureReason ?? "Long child operation failed.");
+                                    throw new InvalidOperationException($"Long child operation returned '{longChildResult.Outcome}'.");
                                 }
                             })
                             .Then("Long Branch Follow-up")
@@ -1368,7 +1368,7 @@ public sealed class ExecutionPlanSchedulerTests
                         OperationResult childResult = await context.RunChildOperationAsync(hiddenChildOperation, hiddenChildParameters, hideChildOperationRootInGraph: true);
                         if (!childResult.Success)
                         {
-                            throw new InvalidOperationException(childResult.FailureReason ?? "Hidden child operation failed.");
+                            throw new InvalidOperationException($"Hidden child operation returned '{childResult.Outcome}'.");
                         }
                     });
             });

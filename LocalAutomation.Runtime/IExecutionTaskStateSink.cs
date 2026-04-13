@@ -7,5 +7,5 @@ namespace LocalAutomation.Runtime;
 /// </summary>
 public interface IExecutionTaskStateSink
 {
-    void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state, string? statusReason = null);
+    void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state);
 }

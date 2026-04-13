@@ -54,7 +54,7 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
                     OperationResult childResult = await context.RunChildOperationAsync((Operation)childOperation, childParameters);
                     if (!childResult.Success)
                     {
-                        throw new InvalidOperationException(childResult.FailureReason ?? "Inserted child operation failed.");
+                        throw new InvalidOperationException($"Inserted child operation returned '{childResult.Outcome}'.");
                     }
                 });
 
@@ -203,7 +203,7 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
                         OperationResult lockHolderResult = await context.RunChildOperationAsync((Operation)lockHolderOperation, lockHolderParameters);
                         if (!lockHolderResult.Success)
                         {
-                            throw new InvalidOperationException(lockHolderResult.FailureReason ?? "Lock holder child operation failed.");
+                            throw new InvalidOperationException($"Lock holder child operation returned '{lockHolderResult.Outcome}'.");
                         }
                     });
 
@@ -234,7 +234,7 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
                                         OperationResult childResult = await context.RunChildOperationAsync((Operation)childOperation, childParameters);
                                         if (!childResult.Success)
                                         {
-                                            throw new InvalidOperationException(childResult.FailureReason ?? "Inserted child operation failed.");
+                                            throw new InvalidOperationException($"Inserted child operation returned '{childResult.Outcome}'.");
                                         }
                                     });
 

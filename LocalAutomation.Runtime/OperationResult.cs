@@ -24,11 +24,6 @@ public class OperationResult : RunResult
     }
 
     /// <summary>
-    /// Gets or sets the human-readable reason for a failed, cancelled, interrupted, or skipped result when one is known.
-    /// </summary>
-    public string? FailureReason { get; set; }
-
-    /// <summary>
     /// Creates a successful operation result.
     /// </summary>
     public static OperationResult Succeeded(int exitCode = 0)
@@ -42,36 +37,33 @@ public class OperationResult : RunResult
     /// <summary>
     /// Creates a failed operation result.
     /// </summary>
-    public static OperationResult Failed(int exitCode = 0, string? failureReason = null)
+    public static OperationResult Failed(int exitCode = 0)
     {
         return new OperationResult(ExecutionTaskOutcome.Failed)
         {
-            ExitCode = exitCode,
-            FailureReason = failureReason
+            ExitCode = exitCode
         };
     }
 
     /// <summary>
     /// Creates a cancelled operation result.
     /// </summary>
-    public static OperationResult Cancelled(int exitCode = 0, string? failureReason = null)
+    public static OperationResult Cancelled(int exitCode = 0)
     {
         return new OperationResult(ExecutionTaskOutcome.Cancelled)
         {
-            ExitCode = exitCode,
-            FailureReason = failureReason
+            ExitCode = exitCode
         };
     }
 
     /// <summary>
     /// Creates an interrupted operation result.
     /// </summary>
-    public static OperationResult Interrupted(int exitCode = 0, string? failureReason = null)
+    public static OperationResult Interrupted(int exitCode = 0)
     {
         return new OperationResult(ExecutionTaskOutcome.Interrupted)
         {
-            ExitCode = exitCode,
-            FailureReason = failureReason
+            ExitCode = exitCode
         };
     }
 }

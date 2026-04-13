@@ -220,12 +220,11 @@ public abstract class Operation
         activity.SetTag("result.outcome", result.Outcome.ToString())
             .SetTag("result.success", result.Success);
         context.Logger.LogDebug(
-            "Task '{TaskTitle}' received child operation '{ChildOperation}' result '{Outcome}' (required={Required}) with reason '{FailureReason}'.",
+            "Task '{TaskTitle}' received child operation '{ChildOperation}' result '{Outcome}' (required={Required}).",
             context.Title,
             childOperation.OperationName,
             result.Outcome,
-            required,
-            result.FailureReason ?? string.Empty);
+            required);
         if (!required || result.Success)
         {
             return result;
@@ -242,26 +241,23 @@ public abstract class Operation
             /* Interrupted child operations currently propagate as a normal result instead of an exception. Log that branch
                explicitly so task-body methods that only await the child run still leave a trace in the launch log. */
             context.Logger.LogWarning(
-                "Task '{TaskTitle}' is returning interrupted child result from '{ChildOperation}' without throwing. FailureReason='{FailureReason}'.",
+                "Task '{TaskTitle}' is returning interrupted child result from '{ChildOperation}' without throwing.",
                 context.Title,
-                childOperation.OperationName,
-                result.FailureReason ?? string.Empty);
+                childOperation.OperationName);
             activity.SetTag("result.transition", "ReturnInterrupted");
             return result;
         }
 
-        string childFailureReason = string.IsNullOrWhiteSpace(result.FailureReason)
-            ? $"Child operation '{childOperation.OperationName}' failed."
-            : result.FailureReason;
+        string childOutcomeMessage = $"Child operation '{childOperation.OperationName}' returned '{result.Outcome}'.";
         string effectiveFailureMessage = string.IsNullOrWhiteSpace(failureMessage)
-            ? childFailureReason
-            : $"{failureMessage}{Environment.NewLine}Cause: {childFailureReason}";
+            ? childOutcomeMessage
+            : $"{failureMessage}{Environment.NewLine}Cause: {childOutcomeMessage}";
 
-        /* Required child operations should keep the caller's framing while still preserving the concrete child failure
-           reason that explains why the nested operation returned Failed. */
+        /* Required child operations should keep the caller's framing while still preserving the concrete child outcome
+           that explains why the nested operation returned a non-success result. */
         activity.SetTag("result.transition", "ThrowFailure")
             .SetTag("failure.message", effectiveFailureMessage)
-            .SetTag("child.failure.reason", childFailureReason);
+            .SetTag("child.outcome.message", childOutcomeMessage);
         throw new Exception(effectiveFailureMessage);
     }
 
