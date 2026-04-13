@@ -151,6 +151,66 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
+    /// Confirms that explicit user cancellation terminalizes a started scope that is currently waiting only on an
+    /// external dependency instead of misclassifying that started scope as untouched skipped work.
+    /// </summary>
+    [Fact]
+    public async Task ExplicitUserCancellationCancelsStartedDependencyWaitingScope()
+    {
+        /* Keep one unrelated task running until user cancellation so the second child remains dependency-blocked after
+           the parent scope already started through its first child. That reproduces the same started-then-waiting shape
+           seen in the Deploy Plugin cancellation failure without introducing a later timeout-driven failure path that
+           would muddy the cancellation outcome being asserted here. */
+        ExecutionTaskId blockerTaskId = default;
+        ExecutionTaskId startedScopeTaskId = default;
+        ExecutionTaskId completedChildTaskId = default;
+
+        /* The minimal runtime shape is:
+           - one active blocker outside the started scope,
+           - one started scope with one completed child,
+           - one later child still blocked on that external task.
+           After the first child completes, the parent scope has started real work but its remaining frontier is only
+           AwaitingDependency. */
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Blocker").Run(RuntimeTestUtilities.RunUntilCancelled, out blockerTaskId);
+
+                ExecutionTaskBuilder startedScope = scope.Task("Started Scope");
+                startedScopeTaskId = startedScope.Id;
+                startedScope.Children(childScope =>
+                {
+                    childScope.Task("Completed Child")
+                        .Run(() => Task.CompletedTask, out completedChildTaskId);
+
+                    childScope.Task("Blocked Child")
+                        .After(blockerTaskId)
+                        .Run(() => Task.CompletedTask);
+                });
+            });
+        });
+
+        /* Run the full session entry point so the test exercises the same cancellation and fatal-cleanup path the app
+           uses in production instead of only the bare scheduler API. */
+        ExecutionPlan plan = RuntimeTestUtilities.BuildPlan(operation);
+        ExecutionSession session = new(new BufferedLogStream(), plan);
+        Task runTask = session.RunAsync();
+
+        /* Wait until the blocker is active and the first child already completed. That leaves the parent scope started,
+           non-terminal, and currently waiting only on the external dependency. */
+        await session.GetTask(blockerTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await session.GetTask(completedChildTaskId).WaitForCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal(ExecutionTaskState.WaitingForDependencies, session.GetTask(startedScopeTaskId).State);
+
+        /* User cancellation should complete the session cleanly and mark the started dependency-waiting scope as
+           Cancelled, not Skipped. The current bug throws during cleanup before that terminal state is reached. */
+        await session.CancelAsync();
+        await runTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ExecutionTaskOutcome.Cancelled, session.GetTask(startedScopeTaskId).Outcome);
+    }
+
+    /// <summary>
     /// Confirms that an unexpected scheduler-path exception should still terminalize the entire live graph instead of
     /// leaving already-started collateral work running after the root task is marked failed.
     /// </summary>

@@ -690,7 +690,25 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Applies a scheduler-wide stop outcome to every task that participates directly in scheduler execution.
+    /// Returns whether forced terminalization must treat this task as started work instead of untouched queued work.
+    /// Cleanup should derive this from stable task facts such as active execution ownership and subtree start history
+    /// rather than from one specific visible scheduler state.
+    /// </summary>
+    private static bool HasStartedWorkForForcedTerminalization(ExecutionTask task, Func<ExecutionTaskId, bool>? isTaskTrackedAsRunning = null)
+    {
+        if (task == null)
+        {
+            throw new ArgumentNullException(nameof(task));
+        }
+
+        return task.HasStartedWorkInSubtree()
+            || task.HasActiveExecution
+            || (isTaskTrackedAsRunning?.Invoke(task.Id) ?? false);
+    }
+
+    /// <summary>
+    /// Applies a scheduler-wide stop outcome to every non-terminal task in the live graph.
+    /// Started work becomes Cancelled or Interrupted, while untouched queued work remains Skipped.
     /// </summary>
     internal void CancelOutstandingSchedulableTasks(
         Func<ExecutionTaskId, bool> isTaskTrackedAsRunning,
@@ -709,21 +727,31 @@ public sealed class ExecutionSession
             .SetTag("preserve.running.terminal.outcomes", preserveRunningTerminalOutcomes);
         WithGraphWriteLock(() =>
         {
-            foreach (ExecutionTask task in Tasks.Where(task => task.HasActiveExecution || task.GetTaskStartState() != TaskStartState.NoStartableWork)
-                .Where(task => task.HasActiveExecution || task.ParentId == null || GetTaskCore(task.ParentId.Value).GetTaskStartState() == TaskStartState.NoStartableWork))
+            /* Finalize started tasks before untouched descendants so a started container scope can keep its cancelled or
+               interrupted outcome and then propagate skipped completion only to the descendants that never ran. Within
+               each started/untouched bucket, finish deeper tasks first so container rollups still observe already-
+               terminal descendants where possible. */
+            List<(ExecutionTask task, bool hasStartedWork)> outstandingTasks = Tasks
+                .Where(task => !task.IsTerminal)
+                .Select(task => (task, hasStartedWork: HasStartedWorkForForcedTerminalization(task, isTaskTrackedAsRunning)))
+                .OrderByDescending(entry => entry.hasStartedWork)
+                .ThenByDescending(entry => GetTaskDepth(entry.task))
+                .ToList();
+            foreach ((ExecutionTask task, bool taskHasStartedWork) in outstandingTasks)
             {
-                if (task.State == ExecutionTaskState.Completed)
+                /* Earlier parent completions can terminalize untouched descendants through propagation even though this
+                   loop already snapshotted them as outstanding, so re-check terminality on each iteration. */
+                if (task.IsTerminal)
                 {
                     continue;
                 }
 
-                bool taskExecutionIsStillActive = task.State is ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock || isTaskTrackedAsRunning(task.Id);
-                ExecutionTaskOutcome nextOutcome = taskExecutionIsStillActive
+                ExecutionTaskOutcome nextOutcome = taskHasStartedWork
                     ? userCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted
                     : ExecutionTaskOutcome.Skipped;
-                string reason = taskExecutionIsStillActive ? runningTaskReason : skippedTaskReason;
+                string reason = taskHasStartedWork ? runningTaskReason : skippedTaskReason;
 
-                if (preserveRunningTerminalOutcomes && taskExecutionIsStillActive)
+                if (preserveRunningTerminalOutcomes && taskHasStartedWork)
                 {
                     CompleteTaskLifecycleCore(task.Id, nextOutcome, reason);
                     continue;
@@ -834,7 +862,7 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Forces the live graph into a coherent terminal state after an unexpected session-level exception. Running work is
+    /// Forces the live graph into a coherent terminal state after an unexpected session-level exception. Started work is
     /// interrupted, untouched work is skipped, and the root preserves the failed session outcome.
     /// </summary>
     private void FailOutstandingTasksAfterFatalException(string? failureReason)
@@ -865,12 +893,12 @@ public sealed class ExecutionSession
         /* Finalize descendants from the leaves upward so container refresh sees already-terminal children instead of
            bouncing parent state repeatedly while deeper active work is still being closed out. */
         List<ExecutionTask> outstandingTasks = Tasks
-            .Where(task => task.Id != RootTask.Id && task.State != ExecutionTaskState.Completed)
+            .Where(task => task.Id != RootTask.Id && !task.IsTerminal)
             .OrderByDescending(GetTaskDepth)
             .ToList();
         foreach (ExecutionTask task in outstandingTasks)
         {
-            if (task.HasActiveExecution || task.State is ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock)
+            if (HasStartedWorkForForcedTerminalization(task))
             {
                 CompleteTaskLifecycle(task.Id, ExecutionTaskOutcome.Interrupted, interruptedReason);
                 continue;
@@ -1007,12 +1035,17 @@ public sealed class ExecutionSession
     /// </summary>
     private OperationResult FinalizeOutcome(OperationResult result, ILogger logger)
     {
-        return WithGraphReadLock(() =>
+        /* Snapshot the root operation and metrics under the graph read lock, then emit the summary logs only after the
+           lock is released. Session logging appends to buffered streams through the graph write path, so logging while a
+           read lock is still held can recurse into an illegal write-under-read acquisition. */
+        (Operation operation, int warningCount, int errorCount) snapshot = WithGraphReadLock(() =>
         {
             ExecutionTask rootTask = _rootTask ?? throw new InvalidOperationException("Session has no root task.");
             ExecutionTaskMetrics metrics = rootTask.GetSubtreeMetrics();
-            return FinalizeOutcome(rootTask.Operation, result, logger, _sessionLogger, metrics.WarningCount, metrics.ErrorCount);
+            return (rootTask.Operation, metrics.WarningCount, metrics.ErrorCount);
         });
+
+        return FinalizeOutcome(snapshot.operation, result, logger, _sessionLogger, snapshot.warningCount, snapshot.errorCount);
     }
 
     /// <summary>
