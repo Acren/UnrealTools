@@ -320,11 +320,7 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             _nodesById[taskId] = node;
         }
 
-        foreach (ExecutionGraphEdgeLayout edgeLayout in _layoutResult.EdgeLayouts)
-        {
-            ExecutionEdgeViewModel edge = CreateEdgeViewModel(edgeLayout);
-            _edges.Add(edge);
-        }
+        RebuildVisibleEdges();
 
         UpdateCanvasSize();
     }
@@ -342,14 +338,24 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
             }
         }
 
+        /* The canvas now owns steady-state edge retention keyed by logical edge ids, so the graph view model can keep
+           its relayout path simple and just rebuild the lightweight edge snapshot collection from the latest layout. */
+        RebuildVisibleEdges();
+
+        UpdateCanvasSize();
+    }
+
+    /// <summary>
+    /// Rebuilds the visible edge collection from the latest layout snapshot.
+    /// </summary>
+    private void RebuildVisibleEdges()
+    {
         _edges.Clear();
         foreach (ExecutionGraphEdgeLayout edgeLayout in _layoutResult.EdgeLayouts)
         {
             ExecutionEdgeViewModel edge = CreateEdgeViewModel(edgeLayout);
             _edges.Add(edge);
         }
-
-        UpdateCanvasSize();
     }
 
     /// <summary>

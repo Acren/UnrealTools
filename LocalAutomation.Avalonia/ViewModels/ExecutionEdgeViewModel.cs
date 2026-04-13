@@ -1,7 +1,8 @@
 using System;
-using Avalonia;
 using Avalonia.Media;
 using LocalAutomation.Avalonia.ExecutionGraph;
+using LocalAutomation.Core;
+using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 
 namespace LocalAutomation.Avalonia.ViewModels;
 
@@ -34,24 +35,37 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
     public ExecutionNodeViewModel Target { get; }
 
     /// <summary>
-    /// Gets the dependency path between two laid out nodes.
+    /// Gets the stable logical edge identifier used by the retained canvas reconciliation path.
     /// </summary>
-    public Geometry PathData
-    {
-        get
-        {
-            StreamGeometry geometry = new();
-            using StreamGeometryContext context = geometry.Open();
-            ExecutionGraphPoint firstPoint = _layout.Route.Points[0];
-            context.BeginFigure(new Point(firstPoint.X, firstPoint.Y), false);
-            for (int index = 1; index < _layout.Route.Points.Count; index++)
-            {
-                ExecutionGraphPoint point = _layout.Route.Points[index];
-                context.LineTo(new Point(point.X, point.Y));
-            }
+    public (RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId) EdgeKey => (Source.Id, Target.Id);
 
-            return geometry;
+    /// <summary>
+    /// Gets how many routed points currently define this edge geometry.
+    /// </summary>
+    public int RoutePointCount => _layout.Route.Points.Count;
+
+    /// <summary>
+    /// Materializes one shareable geometry instance for the current routed edge.
+    /// </summary>
+    public Geometry CreatePathGeometry()
+    {
+        /* Measure geometry materialization directly at the edge boundary so traces can show whether retained-edge
+           updates are spending time inside StreamGeometry construction or elsewhere in canvas reconciliation. */
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.MaterializeEdgeGeometry")
+            .SetTag("source.id", Source.Id.Value)
+            .SetTag("target.id", Target.Id.Value)
+            .SetTag("route.point.count", RoutePointCount);
+        StreamGeometry geometry = new();
+        using StreamGeometryContext context = geometry.Open();
+        ExecutionGraphPoint firstPoint = _layout.Route.Points[0];
+        context.BeginFigure(new global::Avalonia.Point(firstPoint.X, firstPoint.Y), false);
+        for (int index = 1; index < _layout.Route.Points.Count; index++)
+        {
+            ExecutionGraphPoint point = _layout.Route.Points[index];
+            context.LineTo(new global::Avalonia.Point(point.X, point.Y));
         }
+
+        return geometry;
     }
 
     /// <summary>
@@ -60,6 +74,5 @@ public sealed class ExecutionEdgeViewModel : ViewModelBase
     internal void ApplyLayout(ExecutionGraphEdgeLayout layout)
     {
         _layout = layout ?? throw new ArgumentNullException(nameof(layout));
-        RaisePropertyChanged(nameof(PathData));
     }
 }

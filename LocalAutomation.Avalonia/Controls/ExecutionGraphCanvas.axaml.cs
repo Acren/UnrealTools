@@ -5,7 +5,6 @@ using System.ComponentModel;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -46,7 +45,7 @@ public partial class ExecutionGraphCanvas : UserControl
     private ExecutionGraphViewModel? _observedGraph;
     private readonly Dictionary<RuntimeExecutionTaskId, ExecutionGroupContainer> _renderedGroupControls = new();
     private readonly Dictionary<RuntimeExecutionTaskId, ExecutionTaskCard> _renderedTaskControls = new();
-    private readonly Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId, bool IsHoverTarget), ShapePath> _renderedEdgePaths = new();
+    private readonly Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), RetainedEdgeVisual> _renderedEdges = new();
     private readonly Dictionary<RuntimeExecutionTaskId, double> _pendingNodeWidthUpdates = new();
     private bool _isPanning;
     private bool _refreshQueuedWhileUpdating;
@@ -482,7 +481,7 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-    /// Reconciles retained group/task controls and rebuilds the edge layer from the current graph snapshot.
+    /// Reconciles retained group/task controls plus the retained edge layer from the current graph snapshot.
     /// </summary>
     private void ReconcileVisibleGraphLayers(ExecutionGraphViewModel graph, PerformanceActivityScope activity, PerformanceActivityScope parentActivity)
     {
@@ -509,16 +508,16 @@ public partial class ExecutionGraphCanvas : UserControl
             SetReconciliationTags(taskActivity, prefix: "task", taskStats);
         }
 
-        int edgePathCount;
-        using (PerformanceActivityScope edgeActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RebuildEdgeLayer"))
+        EdgeLayerStats edgeStats;
+        using (PerformanceActivityScope edgeActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ReconcileEdgeLayer"))
         {
-            edgePathCount = RebuildEdgeLayer(graph);
-            edgeActivity.SetTag("edge.path.count", edgePathCount);
+            edgeStats = ReconcileEdgeLayer(graph);
+            SetEdgeLayerTags(edgeActivity, edgeStats);
         }
 
-        SetReconciliationSummaryTags(parentActivity, groupStats, taskStats, edgePathCount);
-        SetReconciliationSummaryTags(activity, groupStats, taskStats, edgePathCount);
-        SetReconciliationSummaryTags(sampledReconciliationActivity, groupStats, taskStats, edgePathCount);
+        SetReconciliationSummaryTags(parentActivity, groupStats, taskStats, edgeStats);
+        SetReconciliationSummaryTags(activity, groupStats, taskStats, edgeStats);
+        SetReconciliationSummaryTags(sampledReconciliationActivity, groupStats, taskStats, edgeStats);
     }
 
     /// <summary>
@@ -718,66 +717,153 @@ public partial class ExecutionGraphCanvas : UserControl
         PerformanceActivityScope activity,
         (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount) groupStats,
         (int retainedCount, int createdCount, int removedCount, int recreatedForRoleChangeCount) taskStats,
-        int edgePathCount)
+        EdgeLayerStats edgeStats)
     {
         SetReconciliationTags(activity, prefix: "group", groupStats);
         SetReconciliationTags(activity, prefix: "task", taskStats);
-        activity.SetTag("edge.path.count", edgePathCount);
+        SetEdgeLayerTags(activity, edgeStats);
     }
 
     /// <summary>
-    /// Rebuilds the retained edge controls inside the shared structural canvas while leaving retained node controls and
+    /// Applies the combined retained-edge reconciliation tags shared by the edge activity and higher-level render spans.
+    /// </summary>
+    private static void SetEdgeLayerTags(PerformanceActivityScope activity, EdgeLayerStats stats)
+    {
+        activity.SetTag("retained.edge.count", stats.RetainedCount)
+            .SetTag("created.edge.count", stats.CreatedCount)
+            .SetTag("removed.edge.count", stats.RemovedCount)
+            .SetTag("logical.edge.count", stats.LogicalCount)
+            .SetTag("edge.path.count", stats.PathCount)
+            .SetTag("total.route.point.count", stats.TotalRoutePointCount)
+            .SetTag("max.route.point.count", stats.MaxRoutePointCount)
+            .SetTag("avg.route.point.count", stats.AverageRoutePointCount);
+    }
+
+    /// <summary>
+    /// Reconciles retained edge controls inside the shared structural canvas while leaving retained node controls and
     /// task cards mounted in place.
     /// </summary>
-    private int RebuildEdgeLayer(ExecutionGraphViewModel graph)
+    private EdgeLayerStats ReconcileEdgeLayer(ExecutionGraphViewModel graph)
     {
         if (_structureCanvas == null)
         {
-            return 0;
+            return default;
         }
 
-        foreach (ShapePath edgePath in _renderedEdgePaths.Values)
+        List<ExecutionEdgeViewModel> edges = graph.Edges.ToList();
+        int logicalEdgeCount = edges.Count;
+        int totalRoutePointCount = edges.Sum(edge => edge.RoutePointCount);
+        int maxRoutePointCount = edges.Count == 0 ? 0 : edges.Max(edge => edge.RoutePointCount);
+        HashSet<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId)> activeEdgeKeys = edges
+            .Select(edge => edge.EdgeKey)
+            .ToHashSet();
+
+        /* Capture only stale-edge teardown cost so steady-state relayouts make it obvious whether the remaining hitch
+           comes from retained-edge updates or from structural edge churn. */
+        int removedCount;
+        using (PerformanceActivityScope removeActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RemoveRetainedEdges"))
         {
-            _structureCanvas.Children.Remove(edgePath);
+            removeActivity.SetTag("logical.edge.count", _renderedEdges.Count)
+                .SetTag("edge.path.count", _renderedEdges.Count * 2);
+            removedCount = RemoveStaleEdges(activeEdgeKeys);
+            removeActivity.SetTag("removed.edge.count", removedCount);
         }
 
-        _renderedEdgePaths.Clear();
-        int edgePathCount = 0;
-        foreach (ExecutionEdgeViewModel edge in graph.Edges)
+        List<ExecutionEdgeViewModel> retainedEdges = new();
+        List<ExecutionEdgeViewModel> createdEdges = new();
+        foreach (ExecutionEdgeViewModel edge in edges)
         {
-            /* Each rendered edge gets a visible path plus a wider transparent hit target so hover affordances are usable
-               without forcing the user to land precisely on a two-pixel line. */
-            foreach (((RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId, bool IsHoverTarget) key, ShapePath edgePath) in CreateEdgeControls(edge))
+            if (_renderedEdges.ContainsKey(edge.EdgeKey))
             {
-                _renderedEdgePaths[key] = edgePath;
-                _structureCanvas.Children.Add(edgePath);
-                edgePathCount++;
+                retainedEdges.Add(edge);
+                continue;
+            }
+
+            createdEdges.Add(edge);
+        }
+
+        /* Update retained edge visuals in place so steady-state width relayout spends time only on geometry refresh and
+           z-order assignment instead of on tearing down and rebuilding every path control. */
+        using (PerformanceActivityScope updateActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.UpdateRetainedEdges"))
+        {
+            updateActivity.SetTag("logical.edge.count", retainedEdges.Count)
+                .SetTag("edge.path.count", retainedEdges.Count * 2);
+            foreach (ExecutionEdgeViewModel edge in retainedEdges)
+            {
+                UpdateEdgeVisual(_renderedEdges[edge.EdgeKey], edge);
             }
         }
 
-        ApplyStructureZOrder(graph);
-        return edgePathCount;
+        /* Record how much time the canvas spends allocating genuinely new edge controls so traces can separate first-time
+           visual creation from the cheaper retained-edge update path. */
+        using (PerformanceActivityScope createActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.CreateEdgeControls"))
+        {
+            createActivity.SetTag("logical.edge.count", createdEdges.Count)
+                .SetTag("edge.path.count", createdEdges.Count * 2);
+            foreach (ExecutionEdgeViewModel edge in createdEdges)
+            {
+                RetainedEdgeVisual edgeVisual = CreateEdgeVisual(edge);
+                _renderedEdges[edge.EdgeKey] = edgeVisual;
+                _structureCanvas.Children.Add(edgeVisual.VisiblePath);
+                _structureCanvas.Children.Add(edgeVisual.HoverTargetPath);
+            }
+        }
+
+        /* Whole-edge layering is intentionally separate from control creation so traces can show whether the current
+           hitch comes from retained-edge updates or from constraint-based z-index assignment across groups and edges. */
+        using (PerformanceActivityScope zOrderActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.ApplyStructureZOrder"))
+        {
+            zOrderActivity.SetTag("logical.edge.count", logicalEdgeCount)
+                .SetTag("group.count", graph.StructureLayering.OrderedGroupIds.Count);
+            ApplyStructureZOrder(graph);
+        }
+
+        return new EdgeLayerStats(
+            retainedEdges.Count,
+            createdEdges.Count,
+            removedCount,
+            _renderedEdges.Count * 2,
+            logicalEdgeCount,
+            totalRoutePointCount,
+            maxRoutePointCount);
+    }
+
+    /// <summary>
+    /// Removes retained edge visuals that no longer exist in the current visible edge set.
+    /// </summary>
+    private int RemoveStaleEdges(HashSet<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId)> activeEdgeKeys)
+    {
+        int removedCount = 0;
+        foreach (((RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId) edgeKey, RetainedEdgeVisual edgeVisual) in _renderedEdges.ToList())
+        {
+            if (activeEdgeKeys.Contains(edgeKey))
+            {
+                continue;
+            }
+
+            edgeVisual.Dispose();
+            _structureCanvas!.Children.Remove(edgeVisual.VisiblePath);
+            _structureCanvas.Children.Remove(edgeVisual.HoverTargetPath);
+            _renderedEdges.Remove(edgeKey);
+            removedCount++;
+        }
+
+        return removedCount;
     }
 
     /// <summary>
     /// Creates the visible edge path plus a transparent hover target that toggles the same visual path classes.
     /// </summary>
-    private static IEnumerable<((RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId, bool IsHoverTarget) key, ShapePath path)> CreateEdgeControls(ExecutionEdgeViewModel edge)
+    private static RetainedEdgeVisual CreateEdgeVisual(ExecutionEdgeViewModel edge)
     {
-        ShapePath visiblePath = new()
-        {
-            DataContext = edge
-        };
+        ShapePath visiblePath = new();
 
-        /* Bind edge geometry while semantic classes drive tinting from XAML, so the edge uses the same status language
-           as the rest of the execution graph without hard-coded color values in view models. */
+        /* Semantic classes drive tinting from XAML, so the edge uses the same status language as the rest of the
+           execution graph without hard-coded color values in view models. */
         visiblePath.Classes.Add("execution-edge");
-        ApplyEdgeStatusClasses(visiblePath, edge.Target);
-        BindToDataContext(visiblePath, ShapePath.DataProperty, nameof(ExecutionEdgeViewModel.PathData));
 
         ShapePath hoverTargetPath = new()
         {
-            DataContext = edge,
             Stroke = Brushes.Transparent,
             StrokeThickness = EdgeHitThickness,
             IsHitTestVisible = true
@@ -785,16 +871,17 @@ public partial class ExecutionGraphCanvas : UserControl
 
         /* The hover target shares the same geometry as the visible path but never paints anything, which makes the edge
            easy to interact with while preserving the slimmer rendered line. */
-        BindToDataContext(hoverTargetPath, ShapePath.DataProperty, nameof(ExecutionEdgeViewModel.PathData));
-        hoverTargetPath.PointerEntered += (_, _) => visiblePath.Classes.Set("hover", true);
-        hoverTargetPath.PointerExited += (_, _) => visiblePath.Classes.Set("hover", false);
-        hoverTargetPath.DetachedFromVisualTree += (_, _) => visiblePath.Classes.Set("hover", false);
+        RetainedEdgeVisual edgeVisual = new(visiblePath, hoverTargetPath);
+        edgeVisual.Update(edge);
+        return edgeVisual;
+    }
 
-        return
-        [
-            ((edge.Source.Id, edge.Target.Id, false), visiblePath),
-            ((edge.Source.Id, edge.Target.Id, true), hoverTargetPath)
-        ];
+    /// <summary>
+    /// Updates one retained edge visual from the latest edge view model and shared geometry.
+    /// </summary>
+    private static void UpdateEdgeVisual(RetainedEdgeVisual edgeVisual, ExecutionEdgeViewModel edge)
+    {
+        edgeVisual.Update(edge);
     }
 
     /// <summary>
@@ -849,14 +936,9 @@ public partial class ExecutionGraphCanvas : UserControl
             }
 
             int resolvedEdgeZ = minimumEdgeZ <= maximumEdgeZ ? maximumEdgeZ : minimumEdgeZ;
-            if (_renderedEdgePaths.TryGetValue((edge.Source.Id, edge.Target.Id, false), out ShapePath? visiblePath))
+            if (_renderedEdges.TryGetValue(edge.EdgeKey, out RetainedEdgeVisual? edgeVisual) && edgeVisual != null)
             {
-                visiblePath.ZIndex = resolvedEdgeZ;
-            }
-
-            if (_renderedEdgePaths.TryGetValue((edge.Source.Id, edge.Target.Id, true), out ShapePath? hoverPath))
-            {
-                hoverPath.ZIndex = resolvedEdgeZ;
+                edgeVisual.SetZIndex(resolvedEdgeZ);
             }
         }
     }
@@ -959,26 +1041,174 @@ public partial class ExecutionGraphCanvas : UserControl
     }
 
     /// <summary>
-    /// Applies the current target-node semantic status classes to an edge path and keeps them synchronized while the node
-    /// updates, so edge tinting follows user-facing outcome while animation still reads lifecycle elsewhere.
+    /// Carries one summarized retained-edge reconciliation result so the edge activity and higher-level render spans log
+    /// the same structural counts and route complexity metrics.
     /// </summary>
-    private static void ApplyEdgeStatusClasses(ShapePath path, ExecutionNodeViewModel target)
+    private readonly record struct EdgeLayerStats(
+        int RetainedCount,
+        int CreatedCount,
+        int RemovedCount,
+        int PathCount,
+        int LogicalCount,
+        int TotalRoutePointCount,
+        int MaxRoutePointCount)
     {
-        ExecutionTaskViewModel task = target.Task;
-        ExecutionStatusClasses.ApplyStatusClasses(path.Classes, task.DisplayStatus);
+        /// <summary>
+        /// Gets the average routed point count per logical edge using the same compact format as the telemetry output.
+        /// </summary>
+        public string AverageRoutePointCount => LogicalCount == 0 ? "0" : ((double)TotalRoutePointCount / LogicalCount).ToString("0.##");
+    }
 
-        PropertyChangedEventHandler? handler = null;
-        handler = (_, e) =>
+    /// <summary>
+    /// Owns the visible and hover path controls plus the target-task status subscription for one retained logical edge.
+    /// </summary>
+    private sealed class RetainedEdgeVisual : IDisposable
+    {
+        private ExecutionTaskViewModel? _observedTask;
+        private PropertyChangedEventHandler? _taskStatusChangedHandler;
+
+        /// <summary>
+        /// Creates one retained edge visual wrapper around the two path controls used for display and hit testing.
+        /// </summary>
+        public RetainedEdgeVisual(ShapePath visiblePath, ShapePath hoverTargetPath)
+        {
+            VisiblePath = visiblePath ?? throw new ArgumentNullException(nameof(visiblePath));
+            HoverTargetPath = hoverTargetPath ?? throw new ArgumentNullException(nameof(hoverTargetPath));
+            HoverTargetPath.PointerEntered += HandleHoverTargetPointerEntered;
+            HoverTargetPath.PointerExited += HandleHoverTargetPointerExited;
+            HoverTargetPath.DetachedFromVisualTree += HandleHoverTargetDetachedFromVisualTree;
+        }
+
+        /// <summary>
+        /// Gets the painted edge stroke path.
+        /// </summary>
+        public ShapePath VisiblePath { get; }
+
+        /// <summary>
+        /// Gets the wider transparent hover target path that shares the same geometry.
+        /// </summary>
+        public ShapePath HoverTargetPath { get; }
+
+        /// <summary>
+        /// Updates the retained edge visual from the latest edge view model and one shared geometry instance.
+        /// </summary>
+        public void Update(ExecutionEdgeViewModel edge)
+        {
+            if (edge == null)
+            {
+                throw new ArgumentNullException(nameof(edge));
+            }
+
+            Geometry sharedGeometry = edge.CreatePathGeometry();
+            VisiblePath.DataContext = edge;
+            HoverTargetPath.DataContext = edge;
+            VisiblePath.Data = sharedGeometry;
+            HoverTargetPath.Data = sharedGeometry;
+            ObserveTargetTask(edge.Target.Task);
+        }
+
+        /// <summary>
+        /// Applies one shared z-index to both retained edge paths.
+        /// </summary>
+        public void SetZIndex(int zIndex)
+        {
+            VisiblePath.ZIndex = zIndex;
+            HoverTargetPath.ZIndex = zIndex;
+        }
+
+        /// <summary>
+        /// Releases the target-task subscription and hover handlers before the retained edge leaves the visual tree.
+        /// </summary>
+        public void Dispose()
+        {
+            HoverTargetPath.PointerEntered -= HandleHoverTargetPointerEntered;
+            HoverTargetPath.PointerExited -= HandleHoverTargetPointerExited;
+            HoverTargetPath.DetachedFromVisualTree -= HandleHoverTargetDetachedFromVisualTree;
+            VisiblePath.Classes.Set("hover", false);
+            DetachObservedTask();
+        }
+
+        /// <summary>
+        /// Tracks the current target task so the visible edge classes stay synchronized with task status changes.
+        /// </summary>
+        private void ObserveTargetTask(ExecutionTaskViewModel task)
+        {
+            if (ReferenceEquals(_observedTask, task))
+            {
+                ApplyStatusClasses();
+                return;
+            }
+
+            DetachObservedTask();
+            _observedTask = task;
+            _taskStatusChangedHandler = HandleObservedTaskPropertyChanged;
+            _observedTask.PropertyChanged += _taskStatusChangedHandler;
+            ApplyStatusClasses();
+        }
+
+        /// <summary>
+        /// Removes the current target-task subscription when the retained edge changes identity or leaves the canvas.
+        /// </summary>
+        private void DetachObservedTask()
+        {
+            if (_observedTask == null || _taskStatusChangedHandler == null)
+            {
+                return;
+            }
+
+            _observedTask.PropertyChanged -= _taskStatusChangedHandler;
+            _observedTask = null;
+            _taskStatusChangedHandler = null;
+        }
+
+        /// <summary>
+        /// Reapplies edge status classes when the target task changes the user-facing status used for tinting.
+        /// </summary>
+        private void HandleObservedTaskPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(e.PropertyName) ||
                 string.Equals(e.PropertyName, nameof(ExecutionTaskViewModel.DisplayStatus), StringComparison.Ordinal))
             {
-                ExecutionStatusClasses.ApplyStatusClasses(path.Classes, task.DisplayStatus);
+                ApplyStatusClasses();
             }
-        };
+        }
 
-        task.PropertyChanged += handler;
-        path.DetachedFromVisualTree += (_, _) => task.PropertyChanged -= handler;
+        /// <summary>
+        /// Applies the current target-task status classes to the visible edge path.
+        /// </summary>
+        private void ApplyStatusClasses()
+        {
+            if (_observedTask == null)
+            {
+                return;
+            }
+
+            ExecutionStatusClasses.ApplyStatusClasses(VisiblePath.Classes, _observedTask.DisplayStatus);
+        }
+
+        /// <summary>
+        /// Turns on the visible edge hover styling when the transparent hit target receives the pointer.
+        /// </summary>
+        private void HandleHoverTargetPointerEntered(object? sender, PointerEventArgs e)
+        {
+            VisiblePath.Classes.Set("hover", true);
+        }
+
+        /// <summary>
+        /// Clears the visible edge hover styling when the pointer leaves the transparent hit target.
+        /// </summary>
+        private void HandleHoverTargetPointerExited(object? sender, PointerEventArgs e)
+        {
+            VisiblePath.Classes.Set("hover", false);
+        }
+
+        /// <summary>
+        /// Clears hover styling when the hit target detaches so reused paths never keep stale hover state.
+        /// </summary>
+        private void HandleHoverTargetDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+        {
+            VisiblePath.Classes.Set("hover", false);
+        }
     }
 
     /// <summary>
@@ -1216,12 +1446,4 @@ public partial class ExecutionGraphCanvas : UserControl
         return false;
     }
 
-    /// <summary>
-    /// Binds one generated control property to its current data context so the direct-code canvas stays live without a
-    /// full control rebuild for simple visual updates.
-    /// </summary>
-    private static void BindToDataContext(AvaloniaObject target, AvaloniaProperty property, string propertyName)
-    {
-        target.Bind(property, new Binding(propertyName));
-    }
 }
