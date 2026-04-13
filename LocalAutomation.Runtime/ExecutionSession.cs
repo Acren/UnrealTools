@@ -656,7 +656,7 @@ public sealed class ExecutionSession
                     continue;
                 }
 
-                /* Let the task compute its own visible state snapshot from the same rollup path ancestor containers use
+                /* Let the task compute its own visible status from the same rollup path ancestor containers use
                    so queued-vs-awaiting-dependency semantics stay centralized in one task-owned projection. */
                 (ExecutionTaskState nextState, _, _) = task.ComputeRolledUpStateFromChildren();
                 if (task.State != nextState || !string.Equals(task.StatusReason, waitingReason ?? string.Empty, StringComparison.Ordinal))
@@ -1464,22 +1464,22 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Completes one task snapshot while the caller already holds the graph lock.
+    /// Completes one task status update while the caller already holds the graph lock.
     /// </summary>
-    private void SetTaskSnapshotCore(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
         ExecutionTask task = GetTaskCore(taskId);
-        ApplyTaskSnapshotCore(task, state, outcome, statusReason, refreshTimingMetrics: true);
+        ApplyTaskStatusCore(task, state, outcome, statusReason, refreshTimingMetrics: true);
     }
 
     /// <summary>
-    /// Applies one combined lifecycle/result snapshot to the supplied task. Callers may skip timing refresh when they are
+    /// Applies one combined lifecycle/result status update to the supplied task. Callers may skip timing refresh when they are
     /// only updating an ancestor's rolled-up runtime state after timing has already been recomputed for the originating
     /// task change.
     /// </summary>
-    private bool ApplyTaskSnapshotCore(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason, bool refreshTimingMetrics)
+    private bool ApplyTaskStatusCore(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason, bool refreshTimingMetrics)
     {
-        if (!task.TransitionSnapshot(state, outcome, statusReason))
+        if (!task.TransitionStatus(state, outcome, statusReason))
         {
             return false;
         }
@@ -1504,7 +1504,7 @@ public sealed class ExecutionSession
             return;
         }
 
-        /* Capture the subscriber snapshot and state payload at mutation time, then publish them only after the outermost
+        /* Capture the subscriber status payload at mutation time, then publish it only after the outermost
            graph write scope releases. Subscribers should observe the completed task-state change, but they must not become
            part of the graph-lock critical section. */
         AfterGraphWriteReleased(() =>
@@ -1599,13 +1599,13 @@ public sealed class ExecutionSession
     /// Applies one lifecycle/result update as a single externally visible state change so observers never see torn state
     /// between status and semantic result fields.
     /// </summary>
-    private void SetTaskSnapshot(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    private void SetTaskStatus(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.SetTaskSnapshot")
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.SetTaskStatus")
             .SetTag("task.id", taskId.Value)
             .SetTag("task.state", state.ToString())
             .SetTag("task.outcome", outcome?.ToString() ?? string.Empty);
-        WithGraphWriteLock(() => SetTaskSnapshotCore(taskId, state, outcome, statusReason));
+        WithGraphWriteLock(() => SetTaskStatusCore(taskId, state, outcome, statusReason));
     }
 
     /// <summary>
@@ -1676,7 +1676,7 @@ public sealed class ExecutionSession
             .SetTag("task.id", taskId.Value);
         int ancestorCount = 0;
         int totalChildCount = 0;
-        int changedSnapshotCount = 0;
+        int changedStatusCount = 0;
         int changedRollupCount = 0;
         ExecutionTask task = GetTask(taskId);
         task.RecomputeSubtreeSchedulingRollup();
@@ -1694,19 +1694,19 @@ public sealed class ExecutionSession
 
             bool rollupChanged = currentParent.RecomputeSubtreeSchedulingRollup();
             (ExecutionTaskState parentState, ExecutionTaskOutcome? parentOutcome, string? parentReason) = currentParent.ComputeRolledUpStateFromChildren();
-            bool snapshotChanged = ApplyTaskSnapshotCore(currentParent, parentState, parentOutcome, parentReason, refreshTimingMetrics: false);
-            bool postSnapshotRollupChanged = snapshotChanged && currentParent.RecomputeSubtreeSchedulingRollup();
-            if (snapshotChanged)
+            bool statusChanged = ApplyTaskStatusCore(currentParent, parentState, parentOutcome, parentReason, refreshTimingMetrics: false);
+            bool postStatusRollupChanged = statusChanged && currentParent.RecomputeSubtreeSchedulingRollup();
+            if (statusChanged)
             {
-                changedSnapshotCount += 1;
+                changedStatusCount += 1;
             }
 
-            if (rollupChanged || postSnapshotRollupChanged)
+            if (rollupChanged || postStatusRollupChanged)
             {
                 changedRollupCount += 1;
             }
 
-            if (!snapshotChanged && !rollupChanged)
+            if (!statusChanged && !rollupChanged)
             {
                 break;
             }
@@ -1716,7 +1716,7 @@ public sealed class ExecutionSession
 
         activity.SetTag("ancestor.count", ancestorCount)
             .SetTag("child.count", totalChildCount)
-            .SetTag("changed.snapshot.count", changedSnapshotCount)
+            .SetTag("changed.status.count", changedStatusCount)
             .SetTag("changed.rollup.count", changedRollupCount);
     }
 

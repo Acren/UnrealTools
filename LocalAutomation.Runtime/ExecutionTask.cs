@@ -131,7 +131,7 @@ public class ExecutionTask : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// Raised whenever this task's own runtime state snapshot changes. The task owns that state, so task-local
+    /// Raised whenever this task's own runtime status changes. The task owns that state, so task-local
     /// observers and waiters subscribe here instead of routing through a session-level filter.
     /// </summary>
     public event Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?, string>? StateChanged;
@@ -832,7 +832,7 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Applies one complete runtime-state snapshot and raises property notifications only after the full state is
+    /// Applies one complete runtime status update and raises property notifications only after the full state is
     /// internally consistent. This prevents observers from seeing torn combinations such as Running plus Result=Completed.
     /// </summary>
     internal void ApplyRuntimeState(ExecutionTaskState state, string statusReason, ExecutionTaskOutcome? outcome, DateTimeOffset? startedAt, DateTimeOffset? finishedAt)
@@ -849,8 +849,8 @@ public class ExecutionTask : INotifyPropertyChanged
         _startedAt = startedAt;
         _finishedAt = finishedAt;
 
-        /* Task-local observers should see a self-consistent task snapshot, including the task-owned subtree start-state
-           cache that feeds fatal-cleanup and parent-rollup decisions, before the task-level state-changed event fires. */
+        /* Task-local observers should see a self-consistent task status, including the task-owned subtree start-state
+           rollup that feeds parent rollup decisions, before the task-level state-changed event fires. */
         RecomputeSubtreeSchedulingRollup();
 
         Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?, string>? taskStateChanged;
@@ -1438,7 +1438,7 @@ public class ExecutionTask : INotifyPropertyChanged
     public bool IsInProgress => State > ExecutionTaskState.Queued && State < ExecutionTaskState.Completed;
 
     /// <summary>
-    /// Returns whether this task's observed runtime snapshot shows that work has started somewhere in the represented
+    /// Returns whether this task's observed runtime status shows that work has started somewhere in the represented
     /// task subtree. Non-terminal started work uses in-progress lifecycle states, while terminal started work is carried
     /// by completed, failed, cancelled, or interrupted outcomes.
     /// </summary>
@@ -1493,8 +1493,8 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns whether this task or any direct child snapshot reports that work has already started in the represented
-    /// subtree. Child snapshots already roll up their own descendants, so direct-child inspection is sufficient here.
+    /// Returns whether this task or any direct child status reports that work has already started in the represented
+    /// subtree. Child statuses already roll up their own descendants, so direct-child inspection is sufficient here.
     /// </summary>
     private bool HasStartedSubtree => HasStarted || _children.Any(child => child.HasStarted);
 
@@ -1713,7 +1713,7 @@ public class ExecutionTask : INotifyPropertyChanged
     internal void CompleteWithOutcome(ExecutionTaskOutcome outcome, string? statusReason = null)
     {
         ValidateTerminalAssignment(outcome);
-        TransitionSnapshot(ExecutionTaskState.Completed, outcome, statusReason);
+        TransitionStatus(ExecutionTaskState.Completed, outcome, statusReason);
         PropagateTerminalOutcomeToUntouchedDescendants(outcome, statusReason);
     }
 
@@ -1788,10 +1788,10 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Validates and applies a combined lifecycle state and semantic outcome transition as a single atomic update so
+    /// Validates and applies a combined lifecycle state and semantic outcome transition as a single atomic status update so
     /// observers never see torn state between lifecycle and outcome fields. Returns false when the transition is a no-op.
     /// </summary>
-    internal bool TransitionSnapshot(ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
+    internal bool TransitionStatus(ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
     {
         string normalizedReason = statusReason ?? string.Empty;
         if (State == state && Outcome == outcome && string.Equals(StatusReason, normalizedReason, StringComparison.Ordinal))
