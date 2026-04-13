@@ -34,7 +34,7 @@
              emphasis through opacity, glow, and stroke thickness instead of requiring separate per-control resources. -->
         <Color x:Key="ExecutionStatusQueuedColor">#7F8C97</Color>
         <Color x:Key="ExecutionStatusAwaitingDependencyColor">#C9A86A</Color>
-        <Color x:Key="ExecutionStatusAwaitingLockColor">#9A8FF0</Color>
+        <Color x:Key="ExecutionStatusAwaitingLockColor">#C9A86A</Color>
         <Color x:Key="ExecutionStatusInactiveColor">#59616A</Color>
         <Color x:Key="ExecutionStatusRunningColor">#63A8FF</Color>
         <Color x:Key="ExecutionStatusCompletedColor">#7BE37B</Color>
