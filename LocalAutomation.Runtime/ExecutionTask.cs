@@ -91,7 +91,6 @@ public class ExecutionTask : INotifyPropertyChanged
     private int _subtreeActiveTimingCount;
     private DateTimeOffset? _subtreeStartedAt;
     private DateTimeOffset? _subtreeFinishedAt;
-    private bool _subtreeHasStartedWork;
     /* Cached ancestor-independent scheduler frontier for this subtree. WaitingForParent is never stored here because it
        depends on scopes above this task and is applied only when callers ask for the effective scheduler-facing state. */
     private TaskStartState _subtreeStartState;
@@ -303,12 +302,10 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Resets the task-owned scheduler rollup that summarizes the subtree's current frontier and whether execution has
-    /// started anywhere beneath this task.
+    /// Resets the task-owned scheduler rollup that summarizes the subtree's current scheduler frontier.
     /// </summary>
     internal void ResetSubtreeSchedulingRollup()
     {
-        _subtreeHasStartedWork = false;
         _subtreeStartState = TaskStartState.NoStartableWork;
     }
 
@@ -397,24 +394,16 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal bool RecomputeSubtreeSchedulingRollup()
     {
-        bool nextHasStartedWork = HasStarted;
         TaskStartState nextSubtreeStartState = GetOwnWorkStartStateIgnoringAncestors();
         foreach (ExecutionTask child in _children)
         {
-            nextHasStartedWork |= child._subtreeHasStartedWork;
             nextSubtreeStartState = CombineSubtreeStartStates(nextSubtreeStartState, child._subtreeStartState);
         }
 
-        bool changed = nextHasStartedWork != _subtreeHasStartedWork || nextSubtreeStartState != _subtreeStartState;
-        _subtreeHasStartedWork = nextHasStartedWork;
+        bool changed = nextSubtreeStartState != _subtreeStartState;
         _subtreeStartState = nextSubtreeStartState;
         return changed;
     }
-
-    /// <summary>
-    /// Returns whether any task in this subtree has already transitioned out of untouched planned or queued work.
-    /// </summary>
-    internal bool HasStartedWorkInSubtree() => _subtreeHasStartedWork;
 
     /// <summary>
     /// Waits until this task is currently in the requested runtime state or transitions into it later during the current
@@ -1160,7 +1149,9 @@ public class ExecutionTask : INotifyPropertyChanged
         bool allChildrenDisabled = _children.Count > 0;
         foreach (ExecutionTask childTask in _children)
         {
-            childHasStartedWork |= childTask._subtreeHasStartedWork;
+            /* Each child's observed state and outcome already roll up its whole subtree, so the parent can infer whether
+               work started anywhere below that child without carrying a second cached subtree-start flag. */
+            childHasStartedWork |= childTask.HasStarted;
             hasReadyChild |= childTask._subtreeStartState == TaskStartState.Ready;
             hasRunningChild |= childTask._subtreeStartState == TaskStartState.Running;
             hasWaitingForExecutionLockChild |= childTask._subtreeStartState == TaskStartState.AwaitingLock;
@@ -1447,11 +1438,12 @@ public class ExecutionTask : INotifyPropertyChanged
     public bool IsInProgress => State > ExecutionTaskState.Queued && State < ExecutionTaskState.Completed;
 
     /// <summary>
-    /// Returns whether this task has entered real execution instead of remaining untouched queued work.
+    /// Returns whether this task's observed runtime snapshot shows that work has started somewhere in the represented
+    /// task subtree. Non-terminal started work uses in-progress lifecycle states, while terminal started work is carried
+    /// by completed, failed, cancelled, or interrupted outcomes.
     /// </summary>
     internal bool HasStarted =>
         IsInProgress
-        || StartedAt != null
         || Outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Failed;
 
     /// <summary>
@@ -1484,9 +1476,6 @@ public class ExecutionTask : INotifyPropertyChanged
     /// <summary>
     /// Guards lifecycle transitions so execution state stays monotonic once a task or container subtree has started.
     /// </summary>
-    /// <summary>
-    /// Guards lifecycle transitions so execution state stays monotonic once a task or container subtree has started.
-    /// </summary>
     internal void ValidateStateTransition(ExecutionTaskState nextState)
     {
         if (State == ExecutionTaskState.Completed && nextState != ExecutionTaskState.Completed)
@@ -1494,7 +1483,7 @@ public class ExecutionTask : INotifyPropertyChanged
             throw new InvalidOperationException($"Task '{Id}' cannot transition from completed execution state back to '{nextState}'.");
         }
 
-        if (State is ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock or ExecutionTaskState.AwaitingDependency && nextState is ExecutionTaskState.Queued or ExecutionTaskState.Planned)
+        if (IsInProgress && nextState <= ExecutionTaskState.Queued)
         {
             /* Once a task or any descendant in its subtree has started, queued states are no longer legal. Container
                scopes must remain in an active non-queued state until they complete or fail, even if later descendant
@@ -1504,16 +1493,24 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Returns whether this task or any direct child snapshot reports that work has already started in the represented
+    /// subtree. Child snapshots already roll up their own descendants, so direct-child inspection is sufficient here.
+    /// </summary>
+    private bool HasStartedSubtree => HasStarted || _children.Any(child => child.HasStarted);
+
+    /// <summary>
     /// Guards combined observable state so lifecycle and semantic outcome never describe contradictory execution states.
     /// </summary>
     internal void ValidateObservedState(ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
-        if (state is ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock or ExecutionTaskState.AwaitingDependency && outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Skipped or ExecutionTaskOutcome.Disabled)
+        if (state > ExecutionTaskState.Queued
+            && state < ExecutionTaskState.Completed
+            && outcome is (ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Skipped or ExecutionTaskOutcome.Disabled))
         {
-            throw new InvalidOperationException($"Task '{Id}' cannot be running while reporting semantic outcome '{outcome}'.");
+            throw new InvalidOperationException($"Task '{Id}' cannot remain in progress while reporting semantic outcome '{outcome}'.");
         }
 
-        if (state is ExecutionTaskState.Planned or ExecutionTaskState.Queued && outcome != null)
+        if (state <= ExecutionTaskState.Queued && outcome != null)
         {
             throw new InvalidOperationException($"Task '{Id}' cannot remain queued while reporting semantic outcome '{outcome}'.");
         }
@@ -1567,12 +1564,12 @@ public class ExecutionTask : INotifyPropertyChanged
             throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot complete successfully while it still has non-terminal descendants.");
         }
 
-        if (outcome == ExecutionTaskOutcome.Skipped && HasStartedWorkInSubtree())
+        if (outcome == ExecutionTaskOutcome.Skipped && HasStartedSubtree)
         {
             throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot be marked skipped after execution has started in its subtree.");
         }
 
-        if (outcome == ExecutionTaskOutcome.Interrupted && !HasStartedWorkInSubtree())
+        if (outcome == ExecutionTaskOutcome.Interrupted && !HasStartedSubtree)
         {
             throw new InvalidOperationException($"Task '{Title}' ({Id}) cannot be marked interrupted before execution has started in its subtree.");
         }
@@ -1670,12 +1667,11 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal void InterruptSiblingSubtree(ExecutionTaskId failedSiblingRootId)
     {
-        bool subtreeStarted = HasStartedWorkInSubtree();
-        string reason = subtreeStarted
+        string reason = HasStartedSubtree
             ? $"Interrupted because sibling task '{failedSiblingRootId}' failed."
             : $"Skipped because sibling task '{failedSiblingRootId}' failed.";
 
-        if (subtreeStarted)
+        if (HasStartedSubtree)
         {
             MarkSubtreeInterrupted(reason);
             return;
