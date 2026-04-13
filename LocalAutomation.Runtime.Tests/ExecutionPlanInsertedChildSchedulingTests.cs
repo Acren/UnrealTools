@@ -20,8 +20,6 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
            live session graph. The only assertion this test cares about is that traversal does not throw while the child
            subtree is being inserted into the live graph. */
         TimeSpan timeout = TimeSpan.FromSeconds(5);
-        TaskCompletionSource<bool> inserterStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource<bool> allowInsertion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> traversalStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> traversalFailed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using CancellationTokenSource stopTraversal = new();
@@ -33,11 +31,6 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
             {
                 scope.Task("Insert Child Operation").Run(async context =>
                 {
-                    /* Wait until the test harness has started the concurrent graph reader so the merge happens inside a known
-                       overlap window rather than at some arbitrary point during scheduler startup. */
-                    inserterStarted.TrySetResult(true);
-                    await allowInsertion.Task.WaitAsync(timeout);
-
                     var childOperation = new ExecutionTestCommon.InlineOperation(
                         childRoot =>
                         {
@@ -81,7 +74,6 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
         });
 
         (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime((Operation)operation);
-        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         Task traversalTask = Task.Factory.StartNew(() =>
         {
             /* Keep traversing the live graph until the child insertion finishes or the test begins cleanup. This worker
@@ -105,14 +97,14 @@ public sealed class ExecutionPlanInsertedChildSchedulingTests
             }
         }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         ExceptionDispatchInfo? testFailure = null;
+        Task<OperationResult>? executeTask = null;
 
         try
         {
-            /* Start the merge only after the concurrent traversal loop is already hot, so one child-operation insertion is
-               enough to probe the original race instead of relying on dozens of stress iterations. */
-            await inserterStarted.Task.WaitAsync(timeout);
+            /* Start traversal first, then begin execution so the child insertion races an already-hot external reader
+               without needing any explicit inserter/test handshake inside the operation itself. */
             await traversalStarted.Task.WaitAsync(timeout);
-            allowInsertion.TrySetResult(true);
+            executeTask = scheduler.ExecuteAsync(CancellationToken.None);
 
             /* The runtime should either complete the inserted child operation or surface the traversal exception directly.
                This test intentionally does not assert any finer-grained scheduling or completion milestones. */
