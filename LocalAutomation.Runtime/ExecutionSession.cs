@@ -330,7 +330,6 @@ public sealed class ExecutionSession
                execution, child aggregation, and failure propagation can share one runtime model without overloading one
                enum with two meanings. */
             SetTaskStateCore(taskId, state);
-            RefreshAncestorTaskStates(taskId);
         });
     }
 
@@ -412,9 +411,10 @@ public sealed class ExecutionSession
                     insertedTaskIds.Add(insertedTask.Id);
                 }
 
+                WireObservedDependencies(insertedTasks.Tasks);
                 RebuildSubtreeSchedulingRollups(insertedTasks.Tasks);
                 RefreshTaskAndAncestorTimingMetrics(GetTaskCore(insertedTasks.RootTaskId));
-                RefreshAncestorTaskStates(insertedTasks.RootTaskId);
+                GetTaskCore(insertedTasks.RootTaskId).PublishStateChanged();
 
                 addTasksActivity.SetTag("inserted.task.count", insertedTaskIds.Count);
                 return new ChildTaskMergeResult(GetTaskCore(insertedTasks.RootTaskId), insertedTasks.Tasks, insertedTaskIds);
@@ -616,53 +616,6 @@ public sealed class ExecutionSession
     internal IReadOnlyList<ExecutionTask> GetSchedulerReadyTasks()
     {
         return WithGraphReadLock(() => RootTask.GetSchedulerReadyBranchRoots());
-    }
-
-    /// <summary>
-    /// Refreshes pending-state reasons for tasks that participate directly in scheduler execution.
-    /// </summary>
-    internal void RefreshSchedulerPendingReasons()
-    {
-        using PerformanceActivityScope refreshActivity = PerformanceTelemetry.StartActivity("ExecutionSession.RefreshSchedulerPendingReasons");
-        WithGraphWriteLock(() =>
-        {
-            IReadOnlyList<ExecutionTask> tasks = Tasks;
-            int changedTaskCount = 0;
-            refreshActivity.SetTag("task.count", tasks.Count);
-
-            foreach (ExecutionTask task in tasks)
-            {
-                ExecutionTaskState currentState = task.State;
-                if (currentState is ExecutionTaskState.Completed or ExecutionTaskState.Running or ExecutionTaskState.AwaitingLock or ExecutionTaskState.AwaitingDependency)
-                {
-                    continue;
-                }
-
-                if (task.Outcome != null)
-                {
-                    throw new InvalidOperationException($"Task '{task.Id}' cannot return to pending readiness while it already has semantic outcome '{task.Outcome}'.");
-                }
-
-                TaskStartState startState = task.GetTaskStartState();
-                if (startState is TaskStartState.NoStartableWork or TaskStartState.Running or TaskStartState.AwaitingLock)
-                {
-                    continue;
-                }
-
-                /* Let the task compute its own visible status from the same rollup path ancestor containers use
-                   so queued-vs-awaiting-dependency semantics stay centralized in one task-owned projection. */
-                (ExecutionTaskState nextState, _) = task.ComputeRolledUpStateFromChildren();
-                if (task.State != nextState)
-                {
-                    changedTaskCount += 1;
-                }
-
-                SetTaskStateCore(task.Id, nextState);
-                RefreshAncestorTaskStates(task.Id);
-            }
-
-            refreshActivity.SetTag("changed.task.count", changedTaskCount);
-        });
     }
 
     /// <summary>
@@ -1412,7 +1365,6 @@ public sealed class ExecutionSession
         ExecutionTask task = GetTaskCore(taskId);
         if (task.TransitionState(state))
         {
-            task.RecomputeSubtreeSchedulingRollup();
             RefreshTaskAndAncestorTimingMetrics(task);
         }
     }
@@ -1432,7 +1384,6 @@ public sealed class ExecutionSession
     private void InterruptTaskCore(ExecutionTaskId taskId)
     {
         GetTaskCore(taskId).Interrupt();
-        RefreshAncestorTaskStates(taskId);
     }
 
     /// <summary>
@@ -1441,7 +1392,6 @@ public sealed class ExecutionSession
     private void CompleteTaskLifecycleCore(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed)
     {
         GetTaskCore(taskId).CompleteLifecycle(successOutcome);
-        RefreshAncestorTaskStates(taskId);
     }
 
     /// <summary>
@@ -1450,31 +1400,16 @@ public sealed class ExecutionSession
     private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
         ExecutionTask task = GetTaskCore(taskId);
-        ApplyTaskStatusCore(task, state, outcome, refreshTimingMetrics: true);
-    }
-
-    /// <summary>
-    /// Applies one combined lifecycle/result status update to the supplied task. Callers may skip timing refresh when they are
-    /// only updating an ancestor's rolled-up runtime state after timing has already been recomputed for the originating
-    /// task change.
-    /// </summary>
-    private bool ApplyTaskStatusCore(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, bool refreshTimingMetrics)
-    {
         if (!task.TransitionStatus(state, outcome))
         {
-            return false;
+            return;
         }
 
-        if (refreshTimingMetrics)
-        {
-            RefreshTaskAndAncestorTimingMetrics(task);
-        }
-
-        return true;
+        RefreshTaskAndAncestorTimingMetrics(task);
     }
 
     /// <summary>
-    /// Re-emits one task-owned state change through the session-wide fanout so scheduler, UI, and any other session-level
+    /// Re-emits one task-owned change through the session-wide fanout so scheduler, UI, and any other session-level
     /// observers can subscribe once per session instead of wiring every task individually.
     /// </summary>
     private void HandleTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
@@ -1537,7 +1472,6 @@ public sealed class ExecutionSession
     private void CompleteTaskWithOutcomeCore(ExecutionTaskId taskId, ExecutionTaskOutcome outcome)
     {
         GetTaskCore(taskId).CompleteWithOutcome(outcome);
-        RefreshAncestorTaskStates(taskId);
     }
 
     /// <summary>
@@ -1553,9 +1487,8 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Marks one task as semantically interrupted without forcing its lifecycle to completed, then refreshes ancestor
-    /// container state. Running work can keep unwinding, while untouched queued work should use the skipped completion
-    /// path instead.
+    /// Marks one task as semantically interrupted without forcing its lifecycle to completed. Running work can keep
+    /// unwinding, while untouched queued work should use the skipped completion path instead.
     /// </summary>
     internal void InterruptTask(ExecutionTaskId taskId)
     {
@@ -1565,8 +1498,8 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Completes one task lifecycle while preserving any previously assigned doomed outcome, then refreshes ancestor
-    /// container state. The task resolves its own final outcome while the session handles cross-branch ancestor refresh.
+    /// Completes one task lifecycle while preserving any previously assigned doomed outcome. The task resolves its own
+    /// final outcome while task-to-task observation propagates any resulting parent or dependency updates.
     /// </summary>
     internal void CompleteTaskLifecycle(ExecutionTaskId taskId, ExecutionTaskOutcome successOutcome = ExecutionTaskOutcome.Completed)
     {
@@ -1590,9 +1523,8 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Completes one task lifecycle and assigns its semantic outcome, propagating to untouched descendants and then
-    /// refreshing ancestor container state. The task owns per-subtree work while this session method handles the
-    /// cross-branch ancestor refresh that follows.
+    /// Completes one task lifecycle and assigns its semantic outcome. The task owns per-subtree work while task-to-task
+    /// observation propagates any resulting parent or dependency updates.
     /// </summary>
     internal void CompleteTaskWithOutcome(ExecutionTaskId taskId, ExecutionTaskOutcome outcome)
     {
@@ -1648,60 +1580,6 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Propagates task-owned subtree rollups upward through ancestor scopes and refreshes only the ancestors whose
-    /// rolled-up runtime state or cached scheduler summary actually changed.
-    /// </summary>
-    private void RefreshAncestorTaskStates(ExecutionTaskId taskId)
-    {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.RefreshAncestorTaskStates")
-            .SetTag("task.id", taskId.Value);
-        int ancestorCount = 0;
-        int totalChildCount = 0;
-        int changedStatusCount = 0;
-        int changedRollupCount = 0;
-        ExecutionTask task = GetTask(taskId);
-        task.RecomputeSubtreeSchedulingRollup();
-        ExecutionTask? currentParent = task.Parent;
-        while (currentParent != null)
-        {
-            ancestorCount += 1;
-            IReadOnlyList<ExecutionTask> childTasks = currentParent.Children;
-            totalChildCount += childTasks.Count;
-            if (childTasks.Count == 0)
-            {
-                currentParent = currentParent.Parent;
-                continue;
-            }
-
-            bool rollupChanged = currentParent.RecomputeSubtreeSchedulingRollup();
-            (ExecutionTaskState parentState, ExecutionTaskOutcome? parentOutcome) = currentParent.ComputeRolledUpStateFromChildren();
-            bool statusChanged = ApplyTaskStatusCore(currentParent, parentState, parentOutcome, refreshTimingMetrics: false);
-            bool postStatusRollupChanged = statusChanged && currentParent.RecomputeSubtreeSchedulingRollup();
-            if (statusChanged)
-            {
-                changedStatusCount += 1;
-            }
-
-            if (rollupChanged || postStatusRollupChanged)
-            {
-                changedRollupCount += 1;
-            }
-
-            if (!statusChanged && !rollupChanged)
-            {
-                break;
-            }
-
-            currentParent = currentParent.Parent;
-        }
-
-        activity.SetTag("ancestor.count", ancestorCount)
-            .SetTag("child.count", totalChildCount)
-            .SetTag("changed.status.count", changedStatusCount)
-            .SetTag("changed.rollup.count", changedRollupCount);
-    }
-
-    /// <summary>
     /// Seeds the live runtime graph from the initial authored plan. The cloned task instances then become the
     /// authoritative home for all per-task runtime data, while the session keeps only graph/session coordination state.
     /// </summary>
@@ -1716,14 +1594,19 @@ public sealed class ExecutionSession
 
         if (_rootTask != null)
         {
-            RebuildSubtreeSchedulingRollups(_rootTask.GetAllTasks());
+            WithGraphWriteLock(() =>
+            {
+                IReadOnlyList<ExecutionTask> allTasks = _rootTask.GetAllTasks();
+                WireObservedDependencies(allTasks);
+                RebuildSubtreeSchedulingRollups(allTasks);
+            });
         }
     }
 
     /// <summary>
     /// Registers one task in the live session graph, wires parent-child object references, and initializes the task-owned
-    /// runtime state that will stay attached to that task for the rest of the session. Dependency IDs are already part of
-    /// each cloned task's authored spec, so only parent-child object references need wiring here.
+    /// runtime state that will stay attached to that task for the rest of the session. Runtime dependency observation is
+    /// wired later once the relevant target tasks are attached.
     /// </summary>
     private void AddTask(ExecutionTask task)
     {
@@ -1773,6 +1656,21 @@ public sealed class ExecutionSession
         foreach (ExecutionTask task in tasks.OrderByDescending(GetTaskDepth))
         {
             task.RecomputeSubtreeSchedulingRollup();
+        }
+    }
+
+    /// <summary>
+    /// Wires task-local dependency observation for an already attached task set. Tasks observe their direct dependencies
+    /// so dependency-driven frontier changes can recompute only the affected tasks instead of requiring a global sweep.
+    /// </summary>
+    private void WireObservedDependencies(IEnumerable<ExecutionTask> tasks)
+    {
+        foreach (ExecutionTask task in tasks)
+        {
+            foreach (ExecutionTaskId dependencyId in task.Dependencies)
+            {
+                task.ObserveDependency(GetTaskCore(dependencyId));
+            }
         }
     }
 }

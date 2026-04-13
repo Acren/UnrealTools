@@ -113,6 +113,7 @@ public class ExecutionTask : INotifyPropertyChanged
         _ = spec.Operation ?? throw new ArgumentNullException(nameof(spec));
         _spec = spec;
         _children = new List<ExecutionTask>();
+        _observedDependencies = new List<ExecutionTask>();
         LogStream = new BufferedLogStream();
 
         /* Runtime lifecycle and semantic outcome are tracked separately. Disabled tasks start in a completed lifecycle
@@ -124,12 +125,16 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     private readonly List<ExecutionTask> _children;
+    /* Runtime dependency observation stays on the task itself so dependency-driven readiness updates can flow directly to
+       the affected task instead of requiring a session-wide sweep to rediscover which pending nodes changed. */
+    private readonly List<ExecutionTask> _observedDependencies;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// Raised whenever this task's own runtime status changes. The task owns that state, so task-local
-    /// observers and waiters subscribe here instead of routing through a session-level filter.
+    /// Raised whenever this task's task-owned runtime facts change. The event carries the task plus the current visible
+    /// state snapshot so waiters, session fanout, and internal propagation can all share one task event without re-reading
+    /// state unless they want to.
     /// </summary>
     public event Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?>? StateChanged;
 
@@ -651,8 +656,74 @@ public class ExecutionTask : INotifyPropertyChanged
 
         _children.Add(child);
         child._parent = this;
+        /* Parents observe the child's task-owned change event directly so child-frontier changes can roll up immediately
+           even when the child's visible lifecycle state itself stays unchanged. */
+        child.StateChanged += HandleObservedTaskChanged;
         RaisePropertyChanged(nameof(Children));
         RaisePropertyChanged(nameof(ChildTaskIds));
+    }
+
+    /// <summary>
+    /// Wires one runtime dependency observation edge so this task recomputes itself whenever that dependency changes.
+    /// Authored dependency IDs stay on the spec; this runtime link only drives observation.
+    /// </summary>
+    internal void ObserveDependency(ExecutionTask dependency)
+    {
+        if (dependency == null)
+        {
+            throw new ArgumentNullException(nameof(dependency));
+        }
+
+        if (dependency.Id == Id)
+        {
+            throw new InvalidOperationException($"Task '{Id}' cannot observe itself as a dependency.");
+        }
+
+        if (_observedDependencies.Any(existing => existing.Id == dependency.Id))
+        {
+            return;
+        }
+
+        _observedDependencies.Add(dependency);
+        dependency.StateChanged += HandleObservedTaskChanged;
+    }
+
+    /// <summary>
+    /// Recomputes this task's derived graph state after one observed child or dependency changed. Visible lifecycle and
+    /// semantic outcome still come from this task's own projection logic, and subtree-rollup-only changes still publish
+    /// through the same task event so observers can simply re-read current task properties.
+    /// </summary>
+    internal void RefreshDerivedStateFromObservations()
+    {
+        bool subtreeSchedulingChanged = RecomputeSubtreeSchedulingRollup();
+        (ExecutionTaskState state, ExecutionTaskOutcome? outcome) = ComputeRolledUpStateFromChildren();
+        if (!TransitionStatus(state, outcome) && subtreeSchedulingChanged)
+        {
+            RaiseStateChanged();
+        }
+    }
+
+    /// <summary>
+    /// Publishes this task's current task-owned state to observers without changing its visible runtime status.
+    /// Structural graph mutations such as child insertion use this after wiring and cache rebuilds so observers can
+    /// refresh from the new topology.
+    /// </summary>
+    internal void PublishStateChanged()
+    {
+        RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// Handles one observed child or dependency change by refreshing this task's own derived graph state.
+    /// </summary>
+    private void HandleObservedTaskChanged(ExecutionTask observedTask, ExecutionTaskState _, ExecutionTaskOutcome? __)
+    {
+        if (observedTask == null)
+        {
+            throw new ArgumentNullException(nameof(observedTask));
+        }
+
+        RefreshDerivedStateFromObservations();
     }
 
     internal void InitializeRuntimeState()
@@ -849,13 +920,7 @@ public class ExecutionTask : INotifyPropertyChanged
 
         /* Task-local observers should see a self-consistent task status, including the task-owned subtree start-state
            rollup that feeds parent rollup decisions, before the task-level state-changed event fires. */
-        RecomputeSubtreeSchedulingRollup();
-
-        Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?>? taskStateChanged;
-        lock (_stateChangeSyncRoot)
-        {
-            taskStateChanged = StateChanged;
-        }
+        bool subtreeSchedulingChanged = RecomputeSubtreeSchedulingRollup();
 
         if (stateChanged)
         {
@@ -877,7 +942,25 @@ public class ExecutionTask : INotifyPropertyChanged
             RaisePropertyChanged(nameof(FinishedAt));
         }
 
-        taskStateChanged?.Invoke(this, state, outcome);
+        if (stateChanged || outcomeChanged || subtreeSchedulingChanged)
+        {
+            RaiseStateChanged();
+        }
+    }
+
+    /// <summary>
+    /// Raises the task-owned change event while preserving the existing subscribe/inspect synchronization used by local
+    /// waiters. The payload snapshots the current visible task state at raise time so subscribers can use it directly.
+    /// </summary>
+    private void RaiseStateChanged()
+    {
+        Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?>? stateChanged;
+        lock (_stateChangeSyncRoot)
+        {
+            stateChanged = StateChanged;
+        }
+
+        stateChanged?.Invoke(this, State, Outcome);
     }
 
     protected void RaisePropertyChanged([CallerMemberName] string? propertyName = null)

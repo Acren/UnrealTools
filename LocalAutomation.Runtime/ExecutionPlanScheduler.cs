@@ -530,7 +530,6 @@ public sealed class ExecutionPlanScheduler
         catch (OperationCanceledException)
         {
             ApplyCancelledTaskCompletion(completedTaskId);
-            _session.RefreshSchedulerPendingReasons();
             _lastCompletedTaskId = completedTaskId;
             _lastCompletionHandledAtUtc = DateTime.UtcNow;
             return;
@@ -541,15 +540,12 @@ public sealed class ExecutionPlanScheduler
                 .SetTag("exception.type", ex.GetBaseException().GetType().FullName ?? ex.GetBaseException().GetType().Name)
                 .SetTag("exception.message", ex.GetBaseException().Message);
             ApplyTaskCompletionFailure(completedTaskId, ex);
-            _session.RefreshSchedulerPendingReasons();
             _lastCompletedTaskId = completedTaskId;
             _lastCompletionHandledAtUtc = DateTime.UtcNow;
             return;
         }
 
         ApplyTaskCompletionResult(completedTaskId, result);
-
-        _session.RefreshSchedulerPendingReasons();
         _lastCompletedTaskId = completedTaskId;
         _lastCompletionHandledAtUtc = DateTime.UtcNow;
     }
