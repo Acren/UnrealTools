@@ -2,6 +2,8 @@ namespace LocalAutomation.Runtime;
 
 /// <summary>
 /// Represents the rolled-up runtime execution state of an execution task subtree.
+/// Ordering matters: every started-but-non-terminal runtime state must remain numerically between <see cref="Queued"/>
+/// and <see cref="Completed"/> so lifecycle code can classify in-progress work with one range comparison.
 /// </summary>
 public enum ExecutionTaskState
 {

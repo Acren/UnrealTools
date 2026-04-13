@@ -656,13 +656,9 @@ public sealed class ExecutionSession
                     continue;
                 }
 
-                /* Untouched queued work stays Queued, while previously started subtrees with no active local work can
-                   surface AwaitingDependency when their current frontier is blocked only by dependencies outside the
-                   subtree. Waiting-for-parent cases remain queued because their blocker is structural ordering rather than
-                   an external prerequisite. */
-                ExecutionTaskState nextState = startState == TaskStartState.AwaitingDependency && task.HasStartedWorkInSubtree()
-                    ? ExecutionTaskState.AwaitingDependency
-                    : ExecutionTaskState.Queued;
+                /* Let the task compute its own visible state snapshot from the same rollup path ancestor containers use
+                   so queued-vs-awaiting-dependency semantics stay centralized in one task-owned projection. */
+                (ExecutionTaskState nextState, _, _) = task.ComputeRolledUpStateFromChildren();
                 if (task.State != nextState || !string.Equals(task.StatusReason, waitingReason ?? string.Empty, StringComparison.Ordinal))
                 {
                     changedTaskCount += 1;
@@ -690,18 +686,18 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Returns whether forced terminalization must treat this task as started work instead of untouched queued work.
-    /// Cleanup should derive this from stable task facts such as active execution ownership and subtree start history
-    /// rather than from one specific visible scheduler state.
+    /// Returns whether forced terminalization must treat this task as in-progress work instead of untouched queued work.
+    /// The visible task state is the primary lifecycle contract here, while the active-execution fallbacks preserve
+    /// correctness during the narrow admission window before the visible state catches up.
     /// </summary>
-    private static bool HasStartedWorkForForcedTerminalization(ExecutionTask task, Func<ExecutionTaskId, bool>? isTaskTrackedAsRunning = null)
+    private static bool IsTaskInProgressForForcedTerminalization(ExecutionTask task, Func<ExecutionTaskId, bool>? isTaskTrackedAsRunning = null)
     {
         if (task == null)
         {
             throw new ArgumentNullException(nameof(task));
         }
 
-        return task.HasStartedWorkInSubtree()
+        return task.IsInProgress
             || task.HasActiveExecution
             || (isTaskTrackedAsRunning?.Invoke(task.Id) ?? false);
     }
@@ -727,17 +723,17 @@ public sealed class ExecutionSession
             .SetTag("preserve.running.terminal.outcomes", preserveRunningTerminalOutcomes);
         WithGraphWriteLock(() =>
         {
-            /* Finalize started tasks before untouched descendants so a started container scope can keep its cancelled or
-               interrupted outcome and then propagate skipped completion only to the descendants that never ran. Within
-               each started/untouched bucket, finish deeper tasks first so container rollups still observe already-
-               terminal descendants where possible. */
-            List<(ExecutionTask task, bool hasStartedWork)> outstandingTasks = Tasks
+            /* Finalize in-progress tasks before untouched descendants so a started container scope can keep its cancelled
+               or interrupted outcome and then propagate skipped completion only to the descendants that never ran.
+               Within each in-progress/untouched bucket, finish deeper tasks first so container rollups still observe
+               already-terminal descendants where possible. */
+            List<(ExecutionTask task, bool isInProgress)> outstandingTasks = Tasks
                 .Where(task => !task.IsTerminal)
-                .Select(task => (task, hasStartedWork: HasStartedWorkForForcedTerminalization(task, isTaskTrackedAsRunning)))
-                .OrderByDescending(entry => entry.hasStartedWork)
+                .Select(task => (task, isInProgress: IsTaskInProgressForForcedTerminalization(task, isTaskTrackedAsRunning)))
+                .OrderByDescending(entry => entry.isInProgress)
                 .ThenByDescending(entry => GetTaskDepth(entry.task))
                 .ToList();
-            foreach ((ExecutionTask task, bool taskHasStartedWork) in outstandingTasks)
+            foreach ((ExecutionTask task, bool taskIsInProgress) in outstandingTasks)
             {
                 /* Earlier parent completions can terminalize untouched descendants through propagation even though this
                    loop already snapshotted them as outstanding, so re-check terminality on each iteration. */
@@ -746,12 +742,12 @@ public sealed class ExecutionSession
                     continue;
                 }
 
-                ExecutionTaskOutcome nextOutcome = taskHasStartedWork
+                ExecutionTaskOutcome nextOutcome = taskIsInProgress
                     ? userCancelled ? ExecutionTaskOutcome.Cancelled : ExecutionTaskOutcome.Interrupted
                     : ExecutionTaskOutcome.Skipped;
-                string reason = taskHasStartedWork ? runningTaskReason : skippedTaskReason;
+                string reason = taskIsInProgress ? runningTaskReason : skippedTaskReason;
 
-                if (preserveRunningTerminalOutcomes && taskHasStartedWork)
+                if (preserveRunningTerminalOutcomes && taskIsInProgress)
                 {
                     CompleteTaskLifecycleCore(task.Id, nextOutcome, reason);
                     continue;
@@ -898,7 +894,7 @@ public sealed class ExecutionSession
             .ToList();
         foreach (ExecutionTask task in outstandingTasks)
         {
-            if (HasStartedWorkForForcedTerminalization(task))
+            if (IsTaskInProgressForForcedTerminalization(task))
             {
                 CompleteTaskLifecycle(task.Id, ExecutionTaskOutcome.Interrupted, interruptedReason);
                 continue;

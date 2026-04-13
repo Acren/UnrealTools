@@ -1138,7 +1138,7 @@ public class ExecutionTask : INotifyPropertyChanged
     /// <summary>
     /// Computes the rolled-up lifecycle state, semantic outcome, and user-facing reason for this task from its current
     /// local task facts plus the already-updated rolled-up state and cached scheduler summaries on its direct
-    /// children.
+    /// children. This is the single state-projection path for both direct task refresh and ancestor-container rollup.
     /// </summary>
     internal (ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? reason) ComputeRolledUpStateFromChildren()
     {
@@ -1440,10 +1440,17 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Returns whether this task is currently in one of the non-terminal in-progress runtime states.
+    /// Enum ordering intentionally keeps every such state strictly between Queued and Completed so callers can classify
+    /// in-progress work without learning each individual state name.
+    /// </summary>
+    public bool IsInProgress => State > ExecutionTaskState.Queued && State < ExecutionTaskState.Completed;
+
+    /// <summary>
     /// Returns whether this task has entered real execution instead of remaining untouched queued work.
     /// </summary>
     internal bool HasStarted =>
-        State is ExecutionTaskState.AwaitingDependency or ExecutionTaskState.AwaitingLock or ExecutionTaskState.Running
+        IsInProgress
         || StartedAt != null
         || Outcome is ExecutionTaskOutcome.Completed or ExecutionTaskOutcome.Cancelled or ExecutionTaskOutcome.Interrupted or ExecutionTaskOutcome.Failed;
 
