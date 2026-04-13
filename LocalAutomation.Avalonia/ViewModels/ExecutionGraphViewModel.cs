@@ -266,35 +266,6 @@ public sealed class ExecutionGraphViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Raises selected-node notifications when an underlying shared task VM changed in a way that could affect the details UI.
-    /// </summary>
-    public void NotifyTaskStateChanged(RuntimeExecutionTaskId taskId)
-    {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraph.NotifyTaskStateChanged")
-            .SetTag("task.id", taskId.Value);
-        if (!_nodesById.TryGetValue(taskId, out ExecutionNodeViewModel? node))
-        {
-            activity.SetTag("node.found", false);
-            return;
-        }
-
-        activity.SetTag("node.found", true)
-            .SetTag("selected.node.id", SelectedNode?.Id.Value ?? string.Empty)
-            .SetTag("selected.node.is_container", SelectedNode?.IsContainer ?? false)
-            .SetTag("node.is_selected", ReferenceEquals(SelectedNode, node));
-
-        if (ReferenceEquals(SelectedNode, node) || (SelectedNode != null && SelectedNode.IsContainer))
-        {
-            activity.SetTag("selected_node.invalidated", true);
-            RaisePropertyChanged(nameof(SelectedNode));
-            return;
-        }
-
-        activity.SetTag("selected_node.invalidated", false);
-    }
-
-    /// <summary>
-    /// <summary>
     /// Rebuilds the visible node and edge view-model collections from the latest projection and layout snapshots.
     /// </summary>
     private void RebuildVisibleGraph()

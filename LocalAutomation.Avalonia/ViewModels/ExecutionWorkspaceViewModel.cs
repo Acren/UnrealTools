@@ -589,13 +589,9 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
                 .SetTag("task.outcome", latestOutcome?.ToString() ?? string.Empty)
                 .SetTag("task.status_reason", latestStatusReason ?? string.Empty));
 
-        /* Task view models already react to raw runtime state changes. This flush only updates graph-level selection
-           visuals plus the affected runtime metrics snapshots, so one burst of runtime transitions costs one UI update. */
-        foreach (RuntimeExecutionTaskId pendingTaskId in pendingTaskIds)
-        {
-            runtimeTab.Graph.NotifyTaskStateChanged(pendingTaskId);
-        }
-
+        /* Task state alone does not change which log stream is selected. Selected-log scope still rebuilds on true
+           selection, tab, and graph-structure changes, while this batch flush only refreshes the rolled-up metrics that
+           the selected runtime header reads from the affected task subtree. */
         runtimeTab.RefreshTaskMetrics(pendingTaskIds);
         if (ReferenceEquals(SelectedRuntimeTab, runtimeTab))
         {
