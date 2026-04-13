@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
@@ -27,8 +28,15 @@ public sealed class ExecutionSession
        scheduler's write-side updates break through tight concurrent read loops such as the inserted-child traversal
        regression scenario. */
     private readonly ReaderWriterLockSlim _graphLock = new(LockRecursionPolicy.SupportsRecursion);
+    /* Some runtime follow-up work, such as session-level notifications, must happen only after the outermost graph
+       write scope releases the lock. Keep those callbacks generic so any future post-write action can reuse the same
+       deferral path instead of adding one-off state for each notification type. */
+    private readonly List<Action> _afterGraphWriteReleasedCallbacks = new();
     private readonly SessionLogger _sessionLogger;
     private Task<OperationResult>? _currentTask;
+    /* Recursive write scopes are allowed, so only the outermost write-lock owner is allowed to drain the queued
+       task-state notifications after releasing the graph lock. */
+    private int _graphWriteLockDepth;
 
     /// <summary>
     /// Creates an execution session around a shared log stream and the authored plan it will execute.
@@ -546,9 +554,12 @@ public sealed class ExecutionSession
             completionSource.TrySetResult(true);
         }
 
-        void OnTaskStateChanged(ExecutionTaskId taskId, ExecutionTaskState _, ExecutionTaskOutcome? __, string? ___)
+        void OnTaskStateChanged(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? __, string? ___)
         {
-            if (!IsTaskTerminal(taskId))
+            /* Session task-state subscribers can run while the graph write lock is still held, so this callback must not
+               perform any additional session graph reads before it acquires its own local completion bookkeeping lock.
+               The published state already tells us whether the task reached the terminal lifecycle state we care about. */
+            if (state != ExecutionTaskState.Completed)
             {
                 return;
             }
@@ -567,14 +578,19 @@ public sealed class ExecutionSession
 
         TaskStateChanged += OnTaskStateChanged;
 
-        lock (remainingTaskIds)
+        /* Do the post-subscription terminal sweep without holding the local remaining-task lock across session graph
+           reads. Holding that lock while calling `IsTaskTerminal` can deadlock against the completion callback above,
+           which is allowed to run under the graph write lock and then needs this same local lock to remove the task. */
+        foreach (ExecutionTaskId taskId in remainingTaskIds.ToList())
         {
-            foreach (ExecutionTaskId taskId in remainingTaskIds.ToList())
+            if (!IsTaskTerminal(taskId))
             {
-                if (IsTaskTerminal(taskId))
-                {
-                    CompleteIfFinished(taskId);
-                }
+                continue;
+            }
+
+            lock (remainingTaskIds)
+            {
+                CompleteIfFinished(taskId);
             }
         }
 
@@ -1225,7 +1241,11 @@ public sealed class ExecutionSession
     /// </summary>
     private void WithGraphWriteLock(Action action)
     {
-        WithGraphLock("ExecutionSession.GraphWriteLock", action, _graphLock.EnterWriteLock, _graphLock.ExitWriteLock);
+        _ = WithGraphWriteLock(() =>
+        {
+            action();
+            return true;
+        });
     }
 
     /// <summary>
@@ -1233,7 +1253,56 @@ public sealed class ExecutionSession
     /// </summary>
     private T WithGraphWriteLock<T>(Func<T> action)
     {
-        return WithGraphLock("ExecutionSession.GraphWriteLock", action, _graphLock.EnterWriteLock, _graphLock.ExitWriteLock);
+        Stopwatch totalStopwatch = Stopwatch.StartNew();
+        Stopwatch waitStopwatch = Stopwatch.StartNew();
+        _graphLock.EnterWriteLock();
+        waitStopwatch.Stop();
+
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.GraphWriteLock")
+            .SetTag("lock.wait_ms", waitStopwatch.Elapsed.TotalMilliseconds.ToString("0.###"));
+
+        List<Action>? afterGraphWriteReleasedCallbacks = null;
+        ExceptionDispatchInfo? capturedException = null;
+        T result = default!;
+        try
+        {
+            _graphWriteLockDepth += 1;
+            result = action();
+        }
+        catch (Exception ex)
+        {
+            capturedException = ExceptionDispatchInfo.Capture(ex);
+        }
+        finally
+        {
+            /* Only the outermost write scope is allowed to detach the queued notifications for post-lock dispatch. */
+            if (_graphWriteLockDepth == 1 && _afterGraphWriteReleasedCallbacks.Count > 0)
+            {
+                afterGraphWriteReleasedCallbacks = _afterGraphWriteReleasedCallbacks.ToList();
+                _afterGraphWriteReleasedCallbacks.Clear();
+            }
+
+            _graphWriteLockDepth -= 1;
+            TimeSpan holdDuration = totalStopwatch.Elapsed - waitStopwatch.Elapsed;
+            activity.SetTag("lock.hold_ms", holdDuration.TotalMilliseconds.ToString("0.###"))
+                .SetTag("lock.total_ms", totalStopwatch.Elapsed.TotalMilliseconds.ToString("0.###"));
+            _graphLock.ExitWriteLock();
+        }
+
+        if (afterGraphWriteReleasedCallbacks != null)
+        {
+            try
+            {
+                ExecuteAfterGraphWriteReleasedCallbacks(afterGraphWriteReleasedCallbacks);
+            }
+            catch when (capturedException != null)
+            {
+                /* Preserve the original graph-mutation failure if both the mutation and a deferred subscriber fail. */
+            }
+        }
+
+        capturedException?.Throw();
+        return result;
     }
 
     /// <summary>
@@ -1400,27 +1469,56 @@ public sealed class ExecutionSession
     /// </summary>
     private void HandleTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string statusReason)
     {
-        InvokeTaskStateChangedUnderLock(task.Id, state, outcome, statusReason);
-    }
-
-    /// <summary>
-    /// Invokes session-level task-state subscribers synchronously while the caller still owns the graph write lock so the
-    /// timing tree can separate under-lock subscriber work from the surrounding graph mutation and rollup work.
-    /// </summary>
-    private void InvokeTaskStateChangedUnderLock(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome, string? statusReason)
-    {
         Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?, string?>? taskStateChanged = TaskStateChanged;
         if (taskStateChanged == null)
         {
             return;
         }
 
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.TaskStateChanged.InvokeUnderLock")
-            .SetTag("task.id", taskId.Value)
-            .SetTag("task.state", state.ToString())
-            .SetTag("task.outcome", outcome?.ToString() ?? string.Empty)
-            .SetTag("subscriber.count", taskStateChanged.GetInvocationList().Length);
-        taskStateChanged.Invoke(taskId, state, outcome, statusReason);
+        /* Capture the subscriber snapshot and state payload at mutation time, then publish them only after the outermost
+           graph write scope releases. Subscribers should observe the completed task-state change, but they must not become
+           part of the graph-lock critical section. */
+        AfterGraphWriteReleased(() =>
+        {
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.TaskStateChanged.InvokePostLock")
+                .SetTag("task.id", task.Id.Value)
+                .SetTag("task.state", state.ToString())
+                .SetTag("task.outcome", outcome?.ToString() ?? string.Empty)
+                .SetTag("subscriber.count", taskStateChanged.GetInvocationList().Length);
+            taskStateChanged.Invoke(task.Id, state, outcome, statusReason);
+        });
+    }
+
+    /// <summary>
+    /// Registers one callback that should run only after the outermost graph write scope releases the write lock.
+    /// </summary>
+    private void AfterGraphWriteReleased(Action callback)
+    {
+        if (callback == null)
+        {
+            throw new ArgumentNullException(nameof(callback));
+        }
+
+        /* If no write scope is active on this thread, the callback can run immediately because there is no deferred graph
+           mutation boundary left to wait for. */
+        if (!_graphLock.IsWriteLockHeld || _graphWriteLockDepth == 0)
+        {
+            callback();
+            return;
+        }
+
+        _afterGraphWriteReleasedCallbacks.Add(callback);
+    }
+
+    /// <summary>
+    /// Executes the deferred post-write callbacks after the graph write lock has been released.
+    /// </summary>
+    private static void ExecuteAfterGraphWriteReleasedCallbacks(IReadOnlyList<Action> afterGraphWriteReleasedCallbacks)
+    {
+        foreach (Action callback in afterGraphWriteReleasedCallbacks)
+        {
+            callback();
+        }
     }
 
     /// <summary>
