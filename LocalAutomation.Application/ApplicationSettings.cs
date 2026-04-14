@@ -14,6 +14,7 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
     private bool _enablePerformanceTelemetry;
     private bool _revealHiddenTasks;
     private double _minimumPerformanceTelemetryMilliseconds;
+    private double _minimumCollapsedPerformanceTelemetryScopeMilliseconds;
     private readonly string _defaultOutputRootPath;
     private readonly string _defaultTempRootPath;
     private string _outputRootPath;
@@ -111,8 +112,8 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
     /// <summary>
     /// Gets or sets the minimum duration in milliseconds required before a completed root telemetry activity is logged.
     /// </summary>
-    [DisplayName("Minimum telemetry time (ms)")]
-    [Description("Suppresses completed performance telemetry roots shorter than this duration so the log focuses on meaningful delays. Set to 0 to log every captured trace.")]
+    [DisplayName("Minimum root telemetry time (ms)")]
+    [Description("Suppresses completed root performance telemetry traces shorter than this duration so the log only includes slower top-level workflows. Set to 0 to log every captured root trace.")]
     [PersistedValue(PersistenceScope.Global)]
     public double MinimumPerformanceTelemetryMilliseconds
     {
@@ -128,6 +129,31 @@ public sealed class ApplicationSettings : INotifyPropertyChanged
             }
 
             _minimumPerformanceTelemetryMilliseconds = normalizedValue;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the minimum duration in milliseconds required before a nested telemetry scope remains visible in
+    /// the logged timing tree.
+    /// </summary>
+    [DisplayName("Minimum collapsed telemetry scope time (ms)")]
+    [Description("Collapses nested performance telemetry scopes shorter than this duration so the printed timing tree stays focused on meaningful work. Set to 0 to keep every nested scope visible.")]
+    [PersistedValue(PersistenceScope.Global)]
+    public double MinimumCollapsedPerformanceTelemetryScopeMilliseconds
+    {
+        get => _minimumCollapsedPerformanceTelemetryScopeMilliseconds;
+        set
+        {
+            double normalizedValue = double.IsNaN(value) || double.IsInfinity(value)
+                ? 0
+                : Math.Max(0, value);
+            if (Math.Abs(_minimumCollapsedPerformanceTelemetryScopeMilliseconds - normalizedValue) < 0.001)
+            {
+                return;
+            }
+
+            _minimumCollapsedPerformanceTelemetryScopeMilliseconds = normalizedValue;
             OnPropertyChanged();
         }
     }

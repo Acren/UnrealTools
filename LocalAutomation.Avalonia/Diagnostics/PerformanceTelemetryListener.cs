@@ -21,16 +21,18 @@ public static class PerformanceTelemetryListener
     private static bool _enabled;
     private static bool _isStarted;
     private static TimeSpan _minimumDuration = TimeSpan.Zero;
+    private static TimeSpan _minimumCollapsedScopeDuration = TimeSpan.Zero;
 
     /// <summary>
     /// Starts the shared listener once when performance telemetry is enabled.
     /// </summary>
-    public static void Start(bool enabled, TimeSpan? minimumDuration = null)
+    public static void Start(bool enabled, TimeSpan? minimumDuration = null, TimeSpan? minimumCollapsedScopeDuration = null)
     {
         lock (Sync)
         {
             _enabled = enabled;
             _minimumDuration = minimumDuration ?? TimeSpan.Zero;
+            _minimumCollapsedScopeDuration = minimumCollapsedScopeDuration ?? TimeSpan.Zero;
 
             if (_isStarted)
             {
@@ -120,6 +122,13 @@ public static class PerformanceTelemetryListener
     /// </summary>
     private static void AppendActivity(List<string> lines, IReadOnlyDictionary<ActivitySpanId, List<RecordedActivity>> childrenByParent, RecordedActivity activity, DateTime rootStartTimeUtc, int depth)
     {
+        /* Collapse short nested scopes before formatting so the logged tree only expands branches that clear the
+           configured per-scope visibility threshold. */
+        if (ShouldCollapseNestedScope(activity))
+        {
+            return;
+        }
+
         string indent = new(' ', depth * 2);
         IReadOnlyList<RecordedActivity> children = GetChildren(childrenByParent, activity.SpanId);
         TimeSpan startOffset = activity.StartTimeUtc - rootStartTimeUtc;
@@ -173,6 +182,15 @@ public static class PerformanceTelemetryListener
         return childrenByParent.TryGetValue(parentSpanId, out List<RecordedActivity>? children)
             ? children
             : Array.Empty<RecordedActivity>();
+    }
+
+    /// <summary>
+    /// Returns whether one nested scope should be omitted from the logged tree because it did not reach the configured
+    /// per-scope duration threshold.
+    /// </summary>
+    private static bool ShouldCollapseNestedScope(RecordedActivity activity)
+    {
+        return _minimumCollapsedScopeDuration > TimeSpan.Zero && activity.Duration < _minimumCollapsedScopeDuration;
     }
 
     /// <summary>

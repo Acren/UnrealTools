@@ -60,7 +60,8 @@ public partial class App : AvaloniaApplication
         {
             PerformanceTelemetryListener.Start(
                 Services.ApplicationSettings.EnablePerformanceTelemetry,
-                System.TimeSpan.FromMilliseconds(Services.ApplicationSettings.MinimumPerformanceTelemetryMilliseconds));
+                System.TimeSpan.FromMilliseconds(Services.ApplicationSettings.MinimumPerformanceTelemetryMilliseconds),
+                System.TimeSpan.FromMilliseconds(Services.ApplicationSettings.MinimumCollapsedPerformanceTelemetryScopeMilliseconds));
             MainWindow mainWindow = new();
             mainWindow.Title = ShellIdentity.WindowTitle;
             desktop.MainWindow = mainWindow;
