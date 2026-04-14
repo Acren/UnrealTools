@@ -21,18 +21,18 @@ public static class PerformanceTelemetryListener
     private static bool _enabled;
     private static bool _isStarted;
     private static TimeSpan _minimumDuration = TimeSpan.Zero;
-    private static TimeSpan _minimumCollapsedScopeDuration = TimeSpan.Zero;
+    private static TimeSpan _minimumVisibleScopeDuration = TimeSpan.Zero;
 
     /// <summary>
     /// Starts the shared listener once when performance telemetry is enabled.
     /// </summary>
-    public static void Start(bool enabled, TimeSpan? minimumDuration = null, TimeSpan? minimumCollapsedScopeDuration = null)
+    public static void Start(bool enabled, TimeSpan? minimumDuration = null, TimeSpan? minimumVisibleScopeDuration = null)
     {
         lock (Sync)
         {
             _enabled = enabled;
             _minimumDuration = minimumDuration ?? TimeSpan.Zero;
-            _minimumCollapsedScopeDuration = minimumCollapsedScopeDuration ?? TimeSpan.Zero;
+            _minimumVisibleScopeDuration = minimumVisibleScopeDuration ?? TimeSpan.Zero;
 
             if (_isStarted)
             {
@@ -190,7 +190,7 @@ public static class PerformanceTelemetryListener
     /// </summary>
     private static bool ShouldCollapseNestedScope(RecordedActivity activity)
     {
-        return _minimumCollapsedScopeDuration > TimeSpan.Zero && activity.Duration < _minimumCollapsedScopeDuration;
+        return _minimumVisibleScopeDuration > TimeSpan.Zero && activity.Duration < _minimumVisibleScopeDuration;
     }
 
     /// <summary>

@@ -74,7 +74,7 @@ public sealed class SettingsWindowViewModel : ViewModelBase, IDisposable
         PerformanceTelemetryListener.Start(
             _services.ApplicationSettings.EnablePerformanceTelemetry,
             TimeSpan.FromMilliseconds(_services.ApplicationSettings.MinimumPerformanceTelemetryMilliseconds),
-            TimeSpan.FromMilliseconds(_services.ApplicationSettings.MinimumCollapsedPerformanceTelemetryScopeMilliseconds));
+            TimeSpan.FromMilliseconds(_services.ApplicationSettings.MinimumVisiblePerformanceTelemetryScopeMilliseconds));
         // Capture a detached persisted-value batch immediately so the background saver never touches the live settings
         // object after the UI continues processing.
         _settingsSaver.RequestSave(_services.OptionValues.CaptureGlobalSettings(_services.ApplicationSettings));
