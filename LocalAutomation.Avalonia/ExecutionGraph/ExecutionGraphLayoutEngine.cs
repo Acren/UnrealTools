@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CorePerformanceTelemetry = LocalAutomation.Core.PerformanceTelemetry;
+using PerformanceActivityScope = LocalAutomation.Core.PerformanceActivityScope;
 using RuntimeExecutionTaskId = LocalAutomation.Runtime.ExecutionTaskId;
 
 namespace LocalAutomation.Avalonia.ExecutionGraph;
@@ -43,17 +45,68 @@ internal sealed class ExecutionGraphLayoutEngine
             return ExecutionGraphLayoutResult.Empty;
         }
 
-        LayoutDirectChildren(parentId: null, originX: ExecutionGraphLayoutSettings.CanvasMargin, originY: ExecutionGraphLayoutSettings.CanvasMargin);
-        ApplyGroupHierarchyMetrics();
-        List<ExecutionGraphEdgeLayout> edgeLayouts = BuildDependencyEdges();
-        ExecutionGraphStructureLayeringSnapshot structureLayering = BuildStructureLayeringSnapshot(edgeLayouts);
-        Dictionary<RuntimeExecutionTaskId, ExecutionNodeLayout> nodeLayouts = _nodeLayouts
-            .ToDictionary(entry => entry.Key, entry => entry.Value.ToImmutable());
+        /* The first-pass tree layout positions every visible node and subtree before any edge or layering work can run,
+           so measure it separately from the later graph-derivation phases. */
+        using (PerformanceActivityScope layoutTreeActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.LayoutVisibleTree")
+            .SetTag("visible.node.count", _projection.VisibleTaskIds.Count)
+            .SetTag("root.child.count", _projection.GetDirectChildIds(parentId: null).Count))
+        {
+            LayoutDirectChildren(parentId: null, originX: ExecutionGraphLayoutSettings.CanvasMargin, originY: ExecutionGraphLayoutSettings.CanvasMargin);
+        }
+
+        /* Group summaries walk the already-laid-out hierarchy without changing node positions, so keep their cost
+           distinct from the structural layout pass. */
+        using (PerformanceActivityScope groupMetricsActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.ApplyGroupHierarchyMetrics"))
+        {
+            ApplyGroupHierarchyMetrics();
+        }
+
+        List<ExecutionGraphEdgeLayout> edgeLayouts;
+        /* Edge extraction resolves the visible dependency set and routing after node bounds are known, so time it apart
+           from the earlier tree layout and the later layering policy. */
+        using (PerformanceActivityScope buildEdgesActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.BuildDependencyEdges"))
+        {
+            edgeLayouts = BuildDependencyEdges();
+            buildEdgesActivity.SetTag("edge.count", edgeLayouts.Count);
+        }
+
+        ExecutionGraphStructureLayeringSnapshot structureLayering;
+        /* Whole-edge layering performs the broadest edge-vs-group reasoning in the layout engine, so keep it isolated
+           from route generation and immutable snapshot creation. */
+        using (PerformanceActivityScope layeringActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.BuildStructureLayering")
+            .SetTag("edge.count", edgeLayouts.Count))
+        {
+            structureLayering = BuildStructureLayeringSnapshot(edgeLayouts);
+            layeringActivity.SetTag("group.count", structureLayering.OrderedGroupIds.Count)
+                .SetTag("edge.constraint.count", structureLayering.EdgeConstraints.Count);
+        }
+
+        Dictionary<RuntimeExecutionTaskId, ExecutionNodeLayout> nodeLayouts;
+        /* The final immutable node snapshot is a separate allocation step after all mutable layout work is complete. */
+        using (PerformanceActivityScope materializeNodeLayoutsActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.MaterializeNodeLayouts")
+            .SetTag("node.count", _nodeLayouts.Count))
+        {
+            nodeLayouts = _nodeLayouts.ToDictionary(entry => entry.Key, entry => entry.Value.ToImmutable());
+        }
+
+        double canvasWidth;
+        double canvasHeight;
+        /* Canvas extents are derived from the immutable node snapshot, so measure them separately from snapshot
+           materialization in case extent scans become significant on larger graphs. */
+        using (PerformanceActivityScope canvasExtentsActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.CalculateCanvasExtents")
+            .SetTag("node.count", nodeLayouts.Count))
+        {
+            canvasWidth = CalculateCanvasWidth(nodeLayouts.Values);
+            canvasHeight = CalculateCanvasHeight(nodeLayouts.Values);
+            canvasExtentsActivity.SetTag("canvas.width", canvasWidth)
+                .SetTag("canvas.height", canvasHeight);
+        }
+
         return new ExecutionGraphLayoutResult(
             nodeLayouts,
             edgeLayouts,
-            CalculateCanvasWidth(nodeLayouts.Values),
-            CalculateCanvasHeight(nodeLayouts.Values),
+            canvasWidth,
+            canvasHeight,
             structureLayering);
     }
 
@@ -423,30 +476,113 @@ internal sealed class ExecutionGraphLayoutEngine
     /// </summary>
     private ExecutionGraphStructureLayeringSnapshot BuildStructureLayeringSnapshot(IReadOnlyList<ExecutionGraphEdgeLayout> edgeLayouts)
     {
-        List<RuntimeExecutionTaskId> orderedGroupIds = _projection.VisibleTaskIds
-            .Where(taskId => GetNodeLayout(taskId).IsContainer)
-            .OrderByDescending(taskId => GetNodeLayout(taskId).Bounds.Width * GetNodeLayout(taskId).Bounds.Height)
-            .ToList();
-        Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), ExecutionGraphEdgeLayeringConstraints> edgeConstraints = edgeLayouts
-            .ToDictionary(edge => (edge.SourceId, edge.TargetId), ResolveWholeEdgeLayering);
-        return new ExecutionGraphStructureLayeringSnapshot(orderedGroupIds, edgeConstraints);
-    }
+        List<RuntimeExecutionTaskId> orderedGroupIds;
+        /* Group ordering depends only on final container bounds, so isolate it from the more expensive per-edge
+           constraint resolution that follows. */
+        using (PerformanceActivityScope orderGroupsActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.BuildStructureLayering.OrderGroups")
+            .SetTag("visible.node.count", _projection.VisibleTaskIds.Count))
+        {
+            orderedGroupIds = _projection.VisibleTaskIds
+                .Where(taskId => GetNodeLayout(taskId).IsContainer)
+                .OrderByDescending(taskId => GetNodeLayout(taskId).Bounds.Width * GetNodeLayout(taskId).Bounds.Height)
+                .ToList();
+            orderGroupsActivity.SetTag("group.count", orderedGroupIds.Count);
+        }
 
-    /// <summary>
-    /// Resolves the visible groups that constrain one whole-edge draw slot.
-    /// </summary>
-    private ExecutionGraphEdgeLayeringConstraints ResolveWholeEdgeLayering(ExecutionGraphEdgeLayout edge)
-    {
-        HashSet<RuntimeExecutionTaskId> groupsToRenderAbove = _projection.GetVisibleAncestorIds(edge.SourceId)
-            .Concat(_projection.GetVisibleAncestorIds(edge.TargetId))
-            .ToHashSet();
-        List<RuntimeExecutionTaskId> groupsToRenderBelow = _projection.VisibleTaskIds
-            .Where(taskId => GetNodeLayout(taskId).IsContainer)
-            .Where(taskId => !groupsToRenderAbove.Contains(taskId))
-            .Where(taskId => DoesEdgeCrossGroup(edge, GetNodeLayout(taskId).ToImmutable()))
-            .OrderBy(_projection.GetVisibleDepth)
-            .ToList();
-        return new ExecutionGraphEdgeLayeringConstraints(groupsToRenderAbove.OrderBy(_projection.GetVisibleDepth).ToList(), groupsToRenderBelow);
+        Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), ExecutionGraphEdgeLayeringConstraints> edgeConstraints;
+        /* Edge-constraint resolution compares each visible edge against group ancestry and group intersections, so keep
+           it separated from the simpler group-order derivation above and split the batch into the three major phases
+           that can dominate larger graphs. */
+        using (PerformanceActivityScope edgeConstraintsActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.BuildStructureLayering.ResolveEdgeConstraints")
+            .SetTag("edge.count", edgeLayouts.Count)
+            .SetTag("group.count", orderedGroupIds.Count))
+        {
+            Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), HashSet<RuntimeExecutionTaskId>> groupsToRenderAboveByEdge = new(edgeLayouts.Count);
+            /* Ancestor collection walks the visible parent chain of each endpoint, so batch it separately from the later
+               group-intersection scan and depth ordering. */
+            using (PerformanceActivityScope collectAboveActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.BuildStructureLayering.ResolveEdgeConstraints.CollectAboveGroups")
+                .SetTag("edge.count", edgeLayouts.Count))
+            {
+                int totalAboveGroupCount = 0;
+                foreach (ExecutionGraphEdgeLayout edge in edgeLayouts)
+                {
+                    (RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId) edgeKey = (edge.SourceId, edge.TargetId);
+                    HashSet<RuntimeExecutionTaskId> groupsToRenderAbove = _projection.GetVisibleAncestorIds(edge.SourceId)
+                        .Concat(_projection.GetVisibleAncestorIds(edge.TargetId))
+                        .ToHashSet();
+                    groupsToRenderAboveByEdge[edgeKey] = groupsToRenderAbove;
+                    totalAboveGroupCount += groupsToRenderAbove.Count;
+                }
+
+                collectAboveActivity.SetTag("total.above.group.count", totalAboveGroupCount);
+            }
+
+            Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), List<RuntimeExecutionTaskId>> crossedGroupsByEdge = new(edgeLayouts.Count);
+            /* Crossed-group scanning is the broadest part of the algorithm because every edge tests many unrelated group
+               bounds, so expose that batch separately from ancestor collection and final list ordering. */
+            using (PerformanceActivityScope scanCrossedGroupsActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.BuildStructureLayering.ResolveEdgeConstraints.ScanCrossedGroups")
+                .SetTag("edge.count", edgeLayouts.Count)
+                .SetTag("group.count", orderedGroupIds.Count))
+            {
+                int candidateGroupCheckCount = 0;
+                int totalBelowGroupCount = 0;
+                foreach (ExecutionGraphEdgeLayout edge in edgeLayouts)
+                {
+                    (RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId) edgeKey = (edge.SourceId, edge.TargetId);
+                    HashSet<RuntimeExecutionTaskId> groupsToRenderAbove = groupsToRenderAboveByEdge[edgeKey];
+                    List<RuntimeExecutionTaskId> groupsToRenderBelow = new();
+                    foreach (RuntimeExecutionTaskId groupId in orderedGroupIds)
+                    {
+                        if (groupsToRenderAbove.Contains(groupId))
+                        {
+                            continue;
+                        }
+
+                        candidateGroupCheckCount++;
+                        if (DoesEdgeCrossGroup(edge, GetNodeLayout(groupId).ToImmutable()))
+                        {
+                            groupsToRenderBelow.Add(groupId);
+                        }
+                    }
+
+                    crossedGroupsByEdge[edgeKey] = groupsToRenderBelow;
+                    totalBelowGroupCount += groupsToRenderBelow.Count;
+                }
+
+                scanCrossedGroupsActivity.SetTag("candidate.group.check.count", candidateGroupCheckCount)
+                    .SetTag("total.below.group.count", totalBelowGroupCount);
+            }
+
+            /* Sorting the constraint lists repeatedly queries visible depth, so keep the final ordering work separate from
+               the earlier ancestry and intersection scans. */
+            using (PerformanceActivityScope orderConstraintListsActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.BuildStructureLayering.ResolveEdgeConstraints.OrderConstraintLists")
+                .SetTag("edge.count", edgeLayouts.Count))
+            {
+                int totalOrderedAboveGroupCount = 0;
+                int totalOrderedBelowGroupCount = 0;
+                edgeConstraints = new Dictionary<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId), ExecutionGraphEdgeLayeringConstraints>(edgeLayouts.Count);
+                foreach (ExecutionGraphEdgeLayout edge in edgeLayouts)
+                {
+                    (RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId) edgeKey = (edge.SourceId, edge.TargetId);
+                    List<RuntimeExecutionTaskId> orderedGroupsToRenderAbove = groupsToRenderAboveByEdge[edgeKey]
+                        .OrderBy(_projection.GetVisibleDepth)
+                        .ToList();
+                    List<RuntimeExecutionTaskId> orderedGroupsToRenderBelow = crossedGroupsByEdge[edgeKey]
+                        .OrderBy(_projection.GetVisibleDepth)
+                        .ToList();
+                    totalOrderedAboveGroupCount += orderedGroupsToRenderAbove.Count;
+                    totalOrderedBelowGroupCount += orderedGroupsToRenderBelow.Count;
+                    edgeConstraints[edgeKey] = new ExecutionGraphEdgeLayeringConstraints(orderedGroupsToRenderAbove, orderedGroupsToRenderBelow);
+                }
+
+                orderConstraintListsActivity.SetTag("total.ordered.above.group.count", totalOrderedAboveGroupCount)
+                    .SetTag("total.ordered.below.group.count", totalOrderedBelowGroupCount);
+            }
+
+            edgeConstraintsActivity.SetTag("edge.constraint.count", edgeConstraints.Count);
+        }
+
+        return new ExecutionGraphStructureLayeringSnapshot(orderedGroupIds, edgeConstraints);
     }
 
     /// <summary>
