@@ -143,7 +143,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("OperationSwitch")
+        /* Use the caller-member overload here because the span name should track the current method directly while the
+           attached tags carry the operation-specific selection context. */
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity()
             .SetTag("operation.id", selectedOperationId?.Value ?? string.Empty)
             .SetTag("operation.name", selectedOperation?.DisplayName ?? string.Empty)
             .SetTag("previous_operation.id", previousSelectedOperationId?.Value ?? string.Empty)
@@ -565,7 +567,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OperationParameters previousParameters,
         OperationId? previousSelectedOperationId)
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ActivateOperation")
+        /* The activation span is the method boundary itself, so the caller-member overload keeps the telemetry name in
+           sync with future method renames while preserving the detailed activation tags below. */
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity()
             .SetTag("operation.id", selectedOperation?.Id.Value ?? string.Empty)
             .SetTag("operation.name", selectedOperation?.DisplayName ?? string.Empty)
             .SetTag("target.type", SelectedTarget?.Target?.GetType().Name ?? string.Empty)
