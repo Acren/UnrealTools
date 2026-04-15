@@ -236,7 +236,7 @@ public partial class ExecutionGraphCanvas : UserControl
         _pendingViewportAdjustment = true;
         using (PerformanceActivityScope renderActivity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.HandleDataContextChanged.RenderGraph"))
         {
-            RenderGraph(trigger: "DataContextChanged");
+            RenderGraph();
         }
 
         if (_viewportHost != null && _viewportHost.Bounds.Width > 0 && _viewportHost.Bounds.Height > 0)
@@ -281,14 +281,13 @@ public partial class ExecutionGraphCanvas : UserControl
             .SetTag("new_item.count", e.NewItems?.Count ?? 0)
             .SetTag("old_item.count", e.OldItems?.Count ?? 0);
 
-        string trigger = $"CollectionChanged:{e.Action}";
-        if (TryQueueRenderWhileUpdating(trigger))
+        if (TryQueueRenderWhileUpdating())
         {
             activity.SetTag("render.deferred", true);
             return;
         }
 
-        RenderGraph(trigger: trigger);
+        RenderGraph();
     }
 
     /// <summary>
@@ -308,7 +307,7 @@ public partial class ExecutionGraphCanvas : UserControl
             if (_observedGraph?.IsUpdatingGraph == false && _refreshQueuedWhileUpdating)
             {
                 _refreshQueuedWhileUpdating = false;
-                RenderGraph(trigger: "Deferred:GraphUpdate");
+                RenderGraph();
             }
 
             return;
@@ -321,14 +320,13 @@ public partial class ExecutionGraphCanvas : UserControl
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.PropertyChanged")
                 .SetTag("property.name", e.PropertyName ?? string.Empty);
 
-            string trigger = $"PropertyChanged:{e.PropertyName}";
-            if (TryQueueRenderWhileUpdating(trigger))
+            if (TryQueueRenderWhileUpdating())
             {
                 activity.SetTag("render.deferred", true);
                 return;
             }
 
-            RenderGraph(trigger: trigger);
+            RenderGraph();
         }
     }
 
@@ -336,7 +334,7 @@ public partial class ExecutionGraphCanvas : UserControl
     /// Queues one render to run after the current bulk graph update completes so collection and canvas-size churn do not
     /// rebuild the entire visual tree multiple times during one SetPlan pass.
     /// </summary>
-    private bool TryQueueRenderWhileUpdating(string trigger)
+    private bool TryQueueRenderWhileUpdating()
     {
         if (_observedGraph?.IsUpdatingGraph != true)
         {
@@ -351,10 +349,9 @@ public partial class ExecutionGraphCanvas : UserControl
     /// Rebuilds the graph canvas from the current graph view model so comment containers, edges, and task cards render
     /// in a deterministic back-to-front order.
     /// </summary>
-    private void RenderGraph(string trigger)
+    private void RenderGraph()
     {
-        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RenderGraph")
-            .SetTag("trigger", trigger);
+        using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionGraphCanvas.RenderGraph");
 
         if (!TryGetGraphSurfaces(out GraphSurfaces surfaces))
         {
@@ -463,7 +460,7 @@ public partial class ExecutionGraphCanvas : UserControl
 
             _suppressGraphNotifications = true;
             _observedGraph.Relayout();
-            RenderGraph(trigger: "Deferred:IntrinsicWidthChanged");
+            RenderGraph();
         }
         finally
         {
