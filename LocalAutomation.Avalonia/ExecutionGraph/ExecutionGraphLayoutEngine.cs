@@ -476,16 +476,20 @@ internal sealed class ExecutionGraphLayoutEngine
     /// </summary>
     private ExecutionGraphStructureLayeringSnapshot BuildStructureLayeringSnapshot(IReadOnlyList<ExecutionGraphEdgeLayout> edgeLayouts)
     {
+        List<(RuntimeExecutionTaskId GroupId, ExecutionGraphRect Bounds)> orderedGroups;
         List<RuntimeExecutionTaskId> orderedGroupIds;
-        /* Group ordering depends only on final container bounds, so isolate it from the more expensive per-edge
-           constraint resolution that follows. */
+        /* Group ordering depends only on final container bounds, so cache those bounds once here and reuse them during
+           the later crossed-group scan instead of rematerializing the same layouts inside the hot inner loop. */
         using (PerformanceActivityScope orderGroupsActivity = CorePerformanceTelemetry.StartActivity("ExecutionGraphLayout.BuildStructureLayering.OrderGroups")
             .SetTag("visible.node.count", _projection.VisibleTaskIds.Count))
         {
-            orderedGroupIds = _projection.VisibleTaskIds
-                .Where(taskId => GetNodeLayout(taskId).IsContainer)
-                .OrderByDescending(taskId => GetNodeLayout(taskId).Bounds.Width * GetNodeLayout(taskId).Bounds.Height)
+            orderedGroups = _projection.VisibleTaskIds
+                .Select(taskId => (TaskId: taskId, Layout: GetNodeLayout(taskId)))
+                .Where(entry => entry.Layout.IsContainer)
+                .Select(entry => (GroupId: entry.TaskId, Bounds: entry.Layout.Bounds))
+                .OrderByDescending(group => group.Bounds.Width * group.Bounds.Height)
                 .ToList();
+            orderedGroupIds = orderedGroups.Select(group => group.GroupId).ToList();
             orderGroupsActivity.SetTag("group.count", orderedGroupIds.Count);
         }
 
@@ -507,9 +511,8 @@ internal sealed class ExecutionGraphLayoutEngine
                 foreach (ExecutionGraphEdgeLayout edge in edgeLayouts)
                 {
                     (RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId) edgeKey = (edge.SourceId, edge.TargetId);
-                    HashSet<RuntimeExecutionTaskId> groupsToRenderAbove = _projection.GetVisibleAncestorIds(edge.SourceId)
-                        .Concat(_projection.GetVisibleAncestorIds(edge.TargetId))
-                        .ToHashSet();
+                    HashSet<RuntimeExecutionTaskId> groupsToRenderAbove = new(_projection.GetVisibleAncestorIds(edge.SourceId));
+                    groupsToRenderAbove.UnionWith(_projection.GetVisibleAncestorIds(edge.TargetId));
                     groupsToRenderAboveByEdge[edgeKey] = groupsToRenderAbove;
                     totalAboveGroupCount += groupsToRenderAbove.Count;
                 }
@@ -530,8 +533,9 @@ internal sealed class ExecutionGraphLayoutEngine
                 {
                     (RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId) edgeKey = (edge.SourceId, edge.TargetId);
                     HashSet<RuntimeExecutionTaskId> groupsToRenderAbove = groupsToRenderAboveByEdge[edgeKey];
+                    ExecutionGraphRect edgeScanBounds = BuildEdgeGroupScanBounds(edge.SourceId, edge.TargetId);
                     List<RuntimeExecutionTaskId> groupsToRenderBelow = new();
-                    foreach (RuntimeExecutionTaskId groupId in orderedGroupIds)
+                    foreach ((RuntimeExecutionTaskId groupId, ExecutionGraphRect groupBounds) in orderedGroups)
                     {
                         if (groupsToRenderAbove.Contains(groupId))
                         {
@@ -539,7 +543,7 @@ internal sealed class ExecutionGraphLayoutEngine
                         }
 
                         candidateGroupCheckCount++;
-                        if (DoesEdgeCrossGroup(edge, GetNodeLayout(groupId).ToImmutable()))
+                        if (DoesEdgeCrossGroup(edgeScanBounds, groupBounds))
                         {
                             groupsToRenderBelow.Add(groupId);
                         }
@@ -586,23 +590,25 @@ internal sealed class ExecutionGraphLayoutEngine
     }
 
     /// <summary>
-    /// Returns whether the routed edge intersects the target group rectangle at all.
+    /// Builds the conservative edge/group scan rectangle used by whole-edge layering.
     /// </summary>
-    private bool DoesEdgeCrossGroup(ExecutionGraphEdgeLayout edge, ExecutionNodeLayout group)
+    private ExecutionGraphRect BuildEdgeGroupScanBounds(RuntimeExecutionTaskId sourceId, RuntimeExecutionTaskId targetId)
     {
-        if (group.Bounds.Width <= 0 || group.Bounds.Height <= 0)
-        {
-            return false;
-        }
+        ExecutionGraphRect sourceBounds = GetNodeLayout(sourceId).Bounds;
+        ExecutionGraphRect targetBounds = GetNodeLayout(targetId).Bounds;
+        return ExecutionGraphRect.FromEdges(
+            left: Math.Min(sourceBounds.Right, targetBounds.X),
+            top: Math.Min(sourceBounds.Y, targetBounds.Y),
+            right: Math.Max(sourceBounds.Right, targetBounds.X),
+            bottom: Math.Max(sourceBounds.Bottom, targetBounds.Bottom));
+    }
 
-        ExecutionNodeLayout source = GetNodeLayout(edge.SourceId).ToImmutable();
-        ExecutionNodeLayout target = GetNodeLayout(edge.TargetId).ToImmutable();
-        ExecutionGraphRect routeBounds = ExecutionGraphRect.FromEdges(
-            left: Math.Min(source.X + source.Width, target.X),
-            top: Math.Min(source.Y, target.Y),
-            right: Math.Max(source.X + source.Width, target.X),
-            bottom: Math.Max(source.Y + source.Height, target.Y + target.Height));
-        return routeBounds.Intersects(group.Bounds);
+    /// <summary>
+    /// Returns whether one cached whole-edge scan rectangle intersects one cached group rectangle at all.
+    /// </summary>
+    private static bool DoesEdgeCrossGroup(ExecutionGraphRect edgeScanBounds, ExecutionGraphRect groupBounds)
+    {
+        return edgeScanBounds.Intersects(groupBounds);
     }
 
     /// <summary>

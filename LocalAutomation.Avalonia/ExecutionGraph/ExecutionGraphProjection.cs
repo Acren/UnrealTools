@@ -18,7 +18,6 @@ internal sealed class ExecutionGraphProjection
         visibleTaskIds: Array.Empty<RuntimeExecutionTaskId>(),
         rootTaskIds: Array.Empty<RuntimeExecutionTaskId>(),
         rawTasksById: new Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTask>(),
-        rawChildrenByParentId: new Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>>(),
         childrenByParentId: new Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>>(),
         parentByTaskId: new Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?>(),
         visibleTaskIdByRawTaskId: new Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId>(),
@@ -26,11 +25,10 @@ internal sealed class ExecutionGraphProjection
 
     private readonly HashSet<RuntimeExecutionTaskId> _visibleTaskIds;
     private readonly Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTask> _rawTasksById;
-    private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _rawChildrenByParentId;
     private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _childrenByParentId;
-    private readonly Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> _parentByTaskId;
     private readonly Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> _visibleTaskIdByRawTaskId;
     private readonly Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> _ownedRawTaskIdsByVisibleNodeId;
+    private readonly Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId[]> _visibleAncestorIdsByTaskId;
 
     /// <summary>
     /// Creates one projection from the provided raw task snapshot and hidden-task visibility policy.
@@ -108,7 +106,6 @@ internal sealed class ExecutionGraphProjection
             visibleTaskIds,
             rootTaskIds,
             rawTasksById,
-            rawChildrenByParentId,
             childrenByParentId,
             parentByTaskId,
             visibleTaskIdByRawTaskId,
@@ -242,7 +239,7 @@ internal sealed class ExecutionGraphProjection
     /// </summary>
     public bool IsVisibleAncestor(RuntimeExecutionTaskId ancestorId, RuntimeExecutionTaskId descendantId)
     {
-        foreach (RuntimeExecutionTaskId resolvedParentId in EnumerateVisibleAncestorIds(descendantId))
+        foreach (RuntimeExecutionTaskId resolvedParentId in GetVisibleAncestorIds(descendantId))
         {
             if (resolvedParentId == ancestorId)
             {
@@ -254,14 +251,13 @@ internal sealed class ExecutionGraphProjection
     }
 
     /// <summary>
-    /// Enumerates the visible ancestor chain for one visible node id.
+    /// Returns the cached visible ancestor chain for one visible node id ordered from the direct parent upward.
     /// </summary>
-    public IEnumerable<RuntimeExecutionTaskId> GetVisibleAncestorIds(RuntimeExecutionTaskId nodeId)
+    public IReadOnlyList<RuntimeExecutionTaskId> GetVisibleAncestorIds(RuntimeExecutionTaskId nodeId)
     {
-        foreach (RuntimeExecutionTaskId ancestorId in EnumerateVisibleAncestorIds(nodeId))
-        {
-            yield return ancestorId;
-        }
+        return _visibleAncestorIdsByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId[]? ancestorIds)
+            ? ancestorIds
+            : Array.Empty<RuntimeExecutionTaskId>();
     }
 
     /// <summary>
@@ -269,13 +265,9 @@ internal sealed class ExecutionGraphProjection
     /// </summary>
     public int GetVisibleDepth(RuntimeExecutionTaskId nodeId)
     {
-        int depth = 0;
-        foreach (RuntimeExecutionTaskId _ in EnumerateVisibleAncestorIds(nodeId))
-        {
-            depth++;
-        }
-
-        return depth;
+        return _visibleAncestorIdsByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId[]? ancestorIds)
+            ? ancestorIds.Length
+            : 0;
     }
 
     /// <summary>
@@ -317,7 +309,6 @@ internal sealed class ExecutionGraphProjection
         IReadOnlyList<RuntimeExecutionTaskId> visibleTaskIds,
         IReadOnlyList<RuntimeExecutionTaskId> rootTaskIds,
         Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTask> rawTasksById,
-        Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> rawChildrenByParentId,
         Dictionary<RuntimeExecutionTaskId, List<RuntimeExecutionTaskId>> childrenByParentId,
         Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> parentByTaskId,
         Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId> visibleTaskIdByRawTaskId,
@@ -327,11 +318,10 @@ internal sealed class ExecutionGraphProjection
         RootTaskIds = rootTaskIds;
         _visibleTaskIds = visibleTaskIds.ToHashSet();
         _rawTasksById = rawTasksById;
-        _rawChildrenByParentId = rawChildrenByParentId;
         _childrenByParentId = childrenByParentId;
-        _parentByTaskId = parentByTaskId;
         _visibleTaskIdByRawTaskId = visibleTaskIdByRawTaskId;
         _ownedRawTaskIdsByVisibleNodeId = ownedRawTaskIdsByVisibleNodeId;
+        _visibleAncestorIdsByTaskId = BuildVisibleAncestorIdsByTaskId(visibleTaskIds, parentByTaskId);
     }
 
     /// <summary>
@@ -374,20 +364,49 @@ internal sealed class ExecutionGraphProjection
     }
 
     /// <summary>
-    /// Enumerates the visible ancestors of one node from parent upward.
+    /// Builds the cached visible ancestor arrays for every visible node in the current projection snapshot.
     /// </summary>
-    private IEnumerable<RuntimeExecutionTaskId> EnumerateVisibleAncestorIds(RuntimeExecutionTaskId nodeId)
+    private static Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId[]> BuildVisibleAncestorIdsByTaskId(
+        IReadOnlyList<RuntimeExecutionTaskId> visibleTaskIds,
+        IReadOnlyDictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> parentByTaskId)
     {
-        RuntimeExecutionTaskId? currentParentId = _parentByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId? parentId)
+        Dictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId[]> visibleAncestorIdsByTaskId = new(visibleTaskIds.Count);
+        foreach (RuntimeExecutionTaskId nodeId in visibleTaskIds)
+        {
+            CacheVisibleAncestorIds(nodeId, parentByTaskId, visibleAncestorIdsByTaskId);
+        }
+
+        return visibleAncestorIdsByTaskId;
+    }
+
+    /// <summary>
+    /// Materializes one cached visible ancestor array ordered from the direct parent upward.
+    /// </summary>
+    private static RuntimeExecutionTaskId[] CacheVisibleAncestorIds(
+        RuntimeExecutionTaskId nodeId,
+        IReadOnlyDictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId?> parentByTaskId,
+        IDictionary<RuntimeExecutionTaskId, RuntimeExecutionTaskId[]> visibleAncestorIdsByTaskId)
+    {
+        if (visibleAncestorIdsByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId[]? cachedAncestorIds))
+        {
+            return cachedAncestorIds;
+        }
+
+        RuntimeExecutionTaskId? currentParentId = parentByTaskId.TryGetValue(nodeId, out RuntimeExecutionTaskId? parentId)
             ? parentId
             : null;
-        while (currentParentId is RuntimeExecutionTaskId resolvedParentId)
+        if (currentParentId is not RuntimeExecutionTaskId visibleParentId)
         {
-            yield return resolvedParentId;
-            currentParentId = _parentByTaskId.TryGetValue(resolvedParentId, out RuntimeExecutionTaskId? nextParentId)
-                ? nextParentId
-                : null;
+            visibleAncestorIdsByTaskId[nodeId] = Array.Empty<RuntimeExecutionTaskId>();
+            return visibleAncestorIdsByTaskId[nodeId];
         }
+
+        RuntimeExecutionTaskId[] parentAncestorIds = CacheVisibleAncestorIds(visibleParentId, parentByTaskId, visibleAncestorIdsByTaskId);
+        RuntimeExecutionTaskId[] ancestorIds = new RuntimeExecutionTaskId[parentAncestorIds.Length + 1];
+        ancestorIds[0] = visibleParentId;
+        Array.Copy(parentAncestorIds, 0, ancestorIds, 1, parentAncestorIds.Length);
+        visibleAncestorIdsByTaskId[nodeId] = ancestorIds;
+        return ancestorIds;
     }
 
     /// <summary>
