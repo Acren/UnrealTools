@@ -125,6 +125,21 @@
                 Height="{Binding HeaderHeight, RelativeSource={RelativeSource AncestorType=controls:ExecutionGroupContainer}}"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Top">
+            <!-- Scope the tooltip to the header hit target so hovering the container body does not trigger it. -->
+            <ToolTip.Tip>
+                <ToolTip Background="#12171D"
+                         BorderBrush="#33414F"
+                         BorderThickness="1"
+                         Padding="10,8"
+                         MaxWidth="320"
+                         IsOpen="False">
+                    <TextBlock Text="{Binding Task.Description}"
+                               TextWrapping="Wrap"
+                               Foreground="#D5DEE7"
+                               FontSize="12"
+                               LineHeight="16" />
+                </ToolTip>
+            </ToolTip.Tip>
             <Border x:Name="HeaderShell"
                     Classes="group-header-shell"
                     ClipToBounds="False"
@@ -162,20 +177,5 @@
             </Border>
         </Border>
 
-        <!-- Keep the existing compact tooltip treatment, but declare the visual tree in XAML with the rest of the node. -->
-        <ToolTip.Tip>
-            <ToolTip Background="#12171D"
-                     BorderBrush="#33414F"
-                     BorderThickness="1"
-                     Padding="10,8"
-                     MaxWidth="320"
-                     IsOpen="False">
-                <TextBlock Text="{Binding Task.Description}"
-                           TextWrapping="Wrap"
-                           Foreground="#D5DEE7"
-                           FontSize="12"
-                           LineHeight="16" />
-            </ToolTip>
-        </ToolTip.Tip>
     </Grid>
 </UserControl>
