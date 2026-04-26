@@ -271,13 +271,13 @@ public sealed class RuntimeWorkspaceTabViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Refreshes metrics for tasks whose subtree duration can still advance according to the runtime snapshot.
+    /// Refreshes metrics for tasks whose lifecycle duration can still advance according to the runtime snapshot.
     /// </summary>
     public void RefreshLiveTaskDurations(DateTimeOffset? now = null)
     {
         RefreshTaskMetrics(
             _tasksById.Values
-                .Where(task => task.Task.State == LocalAutomation.Runtime.ExecutionTaskState.Running)
+                .Where(task => task.Task.StartedAt != null && task.Task.FinishedAt == null)
                 .Select(task => task.Id),
             now);
     }

@@ -67,8 +67,8 @@ internal record TaskSpec(
 
 /// <summary>
 /// Represents one execution-graph node. Authored plans and live sessions share this type, but runtime sessions own their
-/// own cloned task instances so all per-task runtime data — lifecycle state, subtree metrics, graph links, and task-
-/// scoped logs — stays on the task itself instead of being mirrored onto the session.
+/// own cloned task instances so all per-task runtime data — lifecycle state, subtree log metrics, graph links, and
+/// task-scoped logs — stays on the task itself instead of being mirrored onto the session.
 /// </summary>
 public class ExecutionTask : INotifyPropertyChanged
 {
@@ -77,8 +77,8 @@ public class ExecutionTask : INotifyPropertyChanged
     private TaskSpec _spec;
 
     /* Runtime-mutable fields that are not part of the authored specification. These track live execution progress and
-       task-owned subtree metrics, and are reset independently when sessions clone tasks or reinitialize for a new run.
-       Sessions coordinate updates under the graph lock, but the per-task data itself lives here on the task. */
+       task-owned subtree log metrics, and are reset independently when sessions clone tasks or reinitialize for a new
+       run. Sessions coordinate updates under the graph lock, but the per-task data itself lives here on the task. */
     private ExecutionTask? _parent;
     private ExecutionTaskState _state;
     private DateTimeOffset? _startedAt;
@@ -86,9 +86,6 @@ public class ExecutionTask : INotifyPropertyChanged
     private ExecutionTaskOutcome? _outcome;
     private int _subtreeWarningCount;
     private int _subtreeErrorCount;
-    private int _subtreeActiveTimingCount;
-    private DateTimeOffset? _subtreeStartedAt;
-    private DateTimeOffset? _subtreeFinishedAt;
     /* Cached ancestor-independent scheduler frontier for this subtree. Ancestor gating stays outside this cache so the
        scheduler can update local subtree readiness once and apply scope-open checks only where it actually matters. */
     private TaskStartState _subtreeStartState;
@@ -211,12 +208,18 @@ public class ExecutionTask : INotifyPropertyChanged
         internal set => SetProperty(ref _state, value);
     }
 
+    /// <summary>
+    /// Gets the timestamp when this visible task lifecycle first reached executable running work.
+    /// </summary>
     public DateTimeOffset? StartedAt
     {
         get => _startedAt;
         internal set => SetProperty(ref _startedAt, value);
     }
 
+    /// <summary>
+    /// Gets the timestamp when this visible task lifecycle reached its terminal state.
+    /// </summary>
     public DateTimeOffset? FinishedAt
     {
         get => _finishedAt;
@@ -286,15 +289,12 @@ public class ExecutionTask : INotifyPropertyChanged
     public BufferedLogStream LogStream { get; }
 
     /// <summary>
-    /// Resets the task-owned subtree metric basis for a fresh runtime session.
+    /// Resets the task-owned subtree log metric basis for a fresh runtime session.
     /// </summary>
     internal void ResetSubtreeMetrics()
     {
         _subtreeWarningCount = 0;
         _subtreeErrorCount = 0;
-        _subtreeActiveTimingCount = 0;
-        _subtreeStartedAt = null;
-        _subtreeFinishedAt = null;
     }
 
     /// <summary>
@@ -328,58 +328,28 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Recomputes the cached subtree timing basis from this task's own timestamps plus its direct children's cached
-    /// subtree timing basis.
+    /// Returns the task metrics snapshot for this visible task. Duration is derived from this task's lifecycle
+    /// timestamps, while warning/error counts remain cached for the task subtree because log entries can grow without
+    /// bound during long runs.
     /// </summary>
-    internal void RecomputeSubtreeTimingMetrics()
+    internal ExecutionTaskMetrics GetMetrics(DateTimeOffset? now = null)
     {
-        int activeTimingCount = StartedAt != null && FinishedAt == null ? 1 : 0;
-        DateTimeOffset? subtreeStartedAt = StartedAt;
-        DateTimeOffset? subtreeFinishedAt = FinishedAt;
-
-        foreach (ExecutionTask child in _children)
-        {
-            activeTimingCount += child._subtreeActiveTimingCount;
-            if (child._subtreeStartedAt != null && (subtreeStartedAt == null || child._subtreeStartedAt < subtreeStartedAt))
-            {
-                subtreeStartedAt = child._subtreeStartedAt;
-            }
-
-            if (child._subtreeFinishedAt != null && (subtreeFinishedAt == null || child._subtreeFinishedAt > subtreeFinishedAt))
-            {
-                subtreeFinishedAt = child._subtreeFinishedAt;
-            }
-        }
-
-        _subtreeActiveTimingCount = activeTimingCount;
-        _subtreeStartedAt = subtreeStartedAt;
-        _subtreeFinishedAt = subtreeFinishedAt;
+        return new ExecutionTaskMetrics(GetDuration(now), _subtreeWarningCount, _subtreeErrorCount);
     }
 
     /// <summary>
-    /// Returns the cached subtree metrics snapshot for this task using the supplied clock when the subtree still has
-    /// started-but-unfinished work.
+    /// Returns this task's lifecycle duration. Completed tasks use their recorded finish time, while active tasks use the
+    /// supplied clock so their displayed duration can advance until the lifecycle reaches a terminal state.
     /// </summary>
-    internal ExecutionTaskMetrics GetSubtreeMetrics(DateTimeOffset? now = null)
+    internal TimeSpan? GetDuration(DateTimeOffset? now = null)
     {
-        return new ExecutionTaskMetrics(GetSubtreeDuration(now), _subtreeWarningCount, _subtreeErrorCount);
-    }
-
-    /// <summary>
-    /// Returns the cached subtree duration for this task using the supplied clock when the subtree has started work that
-    /// has not yet completed.
-    /// </summary>
-    internal TimeSpan? GetSubtreeDuration(DateTimeOffset? now = null)
-    {
-        if (_subtreeStartedAt == null)
+        if (StartedAt == null)
         {
             return null;
         }
 
-        DateTimeOffset resolvedEnd = _subtreeActiveTimingCount > 0
-            ? now ?? DateTimeOffset.Now
-            : _subtreeFinishedAt ?? now ?? DateTimeOffset.Now;
-        TimeSpan duration = resolvedEnd - _subtreeStartedAt.Value;
+        DateTimeOffset resolvedEnd = FinishedAt ?? now ?? DateTimeOffset.Now;
+        TimeSpan duration = resolvedEnd - StartedAt.Value;
         return duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
     }
 

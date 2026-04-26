@@ -190,8 +190,8 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Returns the current metrics for one task subtree or for the whole session. Task metrics come from the cached
-    /// subtree state owned by the live task objects, while session metrics come from session-wide counters.
+    /// Returns the current metrics for one task or for the whole session. Task duration comes from that task's lifecycle
+    /// timestamps, while task warning/error counts come from cached subtree log counters owned by the live task objects.
     /// </summary>
     public ExecutionTaskMetrics GetTaskMetrics(ExecutionTaskId? taskId, DateTimeOffset? now = null)
     {
@@ -203,7 +203,7 @@ public sealed class ExecutionSession
             return WithGraphReadLock(() =>
             {
                 ExecutionTaskMetrics rootMetrics = (_rootTask ?? throw new InvalidOperationException("Session has no root task."))
-                    .GetSubtreeMetrics(now);
+                    .GetMetrics(now);
                 activity.SetTag("scope", "session")
                     .SetTag("warning.count", rootMetrics.WarningCount)
                     .SetTag("error.count", rootMetrics.ErrorCount);
@@ -214,7 +214,7 @@ public sealed class ExecutionSession
         return WithGraphReadLock(() =>
         {
             ExecutionTask task = GetTaskCore(taskId.Value);
-            ExecutionTaskMetrics metrics = task.GetSubtreeMetrics(now);
+            ExecutionTaskMetrics metrics = task.GetMetrics(now);
             activity.SetTag("scope", "subtree")
                 .SetTag("warning.count", metrics.WarningCount)
                 .SetTag("error.count", metrics.ErrorCount)
@@ -224,7 +224,7 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Returns the current subtree duration for one task from the cached timing basis owned by that task.
+    /// Returns the current lifecycle duration for one task from its own start and finish timestamps.
     /// </summary>
     public TimeSpan? GetTaskDuration(ExecutionTaskId? taskId, DateTimeOffset? now = null)
     {
@@ -240,8 +240,8 @@ public sealed class ExecutionSession
 
         return WithGraphReadLock(() =>
         {
-            TimeSpan? duration = GetTaskCore(taskId.Value).GetSubtreeDuration(now);
-            activity.SetTag("scope", "subtree")
+            TimeSpan? duration = GetTaskCore(taskId.Value).GetDuration(now);
+            activity.SetTag("scope", "task")
                 .SetTag("duration.available", duration != null);
             if (duration != null)
             {
@@ -413,7 +413,6 @@ public sealed class ExecutionSession
 
                 WireObservedDependencies(insertedTasks.Tasks);
                 RebuildSubtreeSchedulingRollups(insertedTasks.Tasks);
-                RefreshTaskAndAncestorTimingMetrics(GetTaskCore(insertedTasks.RootTaskId));
                 GetTaskCore(insertedTasks.RootTaskId).PublishStateChanged();
 
                 addTasksActivity.SetTag("inserted.task.count", insertedTaskIds.Count);
@@ -973,7 +972,7 @@ public sealed class ExecutionSession
         (Operation operation, int warningCount, int errorCount) snapshot = WithGraphReadLock(() =>
         {
             ExecutionTask rootTask = _rootTask ?? throw new InvalidOperationException("Session has no root task.");
-            ExecutionTaskMetrics metrics = rootTask.GetSubtreeMetrics();
+            ExecutionTaskMetrics metrics = rootTask.GetMetrics();
             return (rootTask.Operation, metrics.WarningCount, metrics.ErrorCount);
         });
 
@@ -1363,10 +1362,7 @@ public sealed class ExecutionSession
     private void SetTaskStateCore(ExecutionTaskId taskId, ExecutionTaskState state)
     {
         ExecutionTask task = GetTaskCore(taskId);
-        if (task.TransitionState(state))
-        {
-            RefreshTaskAndAncestorTimingMetrics(task);
-        }
+        task.TransitionState(state);
     }
 
     /// <summary>
@@ -1400,12 +1396,7 @@ public sealed class ExecutionSession
     private void SetTaskStatusCore(ExecutionTaskId taskId, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
         ExecutionTask task = GetTaskCore(taskId);
-        if (!task.TransitionStatus(state, outcome))
-        {
-            return;
-        }
-
-        RefreshTaskAndAncestorTimingMetrics(task);
+        task.TransitionStatus(state, outcome);
     }
 
     /// <summary>
@@ -1564,18 +1555,6 @@ public sealed class ExecutionSession
         for (ExecutionTask? currentTask = task; currentTask != null; currentTask = currentTask.Parent)
         {
             currentTask.ApplySubtreeLogDelta(warningDelta, errorDelta);
-        }
-    }
-
-    /// <summary>
-    /// Recomputes cached subtree timing metrics for one changed task and then for every ancestor above it so later reads
-    /// can materialize subtree duration without walking the full descendant tree again.
-    /// </summary>
-    private static void RefreshTaskAndAncestorTimingMetrics(ExecutionTask task)
-    {
-        for (ExecutionTask? currentTask = task; currentTask != null; currentTask = currentTask.Parent)
-        {
-            currentTask.RecomputeSubtreeTimingMetrics();
         }
     }
 
