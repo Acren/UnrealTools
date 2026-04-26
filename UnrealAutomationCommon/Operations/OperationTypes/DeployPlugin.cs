@@ -11,6 +11,7 @@ using LocalAutomation.Extensions.Abstractions;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Polly;
+using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
@@ -663,6 +664,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using Plugin workspacePlugin = CreateRequiredPlugin(workspacePluginPath, "Could not find the target plugin inside the workspace project");
             context.Logger.LogInformation($"Resolved workspace plugin: {workspacePlugin.PluginPath}");
 
+            // Merge plugins are copied into the isolated workspace so later staging never reads mutable source folders.
+            PluginDeploymentFlattening.MaterializeMergePlugins(hostProject, workspaceProject, plugin.Name, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>(), context.Logger);
+
             UpdateProjectDescriptorForArchive(workspaceState, workspaceProject);
             context.Logger.LogInformation("Updated workspace project descriptor for archive output");
             context.SetOperationData(workspaceState);
@@ -690,6 +694,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             using Plugin stagingPlugin = CreateRequiredPlugin(stagingPluginPath, "Staged plugin was not created successfully");
             UpdatePluginDescriptorForArchive(state, stagingPlugin);
+            using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for plugin flattening");
+            PluginDeploymentFlattening.ApplyToStagedPlugin(stagingPlugin, workspaceProject, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>(), context.Logger);
             context.Logger.LogInformation($"Updated plugin descriptor for staging: {stagingPlugin.PluginDescriptor.VersionName}");
             await Task.CompletedTask;
         }

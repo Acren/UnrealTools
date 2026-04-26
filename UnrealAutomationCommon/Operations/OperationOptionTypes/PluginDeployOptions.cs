@@ -57,6 +57,13 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
         [property: Description("Includes sibling plugins when assembling deployment verification inputs and archives.")]
         private bool includeOtherPlugins = false;
 
+        // Merge entries are target-local because each deployable plugin can embed a different set of sibling plugins.
+        [ObservableProperty]
+        [property: DisplayName("Merge Plugins")]
+        [property: Description("Provides a delimited list of plugins to merge into the staged deploy plugin. Use 'PluginName=EmbeddedPrefix' to override the generated embedded prefix.")]
+        [property: PersistedValue(PersistenceScope.TargetLocal)]
+        private string mergePlugins = string.Empty;
+
         [ObservableProperty]
         [property: DisplayName("Exclude Plugins")]
         [property: Description("Provides a delimited list of plugin names to omit from deployment verification inputs.")]
