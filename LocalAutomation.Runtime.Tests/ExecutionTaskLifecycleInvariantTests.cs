@@ -8,6 +8,42 @@ namespace LocalAutomation.Runtime.Tests;
 public sealed class ExecutionTaskLifecycleInvariantTests
 {
     /// <summary>
+    /// Confirms that a completed task's cached duration remains frozen at its completion boundary instead of advancing
+    /// when callers ask for metrics with a later clock value.
+    /// </summary>
+    [Fact]
+    public async Task CompletedTaskDurationDoesNotAdvanceAfterCompletion()
+    {
+        ExecutionTaskId timedTaskId = default;
+
+        /* A single runnable task is the smallest runtime shape that exercises the start timestamp, completion timestamp,
+           and cached subtree timing basis used by task metric reads. */
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(scope =>
+            {
+                scope.Task("Timed Work").Run(() => Task.CompletedTask, out timedTaskId);
+            });
+        });
+
+        /* Execute through the real scheduler so the task reaches Running and then Completed through normal runtime
+           transitions before the duration is read back. */
+        (ExecutionPlan _, ExecutionSession session, OperationResult result) = await RuntimeTestUtilities.ExecuteAsync(operation);
+        ExecutionTask timedTask = session.GetTask(timedTaskId);
+        DateTimeOffset finishedAt = timedTask.FinishedAt ?? throw new InvalidOperationException("The timed task did not record a finish timestamp.");
+
+        /* The task completed successfully, so any later metric read should reuse the recorded finish timestamp instead of
+           treating the completed task as still actively timed. */
+        TimeSpan? durationAtCompletion = session.GetTaskDuration(timedTaskId, finishedAt);
+        TimeSpan? durationAfterCompletion = session.GetTaskDuration(timedTaskId, finishedAt + TimeSpan.FromMinutes(10));
+
+        Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+        Assert.Equal(ExecutionTaskState.Completed, timedTask.State);
+        Assert.NotNull(durationAtCompletion);
+        Assert.Equal(durationAtCompletion, durationAfterCompletion);
+    }
+
+    /// <summary>
     /// Confirms that once a scope has started and its only prerequisite has completed, the scope should surface
     /// WaitingForDependencies when its remaining reachable work is blocked only by an unfinished task outside the scope.
     /// </summary>
