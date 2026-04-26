@@ -708,6 +708,125 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
+    /// Confirms that lock release should rank all currently waiting contenders instead of committing to the contender that
+    /// reached the lock boundary first.
+    /// </summary>
+    [Fact]
+    public async Task LockReleaseReprioritizesLaterHigherPriorityContender()
+    {
+        // Arrange: keep the shared lock held while a lower-priority contender reaches the lock boundary first.
+        ExecutionLock sharedLock = new("reprioritize-lock-release");
+        TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> allowHigherPriorityInsertion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ExecutionTaskId> lockWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId lowerPriorityBodyTaskId = default;
+        ExecutionTaskId higherPriorityBodyTaskId = default;
+
+        // Arrange: the lower-priority child has no downstream work after it wins the lock.
+        Operation lowerPriorityOperation = new ExecutionTestCommon.InlineOperation(
+            childRoot =>
+            {
+                childRoot.Child("Lower Priority Contender")
+                    .WithExecutionLocks(sharedLock)
+                    .Run(async context =>
+                    {
+                        lockWinner.TrySetResult(context.TaskId);
+                        await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    }, out lowerPriorityBodyTaskId);
+            },
+            operationName: "Lower Priority Child Operation");
+
+        // Arrange: the later child has one dependent task, so the scheduler's existing downstream-work rule should rank it higher.
+        Operation higherPriorityOperation = new ExecutionTestCommon.InlineOperation(
+            childRoot =>
+            {
+                childRoot.Child("Higher Priority Contender")
+                    .WithExecutionLocks(sharedLock)
+                    .Run(async context =>
+                    {
+                        lockWinner.TrySetResult(context.TaskId);
+                        await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    }, out higherPriorityBodyTaskId)
+                    .Then("Higher Priority Dependent")
+                    .Run(() => Task.CompletedTask);
+            },
+            operationName: "Higher Priority Child Operation");
+
+        // Arrange: insert the higher-priority contender only after the lower-priority contender is already waiting.
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Lock Holder")
+                    .WithExecutionLocks(sharedLock)
+                    .Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder));
+
+                scope.Task("Insert Lower Priority Contender")
+                    .Run(async context =>
+                    {
+                        await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        OperationParameters parameters = lowerPriorityOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                        OperationResult result = await context.RunChildOperationAsync(lowerPriorityOperation, parameters);
+                        if (!result.Success)
+                        {
+                            throw new InvalidOperationException($"Lower-priority child operation returned '{result.Outcome}'.");
+                        }
+                    });
+
+                scope.Task("Insert Higher Priority Contender")
+                    .Run(async context =>
+                    {
+                        await allowHigherPriorityInsertion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        OperationParameters parameters = higherPriorityOperation.CreateParameters(context.ValidatedOperationParameters.CreateChild());
+                        OperationResult result = await context.RunChildOperationAsync(higherPriorityOperation, parameters);
+                        if (!result.Success)
+                        {
+                            throw new InvalidOperationException($"Higher-priority child operation returned '{result.Outcome}'.");
+                        }
+                    });
+            });
+        });
+
+        // Act: wait until both contenders exist while the original holder still owns the lock, then release the lock.
+        (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        try
+        {
+            await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => lowerPriorityBodyTaskId != default
+                    && session.Tasks.Any(task => task.Id == lowerPriorityBodyTaskId)
+                    && session.GetTask(lowerPriorityBodyTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                TimeSpan.FromSeconds(5),
+                "Timed out waiting for the lower-priority contender to reach the lock boundary.");
+
+            allowHigherPriorityInsertion.TrySetResult(true);
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => higherPriorityBodyTaskId != default
+                    && session.Tasks.Any(task => task.Id == higherPriorityBodyTaskId),
+                TimeSpan.FromSeconds(5),
+                "Timed out waiting for the higher-priority contender to be inserted before lock release.");
+
+            releaseLockHolder.TrySetResult(true);
+            ExecutionTaskId winnerTaskId = await lockWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+            // Assert: lock release should choose the later higher-priority contender because it unlocks more downstream work.
+            Assert.NotEqual(default, higherPriorityBodyTaskId);
+            Assert.Equal(higherPriorityBodyTaskId, winnerTaskId);
+        }
+        finally
+        {
+            // Cleanup: open every gate so the scheduler can drain even while this red test is failing on the winner assertion.
+            allowHigherPriorityInsertion.TrySetResult(true);
+            releaseLockHolder.TrySetResult(true);
+            releaseWinner.TrySetResult(true);
+            await executeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    /// <summary>
     /// Confirms that when multiple runtime-parallel tasks become ready together, the scheduler should start the task whose
     /// completion unlocks more downstream work before shorter sibling branches.
     /// </summary>
