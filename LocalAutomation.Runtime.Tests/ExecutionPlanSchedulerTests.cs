@@ -370,12 +370,11 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
-    /// Confirms that equal-priority siblings contending for the same execution lock should be admitted to lock wait one
-    /// at a time in declared order instead of dispatching both worker executions and letting thread timing choose the
-    /// eventual lock winner.
+    /// Confirms that equal-priority siblings contending for the same execution lock should wait without active workers and
+    /// then acquire the lock in declared order.
     /// </summary>
     [Fact]
-    public async Task EqualPriorityLockContendersShouldBeAdmittedOneAtATimeInDeclaredOrder()
+    public async Task EqualPriorityLockWaitersStartInDeclaredOrder()
     {
         // Arrange: use three sibling child operations whose root body tasks each declare the same shared lock. The outer
         // test operation itself stays lock-free so the contention matches real production semantics more closely.
@@ -383,6 +382,7 @@ public sealed class ExecutionPlanSchedulerTests
         TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> allowSecondInsertion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ExecutionTaskId> lockWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ExecutionTaskId lockHolderVisibleTaskId = default;
         ExecutionTaskId firstVisibleTaskId = default;
         ExecutionTaskId secondVisibleTaskId = default;
@@ -399,7 +399,11 @@ public sealed class ExecutionPlanSchedulerTests
             root =>
             {
                 firstVisibleTaskId = root.Id;
-                root.WithExecutionLocks(sharedLock).Run(_ => Task.FromResult(OperationResult.Succeeded()));
+                root.WithExecutionLocks(sharedLock).Run(context =>
+                {
+                    lockWinner.TrySetResult(context.TaskId);
+                    return Task.FromResult(OperationResult.Succeeded());
+                });
             },
             operationName: "First Child Operation");
 
@@ -407,7 +411,11 @@ public sealed class ExecutionPlanSchedulerTests
             root =>
             {
                 secondVisibleTaskId = root.Id;
-                root.WithExecutionLocks(sharedLock).Run(_ => Task.FromResult(OperationResult.Succeeded()));
+                root.WithExecutionLocks(sharedLock).Run(context =>
+                {
+                    lockWinner.TrySetResult(context.TaskId);
+                    return Task.FromResult(OperationResult.Succeeded());
+                });
             },
             operationName: "Second Child Operation");
 
@@ -451,7 +459,7 @@ public sealed class ExecutionPlanSchedulerTests
         });
 
         // Act: start the scheduler, wait until the lock-holder child operation owns the shared lock, then insert the
-        // second contender only after the declared-first contender is already the active waiter.
+        // second contender only after the declared-first contender is already waiting for that lock.
         (_, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
         Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
         try
@@ -466,25 +474,30 @@ public sealed class ExecutionPlanSchedulerTests
                 "Timed out waiting for the declared-first contender to enter explicit lock wait.");
             allowSecondInsertion.TrySetResult(true);
             await RuntimeTestUtilities.WaitForConditionAsync(
-                () => secondVisibleTaskId != default && session.Tasks.Any(task => task.Id == secondVisibleTaskId),
+                () => secondVisibleTaskId != default
+                    && session.Tasks.Any(task => task.Id == secondVisibleTaskId)
+                    && session.GetTask(secondVisibleTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
                 TimeSpan.FromSeconds(1),
-                "Timed out waiting for the declared-second contender to be inserted.");
+                "Timed out waiting for the declared-second contender to enter explicit lock wait.");
 
-            // Assert: while the first child operation is already the active waiter for this lock set, the later second
-            // child operation should remain pending and should not own an active worker execution yet.
+            // Assert: both contenders are lock waiters, and neither owns an active worker before the lock is available.
             Assert.NotEqual(default, firstVisibleTaskId);
             Assert.NotEqual(default, secondVisibleTaskId);
             ExecutionTask firstVisibleTask = session.GetTask(firstVisibleTaskId);
             ExecutionTask secondVisibleTask = session.GetTask(secondVisibleTaskId);
             Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, firstVisibleTask.State);
-            Assert.True(firstVisibleTask.HasActiveExecution);
-            Assert.Equal(ExecutionTaskState.Queued, secondVisibleTask.State);
+            Assert.False(firstVisibleTask.HasActiveExecution);
+            Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, secondVisibleTask.State);
             Assert.False(secondVisibleTask.HasActiveExecution);
+
+            // Assert: once the lock is released, equal-priority waiters should acquire in first-registration order.
+            releaseLockHolder.TrySetResult(true);
+            ExecutionTaskId winnerTaskId = await lockWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            Assert.Equal(firstVisibleTaskId, winnerTaskId);
         }
         finally
         {
-            // Cleanup: always release the lock holder so the red test does not leave background work running after the
-            // admission-state assertion fails.
+            // Cleanup: always release the lock holder so a failing assertion does not leave background work running.
             allowSecondInsertion.TrySetResult(true);
             releaseLockHolder.TrySetResult(true);
             await executeTask;
@@ -1070,14 +1083,17 @@ public sealed class ExecutionPlanSchedulerTests
 
             releaseContenderGates.TrySetResult(true);
             await RuntimeTestUtilities.WaitForConditionAsync(
-                () => session.GetTask(longChildBodyTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                () => session.GetTask(longChildBodyTaskId).State == ExecutionTaskState.WaitingForExecutionLock
+                    && session.GetTask(shortChildBodyTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
                 TimeSpan.FromSeconds(1),
-                "Timed out waiting for the long branch contender to become the admitted lock waiter.");
+                "Timed out waiting for both branch contenders to enter explicit lock wait.");
 
-            /* Once both contenders are ready together, the longer outer branch should be the one admitted into lock wait
-               first. The shorter branch should still be queued behind that admitted waiter. */
+            /* Once both contenders are ready together, both should wait for the lock without active workers. The longer
+               outer branch should still win when the lock becomes available. */
             Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, session.GetTask(longChildBodyTaskId).State);
-            Assert.Equal(ExecutionTaskState.Queued, session.GetTask(shortChildBodyTaskId).State);
+            Assert.False(session.GetTask(longChildBodyTaskId).HasActiveExecution);
+            Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, session.GetTask(shortChildBodyTaskId).State);
+            Assert.False(session.GetTask(shortChildBodyTaskId).HasActiveExecution);
 
             releaseLockHolder.TrySetResult(true);
             winnerTaskId = await contenderWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -1094,6 +1110,134 @@ public sealed class ExecutionPlanSchedulerTests
         /* The outer long branch should win even though the concrete lock contender is the inserted child operation body. */
         Assert.Equal(longChildBodyTaskId, winnerTaskId);
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+    }
+
+    /// <summary>
+    /// Confirms that lock priority counts downstream work unlocked when an intermediate parent scope completes.
+    /// </summary>
+    [Fact]
+    public async Task LockReleaseCountsDownstreamWorkThroughParentScopeCompletion()
+    {
+        /* Keep the shared lock held while both contenders reach explicit lock wait. The older package-like contender
+           unlocks follow-up work through an intermediate parent scope, while the later build-like contender sits inside
+           the comparable parent scope and can be over-valued if only ancestor dependency edges are counted. */
+        ExecutionLock sharedLock = new("parent-scope-downstream-priority-lock");
+        TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> allowLaterBranch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ExecutionTaskId> lockWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseWinner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId olderPackageTaskId = default;
+        ExecutionTaskId laterBuildTaskId = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Lock Holder")
+                    .WithExecutionLocks(sharedLock)
+                    .Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder));
+
+                ExecutionTaskBuilder contenderGate = scope.Task("Open Contenders")
+                    .Run(async _ => await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+
+                scope.Task("Older Branch")
+                    .After(contenderGate.Id)
+                    .Children(ExecutionChildMode.Parallel, branch =>
+                    {
+                        /* This contender reaches the lock first and should receive credit for fanout unlocked after its
+                           install/prebuild chain completes the shared-base parent scope. */
+                        ExecutionTaskBuilder olderPackage = branch.Task("Older Package")
+                            .WithExecutionLocks(sharedLock)
+                            .Run(async context =>
+                            {
+                                lockWinner.TrySetResult(context.TaskId);
+                                await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                            }, out olderPackageTaskId);
+
+                        ExecutionTaskBuilder olderSharedBase = branch.Task("Older Shared Base");
+                        olderSharedBase.Children(shared =>
+                        {
+                            ExecutionTaskBuilder install = shared.Task("Install")
+                                .After(olderPackage.Id)
+                                .Run(() => Task.CompletedTask);
+
+                            shared.Task("Prebuild")
+                                .After(install.Id)
+                                .Run(() => Task.CompletedTask);
+                        });
+
+                        branch.Task("Older Fanout 1").After(olderSharedBase.Id).Run(() => Task.CompletedTask);
+                        branch.Task("Older Fanout 2").After(olderSharedBase.Id).Run(() => Task.CompletedTask);
+                        branch.Task("Older Fanout 3").After(olderSharedBase.Id).Run(() => Task.CompletedTask);
+                    });
+
+                scope.Task("Later Branch")
+                    .After(contenderGate.Id)
+                    .Children(ExecutionChildMode.Parallel, branch =>
+                    {
+                        /* Gate this branch so the older contender is already registered as a waiter before the later
+                           contender becomes eligible for the same lock. */
+                        ExecutionTaskBuilder delay = branch.Task("Delay Later Branch")
+                            .Run(async _ => await allowLaterBranch.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+
+                        ExecutionTaskBuilder laterSharedBase = branch.Task("Later Shared Base")
+                            .After(delay.Id);
+                        laterSharedBase.Children(shared =>
+                        {
+                            ExecutionTaskBuilder install = shared.Task("Install")
+                                .Run(() => Task.CompletedTask);
+
+                            shared.Task("Later Build")
+                                .After(install.Id)
+                                .WithExecutionLocks(sharedLock)
+                                .Run(async context =>
+                                {
+                                    lockWinner.TrySetResult(context.TaskId);
+                                    await releaseWinner.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                                }, out laterBuildTaskId);
+                        });
+
+                        branch.Task("Later Fanout 1").After(laterSharedBase.Id).Run(() => Task.CompletedTask);
+                        branch.Task("Later Fanout 2").After(laterSharedBase.Id).Run(() => Task.CompletedTask);
+                        branch.Task("Later Fanout 3").After(laterSharedBase.Id).Run(() => Task.CompletedTask);
+                    });
+            });
+        });
+
+        // Wait for both contenders to be registered as lock waiters, then release the holder and observe the first winner.
+        (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        try
+        {
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => olderPackageTaskId != default
+                    && session.Tasks.Any(task => task.Id == olderPackageTaskId)
+                    && session.GetTask(olderPackageTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                TimeSpan.FromSeconds(5),
+                "Timed out waiting for the older package-like contender to wait for the shared lock.");
+
+            allowLaterBranch.TrySetResult(true);
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => laterBuildTaskId != default
+                    && session.Tasks.Any(task => task.Id == laterBuildTaskId)
+                    && session.GetTask(laterBuildTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                TimeSpan.FromSeconds(5),
+                "Timed out waiting for the later build-like contender to wait for the shared lock.");
+
+            releaseLockHolder.TrySetResult(true);
+            ExecutionTaskId winnerTaskId = await lockWinner.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+            // The older package-like contender should win because it unlocks the parent-scope fanout that follows prebuild.
+            Assert.Equal(olderPackageTaskId, winnerTaskId);
+        }
+        finally
+        {
+            allowLaterBranch.TrySetResult(true);
+            releaseLockHolder.TrySetResult(true);
+            releaseWinner.TrySetResult(true);
+            await executeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
     }
 
     /// <summary>
@@ -1374,7 +1518,7 @@ public sealed class ExecutionPlanSchedulerTests
     [Fact]
     public async Task StartedScopeWithLockWaitChildAndDownstreamQueuedChildRollsUpWaitingForExecutionLock()
     {
-        /* Hold a shared execution lock outside the packaging scope so the middle child becomes the admitted lock waiter
+        /* Hold a shared execution lock outside the packaging scope so the middle child becomes the visible lock waiter
            while the final child remains merely queued behind that blocked work. */
         ExecutionLock sharedLock = new("scope-rollup-lock");
         TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);

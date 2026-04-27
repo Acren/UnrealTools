@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -8,20 +7,48 @@ using System.Threading.Tasks;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Provides in-process exclusive locks for typed execution locks. Operations declare logical lock needs and
-/// the runtime translates them into shared semaphores so concurrent tasks in the same app instance cannot race on shared
-/// external resources.
+/// Provides one process-wide arbitration point for typed execution locks. Operations declare logical lock needs, and the
+/// scheduler registers ready tasks here so each acquisition attempt can choose the best currently eligible waiter.
 /// </summary>
-public static class ExecutionLocks
+internal static class ExecutionLocks
 {
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.Ordinal);
+    // Protects the held-key set and waiter list so lock grants are chosen from one coherent global view.
+    private static readonly object _syncRoot = new();
+
+    // Tracks lock keys currently owned by granted task executions.
+    private static readonly HashSet<string> _heldKeys = new(StringComparer.Ordinal);
+
+    // Stores tasks that are eligible to run except for their declared lock set.
+    private static readonly List<LockWaiter> _waiters = new();
+
+    // Gives equal-priority waiters a deterministic global FIFO tie-breaker.
+    private static long _nextWaiterSequence;
 
     /// <summary>
-    /// Tries to acquire all provided execution locks immediately and returns one releaser that frees them in reverse
-    /// order. The scheduler uses this to keep untouched lock contenders queued until the callback can truly start.
+    /// Fires after a lock-table change may let waiting schedulers retry acquisition.
     /// </summary>
-    public static bool TryAcquire(IEnumerable<ExecutionLock> executionLocks, out IAsyncDisposable handle)
+    internal static event Action? Changed;
+
+    /// <summary>
+    /// Provides one no-op lock handle for tasks that do not declare any lock requirements.
+    /// </summary>
+    internal static IAsyncDisposable EmptyHandle => new Releaser(Array.Empty<string>());
+
+    /// <summary>
+    /// Registers or refreshes one scheduler-ready task and acquires its locks only when it is the best eligible waiter.
+    /// </summary>
+    internal static bool TryAcquireOrWait(
+        ExecutionTaskId taskId,
+        IEnumerable<ExecutionLock> executionLocks,
+        int priority,
+        out IAsyncDisposable handle)
     {
+        handle = EmptyHandle;
+        if (taskId == default)
+        {
+            throw new ArgumentException("A task id is required for lock wait registration.", nameof(taskId));
+        }
+
         if (executionLocks == null)
         {
             throw new ArgumentNullException(nameof(executionLocks));
@@ -30,82 +57,79 @@ public static class ExecutionLocks
         IReadOnlyList<string> keys = GetOrderedKeys(executionLocks);
         if (keys.Count == 0)
         {
-            handle = AsyncDisposable.Empty;
             return true;
         }
 
-        List<(string Key, SemaphoreSlim Semaphore)> acquiredLocks = new(keys.Count);
-        try
+        bool wakeWaiters = false;
+        lock (_syncRoot)
         {
-            foreach (string key in keys)
+            int waiterIndex = _waiters.FindIndex(waiter => waiter.TaskId == taskId);
+            long sequence = waiterIndex >= 0
+                ? _waiters[waiterIndex].Sequence
+                : Interlocked.Increment(ref _nextWaiterSequence);
+            LockWaiter waiter = new(taskId, keys, priority, sequence);
+            if (waiterIndex >= 0)
             {
-                SemaphoreSlim semaphore = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-                if (!semaphore.Wait(0))
+                _waiters[waiterIndex] = waiter;
+            }
+            else
+            {
+                _waiters.Add(waiter);
+            }
+
+            LockWaiter? bestWaiter = _waiters
+                .Where(candidate => ConflictsWith(candidate.Keys, keys) && candidate.Keys.All(key => !_heldKeys.Contains(key)))
+                .OrderByDescending(candidate => candidate.Priority)
+                .ThenBy(candidate => candidate.Sequence)
+                .Select(candidate => (LockWaiter?)candidate)
+                .FirstOrDefault();
+            if (bestWaiter?.TaskId == taskId)
+            {
+                _waiters.RemoveAll(candidate => candidate.TaskId == taskId);
+                foreach (string key in keys)
                 {
-                    ReleaseAcquiredLocks(acquiredLocks);
-                    handle = AsyncDisposable.Empty;
-                    return false;
+                    _heldKeys.Add(key);
                 }
 
-                acquiredLocks.Add((key, semaphore));
+                handle = new Releaser(keys);
+                return true;
             }
 
-            handle = new Releaser(acquiredLocks);
-            return true;
+            wakeWaiters = bestWaiter != null;
         }
-        catch
+
+        if (wakeWaiters)
         {
-            ReleaseAcquiredLocks(acquiredLocks);
-            handle = AsyncDisposable.Empty;
-            throw;
+            SignalChanged();
         }
+
+        return false;
     }
 
     /// <summary>
-    /// Acquires all provided execution locks asynchronously in a deterministic order and returns one releaser that frees
-    /// them in reverse order.
+    /// Removes one queued task from global lock arbitration.
     /// </summary>
-    public static async Task<IAsyncDisposable> AcquireAsync(IEnumerable<ExecutionLock> executionLocks, CancellationToken cancellationToken)
+    internal static void UnregisterWaiter(ExecutionTaskId taskId)
     {
-        if (executionLocks == null)
+        bool removed;
+        lock (_syncRoot)
         {
-            throw new ArgumentNullException(nameof(executionLocks));
+            removed = _waiters.RemoveAll(waiter => waiter.TaskId == taskId) > 0;
         }
 
-        IReadOnlyList<string> keys = GetOrderedKeys(executionLocks);
-        if (keys.Count == 0)
+        if (removed)
         {
-            return AsyncDisposable.Empty;
-        }
-
-        List<(string Key, SemaphoreSlim Semaphore)> acquiredLocks = new(keys.Count);
-        try
-        {
-            foreach (string key in keys)
-            {
-                SemaphoreSlim semaphore = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-                await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-                acquiredLocks.Add((key, semaphore));
-            }
-
-            return new Releaser(acquiredLocks);
-        }
-        catch
-        {
-            ReleaseAcquiredLocks(acquiredLocks);
-            throw;
+            SignalChanged();
         }
     }
 
     /// <summary>
-    /// Normalizes the declared locks into one deterministic ordered key list so both blocking and non-blocking acquire
-    /// paths use the same deadlock-free ordering.
+    /// Normalizes the declared locks into one deterministic ordered key list for conflict checks and release symmetry.
     /// </summary>
     private static IReadOnlyList<string> GetOrderedKeys(IEnumerable<ExecutionLock> executionLocks)
     {
-        /* Lock keys are sorted before acquisition so any task body that needs more than one lock waits in the same order
-           as every other task body. That keeps the in-process lock table deadlock-free even when different operations
-           declare overlapping lock sets. */
+        /* Lock keys are sorted before acquisition so multi-lock tasks always record and release the same normalized set,
+           regardless of the order in which operations declared those locks. */
         return executionLocks
             .Select(executionLock => executionLock.Key)
             .Distinct(StringComparer.Ordinal)
@@ -114,29 +138,46 @@ public static class ExecutionLocks
     }
 
     /// <summary>
-    /// Releases a partially acquired lock set in reverse order so failed multi-lock attempts do not leak semaphore state.
+    /// Returns whether two normalized lock sets overlap on any key.
     /// </summary>
-    private static void ReleaseAcquiredLocks(IReadOnlyList<(string Key, SemaphoreSlim Semaphore)> acquiredLocks)
+    private static bool ConflictsWith(IReadOnlyList<string> left, IReadOnlyList<string> right)
     {
-        for (int index = acquiredLocks.Count - 1; index >= 0; index--)
-        {
-            acquiredLocks[index].Semaphore.Release();
-        }
+        return left.Any(right.Contains);
     }
 
-    private sealed class Releaser : IAsyncDisposable
+    /// <summary>
+    /// Releases one granted lock set and wakes all known waiters so their schedulers can retry acquisition.
+    /// </summary>
+    private static void Release(IReadOnlyList<string> keys)
     {
-        private readonly IReadOnlyList<(string Key, SemaphoreSlim Semaphore)> _acquiredLocks;
-        private int _disposed;
-
-        public Releaser(IReadOnlyList<(string Key, SemaphoreSlim Semaphore)> acquiredLocks)
+        lock (_syncRoot)
         {
-            _acquiredLocks = acquiredLocks;
+            foreach (string key in keys)
+            {
+                _heldKeys.Remove(key);
+            }
         }
 
+        SignalChanged();
+    }
+
+    /// <summary>
+    /// Notifies active schedulers outside the lock-table monitor so they can retry ready lock waiters.
+    /// </summary>
+    private static void SignalChanged()
+    {
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Owns one acquired lock-key set and returns those keys to the global coordinator when disposed.
+    /// </summary>
+    private sealed class Releaser(IReadOnlyList<string> keys) : IAsyncDisposable
+    {
+        private int _disposed;
+
         /// <summary>
-        /// Releases the acquired semaphores in reverse acquisition order so stacked lock scopes unwind symmetrically with
-        /// the scheduler's deterministic acquisition order.
+        /// Releases the granted keys once, skipping notification for the shared lock-free path.
         /// </summary>
         public ValueTask DisposeAsync()
         {
@@ -145,23 +186,18 @@ public static class ExecutionLocks
                 return default;
             }
 
-            for (int index = _acquiredLocks.Count - 1; index >= 0; index--)
+            if (keys.Count > 0)
             {
-                _acquiredLocks[index].Semaphore.Release();
+                Release(keys);
             }
 
             return default;
         }
     }
 
-    private sealed class AsyncDisposable : IAsyncDisposable
-    {
-        public static AsyncDisposable Empty { get; } = new();
+    /// <summary>
+    /// Represents one scheduler-ready task that is blocked only by its requested execution locks.
+    /// </summary>
+    private readonly record struct LockWaiter(ExecutionTaskId TaskId, IReadOnlyList<string> Keys, int Priority, long Sequence);
 
-        /// <summary>
-        /// Provides one no-op lock handle for task bodies that do not declare any lock requirements so the scheduler can use
-        /// a single disposal path regardless of whether locks were acquired.
-        /// </summary>
-        public ValueTask DisposeAsync() => default;
-    }
 }

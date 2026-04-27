@@ -700,16 +700,33 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Starts one scheduler-ready task through the single runtime start path. The session owns graph-level task
-    /// resolution, runtime-context construction, and the visible Running transition. The scheduler remains responsible
-    /// only for execution policy such as lock reservation, worker-thread dispatch, and completion orchestration, so it
-    /// provides only the transport that actually invokes the already-bound body delegate.
+    /// Starts one lock-free scheduler-ready task through the single runtime start path for direct internal callers.
     /// </summary>
     internal TaskStartResult StartTaskAsync(ExecutionTaskId taskId, Func<ExecutionTaskId, ILogger> createLogger, CancellationToken cancellationToken, ExecutionPlanScheduler scheduler, TaskExecutionRunner runTaskAsync)
+    {
+        // Direct session-start callers may only bypass the scheduler's lock coordinator for genuinely lock-free work.
+        ExecutionTask startedTask = GetTask(taskId).ResolveTaskToStart();
+        if (startedTask.GetDeclaredExecutionLocks().Count > 0)
+        {
+            throw new InvalidOperationException($"Task '{startedTask.Id}' cannot start without an acquired execution-lock handle.");
+        }
+
+        return StartTaskAsync(taskId, createLogger, cancellationToken, scheduler, ExecutionLocks.EmptyHandle, runTaskAsync);
+    }
+
+    /// <summary>
+    /// Starts one scheduler-ready task after the scheduler has already acquired any declared execution locks for it.
+    /// </summary>
+    internal TaskStartResult StartTaskAsync(ExecutionTaskId taskId, Func<ExecutionTaskId, ILogger> createLogger, CancellationToken cancellationToken, ExecutionPlanScheduler scheduler, IAsyncDisposable acquiredLocks, TaskExecutionRunner runTaskAsync)
     {
         if (createLogger == null)
         {
             throw new ArgumentNullException(nameof(createLogger));
+        }
+
+        if (acquiredLocks == null)
+        {
+            throw new ArgumentNullException(nameof(acquiredLocks));
         }
 
         if (runTaskAsync == null)
@@ -724,58 +741,21 @@ public sealed class ExecutionSession
         ExecutionTask startedTask = task.ResolveTaskToStart();
         ExecutionTask visibleStartedTask = task;
         ExecutionTaskContext startedContext = startedTask.Id == task.Id ? context : context.CreateForTask(startedTask);
-        IReadOnlyList<ExecutionLock> executionLocks = startedTask.GetDeclaredExecutionLocks();
-        ILogger taskLogger = createLogger(startedTask.Id);
 
-        if (executionLocks.Count == 0)
-        {
-            /* Lock-free tasks can enter Running at admission time because there is no external resource gate between the
-               scheduler's chosen start order and the body becoming eligible to execute. This preserves deterministic
-               start-order observations while lock-waiting tasks still surface their explicit intermediate state. */
-            startedContext.GetRequiredRuntime().SetTaskState(visibleStartedTask.Id, ExecutionTaskState.Running);
-        }
-        else
-        {
-            /* Lock-waiting must become visible immediately at admission time on the authored task that declared the lock.
-               If this transition waits for the worker coroutine to begin, the authored task can still read as Queued or
-               get rolled into Running through descendant-derived state before the explicit wait state is ever observed. */
-            SetTaskWaitingForExecutionLock(visibleStartedTask.Id);
-        }
+        /* The scheduler only calls this method after the task's declared execution locks are already granted. Entering
+           Running here therefore means the task body is eligible to execute immediately, not merely queued for locks. */
+        startedContext.GetRequiredRuntime().SetTaskState(visibleStartedTask.Id, ExecutionTaskState.Running);
 
         Func<Task<OperationResult>> executeAsync = async () =>
         {
-            /* Once the scheduler admits this task as the chosen contender for its lock set, the task execution path owns
-               the remaining lifecycle: enter explicit lock-wait state, acquire the declared locks, transition to Running,
-               then execute the body under the held lock. */
-            await using IAsyncDisposable acquiredLocks = await AcquireExecutionLocksForStartedTaskAsync(startedContext, startedTask, executionLocks, taskLogger, cancellationToken).ConfigureAwait(false);
-            if (executionLocks.Count > 0)
-            {
-                startedContext.GetRequiredRuntime().SetTaskState(visibleStartedTask.Id, ExecutionTaskState.Running);
-            }
-
+            /* The granted lock handle is scoped around the body so release happens for success, failure, and cooperative
+               cancellation before the scheduler chooses the next lock waiter. */
+            await using IAsyncDisposable lockScope = acquiredLocks;
             return await startedTask.Spec.ExecuteAsync!(startedContext).ConfigureAwait(false);
         };
 
         Task<OperationResult> runningTask = runTaskAsync(visibleStartedTask, executeAsync);
         return new TaskStartResult(visibleStartedTask, runningTask);
-    }
-
-    /// <summary>
-    /// Acquires the declared execution locks for one already-admitted task. The session owns the visible transition into
-    /// AwaitingLock, while the task's execution coroutine owns the actual wait and later Running transition.
-    /// </summary>
-    private void SetTaskWaitingForExecutionLock(ExecutionTaskId taskId)
-    {
-        SetTaskState(taskId, ExecutionTaskState.AwaitingLock);
-    }
-
-    /// <summary>
-    /// Delegates the actual lock wait to task runtime services after the authored task has already published its visible
-    /// AwaitingLock state at admission time.
-    /// </summary>
-    private Task<IAsyncDisposable> AcquireExecutionLocksForStartedTaskAsync(ExecutionTaskContext startedContext, ExecutionTask executingTask, IReadOnlyList<ExecutionLock> executionLocks, ILogger taskLogger, CancellationToken cancellationToken)
-    {
-        return startedContext.GetRequiredRuntime().AcquireExecutionLocksAsync(executingTask, executionLocks, taskLogger, cancellationToken);
     }
 
     /// <summary>

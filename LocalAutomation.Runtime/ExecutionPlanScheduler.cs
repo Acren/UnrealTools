@@ -54,6 +54,7 @@ public sealed class ExecutionPlanScheduler
         using CancellationTokenSource schedulerCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _schedulerCancellationSource = schedulerCancellationSource;
         _executionCancellationToken = schedulerCancellationSource.Token;
+        ExecutionLocks.Changed += HandleExecutionLocksChanged;
         _session.TaskGraphChanged += HandleSessionWorkChanged;
         _session.TaskStateChanged += HandleSessionTaskChanged;
         try
@@ -86,6 +87,13 @@ public sealed class ExecutionPlanScheduler
 
                 if (runningTasksSnapshot.Length == 0)
                 {
+                    if (HasTasksWaitingForExecutionLocks())
+                    {
+                        Task cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, _executionCancellationToken);
+                        await Task.WhenAny(GetWorkAvailableSignalTask(), cancellationTask).ConfigureAwait(false);
+                        continue;
+                    }
+
                     if (!startedAny && !handledCompletedTasks)
                     {
                         /* This is the scheduler's dead-end branch. Log the exact incomplete task ids so the next run shows
@@ -113,6 +121,7 @@ public sealed class ExecutionPlanScheduler
         }
         finally
         {
+            ExecutionLocks.Changed -= HandleExecutionLocksChanged;
             _session.TaskGraphChanged -= HandleSessionWorkChanged;
             _session.TaskStateChanged -= HandleSessionTaskChanged;
             lock (_executionCancellationSyncRoot)
@@ -259,6 +268,14 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
+    /// Wakes the scheduler when the global execution-lock table changes and lock waiters may be startable now.
+    /// </summary>
+    private void HandleExecutionLocksChanged()
+    {
+        SignalWorkAvailable();
+    }
+
+    /// <summary>
     /// Signals the scheduler when task-state changes may unblock downstream work without requiring a task completion to be
     /// the only wake-up source.
     /// </summary>
@@ -268,6 +285,11 @@ public sealed class ExecutionPlanScheduler
             .SetTag("task.id", taskId.Value)
             .SetTag("task.state", state.ToString())
             .SetTag("task.outcome", outcome?.ToString() ?? string.Empty);
+        if (state == ExecutionTaskState.Completed || outcome != null)
+        {
+            ExecutionLocks.UnregisterWaiter(taskId);
+        }
+
         NormalizeRunningTaskTerminalOutcome(taskId, state, outcome);
 
         /* Running tasks only stop promptly when their shared execution token is cancelled. Session state alone is not
@@ -297,7 +319,6 @@ public sealed class ExecutionPlanScheduler
         bool startedAny = false;
         int startedCount = 0;
         int passCount = 0;
-        HashSet<string> admittedLockSets = new(StringComparer.Ordinal);
         using PerformanceActivityScope readyActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartReadyItems")
             .SetTag("running.count", _session.Tasks.Count(task => task.HasActiveExecution))
             .SetTag("queued.count", _session.Tasks.Count(task => task.State == ExecutionTaskState.Queued))
@@ -330,15 +351,6 @@ public sealed class ExecutionPlanScheduler
                     continue;
                 }
 
-                /* Scheduler order must also determine which contender is allowed to wait on a shared execution lock.
-                   Once one branch already owns or waits on a specific lock set in this pass, later same-lock contenders
-                   stay pending until a later wake-up instead of entering a worker-thread race for eventual lock ownership. */
-                string? lockSetKey = GetExecutionLockSetKey(task.GetExecutionLocksForNextStart());
-                if (lockSetKey != null && (!admittedLockSets.Add(lockSetKey) || HasWaitingContenderForLockSet(task, lockSetKey)))
-                {
-                    continue;
-                }
-
                 using PerformanceActivityScope startActivity = PerformanceTelemetry.StartActivity("ExecutionPlanScheduler.StartTask")
                     .SetTag("task.id", task.Id.Value)
                     .SetTag("task.title", task.Title);
@@ -353,6 +365,19 @@ public sealed class ExecutionPlanScheduler
                     throw new InvalidOperationException($"Task '{task.Id}' cannot start execution while it already has semantic outcome '{task.Outcome}'.");
                 }
 
+                ExecutionTask? nextStartTask = task.TryGetNextStartableTask();
+                if (nextStartTask == null)
+                {
+                    continue;
+                }
+
+                IReadOnlyList<ExecutionLock> executionLocks = nextStartTask.GetDeclaredExecutionLocks();
+                int priority = CountDownstreamWork(nextStartTask);
+                if (!TryAcquireExecutionLocksForStart(task, nextStartTask, executionLocks, priority, out IAsyncDisposable acquiredLocks))
+                {
+                    continue;
+                }
+
                 try
                 {
                     _session.StartTaskAsync(
@@ -360,16 +385,17 @@ public sealed class ExecutionPlanScheduler
                         CreateTaskLogger,
                         cancellationToken,
                         this,
-                        (admittedTask, executeAsync) =>
+                        acquiredLocks,
+                        (startedTask, executeAsync) =>
                         {
                             TaskCompletionSource<OperationResult> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                            admittedTask.AttachActiveExecution(completionSource.Task);
+                            startedTask.AttachActiveExecution(completionSource.Task);
 
                             _logger.LogDebug(
                                 "Dispatching task '{TaskPath}' ({TaskId}) to worker execution.",
-                                _session.GetTaskDisplayPath(admittedTask.Id),
-                                admittedTask.Id);
-                            StartTaskExecutionAsync(admittedTask, executeAsync, completionSource);
+                                _session.GetTaskDisplayPath(startedTask.Id),
+                                startedTask.Id);
+                            StartTaskExecutionAsync(startedTask, executeAsync, completionSource);
                             return completionSource.Task;
                         });
 
@@ -379,6 +405,7 @@ public sealed class ExecutionPlanScheduler
                 }
                 catch
                 {
+                    acquiredLocks.DisposeAsync().AsTask().GetAwaiter().GetResult();
                     throw;
                 }
             }
@@ -397,33 +424,48 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Returns one deterministic key for one declared execution-lock set. An empty lock set returns null so lock-free
-    /// work is never throttled by
-    /// lock-admission policy.
+    /// Acquires the declared locks for a ready task or records that the task is globally waiting for those locks.
     /// </summary>
-    private static string? GetExecutionLockSetKey(IReadOnlyList<ExecutionLock> executionLocks)
+    private bool TryAcquireExecutionLocksForStart(
+        ExecutionTask visibleTask,
+        ExecutionTask executingTask,
+        IReadOnlyList<ExecutionLock> executionLocks,
+        int priority,
+        out IAsyncDisposable acquiredLocks)
     {
         if (executionLocks.Count == 0)
         {
-            return null;
+            acquiredLocks = ExecutionLocks.EmptyHandle;
+            return true;
         }
 
-        return string.Join("\u001F", executionLocks
-            .Select(executionLock => executionLock.Key)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(key => key, StringComparer.Ordinal));
+        if (ExecutionLocks.TryAcquireOrWait(visibleTask.Id, executionLocks, priority, out acquiredLocks))
+        {
+            ILogger taskLogger = CreateTaskLogger(executingTask.Id);
+            string lockSummary = string.Join(", ", executionLocks.Select(executionLock => executionLock.Key));
+            taskLogger.LogInformation("Acquired execution lock(s): {ExecutionLocks}", lockSummary);
+            acquiredLocks = new LoggedExecutionLockHandle(acquiredLocks, taskLogger, lockSummary);
+            return true;
+        }
+
+        MarkTaskWaitingForExecutionLocks(visibleTask, executingTask, executionLocks);
+        return false;
     }
 
     /// <summary>
-    /// Returns whether another branch is already the admitted waiter for the same lock set. Scheduler turns may repeat
-    /// while a lock holder is still running, so the scheduler must keep later contenders pending until the current waiter
-    /// either acquires the lock or leaves the wait state.
+    /// Publishes the explicit lock-wait state for a task that is ready but cannot yet receive its global lock grant.
     /// </summary>
-    private bool HasWaitingContenderForLockSet(ExecutionTask candidateTask, string lockSetKey)
+    private void MarkTaskWaitingForExecutionLocks(ExecutionTask visibleTask, ExecutionTask executingTask, IReadOnlyList<ExecutionLock> executionLocks)
     {
-        return _session.Tasks.Any(task => task.Id != candidateTask.Id
-            && task.State == ExecutionTaskState.AwaitingLock
-            && string.Equals(GetExecutionLockSetKey(task.GetDeclaredExecutionLocks()), lockSetKey, StringComparison.Ordinal));
+        if (visibleTask.State == ExecutionTaskState.AwaitingLock)
+        {
+            return;
+        }
+
+        ILogger taskLogger = CreateTaskLogger(executingTask.Id);
+        string lockSummary = string.Join(", ", executionLocks.Select(executionLock => executionLock.Key));
+        taskLogger.LogDebug("Waiting for execution lock(s) for task '{TaskTitle}': {ExecutionLocks}", executingTask.Title, lockSummary);
+        SetState(visibleTask.Id, ExecutionTaskState.AwaitingLock);
     }
 
     /// <summary>
@@ -479,8 +521,9 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Walks unfinished dependency edges outward from one task id and accumulates every transitively dependent task into
-    /// the provided visited set.
+    /// Walks unfinished dependency edges outward from one task id and accumulates every transitively downstream task into
+    /// the provided visited set, including parent scopes that become relevant when descendant completion unlocks their
+    /// own dependents.
     /// </summary>
     private void CollectDownstreamDependentTasks(ExecutionTaskId taskId, HashSet<ExecutionTaskId> visitedTaskIds)
     {
@@ -492,10 +535,27 @@ public sealed class ExecutionPlanScheduler
             ExecutionTaskId currentTaskId = pendingTaskIds.Dequeue();
             foreach (ExecutionTask dependentTask in _session.Tasks.Where(candidate => candidate.Outcome == null && candidate.Dependencies.Contains(currentTaskId)))
             {
-                if (visitedTaskIds.Add(dependentTask.Id))
-                {
-                    pendingTaskIds.Enqueue(dependentTask.Id);
-                }
+                EnqueueDownstreamTaskAndParentScopes(dependentTask, visitedTaskIds, pendingTaskIds);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adds one discovered downstream task and each open parent scope above it to the pending traversal queue.
+    /// </summary>
+    private static void EnqueueDownstreamTaskAndParentScopes(
+        ExecutionTask task,
+        HashSet<ExecutionTaskId> visitedTaskIds,
+        Queue<ExecutionTaskId> pendingTaskIds)
+    {
+        /* A descendant can complete a parent scope whose id is the actual prerequisite for later fanout work. Enqueueing
+           each open parent scope lets the priority walk cross that completion boundary without storing extra scheduler
+           state beside the live graph. */
+        for (ExecutionTask? currentTask = task; currentTask != null && currentTask.Outcome == null; currentTask = currentTask.Parent)
+        {
+            if (visitedTaskIds.Add(currentTask.Id))
+            {
+                pendingTaskIds.Enqueue(currentTask.Id);
             }
         }
     }
@@ -504,6 +564,18 @@ public sealed class ExecutionPlanScheduler
         ExecutionTask Task,
         int OriginalIndex,
         int DownstreamWorkCount);
+
+    private sealed class LoggedExecutionLockHandle(IAsyncDisposable inner, ILogger logger, string summary) : IAsyncDisposable
+    {
+        /// <summary>
+        /// Releases the global execution-lock grant and records the matching release event in the owning task log.
+        /// </summary>
+        public async ValueTask DisposeAsync()
+        {
+            await inner.DisposeAsync().ConfigureAwait(false);
+            logger.LogInformation("Released execution lock(s): {ExecutionLocks}", summary);
+        }
+    }
 
     /// <summary>
     /// Processes one completed task and updates live session state based on the task outcome.
@@ -625,6 +697,7 @@ public sealed class ExecutionPlanScheduler
                 "Marking task '{TaskPath}' ({TaskId}) unsatisfied.",
                 _session.GetTaskDisplayPath(taskId),
                 taskId);
+            ExecutionLocks.UnregisterWaiter(taskId);
             _session.CompleteTaskWithOutcome(taskId, ExecutionTaskOutcome.Skipped);
         }
     }
@@ -634,6 +707,11 @@ public sealed class ExecutionPlanScheduler
     /// </summary>
     private void CancelOutstandingTasks(SchedulerStopReason stopReason, bool preserveRunningTerminalOutcomes = false)
     {
+        foreach (ExecutionTask task in _session.Tasks)
+        {
+            ExecutionLocks.UnregisterWaiter(task.Id);
+        }
+
         _session.CancelOutstandingSchedulableTasks(
             taskId => _session.GetTask(taskId).HasActiveExecution,
             userCancelled: stopReason == SchedulerStopReason.UserCancelled,
@@ -780,6 +858,14 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
+    /// Returns whether this scheduler has no active worker but is still legitimately waiting for a global lock grant.
+    /// </summary>
+    private bool HasTasksWaitingForExecutionLocks()
+    {
+        return _session.Tasks.Any(task => task.State == ExecutionTaskState.AwaitingLock && !task.HasActiveExecution);
+    }
+
+    /// <summary>
     /// Completes the current wake signal so the main loop can immediately reevaluate readiness after live graph changes.
     /// </summary>
     private void SignalWorkAvailable()
@@ -902,8 +988,8 @@ public sealed class ExecutionPlanScheduler
         Func<Task<OperationResult>> executeAsync,
         TaskCompletionSource<OperationResult> completionSource)
     {
-        /* The task execution coroutine now owns lock waiting and the Running transition. The scheduler only dispatches
-           the already-admitted task and tracks its returned completion task. */
+        /* Lock acquisition and the Running transition have already happened before dispatch, so this coroutine only owns
+           executing the task body and reporting its eventual operation result. */
         _ = Task.Factory.StartNew(
             async () =>
             {

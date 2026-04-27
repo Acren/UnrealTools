@@ -29,8 +29,8 @@ public enum ExecutionTaskState
     WaitingForDependencies = AwaitingDependency,
 
     /// <summary>
-    /// The task has been admitted into active execution and is now blocked only on acquiring its declared execution
-    /// lock set. Parent scopes treat this as in-progress work rather than as untouched queued work.
+    /// The task is eligible to run except for its declared execution lock set. No task body runs in this state; the
+    /// scheduler will start the body only after the global lock coordinator grants every required lock.
     /// </summary>
     AwaitingLock = 3,
 

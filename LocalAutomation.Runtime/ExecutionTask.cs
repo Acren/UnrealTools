@@ -516,7 +516,7 @@ public class ExecutionTask : INotifyPropertyChanged
            synthesizing a separate effective start-state enum value. */
         List<ExecutionTask> readyChildBranches = IsScopeOpenForDescendantWork()
             ? _children
-                .Where(child => child.GetTaskStartState() == TaskStartState.Ready)
+                .Where(child => IsSchedulerStartCandidate(child.GetTaskStartState()))
                 .SelectMany(child => child.GetSchedulerReadyBranchRoots())
                 .ToList()
             : new List<ExecutionTask>();
@@ -550,7 +550,7 @@ public class ExecutionTask : INotifyPropertyChanged
         {
             foreach (ExecutionTask child in _children)
             {
-                if (child.GetTaskStartState() == TaskStartState.Ready)
+                if (IsSchedulerStartCandidate(child.GetTaskStartState()))
                 {
                     return child.TryGetNextStartableTask();
                 }
@@ -1005,7 +1005,15 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal bool CanStartOwnWork()
     {
-        return GetOwnWorkStartStateIgnoringAncestors() == TaskStartState.Ready && AreAncestorsOpen();
+        return IsSchedulerStartCandidate(GetOwnWorkStartStateIgnoringAncestors()) && AreAncestorsOpen();
+    }
+
+    /// <summary>
+    /// Returns whether a task-local frontier should be offered to the scheduler for lock acquisition or body start.
+    /// </summary>
+    private static bool IsSchedulerStartCandidate(TaskStartState state)
+    {
+        return state is TaskStartState.Ready or TaskStartState.AwaitingLock;
     }
 
     /// <summary>
