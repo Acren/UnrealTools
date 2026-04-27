@@ -234,6 +234,70 @@ public sealed class ExecutionLockWaitTests
     }
 
     /// <summary>
+    /// Confirms that an execution lock declared on a container task protects the authored child subtree, not only a direct
+    /// task body. A same-lock sibling must wait until the container's child work completes.
+    /// </summary>
+    [Fact]
+    public async Task ExecutionLockDeclaredOnContainerProtectsChildSubtree()
+    {
+        // Arrange: the parent declares the shared lock, while its child performs the actual long-running work.
+        ExecutionLock sharedLock = new("container-scope-lock");
+        TaskCompletionSource<bool> childStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseChild = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> contenderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseContender = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId contenderTaskId = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Locked Parent")
+                    .WithExecutionLocks(sharedLock)
+                    .Children(children =>
+                    {
+                        children.Task("Child Work")
+                            .Run(RuntimeTestUtilities.RunUntilReleased(childStarted, releaseChild));
+                    });
+
+                scope.Task("Same-Lock Contender", out contenderTaskId)
+                    .WithExecutionLocks(sharedLock)
+                    .Run(async _ =>
+                    {
+                        contenderStarted.TrySetResult(true);
+                        await releaseContender.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                        return OperationResult.Succeeded();
+                    });
+            });
+        });
+
+        // Act: start the parent child work, then wait until the contender either blocks correctly or exposes the bug by running.
+        (_, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+
+        try
+        {
+            await childStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => contenderStarted.Task.IsCompleted
+                    || session.GetTask(contenderTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                TimeSpan.FromSeconds(1),
+                "Timed out waiting for the same-lock contender to either run or enter lock wait.");
+
+            // Assert: current buggy behavior starts the contender because the parent container's lock is inert.
+            Assert.False(contenderStarted.Task.IsCompleted);
+            Assert.Equal(ExecutionTaskState.WaitingForExecutionLock, session.GetTask(contenderTaskId).State);
+        }
+        finally
+        {
+            // Cleanup: release both gates so a red assertion cannot strand the background scheduler.
+            releaseChild.TrySetResult(true);
+            releaseContender.TrySetResult(true);
+            await executeTask;
+        }
+    }
+
+    /// <summary>
     /// Confirms that releasing a shared execution lock wakes the waiting lock consumer promptly even when a higher-priority
     /// lock-free follow-up task begins long synchronous setup work in the same scheduler pass.
     /// </summary>
