@@ -343,21 +343,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// </summary>
         private static IReadOnlySet<string> GetProjectPluginNames(Project project)
         {
-            List<Plugin> projectPlugins = project.Plugins;
-            try
-            {
-                return projectPlugins
-                    .Select(plugin => plugin.Name)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            }
-            finally
-            {
-                // Project plugin enumeration creates watcher-backed plugin targets, so release them after reading names.
-                foreach (Plugin plugin in projectPlugins)
-                {
-                    plugin.Dispose();
-                }
-            }
+            return MaterializationSpecs.GetProjectPluginNames(project);
         }
 
         /// <summary>
@@ -961,13 +947,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             using Project exampleProject = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for editor target build");
 
-            // The child operation owns the actual Build.bat command while this authored task keeps the deploy graph
-            // explicit about the editor-target prebuild prerequisite.
-            global::LocalAutomation.Runtime.OperationParameters buildExampleProjectParams = CreateParameters();
-            buildExampleProjectParams.Target = exampleProject;
-            buildExampleProjectParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "PrebuildProjectPluginBaseOutput");
-            buildExampleProjectParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
-            await RunChildOperationAsync<BuildEditorTarget>(buildExampleProjectParams, context, required: true, failureMessage: "Failed to prebuild project-plugin base editor target", hideChildOperationRootInGraph: true);
+            // Build the editor target from a stable cached project path so repeated deploy runs can reuse UBT's shared PCH
+            // intermediates while the session project still receives the generated binaries used by later branches.
+            await RunCachedProjectBuildOperationAsync(
+                exampleProject,
+                state,
+                "ProjectPluginBaseEditor",
+                GetWorkspacePath(state.WorkspacePath, "PrebuildProjectPluginBaseOutput"),
+                BuildConfiguration.Development,
+                context,
+                "Failed to prebuild project-plugin base editor target",
+                new BuildEditorTarget(),
+                noCompileEditor: false);
         }
 
         /// <summary>
@@ -1096,6 +1087,111 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
+        /// Runs a direct project build from a stable cached workspace, then copies the generated build outputs back to the
+        /// session project that downstream package, launch, and archive steps use.
+        /// </summary>
+        private Task RunCachedProjectBuildOperationAsync(Project sourceProject, DeploymentWorkspaceState state, string role, string outputPath, BuildConfiguration configuration, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage, global::LocalAutomation.Runtime.Operation buildOperation, bool noCompileEditor, UbtCompiler compiler = UbtCompiler.Default, UbtCppStandard cppStandard = UbtCppStandard.Default)
+        {
+            IReadOnlySet<string> projectPluginNames = GetProjectPluginNames(sourceProject);
+            FileMaterializationSpec materializationSpec = MaterializationSpecs.CreateProject(sourceProject, projectPluginNames);
+
+            return UnrealBuildWorkspaceCache.RunProjectBuildAsync(
+                state.Engine,
+                sourceProject,
+                nameof(DeployPlugin),
+                role,
+                state.SourcePlugin.Name,
+                configuration,
+                compiler,
+                cppStandard,
+                materializationSpec,
+                projectPluginNames.Select(pluginName => $"ProjectPlugin:{pluginName}"),
+                cachedProject => RunChildOperationAsync(
+                    buildOperation,
+                    CreateCachedDirectBuildParams(cachedProject, state, outputPath, configuration, compiler, cppStandard, noCompileEditor),
+                    context,
+                    required: true,
+                    failureMessage: failureMessage,
+                    hideChildOperationRootInGraph: true),
+                context.Logger,
+                context.CancellationToken);
+        }
+
+        /// <summary>
+        /// Creates direct Build.bat child parameters for a cached project while preserving the caller's engine,
+        /// configuration, compiler override, and output-log path choices.
+        /// </summary>
+        private global::LocalAutomation.Runtime.OperationParameters CreateCachedDirectBuildParams(Project cachedProject, DeploymentWorkspaceState state, string outputPath, BuildConfiguration configuration, UbtCompiler compiler, UbtCppStandard cppStandard, bool noCompileEditor)
+        {
+            global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
+            parameters.Target = cachedProject;
+            parameters.OutputPathOverride = outputPath;
+            parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
+            parameters.GetOptions<BuildConfigurationOptions>().Configuration = configuration;
+            UbtCompilerOptions compilerOptions = parameters.GetOptions<UbtCompilerOptions>();
+            compilerOptions.Compiler = compiler;
+            compilerOptions.CppStandard = cppStandard;
+
+            if (noCompileEditor)
+            {
+                parameters.GetOptions<AdditionalArgumentsOptions>().Arguments = "-nocompileeditor";
+            }
+
+            return parameters;
+        }
+
+        /// <summary>
+        /// Rebuilds a project plugin through a cached project workspace so compiler-specific validation reuses the same
+        /// stable project Intermediate path across repeated runs.
+        /// </summary>
+        private Task RunCachedProjectPluginBuildAsync(Project sourceProject, DeploymentWorkspaceState state, string role, string outputPath, BuildConfiguration configuration, UbtCompiler compiler, UbtCppStandard cppStandard, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
+        {
+            IReadOnlySet<string> projectPluginNames = GetProjectPluginNames(sourceProject);
+            FileMaterializationSpec materializationSpec = MaterializationSpecs.CreateProject(sourceProject, projectPluginNames);
+
+            return UnrealBuildWorkspaceCache.RunProjectBuildAsync(
+                state.Engine,
+                sourceProject,
+                nameof(DeployPlugin),
+                role,
+                state.SourcePlugin.Name,
+                configuration,
+                compiler,
+                cppStandard,
+                materializationSpec,
+                projectPluginNames.Select(pluginName => $"ProjectPlugin:{pluginName}"),
+                async cachedProject =>
+                {
+                    string cachedPluginPath = Path.Combine(cachedProject.PluginsPath, state.SourcePlugin.Name);
+                    using Plugin cachedPlugin = CreateRequiredPlugin(cachedPluginPath, "Could not find packaged plugin inside the cached validation project");
+                    await RunChildOperationAsync<BuildPlugin>(
+                        CreateCachedPluginBuildParams(cachedPlugin, state, outputPath, configuration, compiler, cppStandard),
+                        context,
+                        required: true,
+                        failureMessage: failureMessage,
+                        hideChildOperationRootInGraph: true);
+                },
+                context.Logger,
+                context.CancellationToken);
+        }
+
+        /// <summary>
+        /// Creates direct plugin Build.bat child parameters for a plugin inside a cached project workspace.
+        /// </summary>
+        private global::LocalAutomation.Runtime.OperationParameters CreateCachedPluginBuildParams(Plugin cachedPlugin, DeploymentWorkspaceState state, string outputPath, BuildConfiguration configuration, UbtCompiler compiler, UbtCppStandard cppStandard)
+        {
+            global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
+            parameters.Target = cachedPlugin;
+            parameters.OutputPathOverride = outputPath;
+            parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
+            parameters.GetOptions<BuildConfigurationOptions>().Configuration = configuration;
+            UbtCompilerOptions compilerOptions = parameters.GetOptions<UbtCompilerOptions>();
+            compilerOptions.Compiler = compiler;
+            compilerOptions.CppStandard = cppStandard;
+            return parameters;
+        }
+
+        /// <summary>
         /// Creates one transient BuildCookRun child operation whose phase set is specific to the surrounding deploy flow
         /// without forcing that preset into the public operation catalog.
         /// </summary>
@@ -1120,20 +1216,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Builds one prepared project's game target so the later package-only BuildCookRun step has the staged game
         /// receipt it expects in Binaries/Win64 even when the project descriptor itself no longer has modules.
         /// </summary>
-        private Task RunPreparedProjectBuildAsync(Project project, DeploymentWorkspaceState state, string outputPath, BuildConfiguration configuration, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
+        private Task RunPreparedProjectBuildAsync(Project project, DeploymentWorkspaceState state, string role, string outputPath, BuildConfiguration configuration, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage)
         {
-            global::LocalAutomation.Runtime.OperationParameters parameters = CreateExampleProjectBuildCookRunParams(project, state, outputPath);
-            parameters.GetOptions<BuildConfigurationOptions>().Configuration = configuration;
-
             /* Stage still validates the game's target receipt when any enabled plugin contributes code, so the split build
-               step must always compile the game target explicitly before package-only BuildCookRun takes over. */
-            return RunChildOperationAsync(
-                new BuildProjectTarget(),
-                parameters,
+               step must always compile the game target explicitly before package-only BuildCookRun takes over. The build
+               runs from a stable cache workspace so UBT can reuse its Intermediate/PCH state across deploy sessions. */
+            return RunCachedProjectBuildOperationAsync(
+                project,
+                state,
+                role,
+                outputPath,
+                configuration,
                 context,
-                required: true,
-                failureMessage: failureMessage,
-                hideChildOperationRootInGraph: true);
+                failureMessage,
+                new BuildProjectTarget(),
+                noCompileEditor: true);
         }
 
         /// <summary>
@@ -1167,7 +1264,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return RunChildOperationAsync<LaunchPackage>(CreatePackageLaunchParams(package, engine, automationOptions, outputPath), context, required: true, failureMessage: failureMessage, hideChildOperationRootInGraph: true);
         }
 
-        // Rebuild the packaged plugin in-place with Clang so validation matches the project-plugin flow Fab uses.
+        // Rebuild the packaged plugin with Clang so validation matches the project-plugin flow Fab uses.
         private async Task RunClangCompileCheck(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Running Clang compile check");
@@ -1175,27 +1272,23 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.RunClangCompileCheck")
                 .SetTag("plugin.name", state.SourcePlugin.Name)
                 .SetTag("engine.version", state.Engine.Version.ToString());
-            string exampleProjectPluginPath = Path.Combine(GetClangVariantPath(state), "Plugins", state.SourcePlugin.Name);
-            using Plugin exampleProjectPlugin = CreateRequiredPlugin(exampleProjectPluginPath, "Could not find packaged plugin inside the Clang validation variant");
+            using Project clangVariant = CreateRequiredProject(GetClangVariantPath(state), "Clang validation variant is not available for compile validation");
 
             activity.SetTag("plugin.present_in_example", true)
-                .SetTag("example.plugin.path", exampleProjectPlugin.PluginPath);
+                .SetTag("example.project.path", clangVariant.ProjectPath);
 
-            global::LocalAutomation.Runtime.OperationParameters clangBuildParams = CreateParameters();
-            clangBuildParams.Target = exampleProjectPlugin;
-            clangBuildParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "ClangCheckOutput");
-            clangBuildParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
-
-            clangBuildParams.SetOptions(new BuildConfigurationOptions
-            {
-                Configuration = BuildConfiguration.Development
-            });
-            clangBuildParams.SetOptions(new UbtCompilerOptions
-            {
-                Compiler = UbtCompiler.Clang
-            });
-
-            await RunChildOperationAsync<BuildPlugin>(clangBuildParams, context, required: true, failureMessage: "Clang compile check failed", hideChildOperationRootInGraph: true);
+            // Clang uses a compiler-specific cache identity so its PCHs and object files never share a workspace with the
+            // default MSVC/direct-UBT validation builds.
+            await RunCachedProjectPluginBuildAsync(
+                clangVariant,
+                state,
+                "ClangValidation",
+                GetWorkspacePath(state.WorkspacePath, "ClangCheckOutput"),
+                BuildConfiguration.Development,
+                UbtCompiler.Clang,
+                UbtCppStandard.Default,
+                context,
+                "Clang compile check failed");
             activity.SetTag("child.result", "Succeeded");
         }
 
@@ -1208,7 +1301,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Building project-plugin example target");
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             using Project exampleProjectBase = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for project-plugin target build");
-            await RunPreparedProjectBuildAsync(exampleProjectBase, state, GetProjectPluginOperationOutputPath(state), BuildConfiguration.Development, context, "Build project-plugin example target failed");
+            await RunPreparedProjectBuildAsync(exampleProjectBase, state, "ProjectPluginPackageTarget", GetProjectPluginOperationOutputPath(state), BuildConfiguration.Development, context, "Build project-plugin example target failed");
         }
 
         /// <summary>
@@ -1259,7 +1352,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Building engine-plugin example target");
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             using Project engineVariant = CreateRequiredProject(GetEnginePluginVariantPath(state), "Engine-plugin variant is not available for target build");
-            await RunPreparedProjectBuildAsync(engineVariant, state, GetEnginePluginOperationOutputPath(state), BuildConfiguration.Development, context, "Build engine-plugin example target failed");
+            await RunPreparedProjectBuildAsync(engineVariant, state, "EnginePluginPackageTarget", GetEnginePluginOperationOutputPath(state), BuildConfiguration.Development, context, "Build engine-plugin example target failed");
         }
 
         /// <summary>
@@ -1294,7 +1387,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Building blueprint-only example target");
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             using Project blueprintVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for target build");
-            await RunPreparedProjectBuildAsync(blueprintVariant, state, GetBlueprintOperationOutputPath(state), BuildConfiguration.Development, context, "Build blueprint-only example target failed");
+            await RunPreparedProjectBuildAsync(blueprintVariant, state, "BlueprintOnlyPackageTarget", GetBlueprintOperationOutputPath(state), BuildConfiguration.Development, context, "Build blueprint-only example target failed");
         }
 
         /// <summary>
@@ -1349,7 +1442,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using IDisposable nodeScope = context.Logger.BeginSection("Building demo executable target");
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             using Project demoVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for demo target build");
-            await RunPreparedProjectBuildAsync(demoVariant, state, GetDemoOperationOutputPath(state), BuildConfiguration.Shipping, context, "Build demo project target for packaging failed");
+            await RunPreparedProjectBuildAsync(demoVariant, state, "DemoExecutableTarget", GetDemoOperationOutputPath(state), BuildConfiguration.Shipping, context, "Build demo project target for packaging failed");
         }
 
         /// <summary>

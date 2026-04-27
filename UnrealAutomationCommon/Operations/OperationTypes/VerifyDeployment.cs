@@ -172,7 +172,58 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private async Task PackageProjectAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
             VerificationState state = context.GetOperationData<VerificationState>();
-            await RunChildOperationAsync(new PackageProject(), CreateExampleProjectParams(state, outputPathOverride: state.PackageOutputPath), context, required: true, failureMessage: "Failed to package example project", hideChildOperationRootInGraph: true);
+
+            // Build from a stable cached project path first so UBT can reuse shared PCH state, then package the session
+            // project with BuildCookRun's build phase disabled so package and launch artifacts remain session-isolated.
+            await BuildExampleProjectThroughCacheAsync(state, context);
+            global::LocalAutomation.Runtime.OperationParameters packageParameters = CreateExampleProjectParams(state, outputPathOverride: state.PackageOutputPath);
+            packageParameters.GetOptions<PackageOptions>().Build = false;
+            packageParameters.GetOptions<AdditionalArgumentsOptions>().Arguments = "-nocompileeditor";
+            await RunChildOperationAsync(new PackageProject(), packageParameters, context, required: true, failureMessage: "Failed to package example project", hideChildOperationRootInGraph: true);
+        }
+
+        /// <summary>
+        /// Compiles the extracted example project through a stable cache workspace and copies build outputs back before the
+        /// package-only BuildCookRun pass reads receipts and binaries from the session project.
+        /// </summary>
+        private Task BuildExampleProjectThroughCacheAsync(VerificationState state, global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            IReadOnlySet<string> projectPluginNames = MaterializationSpecs.GetProjectPluginNames(state.ExampleProject);
+            FileMaterializationSpec materializationSpec = MaterializationSpecs.CreateProject(state.ExampleProject, projectPluginNames);
+            return UnrealBuildWorkspaceCache.RunProjectBuildAsync(
+                state.Engine,
+                state.ExampleProject,
+                nameof(VerifyDeployment),
+                "PackageProjectBuild",
+                state.SourcePlugin.Name,
+                BuildConfiguration.Development,
+                UbtCompiler.Default,
+                UbtCppStandard.Default,
+                materializationSpec,
+                projectPluginNames.Select(pluginName => $"ProjectPlugin:{pluginName}"),
+                cachedProject => RunChildOperationAsync(
+                    new BuildProjectTarget(),
+                    CreateCachedExampleProjectBuildParams(state, cachedProject),
+                    context,
+                    required: true,
+                    failureMessage: "Failed to build example project for packaging",
+                    hideChildOperationRootInGraph: true),
+                context.Logger,
+                context.CancellationToken);
+        }
+
+        /// <summary>
+        /// Creates direct Build.bat parameters for the cached example project build used before package-only verification.
+        /// </summary>
+        private global::LocalAutomation.Runtime.OperationParameters CreateCachedExampleProjectBuildParams(VerificationState state, Project cachedProject)
+        {
+            global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
+            parameters.Target = cachedProject;
+            parameters.OutputPathOverride = Path.Combine(state.TempPath, "CachedExampleProjectBuild");
+            parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
+            parameters.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Development;
+            parameters.GetOptions<AdditionalArgumentsOptions>().Arguments = "-nocompileeditor";
+            return parameters;
         }
 
         private async Task TestPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)

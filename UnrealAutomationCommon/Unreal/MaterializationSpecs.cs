@@ -42,6 +42,41 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         /// <summary>
+        /// Creates the generated-output subset copied from a stable cached build workspace back into the session project
+        /// that package, launch, and archive steps continue to read from.
+        /// </summary>
+        public static FileMaterializationSpec CreateProjectBuildOutputs(Project project)
+        {
+            FileMaterializationSpec spec = new()
+            {
+                { "Binaries" },
+                { "Build" }
+            };
+
+            AddProjectPluginBuildOutputEntries(project, spec);
+            return spec;
+        }
+
+        /// <summary>
+        /// Reads plugin names from a project Plugins tree without constructing watcher-backed Plugin targets, allowing
+        /// materialization callers to preserve the current project plugin set cheaply.
+        /// </summary>
+        public static IReadOnlySet<string> GetProjectPluginNames(Project project)
+        {
+            if (!Directory.Exists(project.PluginsPath))
+            {
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            return Directory.GetDirectories(project.PluginsPath, "*", SearchOption.AllDirectories)
+                .Where(PluginPaths.Instance.IsTargetDirectory)
+                .Select(Path.GetFileName)
+                .Where(pluginName => !string.IsNullOrWhiteSpace(pluginName))
+                .Select(pluginName => pluginName!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
         /// Creates the explicit plugin subset used for staging, workspace materialization, and source archives. The
         /// default source-style subset preserves authored plugin payloads while excluding generated outputs.
         /// </summary>
@@ -113,8 +148,7 @@ namespace UnrealAutomationCommon.Unreal
 
             /* Discover plugins recursively so grouped plugin folders still materialize through explicit per-plugin
                subsets rather than one broad recursive Plugins copy. */
-            foreach (string pluginDirectoryPath in Directory.GetDirectories(project.PluginsPath, "*", SearchOption.AllDirectories)
-                         .Where(PluginPaths.Instance.IsTargetDirectory)
+            foreach (string pluginDirectoryPath in GetProjectPluginDirectories(project)
                          .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
                 string pluginName = Path.GetFileName(pluginDirectoryPath);
@@ -126,6 +160,42 @@ namespace UnrealAutomationCommon.Unreal
                 string relativePluginDirectoryPath = Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath);
                 spec.AddSubtree(Path.Combine("Plugins", relativePluginDirectoryPath), CreatePlugin(pluginDirectoryPath, includeBuildOutputs));
             }
+        }
+
+        /// <summary>
+        /// Adds generated-output entries for every plugin currently present in a project workspace so cached build products
+        /// for project plugins are copied back alongside the project's own binaries.
+        /// </summary>
+        private static void AddProjectPluginBuildOutputEntries(Project project, FileMaterializationSpec spec)
+        {
+            if (!Directory.Exists(project.PluginsPath))
+            {
+                return;
+            }
+
+            /* Discover plugins recursively so grouped plugin folders copy their generated output from the matching nested
+               location without copying source, content, or Intermediate folders. */
+            foreach (string pluginDirectoryPath in GetProjectPluginDirectories(project)
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                string relativePluginDirectoryPath = Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath);
+                spec.Add(Path.Combine("Plugins", relativePluginDirectoryPath, "Binaries"));
+                spec.Add(Path.Combine("Plugins", relativePluginDirectoryPath, "Build"));
+            }
+        }
+
+        /// <summary>
+        /// Enumerates valid plugin directories beneath a project Plugins root while tolerating projects without plugins.
+        /// </summary>
+        private static IEnumerable<string> GetProjectPluginDirectories(Project project)
+        {
+            if (!Directory.Exists(project.PluginsPath))
+            {
+                return Enumerable.Empty<string>();
+            }
+
+            return Directory.GetDirectories(project.PluginsPath, "*", SearchOption.AllDirectories)
+                .Where(PluginPaths.Instance.IsTargetDirectory);
         }
     }
 }
