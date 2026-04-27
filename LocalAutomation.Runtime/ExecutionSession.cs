@@ -432,7 +432,6 @@ public sealed class ExecutionSession
                 }
 
                 WireObservedDependencies(insertedTasks.Tasks);
-                RebuildSubtreeSchedulingRollups(insertedTasks.Tasks);
                 GetTaskCore(insertedTasks.RootTaskId).PublishStateChanged();
 
                 addTasksActivity.SetTag("inserted.task.count", insertedTaskIds.Count);
@@ -1605,7 +1604,6 @@ public sealed class ExecutionSession
             {
                 IReadOnlyList<ExecutionTask> allTasks = _rootTask.GetAllTasks();
                 WireObservedDependencies(allTasks);
-                RebuildSubtreeSchedulingRollups(allTasks);
             });
         }
     }
@@ -1652,18 +1650,6 @@ public sealed class ExecutionSession
             _rootTask = task;
         }
 
-    }
-
-    /// <summary>
-    /// Rebuilds cached scheduler rollups for a fully attached subtree from the leaves upward so each parent observes
-    /// already-updated child summaries instead of a partially wired intermediate tree.
-    /// </summary>
-    private static void RebuildSubtreeSchedulingRollups(IEnumerable<ExecutionTask> tasks)
-    {
-        foreach (ExecutionTask task in tasks.OrderByDescending(GetTaskDepth))
-        {
-            task.RecomputeSubtreeSchedulingRollup();
-        }
     }
 
     /// <summary>

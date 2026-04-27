@@ -86,9 +86,6 @@ public class ExecutionTask : INotifyPropertyChanged
     private ExecutionTaskOutcome? _outcome;
     private int _subtreeWarningCount;
     private int _subtreeErrorCount;
-    /* Cached ancestor-independent scheduler frontier for this subtree. Ancestor gating stays outside this cache so the
-       scheduler can update local subtree readiness once and apply scope-open checks only where it actually matters. */
-    private TaskStartState _subtreeStartState;
     private readonly object _activeExecutionSyncRoot = new();
     private Task<OperationResult>? _activeExecutionTask;
     private readonly Dictionary<Type, object> _dataByType = new();
@@ -118,7 +115,6 @@ public class ExecutionTask : INotifyPropertyChanged
         _state = spec.Enabled ? ExecutionTaskState.Planned : ExecutionTaskState.Completed;
         _outcome = spec.Enabled ? null : ExecutionTaskOutcome.Disabled;
         ResetSubtreeMetrics();
-        ResetSubtreeSchedulingRollup();
     }
 
     private readonly List<ExecutionTask> _children;
@@ -298,14 +294,6 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Resets the task-owned scheduler rollup that summarizes the subtree's current scheduler frontier.
-    /// </summary>
-    internal void ResetSubtreeSchedulingRollup()
-    {
-        _subtreeStartState = TaskStartState.NoStartableWork;
-    }
-
-    /// <summary>
     /// Applies one warning/error delta to this task's cached subtree counts.
     /// </summary>
     internal void ApplySubtreeLogDelta(int warningDelta, int errorDelta)
@@ -351,24 +339,6 @@ public class ExecutionTask : INotifyPropertyChanged
         DateTimeOffset resolvedEnd = FinishedAt ?? now ?? DateTimeOffset.Now;
         TimeSpan duration = resolvedEnd - StartedAt.Value;
         return duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
-    }
-
-    /// <summary>
-    /// Recomputes the cached scheduler rollup for this task from one local own-work state plus the already-cached subtree
-    /// start states on its direct children. Ancestor gating is intentionally excluded because schedulability through a
-    /// closed parent scope is derived when callers evaluate the current live ancestor chain.
-    /// </summary>
-    internal bool RecomputeSubtreeSchedulingRollup()
-    {
-        TaskStartState nextSubtreeStartState = GetOwnWorkStartStateIgnoringAncestors();
-        foreach (ExecutionTask child in _children)
-        {
-            nextSubtreeStartState = CombineSubtreeStartStates(nextSubtreeStartState, child._subtreeStartState);
-        }
-
-        bool changed = nextSubtreeStartState != _subtreeStartState;
-        _subtreeStartState = nextSubtreeStartState;
-        return changed;
     }
 
     /// <summary>
@@ -491,12 +461,19 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns the current cached scheduler frontier for this task subtree while intentionally ignoring ancestor gating
-    /// above this task.
+    /// Computes the current scheduler frontier for this task subtree while intentionally ignoring ancestor gating above
+    /// this task. Callers that need effective readiness apply scope-open checks at the point where they traverse toward
+    /// concrete runnable work.
     /// </summary>
     internal TaskStartState GetTaskStartState()
     {
-        return _subtreeStartState;
+        TaskStartState subtreeStartState = GetOwnWorkStartStateIgnoringAncestors();
+        foreach (ExecutionTask child in _children)
+        {
+            subtreeStartState = CombineSubtreeStartStates(subtreeStartState, child.GetTaskStartState());
+        }
+
+        return subtreeStartState;
     }
 
     /// <summary>
@@ -511,8 +488,8 @@ public class ExecutionTask : INotifyPropertyChanged
             return Array.Empty<ExecutionTask>();
         }
 
-        /* Descendant work is only scheduler-ready when this scope itself is open for descendant execution. The cached
-           child frontier stays ancestor-independent, so this method applies the current scope gate directly instead of
+        /* Descendant work is only scheduler-ready when this scope itself is open for descendant execution. Child frontier
+           queries stay ancestor-independent, so this method applies the current scope gate directly instead of
            synthesizing a separate effective start-state enum value. */
         List<ExecutionTask> readyChildBranches = IsScopeOpenForDescendantWork()
             ? _children
@@ -660,14 +637,13 @@ public class ExecutionTask : INotifyPropertyChanged
 
     /// <summary>
     /// Recomputes this task's derived graph state after one observed child or dependency changed. Visible lifecycle and
-    /// semantic outcome still come from this task's own projection logic, and subtree-rollup-only changes still publish
-    /// through the same task event so observers can simply re-read current task properties.
+    /// semantic outcome still come from this task's own projection logic, and no-op status projections still publish so
+    /// observers that derive scheduler readiness from the live graph can refresh.
     /// </summary>
     internal void RefreshDerivedStateFromObservations()
     {
-        bool subtreeSchedulingChanged = RecomputeSubtreeSchedulingRollup();
         (ExecutionTaskState state, ExecutionTaskOutcome? outcome) = ComputeRolledUpStateFromChildren();
-        if (!TransitionStatus(state, outcome) && subtreeSchedulingChanged)
+        if (!TransitionStatus(state, outcome))
         {
             RaiseStateChanged();
         }
@@ -675,8 +651,8 @@ public class ExecutionTask : INotifyPropertyChanged
 
     /// <summary>
     /// Publishes this task's current task-owned state to observers without changing its visible runtime status.
-    /// Structural graph mutations such as child insertion use this after wiring and cache rebuilds so observers can
-    /// refresh from the new topology.
+    /// Structural graph mutations such as child insertion use this after wiring the new topology so observers can refresh
+    /// from the completed graph shape.
     /// </summary>
     internal void PublishStateChanged()
     {
@@ -707,7 +683,6 @@ public class ExecutionTask : INotifyPropertyChanged
         StartedAt = null;
         FinishedAt = null;
         ResetSubtreeMetrics();
-        ResetSubtreeSchedulingRollup();
         lock (_activeExecutionSyncRoot)
         {
             _activeExecutionTask = null;
@@ -888,9 +863,7 @@ public class ExecutionTask : INotifyPropertyChanged
         _startedAt = startedAt;
         _finishedAt = finishedAt;
 
-        /* Task-local observers should see a self-consistent task status, including the task-owned subtree start-state
-           rollup that feeds parent rollup decisions, before the task-level state-changed event fires. */
-        bool subtreeSchedulingChanged = RecomputeSubtreeSchedulingRollup();
+        /* Task-local observers should see a self-consistent task status before the task-level state-changed event fires. */
 
         if (stateChanged)
         {
@@ -912,7 +885,7 @@ public class ExecutionTask : INotifyPropertyChanged
             RaisePropertyChanged(nameof(FinishedAt));
         }
 
-        if (stateChanged || outcomeChanged || subtreeSchedulingChanged)
+        if (stateChanged || outcomeChanged)
         {
             RaiseStateChanged();
         }
@@ -1082,7 +1055,7 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns the fixed priority for one cached ancestor-independent subtree start state.
+    /// Returns the fixed priority for one ancestor-independent subtree start state.
     /// </summary>
     private static int GetSubtreeStartStatePriority(TaskStartState state)
     {
@@ -1122,14 +1095,15 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Computes the rolled-up lifecycle state and semantic outcome for this task from its current local task facts plus
-    /// the already-updated rolled-up state and cached scheduler summaries on its direct children. This is the single
-    /// state-projection path for both direct task refresh and ancestor-container rollup.
+    /// Computes the rolled-up lifecycle state and semantic outcome for this task from its current local task facts, each
+    /// direct child's already-rolled-up runtime snapshot, and each direct child's current scheduler frontier. This is the
+    /// single state-projection path for both direct task refresh and ancestor-container rollup.
     /// </summary>
     internal (ExecutionTaskState state, ExecutionTaskOutcome? outcome) ComputeRolledUpStateFromChildren()
     {
-        bool ownTaskIsWaitingForExecutionLock = IsOwnWorkWaitingForExecutionLock();
-        TaskStartState subtreeStartState = GetTaskStartState();
+        TaskStartState ownStartState = GetOwnWorkStartStateIgnoringAncestors();
+        TaskStartState subtreeStartState = ownStartState;
+        bool ownTaskIsWaitingForExecutionLock = ownStartState == TaskStartState.AwaitingLock;
         /* Fold the direct-child contribution into one contiguous block here so parent rollup logic can read all child
            facts in one place without needing a separate helper type that merely transports these locals elsewhere. */
         bool childHasStartedWork = false;
@@ -1146,15 +1120,17 @@ public class ExecutionTask : INotifyPropertyChanged
         bool allChildrenDisabled = _children.Count > 0;
         foreach (ExecutionTask childTask in _children)
         {
+            TaskStartState childStartState = childTask.GetTaskStartState();
+            subtreeStartState = CombineSubtreeStartStates(subtreeStartState, childStartState);
             /* Each child's observed state and outcome already roll up its whole subtree, so the parent can infer whether
-               work started anywhere below that child without carrying a second cached subtree-start flag. A child whose
-               runtime lifecycle is Running must count as running even when its scheduler frontier is dominated by deeper
-               lock-wait work, because lifecycle rollup and scheduler frontier priority answer different questions. */
+               work started anywhere below that child from the direct-child snapshot. A child whose runtime lifecycle is
+               Running must count as running even when its scheduler frontier is dominated by deeper lock-wait work,
+               because lifecycle rollup and scheduler frontier priority answer different questions. */
             childHasStartedWork |= childTask.HasStarted;
-            hasReadyChild |= childTask._subtreeStartState == TaskStartState.Ready;
-            hasRunningChild |= childTask.State == ExecutionTaskState.Running || childTask._subtreeStartState == TaskStartState.Running;
-            hasWaitingForExecutionLockChild |= childTask._subtreeStartState == TaskStartState.AwaitingLock;
-            hasExternalDependencyWaitChild |= childTask._subtreeStartState == TaskStartState.AwaitingDependency
+            hasReadyChild |= childStartState == TaskStartState.Ready;
+            hasRunningChild |= childTask.State == ExecutionTaskState.Running || childStartState == TaskStartState.Running;
+            hasWaitingForExecutionLockChild |= childStartState == TaskStartState.AwaitingLock;
+            hasExternalDependencyWaitChild |= childStartState == TaskStartState.AwaitingDependency
                 && childTask.HasExternalDependencyWaitInSubtree(this);
             hasQueuedChild |= childTask.State is ExecutionTaskState.Queued or ExecutionTaskState.Planned;
             hasNonTerminalChild |= childTask.State != ExecutionTaskState.Completed;
@@ -1166,9 +1142,9 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         bool subtreeHasStarted = HasStarted || childHasStartedWork;
-        /* The visible scheduler frontier for this subtree comes from the cached subtree rollup, not only from the task's
-           own local body. That preserves parent lock-wait and dependency-wait rollups when descendant work dominates the
-           next reachable frontier while the task itself is still running or queued. */
+        /* The scheduler frontier for this subtree includes descendant work, not only the task's own local body. That keeps
+           parent lock-wait and dependency-wait rollups tied to the next reachable frontier when descendant work dominates
+           while the task itself is still running or queued. */
         bool ownTaskIsRunning = State == ExecutionTaskState.Running && subtreeStartState == TaskStartState.Running;
         bool ownTaskIsQueued = State == ExecutionTaskState.Queued && subtreeStartState is TaskStartState.Ready or TaskStartState.AwaitingDependency;
         bool subtreeIsPureExecutionLockWait = subtreeHasStarted
@@ -1252,7 +1228,7 @@ public class ExecutionTask : INotifyPropertyChanged
             throw new ArgumentNullException(nameof(scopeRoot));
         }
 
-        if (_subtreeStartState != TaskStartState.AwaitingDependency)
+        if (GetTaskStartState() != TaskStartState.AwaitingDependency)
         {
             return false;
         }
