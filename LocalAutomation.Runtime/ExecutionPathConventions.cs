@@ -12,19 +12,7 @@ namespace LocalAutomation.Runtime;
 public static class ExecutionPathConventions
 {
     private const int DefaultMaxSegmentLength = 16;
-    private const int SessionIdPathLength = 8;
     private const int HashSuffixLength = 4;
-
-    /// <summary>
-    /// Returns a compact filesystem-safe identifier for one execution session.
-    /// </summary>
-    public static string GetSessionPathId(ExecutionSessionId sessionId)
-    {
-        string value = sessionId.Value;
-        return value.Length <= SessionIdPathLength
-            ? value
-            : value.Substring(0, SessionIdPathLength);
-    }
 
     /// <summary>
     /// Returns one compact filesystem-safe segment derived from a human-readable label.

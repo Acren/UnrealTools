@@ -36,6 +36,11 @@ internal sealed class ExecutionTaskRuntimeServices
 
     internal ExecutionSessionId SessionId => _session.Id;
 
+    /// <summary>
+    /// Gets the absolute temp root reserved for the live session backing this task context.
+    /// </summary>
+    internal string SessionTempRootPath => _session.TempRootPath;
+
     internal Task<OperationResult> RunChildOperationAsync(Operation operation, OperationParameters operationParameters, ExecutionTaskContext parentContext, bool hideChildOperationRootInGraph)
     {
         return _session.RunChildOperationAsync(operation, operationParameters, parentContext, _scheduler, hideChildOperationRootInGraph);
@@ -238,6 +243,21 @@ public sealed class ExecutionTaskContext
         }
 
         sessionId = _runtime.SessionId;
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the current live session's reserved temp root when the task is executing inside a runtime session.
+    /// </summary>
+    internal bool TryGetSessionTempRootPath(out string sessionTempRootPath)
+    {
+        if (_runtime == null)
+        {
+            sessionTempRootPath = string.Empty;
+            return false;
+        }
+
+        sessionTempRootPath = _runtime.SessionTempRootPath;
         return true;
     }
 

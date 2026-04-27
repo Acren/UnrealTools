@@ -43,23 +43,43 @@ public sealed class ExecutionSession
     /// </summary>
     public ExecutionSession(ILogStream logStream, ExecutionPlan plan)
     {
-        Id = ExecutionSessionId.New();
         LogStream = logStream ?? throw new ArgumentNullException(nameof(logStream));
         if (plan == null)
         {
             throw new ArgumentNullException(nameof(plan));
         }
 
+        Id = ExecutionSessionId.New();
+        TempSlot = OutputPaths.AllocateSessionTempSlot();
+        TempRootPath = OutputPaths.GetSessionTempRoot(TempSlot);
         StartedAt = DateTimeOffset.Now;
         _sessionLogger = new SessionLogger(this);
 
-        InitializeFromPlan(plan);
+        try
+        {
+            InitializeFromPlan(plan);
+        }
+        catch
+        {
+            ReleaseUnusedTempSlot();
+            throw;
+        }
     }
 
     public event Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?>? TaskStateChanged;
     public event Action? TaskGraphChanged;
 
     public ExecutionSessionId Id { get; }
+
+    /// <summary>
+    /// Gets the reusable integer temp slot reserved for this live session.
+    /// </summary>
+    public ExecutionSessionTempSlot TempSlot { get; }
+
+    /// <summary>
+    /// Gets the absolute temp root captured when the slot was reserved for this session.
+    /// </summary>
+    internal string TempRootPath { get; }
 
     public ILogStream LogStream { get; }
 
@@ -892,24 +912,52 @@ public sealed class ExecutionSession
 
     /// <summary>
     /// Deletes the temp workspace owned by this session once the run has fully finished so session-scoped scratch data
-    /// does not accumulate across completed runs.
+    /// does not accumulate across completed runs, then releases the numeric slot for the next allocation attempt.
     /// </summary>
     private void CleanupTempRoot()
     {
-        string sessionTempRoot = OutputPaths.GetSessionTempRoot(Id);
-        if (!Directory.Exists(sessionTempRoot))
-        {
-            return;
-        }
-
         try
         {
-            Directory.Delete(sessionTempRoot, recursive: true);
-            _sessionLogger.LogInformation("Deleted session temp root '{SessionTempRoot}'.", sessionTempRoot);
+            if (!Directory.Exists(TempRootPath))
+            {
+                return;
+            }
+
+            Directory.Delete(TempRootPath, recursive: true);
+            _sessionLogger.LogInformation("Deleted session temp root '{SessionTempRoot}'.", TempRootPath);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _sessionLogger.LogWarning(ex, "Failed to delete session temp root '{SessionTempRoot}'.", sessionTempRoot);
+            /* A locked stale directory should block only the next concrete reuse attempt. The in-memory slot represents
+               live session ownership, while allocation-time directory deletion decides whether an old folder is reusable. */
+            _sessionLogger.LogWarning(ex, "Failed to delete session temp root '{SessionTempRoot}'.", TempRootPath);
+        }
+        finally
+        {
+            OutputPaths.ReleaseSessionTempSlot(TempSlot);
+        }
+    }
+
+    /// <summary>
+    /// Frees the constructor-reserved temp slot when the session cannot finish initialization.
+    /// </summary>
+    private void ReleaseUnusedTempSlot()
+    {
+        try
+        {
+            if (Directory.Exists(TempRootPath))
+            {
+                Directory.Delete(TempRootPath, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            /* Constructor failure has no live session left to own the numeric slot. Keep the locked directory on disk so
+               allocation can skip it until it becomes deletable, but release the in-memory reservation immediately. */
+        }
+        finally
+        {
+            OutputPaths.ReleaseSessionTempSlot(TempSlot);
         }
     }
 

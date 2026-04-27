@@ -86,3 +86,26 @@ public readonly record struct ExecutionSessionId
         return string.IsNullOrWhiteSpace(value) ? null : new ExecutionSessionId(value);
     }
 }
+
+/// <summary>
+/// Identifies the reusable temp-directory slot assigned to one live execution session.
+/// </summary>
+public readonly record struct ExecutionSessionTempSlot
+{
+    public ExecutionSessionTempSlot(int value)
+    {
+        if (value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "Execution session temp slots must be positive integers.");
+        }
+
+        Value = value;
+    }
+
+    /// <summary>
+    /// Gets the positive integer used as the session temp folder name.
+    /// </summary>
+    public int Value { get; }
+
+    public override string ToString() => Value.ToString();
+}

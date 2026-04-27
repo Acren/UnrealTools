@@ -114,8 +114,8 @@ public abstract class Operation
             throw new ArgumentNullException(nameof(context));
         }
 
-        return context.TryGetSessionId(out ExecutionSessionId sessionId)
-            ? Path.Combine(OutputPaths.GetSessionTempRoot(sessionId), ExecutionPathConventions.MakeCompactSegment(OperationName))
+        return context.TryGetSessionTempRootPath(out string sessionTempRootPath)
+            ? Path.Combine(sessionTempRootPath, ExecutionPathConventions.MakeCompactSegment(OperationName))
             : GetOperationTempPath();
     }
 
