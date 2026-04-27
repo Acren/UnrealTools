@@ -19,5 +19,11 @@ namespace UnrealAutomationCommon.Operations.OperationOptionTypes
         [property: DisplayName("Wait For Attach")]
         [property: Description("Pauses startup long enough for a debugger to attach before the process continues.")]
         private bool waitForAttach = false;
+
+        // NoMessaging is an explicit Unreal process switch, so it lives with the other launch flags.
+        [ObservableProperty]
+        [property: DisplayName("No Messaging")]
+        [property: Description("Adds -NoMessaging to launched Unreal processes to disable Unreal's message bus transports.")]
+        private bool noMessaging = false;
     }
 }

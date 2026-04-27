@@ -755,6 +755,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             launchEditorParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "ProjectPluginBaseEditorLaunchOutput");
             launchEditorParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             launchEditorParams.SetOptions(automationOptions);
+            ApplyValidationLaunchFlags(launchEditorParams);
 
             await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context, required: true, failureMessage: "Failed to launch project-plugin base in editor", hideChildOperationRootInGraph: true);
             activity.SetTag("result", "Completed");
@@ -776,6 +777,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             launchStandaloneParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "ProjectPluginBaseStandaloneLaunchOutput");
             launchStandaloneParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             launchStandaloneParams.SetOptions(automationOptions);
+            ApplyValidationLaunchFlags(launchStandaloneParams);
 
             await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context, required: true, failureMessage: "Failed to launch project-plugin base in standalone", hideChildOperationRootInGraph: true);
             activity.SetTag("result", "Completed");
@@ -939,6 +941,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return parameters;
         }
 
+        /// <summary>
+        /// Creates the launch parameters for a packaged validation build, including explicit Unreal launch flags.
+        /// </summary>
         private global::LocalAutomation.Runtime.OperationParameters CreatePackageLaunchParams(Package package, Engine engine, AutomationOptions automationOptions, string outputPath)
         {
             global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
@@ -946,7 +951,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             parameters.OutputPathOverride = outputPath;
             parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { engine.Version };
             parameters.SetOptions(automationOptions);
+            ApplyValidationLaunchFlags(parameters);
             return parameters;
+        }
+
+        /// <summary>
+        /// Applies the Unreal launch flags required for Deploy Plugin validation child launches.
+        /// </summary>
+        private static void ApplyValidationLaunchFlags(global::LocalAutomation.Runtime.OperationParameters launchParameters)
+        {
+            // Deploy validation launches are controlled automation runs, so they disable Unreal message-bus transports.
+            launchParameters.GetOptions<FlagOptions>().NoMessaging = true;
         }
 
         /// <summary>

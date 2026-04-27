@@ -39,14 +39,21 @@ namespace UnrealAutomationCommon.Unreal
                 arguments.SetKeyValue("tracehost", "127.0.0.1");
             }
 
-            if (operationParameters.GetOptions<FlagOptions>().StompMalloc)
+            // Process flags are explicit launch-time Unreal switches and should not be inferred from unrelated options.
+            FlagOptions flagOptions = operationParameters.GetOptions<FlagOptions>();
+            if (flagOptions.StompMalloc)
             {
                 arguments.SetFlag("stompmalloc");
             }
 
-            if (operationParameters.GetOptions<FlagOptions>().WaitForAttach)
+            if (flagOptions.WaitForAttach)
             {
                 arguments.SetFlag("waitforattach");
+            }
+
+            if (flagOptions.NoMessaging)
+            {
+                arguments.SetFlag("NoMessaging");
             }
 
             AutomationOptions automationOpts = operationParameters.GetOptions<AutomationOptions>();
