@@ -1147,12 +1147,6 @@ public class ExecutionTask : INotifyPropertyChanged
            while the task itself is still running or queued. */
         bool ownTaskIsRunning = State == ExecutionTaskState.Running && subtreeStartState == TaskStartState.Running;
         bool ownTaskIsQueued = State == ExecutionTaskState.Queued && subtreeStartState is TaskStartState.Ready or TaskStartState.AwaitingDependency;
-        bool subtreeIsPureExecutionLockWait = subtreeHasStarted
-            && !ownTaskIsRunning
-            && hasWaitingForExecutionLockChild
-            && !hasRunningChild
-            && !hasExternalDependencyWaitChild
-            && !hasReadyChild;
         bool subtreeIsPureDependencyWait = subtreeHasStarted
             && !ownTaskIsRunning
             && !ownTaskIsWaitingForExecutionLock
@@ -1166,21 +1160,19 @@ public class ExecutionTask : INotifyPropertyChanged
         {
             parentState = ExecutionTaskState.Completed;
         }
-        else if (ownTaskIsWaitingForExecutionLock)
+        /* Active work remains the strongest non-terminal signal. If no direct child is actually running, a reachable
+           execution-lock waiter should surface as the parent state even when other descendants are dependency-blocked. */
+        else if (ownTaskIsRunning || hasRunningChild)
         {
-            parentState = ExecutionTaskState.AwaitingLock;
+            parentState = ExecutionTaskState.Running;
         }
-        else if (subtreeIsPureExecutionLockWait)
+        else if (ownTaskIsWaitingForExecutionLock || hasWaitingForExecutionLockChild)
         {
             parentState = ExecutionTaskState.AwaitingLock;
         }
         else if (subtreeIsPureDependencyWait)
         {
             parentState = ExecutionTaskState.AwaitingDependency;
-        }
-        else if (ownTaskIsRunning || hasRunningChild || hasWaitingForExecutionLockChild)
-        {
-            parentState = ExecutionTaskState.Running;
         }
         else if (ownTaskIsQueued || hasQueuedChild || hasExternalDependencyWaitChild || hasNonTerminalChild)
         {
