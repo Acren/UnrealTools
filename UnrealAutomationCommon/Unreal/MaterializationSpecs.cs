@@ -29,7 +29,7 @@ namespace UnrealAutomationCommon.Unreal
 
             if (includedPluginNames != null)
             {
-                AddProjectPluginEntries(project, spec, includedPluginNames);
+                AddProjectPluginEntries(project, spec, includedPluginNames, includeBuildOutputs);
             }
 
             if (includeBuildOutputs)
@@ -42,25 +42,24 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         /// <summary>
-        /// Creates the explicit plugin subset used for staging, workspace materialization, and source archives. The spec
-        /// preserves source and packaged content while excluding generated build products such as Binaries and
-        /// Intermediate.
+        /// Creates the explicit plugin subset used for staging, workspace materialization, and source archives. The
+        /// default source-style subset preserves authored plugin payloads while excluding generated outputs.
         /// </summary>
-        public static FileMaterializationSpec CreatePlugin(Plugin plugin)
+        public static FileMaterializationSpec CreatePlugin(Plugin plugin, bool includeBuildOutputs = false)
         {
             if (plugin == null)
             {
                 throw new ArgumentNullException(nameof(plugin));
             }
 
-            return CreatePlugin(plugin.PluginPath);
+            return CreatePlugin(plugin.PluginPath, includeBuildOutputs);
         }
 
         /// <summary>
         /// Creates the explicit plugin subset for one plugin directory without constructing a long-lived watcher-backed
         /// plugin target object.
         /// </summary>
-        public static FileMaterializationSpec CreatePlugin(string pluginDirectoryPath)
+        public static FileMaterializationSpec CreatePlugin(string pluginDirectoryPath, bool includeBuildOutputs = false)
         {
             if (pluginDirectoryPath == null)
             {
@@ -68,7 +67,7 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             string pluginDescriptorFileName = Path.GetFileName(PluginPaths.Instance.FindRequiredTargetFile(pluginDirectoryPath));
-            return new FileMaterializationSpec
+            FileMaterializationSpec spec = new()
             {
                 { pluginDescriptorFileName, true },
                 { "Source" },
@@ -77,13 +76,23 @@ namespace UnrealAutomationCommon.Unreal
                 { "Config" },
                 { "Extras" }
             };
+
+            if (includeBuildOutputs)
+            {
+                // Prebuilt project variants run packaging with editor compilation disabled, so each enabled code plugin
+                // must carry its already-built module binaries alongside its descriptor and authored content.
+                spec.Add("Binaries");
+                spec.Add("Build");
+            }
+
+            return spec;
         }
 
         /// <summary>
         /// Expands the project Plugins tree into explicit plugin-subset entries so variant materialization skips each
         /// plugin's generated Intermediate folders instead of copying and deleting them later.
         /// </summary>
-        private static void AddProjectPluginEntries(Project project, FileMaterializationSpec spec, IReadOnlySet<string> includedPluginNames)
+        private static void AddProjectPluginEntries(Project project, FileMaterializationSpec spec, IReadOnlySet<string> includedPluginNames, bool includeBuildOutputs)
         {
             if (!Directory.Exists(project.PluginsPath))
             {
@@ -115,7 +124,7 @@ namespace UnrealAutomationCommon.Unreal
                 }
 
                 string relativePluginDirectoryPath = Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath);
-                spec.AddSubtree(Path.Combine("Plugins", relativePluginDirectoryPath), CreatePlugin(pluginDirectoryPath));
+                spec.AddSubtree(Path.Combine("Plugins", relativePluginDirectoryPath), CreatePlugin(pluginDirectoryPath, includeBuildOutputs));
             }
         }
     }
