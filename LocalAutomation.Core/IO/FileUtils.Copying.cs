@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 
 namespace LocalAutomation.Core.IO;
 
@@ -8,8 +9,9 @@ public static partial class FileUtils
     /// <summary>
     /// Copies one directory tree to the destination path, optionally nesting the source directory inside the destination.
     /// </summary>
-    public static void CopyDirectory(string sourcePath, string destinationPath, bool placeInside = false)
+    public static void CopyDirectory(string sourcePath, string destinationPath, bool placeInside = false, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         sourcePath = Path.GetFullPath(sourcePath);
         destinationPath = Path.GetFullPath(destinationPath);
 
@@ -19,7 +21,7 @@ public static partial class FileUtils
             destinationPath = Path.Combine(destinationPath, directoryName);
         }
 
-        DirectoryCopy.Copy(sourcePath, destinationPath);
+        DirectoryCopy.Copy(sourcePath, destinationPath, cancellationToken);
     }
 
     /// <summary>

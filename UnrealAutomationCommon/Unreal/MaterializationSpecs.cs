@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LocalAutomation.Core.IO;
@@ -13,10 +14,9 @@ namespace UnrealAutomationCommon.Unreal
     {
         /// <summary>
         /// Creates the explicit project subset copied into isolated workspaces, example projects, and prepared variants.
-        /// Callers opt into additional filesystem categories explicitly so the spec stays generic and filesystem-shaped
-        /// rather than encoding deploy-pipeline semantics.
+        /// Plugin inclusion is name-driven so callers decide policy while this spec owns project-tree materialization.
         /// </summary>
-        public static FileMaterializationSpec CreateProject(Project project, bool includePlugins = false, bool includeBuildOutputs = false)
+        public static FileMaterializationSpec CreateProject(Project project, IReadOnlySet<string>? includedPluginNames = null, bool includeBuildOutputs = false)
         {
             FileMaterializationSpec spec = new()
             {
@@ -27,9 +27,9 @@ namespace UnrealAutomationCommon.Unreal
                 { Path.GetFileNameWithoutExtension(project.UProjectPath) + ".png" }
             };
 
-            if (includePlugins)
+            if (includedPluginNames != null)
             {
-                AddProjectPluginEntries(project, spec);
+                AddProjectPluginEntries(project, spec, includedPluginNames);
             }
 
             if (includeBuildOutputs)
@@ -83,9 +83,14 @@ namespace UnrealAutomationCommon.Unreal
         /// Expands the project Plugins tree into explicit plugin-subset entries so variant materialization skips each
         /// plugin's generated Intermediate folders instead of copying and deleting them later.
         /// </summary>
-        private static void AddProjectPluginEntries(Project project, FileMaterializationSpec spec)
+        private static void AddProjectPluginEntries(Project project, FileMaterializationSpec spec, IReadOnlySet<string> includedPluginNames)
         {
             if (!Directory.Exists(project.PluginsPath))
+            {
+                return;
+            }
+
+            if (includedPluginNames.Count == 0)
             {
                 return;
             }
@@ -103,6 +108,12 @@ namespace UnrealAutomationCommon.Unreal
                          .Where(PluginPaths.Instance.IsTargetDirectory)
                          .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
+                string pluginName = Path.GetFileName(pluginDirectoryPath);
+                if (!includedPluginNames.Contains(pluginName))
+                {
+                    continue;
+                }
+
                 string relativePluginDirectoryPath = Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath);
                 spec.AddSubtree(Path.Combine("Plugins", relativePluginDirectoryPath), CreatePlugin(pluginDirectoryPath));
             }

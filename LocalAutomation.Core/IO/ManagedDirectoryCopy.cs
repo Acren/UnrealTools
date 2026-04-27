@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading;
 
 namespace LocalAutomation.Core.IO;
 
@@ -10,20 +11,26 @@ internal static class ManagedDirectoryCopy
     /// <summary>
     /// Recursively copies one directory tree to another path using the managed file APIs.
     /// </summary>
-    public static void Copy(string sourcePath, string destinationPath)
+    public static void Copy(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         Directory.CreateDirectory(destinationPath);
 
-        /* Recreate the directory tree first so later file copies do not need to reason about directory ordering. */
+        // Recreate the directory tree first so later file copies do not need to reason about directory ordering.
         foreach (string directoryPath in Directory.GetDirectories(sourcePath, "*", SearchOption.AllDirectories))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string relativeDirectoryPath = Path.GetRelativePath(sourcePath, directoryPath);
             Directory.CreateDirectory(Path.Combine(destinationPath, relativeDirectoryPath));
         }
 
-        /* Copy every file with overwrite enabled so repeated materializations can refresh an existing destination tree. */
+        // Copy every file with overwrite enabled so repeated materializations can refresh an existing destination tree.
         foreach (string filePath in Directory.GetFiles(sourcePath, "*.*", SearchOption.AllDirectories))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string relativeFilePath = Path.GetRelativePath(sourcePath, filePath);
             string destinationFilePath = Path.Combine(destinationPath, relativeFilePath);
             string? destinationDirectoryPath = Path.GetDirectoryName(destinationFilePath);

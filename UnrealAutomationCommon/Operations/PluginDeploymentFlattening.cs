@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using LocalAutomation.Core.IO;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
@@ -56,7 +57,7 @@ namespace UnrealAutomationCommon.Operations
         /// Copies every configured merge plugin into the workspace project so engine-specific staging reads only isolated
         /// workspace inputs.
         /// </summary>
-        public static void MaterializeMergePlugins(Project sourceProject, Project workspaceProject, string targetPluginName, PluginDeployOptions deployOptions, ILogger logger)
+        public static void MaterializeMergePlugins(Project sourceProject, Project workspaceProject, string targetPluginName, PluginDeployOptions deployOptions, ILogger logger, CancellationToken cancellationToken = default)
         {
             IReadOnlyList<MergeRule> mergeRules = ParseMergeRules(deployOptions.MergePlugins);
             if (mergeRules.Count == 0)
@@ -83,8 +84,25 @@ namespace UnrealAutomationCommon.Operations
                 string workspaceMergePluginPath = Path.Combine(workspaceProject.PluginsPath, sourcePlugin.Name);
                 logger.LogInformation("Materializing merge plugin '{PluginName}' into workspace: {WorkspacePluginPath}", sourcePlugin.Name, workspaceMergePluginPath);
                 FileUtils.DeleteDirectoryIfExists(workspaceMergePluginPath);
-                FileUtils.MaterializeDirectory(sourcePlugin.PluginPath, workspaceMergePluginPath, MaterializationSpecs.CreatePlugin(sourcePlugin), logger);
+                FileUtils.MaterializeDirectory(sourcePlugin.PluginPath, workspaceMergePluginPath, MaterializationSpecs.CreatePlugin(sourcePlugin), logger, cancellationToken);
             }
+        }
+
+        /// <summary>
+        /// Resolves the configured merge plugin names so deploy project materialization can avoid also carrying them as
+        /// separate sibling project plugins.
+        /// </summary>
+        public static IReadOnlySet<string> ResolveMergePluginNames(Project sourceProject, PluginDeployOptions deployOptions)
+        {
+            IReadOnlyList<MergeRule> mergeRules = ParseMergeRules(deployOptions.MergePlugins);
+            if (mergeRules.Count == 0)
+            {
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            return ResolveMergePlugins(sourceProject, mergeRules)
+                .Select(plugin => plugin.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>

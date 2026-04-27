@@ -306,6 +306,85 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
+        /// Resolves the sibling project plugins that should remain separate project plugins during deploy validation.
+        /// </summary>
+        private static IReadOnlySet<string> GetIncludedSiblingPluginNames(Project referenceProject, string targetPluginName, PluginDeployOptions deployOptions)
+        {
+            IReadOnlySet<string> mergePluginNames = PluginDeploymentFlattening.ResolveMergePluginNames(referenceProject, deployOptions);
+            HashSet<string> excludedPluginNames = GetExcludedPluginNames(deployOptions);
+            ValidateMergePluginExclusions(mergePluginNames, excludedPluginNames);
+            if (!deployOptions.IncludeOtherPlugins)
+            {
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            List<Plugin> referencePlugins = referenceProject.Plugins;
+            try
+            {
+                return referencePlugins
+                    .Where(plugin => !plugin.Name.Equals(targetPluginName, StringComparison.OrdinalIgnoreCase))
+                    .Where(plugin => !mergePluginNames.Contains(plugin.Name))
+                    .Where(plugin => !excludedPluginNames.Contains(plugin.Name))
+                    .Select(plugin => plugin.Name)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                // Project plugin enumeration creates watcher-backed plugin targets, so release them after reading names.
+                foreach (Plugin plugin in referencePlugins)
+                {
+                    plugin.Dispose();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reads the plugin names currently present in one project so variant copies preserve that project's plugin set.
+        /// </summary>
+        private static IReadOnlySet<string> GetProjectPluginNames(Project project)
+        {
+            List<Plugin> projectPlugins = project.Plugins;
+            try
+            {
+                return projectPlugins
+                    .Select(plugin => plugin.Name)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                // Project plugin enumeration creates watcher-backed plugin targets, so release them after reading names.
+                foreach (Plugin plugin in projectPlugins)
+                {
+                    plugin.Dispose();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Parses the deploy option's comma-delimited sibling-plugin exclusion list into case-insensitive plugin names.
+        /// </summary>
+        private static HashSet<string> GetExcludedPluginNames(PluginDeployOptions deployOptions)
+        {
+            return deployOptions.ExcludePlugins
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Rejects contradictory merge/exclude configuration before any project workspace receives plugin files.
+        /// </summary>
+        private static void ValidateMergePluginExclusions(IReadOnlySet<string> mergePluginNames, HashSet<string> excludedPluginNames)
+        {
+            foreach (string mergePluginName in mergePluginNames)
+            {
+                if (excludedPluginNames.Contains(mergePluginName))
+                {
+                    throw new InvalidOperationException($"Deploy plugin cannot both merge and exclude sibling plugin '{mergePluginName}'.");
+                }
+            }
+        }
+
+        /// <summary>
         /// Clears one prepared project's staged-build output before a new package-only BuildCookRun pass so later
         /// package discovery cannot accidentally consume stale packaged files from an earlier deploy run.
         /// </summary>
@@ -327,15 +406,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Recreates one isolated prepared-project variant using the explicit materialization subset needed by later
         /// packaging and validation branches without copying every generated file from the shared example base.
         /// </summary>
-        private static void CopyProjectVariant(string sourceProjectPath, string destinationProjectPath, ILogger logger, bool includeBuildOutputs = true)
+        private static void CopyProjectVariant(string sourceProjectPath, string destinationProjectPath, ILogger logger, CancellationToken cancellationToken = default, bool includeBuildOutputs = true)
         {
             FileUtils.DeleteDirectoryIfExists(destinationProjectPath);
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Prepared source project is not available for variant materialization");
             FileUtils.MaterializeDirectory(
                 sourceProject.ProjectPath,
                 destinationProjectPath,
-                MaterializationSpecs.CreateProject(sourceProject, includePlugins: true, includeBuildOutputs: includeBuildOutputs),
-                logger);
+                MaterializationSpecs.CreateProject(sourceProject, includedPluginNames: GetProjectPluginNames(sourceProject), includeBuildOutputs: includeBuildOutputs),
+                logger,
+                cancellationToken);
         }
 
         /// <summary>
@@ -644,13 +724,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             context.Logger.LogInformation($"Creating workspace root: {workspacePath}");
             Directory.CreateDirectory(workspacePath);
 
+            PluginDeployOptions deployOptions = context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>();
+            IReadOnlySet<string> includedSiblingPluginNames = GetIncludedSiblingPluginNames(hostProject, plugin.Name, deployOptions);
             context.Logger.LogInformation($"Copying host project to workspace: {workspaceProjectPath}");
-            FileUtils.MaterializeDirectory(hostProject.ProjectPath, workspaceProjectPath, MaterializationSpecs.CreateProject(hostProject), context.Logger);
+            FileUtils.MaterializeDirectory(hostProject.ProjectPath, workspaceProjectPath, MaterializationSpecs.CreateProject(hostProject, includedSiblingPluginNames), context.Logger, context.CancellationToken);
 
             string workspacePluginsPath = Path.Combine(workspaceProjectPath, "Plugins");
             Directory.CreateDirectory(workspacePluginsPath);
             context.Logger.LogInformation($"Materializing target plugin into workspace: {workspacePluginPath}");
-            FileUtils.MaterializeDirectory(plugin.PluginPath, workspacePluginPath, MaterializationSpecs.CreatePlugin(plugin), context.Logger);
+            FileUtils.MaterializeDirectory(plugin.PluginPath, workspacePluginPath, MaterializationSpecs.CreatePlugin(plugin), context.Logger, context.CancellationToken);
             context.Logger.LogInformation($"Finished copying host project to workspace: {workspaceProjectPath}");
 
             if (!Directory.Exists(workspacePluginsPath))
@@ -665,7 +747,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             context.Logger.LogInformation($"Resolved workspace plugin: {workspacePlugin.PluginPath}");
 
             // Merge plugins are copied into the isolated workspace so later staging never reads mutable source folders.
-            PluginDeploymentFlattening.MaterializeMergePlugins(hostProject, workspaceProject, plugin.Name, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>(), context.Logger);
+            PluginDeploymentFlattening.MaterializeMergePlugins(hostProject, workspaceProject, plugin.Name, deployOptions, context.Logger, context.CancellationToken);
 
             UpdateProjectDescriptorForArchive(workspaceState, workspaceProject);
             context.Logger.LogInformation("Updated workspace project descriptor for archive output");
@@ -689,7 +771,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteDirectoryIfExists(stagingPluginPath);
 
             using Plugin workspacePlugin = CreateRequiredPlugin(workspacePluginPath, "Workspace plugin is not available for staging");
-            FileUtils.MaterializeDirectory(workspacePlugin.PluginPath, stagingPluginPath, MaterializationSpecs.CreatePlugin(workspacePlugin), context.Logger);
+            FileUtils.MaterializeDirectory(workspacePlugin.PluginPath, stagingPluginPath, MaterializationSpecs.CreatePlugin(workspacePlugin), context.Logger, context.CancellationToken);
             context.Logger.LogInformation($"Copied plugin to staging destination: {stagingPluginPath}");
 
             using Plugin stagingPlugin = CreateRequiredPlugin(stagingPluginPath, "Staged plugin was not created successfully");
@@ -832,7 +914,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteDirectoryIfExists(exampleProjectPath);
 
             using Project workspaceProject = CreateRequiredProject(GetWorkspaceProjectPath(state), "Workspace project is not available for project-plugin base materialization");
-            FileUtils.MaterializeDirectory(workspaceProject.ProjectPath, exampleProjectPath, MaterializationSpecs.CreateProject(workspaceProject), context.Logger);
+            IReadOnlySet<string> includedSiblingPluginNames = GetIncludedSiblingPluginNames(state.HostProject, state.SourcePlugin.Name, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>());
+            FileUtils.MaterializeDirectory(workspaceProject.ProjectPath, exampleProjectPath, MaterializationSpecs.CreateProject(workspaceProject, includedSiblingPluginNames), context.Logger, context.CancellationToken);
 
             using Project exampleProject = CreateRequiredProject(exampleProjectPath, "Project-plugin base was not materialized successfully");
             UpdateProjectDescriptorForArchive(state, exampleProject);
@@ -882,7 +965,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             string sourceProjectPath = GetExampleProjectBasePath(state);
             string clangVariantPath = GetClangVariantPath(state);
-            CopyProjectVariant(sourceProjectPath, clangVariantPath, context.Logger);
+            CopyProjectVariant(sourceProjectPath, clangVariantPath, context.Logger, context.CancellationToken);
             using Project clangVariant = CreateRequiredProject(clangVariantPath, "Clang validation variant was not created successfully");
             context.Logger.LogInformation($"Prepared Clang validation variant: {clangVariant.ProjectPath}");
             await Task.CompletedTask;
@@ -898,7 +981,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             string sourceProjectPath = GetExampleProjectBasePath(state);
             string engineVariantPath = GetEnginePluginVariantPath(state);
-            CopyProjectVariant(sourceProjectPath, engineVariantPath, context.Logger);
+            CopyProjectVariant(sourceProjectPath, engineVariantPath, context.Logger, context.CancellationToken);
 
             using Project engineVariant = CreateRequiredProject(engineVariantPath, "Engine-plugin variant was not created successfully");
             engineVariant.RemovePlugin(state.SourcePlugin.Name);
@@ -908,7 +991,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         /// <summary>
         /// Creates one isolated blueprint/demo variant by cloning the prebuilt project-plugin base, removing the project-level
-        /// plugin copy, converting the project to blueprint-only, and pruning sibling plugins according to deploy options.
+        /// plugin copy, and converting the project to blueprint-only while preserving the selected sibling plugin set.
         /// </summary>
         private async Task PrepareBlueprintDemoVariantAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
@@ -916,12 +999,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             string sourceProjectPath = GetExampleProjectBasePath(state);
             string blueprintVariantPath = GetBlueprintDemoVariantPath(state);
-            CopyProjectVariant(sourceProjectPath, blueprintVariantPath, context.Logger);
+            CopyProjectVariant(sourceProjectPath, blueprintVariantPath, context.Logger, context.CancellationToken);
 
             using Project blueprintVariant = CreateRequiredProject(blueprintVariantPath, "Blueprint/demo variant was not created successfully");
             blueprintVariant.RemovePlugin(state.SourcePlugin.Name);
             blueprintVariant.ConvertToBlueprintOnly();
-            PreparePluginsForProject(state, blueprintVariant, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>());
             context.Logger.LogInformation($"Prepared blueprint/demo variant: {blueprintVariant.ProjectPath}");
             await Task.CompletedTask;
         }
@@ -1115,7 +1197,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             context.Logger.LogInformation($"Copying plugin to {enginePluginsMarketplacePluginPath}");
             FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath);
             using Plugin builtPlugin = CreateRequiredPlugin(GetBuiltPluginPath(state), "Built plugin is not available for engine installation");
-            FileUtils.CopyDirectory(builtPlugin.PluginPath, enginePluginsMarketplacePluginPath);
+            FileUtils.CopyDirectory(builtPlugin.PluginPath, enginePluginsMarketplacePluginPath, cancellationToken: context.CancellationToken);
             await Task.CompletedTask;
         }
 
@@ -1202,7 +1284,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string snapshotPath = GetBlueprintTestPackageSnapshotPath(state);
 
             FileUtils.DeleteDirectoryIfExists(snapshotPath);
-            FileUtils.CopyDirectory(blueprintPackage.TargetPath, snapshotPath);
+            FileUtils.CopyDirectory(blueprintPackage.TargetPath, snapshotPath, cancellationToken: context.CancellationToken);
 
             Package snapshotPackage = CreateRequiredPackage(snapshotPath, "Blueprint package test snapshot was not created successfully");
             context.Logger.LogInformation($"Prepared blueprint package test snapshot: {snapshotPackage.TargetPath}");
@@ -1233,32 +1315,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             using Project demoVariant = CreateRequiredProject(GetBlueprintDemoVariantPath(state), "Blueprint/demo variant is not available for demo packaging");
             await RunPreparedProjectPackageAsync(demoVariant, state, demoPackagePath, BuildConfiguration.Shipping, context, "Package demo executable failed", noDebugInfo: true);
-        }
-
-        /// <summary>
-        /// Prunes sibling plugins for archive and blueprint/demo preparation so the project variant only contains the
-        /// plugins the deploy options allow and each retained plugin sheds generated intermediates.
-        /// </summary>
-        private void PreparePluginsForProject(DeploymentWorkspaceState state, Project targetProject, PluginDeployOptions deployOptions)
-        {
-            Plugin plugin = state.SourcePlugin;
-            var exampleProjectPlugins = targetProject.Plugins;
-
-            string[] excludePlugins = deployOptions.ExcludePlugins.Replace(" ", "").Split(",");
-            foreach (Plugin exampleProjectPlugin in exampleProjectPlugins)
-            {
-                if (exampleProjectPlugin.Name == plugin.Name || !deployOptions.IncludeOtherPlugins || excludePlugins.Contains(exampleProjectPlugin.Name))
-                {
-                    // Delete target or excluded plugin from example project
-                    FileUtils.DeleteDirectory(exampleProjectPlugin.TargetDirectory);
-                }
-                else
-                {
-                    // Other plugins will be included, just delete Intermediate folder
-                    string intermediateDirectory = Path.Combine(exampleProjectPlugin.TargetDirectory, "Intermediate");
-                    FileUtils.DeleteDirectoryIfExists(intermediateDirectory);
-                }
-            }
         }
 
         /// <summary>
@@ -1363,7 +1419,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string exampleProjectZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "ExampleProject.zip");
 
             Directory.CreateDirectory(archivePath);
-            CopyProjectVariant(GetBlueprintDemoVariantPath(state), archiveProjectPath, context.Logger, includeBuildOutputs: false);
+            CopyProjectVariant(GetBlueprintDemoVariantPath(state), archiveProjectPath, context.Logger, context.CancellationToken, includeBuildOutputs: false);
 
             using Project archiveProject = CreateRequiredProject(archiveProjectPath, "Example-project archive copy is not available");
             string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
