@@ -236,34 +236,12 @@ namespace UnrealAutomationCommon.Unreal
         private static void CopyProjectBuildOutputs(Project cachedProject, Project sessionProject, ILogger logger, CancellationToken cancellationToken)
         {
             FileMaterializationSpec buildOutputs = MaterializationSpecs.CreateProjectBuildOutputs(cachedProject);
-            DeleteDestinationBuildOutputsWithSource(cachedProject.ProjectPath, sessionProject.ProjectPath, buildOutputs, logger);
+            /* Session projects accumulate outputs from several independent build steps: editor receipts, game receipts,
+               project plugin binaries, and package-specific binaries can all be required by later AutomationTool phases.
+               Copy-back therefore merges cached build outputs into the session tree instead of replacing whole output
+               folders, while the cached workspace itself is still cleaned before each direct build. */
             logger.LogInformation("Copying cached Unreal build outputs from '{CachedProjectPath}' to session project '{SessionProjectPath}'.", cachedProject.ProjectPath, sessionProject.ProjectPath);
             FileUtils.MaterializeDirectory(cachedProject.ProjectPath, sessionProject.ProjectPath, buildOutputs, logger, cancellationToken);
-        }
-
-        /// <summary>
-        /// Clears only destination build-output entries that exist in the cached project, avoiding stale generated files
-        /// without deleting optional authored folders that the cached build did not produce.
-        /// </summary>
-        private static void DeleteDestinationBuildOutputsWithSource(string sourceRootPath, string destinationRootPath, FileMaterializationSpec buildOutputs, ILogger logger)
-        {
-            foreach (FileMaterializationEntry entry in buildOutputs.Entries)
-            {
-                string sourcePath = Path.Combine(sourceRootPath, entry.RelativePath);
-                string destinationPath = Path.Combine(destinationRootPath, entry.RelativePath);
-                if (Directory.Exists(sourcePath))
-                {
-                    logger.LogInformation("Deleting session build-output directory before copy-back: {DestinationPath}", destinationPath);
-                    FileUtils.DeleteDirectoryIfExists(destinationPath);
-                    continue;
-                }
-
-                if (File.Exists(sourcePath))
-                {
-                    logger.LogInformation("Deleting session build-output file before copy-back: {DestinationPath}", destinationPath);
-                    FileUtils.DeleteFileIfExists(destinationPath);
-                }
-            }
         }
 
         /// <summary>
