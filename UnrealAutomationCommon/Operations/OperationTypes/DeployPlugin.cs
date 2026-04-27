@@ -471,21 +471,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Run(InstallDistributablePluginIntoProjectPluginBaseAsync);
 
                     buildExampleBase = sharedBaseScope.Task("Prebuild Project-Plugin Base")
-                        .Describe("Build the shared code example editor target and prime Unreal target metadata for downstream validation")
-                        .After(installProjectPluginBase.Id);
-                    buildExampleBase.Children(prebuildScope =>
-                    {
-                        global::LocalAutomation.Runtime.ExecutionTaskBuilder buildEditorTarget = prebuildScope.Task("Build Project-Plugin Base Editor Target")
-                            .Describe("Build the shared code example editor target once so downstream package variants can reuse editor outputs with -nocompileeditor")
-                            .Run(BuildProjectPluginBaseEditorTargetAsync);
-
-                        // QueryTargets is authored as its own visible plan step because the editor would otherwise run
-                        // the same UBT work invisibly during validation launch startup.
-                        prebuildScope.Task("Query Project-Plugin Base Targets")
-                            .Describe("Generate Unreal target metadata before validation launches so editor startup can reuse the target cache")
-                            .After(buildEditorTarget.Id)
-                            .Run(QueryProjectPluginBaseTargetsAsync);
-                    });
+                        .Describe("Build the shared code example editor target that later package branches can reuse")
+                        .After(installProjectPluginBase.Id)
+                        .Run(BuildProjectPluginBaseEditorTargetAsync);
                 });
 
                 /* The validation children all fan out from the shared prebuilt base, so the common dependency belongs on
@@ -497,10 +485,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder testStandalone = default!;
                 validateSharedBase.Children(global::LocalAutomation.Runtime.ExecutionChildMode.Parallel, validationScope =>
                 {
-                    testEditor = validationScope.Task("Test Project-Plugin Base Editor")
-                        .Describe("Launch and validate the prebuilt project-plugin base in the editor before downstream packaging completes")
+                    global::LocalAutomation.Runtime.ExecutionTaskBuilder queryTargets = validationScope.Task("Query Project-Plugin Base Targets")
+                        .Describe("Generate Unreal target metadata before the editor validation launch so editor startup can reuse the target cache")
                         .When(automationOptions.RunTests, "Run Tests is off.")
-                        .Run(context => TestProjectPluginBaseEditorAsync(context, automationOptions));
+                        .Run(QueryProjectPluginBaseTargetsAsync);
+
+                    testEditor = validationScope.Task("Test Project-Plugin Base Editor")
+                        .Describe("Launch and validate the prebuilt project-plugin base in the editor after target metadata is ready")
+                        .After(queryTargets.Id)
+                        .When(automationOptions.RunTests, "Run Tests is off.")
+                        .Run(context => LaunchProjectPluginBaseEditorAsync(context, automationOptions));
 
                     testStandalone = validationScope.Task("Test Project-Plugin Base Standalone")
                         .Describe("Launch and validate the prebuilt project-plugin base in standalone mode before downstream packaging completes")
@@ -823,10 +817,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Launches the prebuilt project-plugin base in the editor so deploy validation exercises the built plugin payload
         /// rather than the intermediate workspace copy.
         /// </summary>
-        private async Task TestProjectPluginBaseEditorAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
+        private async Task LaunchProjectPluginBaseEditorAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
         {
-            using IDisposable nodeScope = context.Logger.BeginSection("Testing project-plugin base in editor");
-            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestProjectPluginBaseEditor")
+            using IDisposable nodeScope = context.Logger.BeginSection("Launching project-plugin base editor");
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.LaunchProjectPluginBaseEditor")
                 .SetTag("trigger", "StepTransition");
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             using Project projectPluginBase = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for editor test");
