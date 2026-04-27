@@ -1147,10 +1147,12 @@ public class ExecutionTask : INotifyPropertyChanged
         foreach (ExecutionTask childTask in _children)
         {
             /* Each child's observed state and outcome already roll up its whole subtree, so the parent can infer whether
-               work started anywhere below that child without carrying a second cached subtree-start flag. */
+               work started anywhere below that child without carrying a second cached subtree-start flag. A child whose
+               runtime lifecycle is Running must count as running even when its scheduler frontier is dominated by deeper
+               lock-wait work, because lifecycle rollup and scheduler frontier priority answer different questions. */
             childHasStartedWork |= childTask.HasStarted;
             hasReadyChild |= childTask._subtreeStartState == TaskStartState.Ready;
-            hasRunningChild |= childTask._subtreeStartState == TaskStartState.Running;
+            hasRunningChild |= childTask.State == ExecutionTaskState.Running || childTask._subtreeStartState == TaskStartState.Running;
             hasWaitingForExecutionLockChild |= childTask._subtreeStartState == TaskStartState.AwaitingLock;
             hasExternalDependencyWaitChild |= childTask._subtreeStartState == TaskStartState.AwaitingDependency
                 && childTask.HasExternalDependencyWaitInSubtree(this);

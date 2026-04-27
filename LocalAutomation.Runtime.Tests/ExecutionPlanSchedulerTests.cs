@@ -1511,6 +1511,76 @@ public sealed class ExecutionPlanSchedulerTests
     }
 
     /// <summary>
+    /// Confirms that a parent scope stays running when a direct child is running even if that child also contains a deeper
+    /// execution-lock waiter.
+    /// </summary>
+    [Fact]
+    public async Task StartedAncestorWithRunningChildAndLockWaitDescendantRollsUpRunning()
+    {
+        /* Arrange a three-level shape where Mixed Child is Running because one grandchild is active, while another
+           grandchild is ready but blocked on the shared lock. */
+        ExecutionLock sharedLock = new("running-child-lock-frontier");
+        TaskCompletionSource<bool> lockHolderStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseLockHolder = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> runningGrandchildStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseRunningGrandchild = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId lockHolderTaskId = default;
+        ExecutionTaskId ancestorScopeTaskId = default;
+        ExecutionTaskId mixedChildTaskId = default;
+        ExecutionTaskId runningGrandchildTaskId = default;
+        ExecutionTaskId lockWaitGrandchildTaskId = default;
+
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                scope.Task("Lock Holder")
+                    .WithExecutionLocks(sharedLock)
+                    .Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder), out lockHolderTaskId);
+
+                scope.Task("Ancestor Scope", out ancestorScopeTaskId).Children(ancestorScope =>
+                {
+                    ancestorScope.Task("Mixed Child", out mixedChildTaskId).Children(ExecutionChildMode.Parallel, mixedChildScope =>
+                    {
+                        mixedChildScope.Task("Running Grandchild")
+                            .Run(RuntimeTestUtilities.RunUntilReleased(runningGrandchildStarted, releaseRunningGrandchild), out runningGrandchildTaskId);
+
+                        mixedChildScope.Task("Lock-Wait Grandchild")
+                            .WithExecutionLocks(sharedLock)
+                            .Run(() => Task.CompletedTask, out lockWaitGrandchildTaskId);
+                    });
+                });
+            });
+        });
+
+        // Act: wait until the mixed child is running while its sibling grandchild is blocked on the shared lock.
+        (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        try
+        {
+            await lockHolderStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await session.GetTask(lockHolderTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await runningGrandchildStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await session.GetTask(runningGrandchildTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await RuntimeTestUtilities.WaitForConditionAsync(
+                () => session.GetTask(mixedChildTaskId).State == ExecutionTaskState.Running
+                    && session.GetTask(lockWaitGrandchildTaskId).State == ExecutionTaskState.WaitingForExecutionLock,
+                TimeSpan.FromSeconds(5),
+                "Timed out waiting for the mixed child to be running while a grandchild waits for the shared lock.");
+
+            // Assert: the ancestor must honor the direct child's Running state, not only the deeper lock wait.
+            Assert.Equal(ExecutionTaskState.Running, session.GetTask(ancestorScopeTaskId).State);
+        }
+        finally
+        {
+            // Cleanup: release both gates so the scheduler can drain even when the red assertion fails.
+            releaseLockHolder.TrySetResult(true);
+            releaseRunningGrandchild.TrySetResult(true);
+            await executeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    /// <summary>
     /// Confirms that a started scope with one completed child, one child explicitly waiting for an execution lock, and
     /// one downstream queued child behind that lock waiter should still surface WaitingForExecutionLock instead of
     /// falling back to a generic running state.
