@@ -485,9 +485,21 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Run(InstallDistributablePluginIntoProjectPluginBaseAsync);
 
                     buildExampleBase = sharedBaseScope.Task("Prebuild Project-Plugin Base")
-                        .Describe("Build the shared code example editor target once so downstream package variants can reuse editor outputs with -nocompileeditor")
-                        .After(installProjectPluginBase.Id)
-                        .Run(PrebuildProjectPluginBaseAsync);
+                        .Describe("Build the shared code example editor target and prime Unreal target metadata for downstream validation")
+                        .After(installProjectPluginBase.Id);
+                    buildExampleBase.Children(prebuildScope =>
+                    {
+                        global::LocalAutomation.Runtime.ExecutionTaskBuilder buildEditorTarget = prebuildScope.Task("Build Project-Plugin Base Editor Target")
+                            .Describe("Build the shared code example editor target once so downstream package variants can reuse editor outputs with -nocompileeditor")
+                            .Run(BuildProjectPluginBaseEditorTargetAsync);
+
+                        // QueryTargets is authored as its own visible plan step because the editor would otherwise run
+                        // the same UBT work invisibly during validation launch startup.
+                        prebuildScope.Task("Query Project-Plugin Base Targets")
+                            .Describe("Generate Unreal target metadata before validation launches so editor startup can reuse the target cache")
+                            .After(buildEditorTarget.Id)
+                            .Run(QueryProjectPluginBaseTargetsAsync);
+                    });
                 });
 
                 /* The validation children all fan out from the shared prebuilt base, so the common dependency belongs on
@@ -943,17 +955,54 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// Builds the shared project-plugin base's editor target once so later packaging variants can reuse its editor
         /// binaries through `-nocompileeditor` without waiting on AutomationTool's singleton lock.
         /// </summary>
-        private async Task PrebuildProjectPluginBaseAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        private async Task BuildProjectPluginBaseEditorTargetAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
-            using IDisposable nodeScope = context.Logger.BeginSection("Prebuilding project-plugin base");
+            using IDisposable nodeScope = context.Logger.BeginSection("Building project-plugin base editor target");
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
-            using Project exampleProject = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for prebuild");
+            using Project exampleProject = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for editor target build");
 
+            // The child operation owns the actual Build.bat command while this authored task keeps the deploy graph
+            // explicit about the editor-target prebuild prerequisite.
             global::LocalAutomation.Runtime.OperationParameters buildExampleProjectParams = CreateParameters();
             buildExampleProjectParams.Target = exampleProject;
             buildExampleProjectParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "PrebuildProjectPluginBaseOutput");
             buildExampleProjectParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             await RunChildOperationAsync<BuildEditorTarget>(buildExampleProjectParams, context, required: true, failureMessage: "Failed to prebuild project-plugin base editor target", hideChildOperationRootInGraph: true);
+        }
+
+        /// <summary>
+        /// Generates the project target metadata cache that Unreal Editor consumes during startup before validation launches
+        /// need to start the editor process.
+        /// </summary>
+        private async Task QueryProjectPluginBaseTargetsAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Querying project-plugin base targets");
+            DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
+            using Project exampleProject = CreateRequiredProject(GetExampleProjectBasePath(state), "Project-plugin base is not available for target query");
+
+            // Use a fresh parameter bag so the raw UBT mode command receives only the explicit arguments required to
+            // produce TargetInfo.json and does not inherit unrelated launch or package arguments from the parent flow.
+            global::LocalAutomation.Runtime.OperationParameters queryTargetsParams = CreateParameters();
+            queryTargetsParams.Target = exampleProject;
+            queryTargetsParams.OutputPathOverride = GetWorkspacePath(state.WorkspacePath, "ProjectPluginBaseQueryTargetsOutput");
+            queryTargetsParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
+            queryTargetsParams.GetOptions<AdditionalArgumentsOptions>().Arguments = BuildProjectTargetQueryArguments(exampleProject).ToString();
+            await RunChildOperationAsync(new BuildBatOperation<Project>(), queryTargetsParams, context, required: true, failureMessage: "Failed to query project-plugin base targets", hideChildOperationRootInGraph: true);
+        }
+
+        /// <summary>
+        /// Builds the same direct UBT target-info query that Unreal Editor runs during startup so validation launches can
+        /// reuse a fresh cache instead of running the query invisibly inside editor initialization.
+        /// </summary>
+        private static Arguments BuildProjectTargetQueryArguments(Project project)
+        {
+            Arguments arguments = new();
+            arguments.SetKeyValue("Mode", "QueryTargets");
+            arguments.SetKeyPath("Project", project.UProjectPath);
+            arguments.SetKeyPath("Output", Path.Combine(project.ProjectPath, "Intermediate", "TargetInfo.json"));
+            arguments.SetFlag("IncludeAllTargets");
+            arguments.SetFlag("DontIncludeParentAssembly");
+            return arguments;
         }
 
         /// <summary>

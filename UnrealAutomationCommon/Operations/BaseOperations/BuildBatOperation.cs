@@ -6,8 +6,8 @@ using RuntimeTarget = LocalAutomation.Runtime.OperationTarget;
 
 namespace UnrealAutomationCommon.Operations.BaseOperations
 {
-    // Centralize the direct Build.bat wiring so all UBT-backed compile operations stay consistent.
-    public abstract class BuildBatOperation<T> : CommandProcessOperation<T> where T : RuntimeTarget
+    // Centralize the direct Build.bat wiring so all UBT-backed operations stay consistent.
+    public class BuildBatOperation<T> : CommandProcessOperation<T> where T : RuntimeTarget
     {
         /// <summary>
         /// Direct Build.bat-backed operations always expose configuration and direct-UBT compiler override options.
@@ -72,8 +72,22 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             return new global::LocalAutomation.Runtime.Command(GetRequiredTargetEngineInstall(operationParameters).GetBuildPath(), args.ToString());
         }
 
-        // Derived operations provide the target name, platform/config, project path, and any target-specific flags.
-        protected abstract void ConfigureBuildArguments(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, Arguments args);
+        // Derived operations can provide target-specific arguments, while raw Build.bat callers can rely entirely on
+        // AdditionalArgumentsOptions to supply mode-style UBT commands such as -Mode=QueryTargets.
+        protected virtual void ConfigureBuildArguments(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, Arguments args)
+        {
+        }
+
+        // Raw generic Build.bat children need a readable operation name even though the generic type name includes arity.
+        protected override string GetOperationName()
+        {
+            if (GetType() == typeof(BuildBatOperation<T>))
+            {
+                return "Build.bat";
+            }
+
+            return base.GetOperationName();
+        }
 
         // Apply the shared direct-UBT overrides only for Build.bat flows that are known to respect them.
         protected void ApplySharedBuildArguments(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, Arguments args)
