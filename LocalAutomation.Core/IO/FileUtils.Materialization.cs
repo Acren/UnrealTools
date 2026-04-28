@@ -59,7 +59,7 @@ public static partial class FileUtils
         if (Directory.Exists(sourcePath))
         {
             logger.LogInformation("Copying directory entry '{RelativePath}' from '{SourcePath}' to '{DestinationPath}'.", entry.RelativePath, sourcePath, destinationPath);
-            CopyDirectory(sourcePath, destinationPath, cancellationToken: cancellationToken);
+            CopyDirectory(sourcePath, destinationPath, excludedRelativePaths: entry.ExcludedRelativePaths, cancellationToken: cancellationToken);
             stopwatch.Stop();
             logger.LogInformation("Copied directory entry '{RelativePath}' in {Elapsed}.", entry.RelativePath, DurationFormatting.FormatSeconds(stopwatch.Elapsed));
             return;
@@ -69,6 +69,11 @@ public static partial class FileUtils
         if (File.Exists(sourcePath))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (entry.ExcludedRelativePaths.Count > 0)
+            {
+                throw new InvalidOperationException($"File materialization entry cannot define excluded paths: {entry.RelativePath}");
+            }
+
             logger.LogInformation("Copying file entry '{RelativePath}' from '{SourcePath}' to '{DestinationPath}'.", entry.RelativePath, sourcePath, destinationPath);
             string? destinationDirectoryPath = Path.GetDirectoryName(destinationPath);
             if (!string.IsNullOrWhiteSpace(destinationDirectoryPath))

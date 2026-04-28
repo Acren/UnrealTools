@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 
 namespace LocalAutomation.Core.IO;
@@ -14,17 +17,76 @@ internal static class DirectoryCopy
     public static void Copy(
         string sourcePath,
         string destinationPath,
+        IEnumerable<string>? excludedRelativePaths = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         sourcePath = NormalizeDirectoryPath(sourcePath);
         destinationPath = NormalizeDirectoryPath(destinationPath);
-        if (WindowsDirectoryCopy.TryCopy(sourcePath, destinationPath, cancellationToken))
+        IReadOnlyList<string> normalizedExcludedRelativePaths = NormalizeExcludedRelativePaths(sourcePath, excludedRelativePaths);
+        if (WindowsDirectoryCopy.TryCopy(sourcePath, destinationPath, normalizedExcludedRelativePaths, cancellationToken))
         {
             return;
         }
 
-        ManagedDirectoryCopy.Copy(sourcePath, destinationPath, cancellationToken);
+        ManagedDirectoryCopy.Copy(sourcePath, destinationPath, normalizedExcludedRelativePaths, cancellationToken);
+    }
+
+    /// <summary>
+    /// Normalizes exclude paths so platform-specific copy implementations can safely compare them as source-relative paths.
+    /// </summary>
+    internal static IReadOnlyList<string> NormalizeExcludedRelativePaths(string sourcePath, IEnumerable<string>? excludedRelativePaths)
+    {
+        if (excludedRelativePaths == null)
+        {
+            return Array.Empty<string>();
+        }
+
+        string normalizedSourcePath = NormalizeDirectoryPath(sourcePath);
+        return excludedRelativePaths
+            .Select(excludedPath => NormalizeExcludedRelativePath(normalizedSourcePath, excludedPath))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(excludedPath => excludedPath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Converts one caller-provided exclude into a safe relative path that cannot escape the copied source directory.
+    /// </summary>
+    private static string NormalizeExcludedRelativePath(string sourcePath, string excludedRelativePath)
+    {
+        if (string.IsNullOrWhiteSpace(excludedRelativePath))
+        {
+            throw new ArgumentException("Excluded copy paths must be non-empty relative paths.", nameof(excludedRelativePath));
+        }
+
+        if (Path.IsPathRooted(excludedRelativePath))
+        {
+            throw new ArgumentException($"Excluded copy path must be relative: {excludedRelativePath}", nameof(excludedRelativePath));
+        }
+
+        string absoluteExcludedPath = Path.GetFullPath(Path.Combine(sourcePath, excludedRelativePath));
+        if (!IsSameOrDescendantPath(sourcePath, absoluteExcludedPath))
+        {
+            throw new ArgumentException($"Excluded copy path must stay inside the source directory: {excludedRelativePath}", nameof(excludedRelativePath));
+        }
+
+        if (string.Equals(sourcePath, absoluteExcludedPath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Excluded copy path cannot be the copied directory itself.", nameof(excludedRelativePath));
+        }
+
+        return Path.GetRelativePath(sourcePath, absoluteExcludedPath);
+    }
+
+    /// <summary>
+    /// Returns whether the candidate path is the source root itself or a descendant of that source root.
+    /// </summary>
+    private static bool IsSameOrDescendantPath(string sourcePath, string candidatePath)
+    {
+        string sourceWithSeparator = sourcePath + Path.DirectorySeparatorChar;
+        return string.Equals(sourcePath, candidatePath, StringComparison.OrdinalIgnoreCase)
+            || candidatePath.StartsWith(sourceWithSeparator, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

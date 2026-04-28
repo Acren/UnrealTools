@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace LocalAutomation.Core.IO;
 
@@ -8,12 +10,13 @@ namespace LocalAutomation.Core.IO;
 public sealed class FileMaterializationEntry
 {
     /// <summary>
-    /// Stores one materialization entry together with whether missing input should fail the materialization.
+    /// Stores one materialization entry together with whether missing input should fail and which descendants to skip.
     /// </summary>
-    public FileMaterializationEntry(string relativePath, bool required = false)
+    internal FileMaterializationEntry(string relativePath, bool required = false, IEnumerable<string>? excludedRelativePaths = null)
     {
         RelativePath = relativePath ?? throw new ArgumentNullException(nameof(relativePath));
         Required = required;
+        ExcludedRelativePaths = (excludedRelativePaths ?? Enumerable.Empty<string>()).ToList();
     }
 
     /// <summary>
@@ -25,4 +28,9 @@ public sealed class FileMaterializationEntry
     /// Gets whether the source path must exist for materialization to succeed.
     /// </summary>
     public bool Required { get; }
+
+    /// <summary>
+    /// Gets paths relative to this entry's copied directory that should be omitted from the materialization.
+    /// </summary>
+    public IReadOnlyList<string> ExcludedRelativePaths { get; }
 }

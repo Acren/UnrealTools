@@ -24,6 +24,11 @@ namespace UnrealAutomationCommon.Unreal
         private const int CacheHashLength = 16;
 
         /// <summary>
+        /// Names the generated UAT BuildPlugin host project that must remain in the cache but never enter payload copies.
+        /// </summary>
+        private const string BuildPluginHostProjectDirectoryName = "HostProject";
+
+        /// <summary>
         /// Builds a stable opaque identity for one cached project workspace from compile-environment inputs rather than
         /// source content, allowing normal source edits to reuse the same warm Intermediate tree.
         /// </summary>
@@ -170,26 +175,9 @@ namespace UnrealAutomationCommon.Unreal
             }
 
             logger.LogInformation("Copying cached Unreal plugin package output from '{CachedPackagePath}' to '{DestinationPluginPath}'.", cachedPackagePath, destinationPluginPath);
-            Directory.CreateDirectory(destinationPluginPath);
-
-            foreach (string sourceFilePath in Directory.GetFiles(cachedPackagePath, "*", SearchOption.TopDirectoryOnly))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                string destinationFilePath = Path.Combine(destinationPluginPath, Path.GetFileName(sourceFilePath));
-                File.Copy(sourceFilePath, destinationFilePath, true);
-            }
-
-            foreach (string sourceDirectoryPath in Directory.GetDirectories(cachedPackagePath, "*", SearchOption.TopDirectoryOnly))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                string directoryName = Path.GetFileName(sourceDirectoryPath);
-                if (IsBuildPluginHostProjectDirectory(directoryName))
-                {
-                    continue;
-                }
-
-                FileUtils.CopyDirectory(sourceDirectoryPath, Path.Combine(destinationPluginPath, directoryName), cancellationToken: cancellationToken);
-            }
+            FileMaterializationSpec payloadSpec = new();
+            payloadSpec.AddRootDirectory(required: true, excludedRelativePaths: new[] { BuildPluginHostProjectDirectoryName });
+            FileUtils.MaterializeDirectory(cachedPackagePath, destinationPluginPath, payloadSpec, logger, cancellationToken);
         }
 
         /// <summary>
@@ -309,7 +297,7 @@ namespace UnrealAutomationCommon.Unreal
         /// </summary>
         private static void DeleteCachedHostProjectPluginInputs(string cachedPackagePath, string pluginName, ILogger logger)
         {
-            string cachedHostProjectPluginPath = Path.Combine(cachedPackagePath, "HostProject", "Plugins", pluginName);
+            string cachedHostProjectPluginPath = Path.Combine(cachedPackagePath, BuildPluginHostProjectDirectoryName, "Plugins", pluginName);
             if (!Directory.Exists(cachedHostProjectPluginPath))
             {
                 return;
@@ -324,7 +312,7 @@ namespace UnrealAutomationCommon.Unreal
         /// </summary>
         private static bool IsBuildPluginHostProjectDirectory(string directoryName)
         {
-            return string.Equals(directoryName, "HostProject", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(directoryName, BuildPluginHostProjectDirectoryName, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>

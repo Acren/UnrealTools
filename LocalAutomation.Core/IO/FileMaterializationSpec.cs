@@ -20,7 +20,23 @@ public sealed class FileMaterializationSpec : IEnumerable<FileMaterializationEnt
     /// </summary>
     public void Add(string relativePath, bool required = false)
     {
-        Entries.Add(new FileMaterializationEntry(relativePath, required));
+        AddEntry(relativePath, required, excludedRelativePaths: null);
+    }
+
+    /// <summary>
+    /// Adds one relative directory path whose copied descendants may omit specific source-relative paths.
+    /// </summary>
+    public void AddDirectory(string relativePath, bool required = false, IEnumerable<string>? excludedRelativePaths = null)
+    {
+        AddEntry(relativePath, required, excludedRelativePaths);
+    }
+
+    /// <summary>
+    /// Adds the materialization root itself as a directory entry, optionally omitting root-relative descendants.
+    /// </summary>
+    public void AddRootDirectory(bool required = false, IEnumerable<string>? excludedRelativePaths = null)
+    {
+        AddDirectory(".", required, excludedRelativePaths);
     }
 
     /// <summary>
@@ -42,8 +58,16 @@ public sealed class FileMaterializationSpec : IEnumerable<FileMaterializationEnt
            teaching the generic copy helper about higher-level content types such as Unreal plugins. */
         foreach (FileMaterializationEntry entry in subtreeSpec.Entries)
         {
-            Add(Path.Combine(relativeRootPath, entry.RelativePath), entry.Required);
+            AddEntry(Path.Combine(relativeRootPath, entry.RelativePath), entry.Required, entry.ExcludedRelativePaths);
         }
+    }
+
+    /// <summary>
+    /// Appends one entry after public methods have selected whether directory-only filtering is allowed.
+    /// </summary>
+    private void AddEntry(string relativePath, bool required, IEnumerable<string>? excludedRelativePaths)
+    {
+        Entries.Add(new FileMaterializationEntry(relativePath, required, excludedRelativePaths));
     }
 
     /// <summary>

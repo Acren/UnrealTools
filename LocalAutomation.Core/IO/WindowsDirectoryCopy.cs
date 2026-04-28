@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -19,16 +20,18 @@ internal static class WindowsDirectoryCopy
     public static bool TryCopy(
         string sourcePath,
         string destinationPath,
+        IReadOnlyList<string> excludedRelativePaths,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        _ = excludedRelativePaths ?? throw new ArgumentNullException(nameof(excludedRelativePaths));
         if (Environment.OSVersion.Platform != PlatformID.Win32NT || !Directory.Exists(sourcePath))
         {
             return false;
         }
 
         Directory.CreateDirectory(destinationPath);
-        string arguments = BuildArguments(sourcePath, destinationPath);
+        string arguments = BuildArguments(sourcePath, destinationPath, excludedRelativePaths);
         ProcessStartInfo startInfo = new()
         {
             FileName = "robocopy",
@@ -93,9 +96,10 @@ internal static class WindowsDirectoryCopy
     /// Builds one robocopy command line that performs a multithreaded recursive copy while suppressing noisy progress
     /// output.
     /// </summary>
-    private static string BuildArguments(string sourcePath, string destinationPath)
+    private static string BuildArguments(string sourcePath, string destinationPath, IReadOnlyList<string> excludedRelativePaths)
     {
-        return string.Join(" ",
+        List<string> arguments = new()
+        {
             Quote(sourcePath),
             Quote(destinationPath),
             "/E",
@@ -108,7 +112,26 @@ internal static class WindowsDirectoryCopy
             "/NDL",
             "/NJH",
             "/NJS",
-            "/NP");
+            "/NP"
+        };
+
+        // Robocopy supports directory and file filters in one process, so every exclude is supplied to both lists.
+        if (excludedRelativePaths.Count > 0)
+        {
+            arguments.Add("/XD");
+            foreach (string excludedRelativePath in excludedRelativePaths)
+            {
+                arguments.Add(Quote(Path.Combine(sourcePath, excludedRelativePath)));
+            }
+
+            arguments.Add("/XF");
+            foreach (string excludedRelativePath in excludedRelativePaths)
+            {
+                arguments.Add(Quote(Path.Combine(sourcePath, excludedRelativePath)));
+            }
+        }
+
+        return string.Join(" ", arguments);
     }
 
     /// <summary>

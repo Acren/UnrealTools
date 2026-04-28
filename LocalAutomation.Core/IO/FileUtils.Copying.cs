@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
@@ -9,7 +10,7 @@ public static partial class FileUtils
     /// <summary>
     /// Copies one directory tree to the destination path, optionally nesting the source directory inside the destination.
     /// </summary>
-    public static void CopyDirectory(string sourcePath, string destinationPath, bool placeInside = false, CancellationToken cancellationToken = default)
+    public static void CopyDirectory(string sourcePath, string destinationPath, bool placeInside = false, IEnumerable<string>? excludedRelativePaths = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         sourcePath = Path.GetFullPath(sourcePath);
@@ -21,7 +22,7 @@ public static partial class FileUtils
             destinationPath = Path.Combine(destinationPath, directoryName);
         }
 
-        DirectoryCopy.Copy(sourcePath, destinationPath, cancellationToken);
+        DirectoryCopy.Copy(sourcePath, destinationPath, excludedRelativePaths, cancellationToken);
     }
 
     /// <summary>
