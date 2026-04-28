@@ -188,4 +188,71 @@ public sealed class ExecutionTaskLifecycleInvariantTests
         OperationResult result = await executeTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
     }
+
+    /// <summary>
+    /// Confirms that a started parent stays dependency-waiting when its remaining child container is dependency-blocked,
+    /// even if that blocked container has descendant work that would be locally ready after the container opens.
+    /// </summary>
+    [Fact]
+    public async Task StartedParentScopeWaitsForDependenciesWhenBlockedChildContainerHasReadyDescendant()
+    {
+        /* Keep one unrelated task running so the child container remains blocked after the parent has already started. */
+        TaskCompletionSource<bool> releaseBlocker = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ExecutionTaskId blockerTaskId = default;
+        ExecutionTaskId parentScopeTaskId = default;
+        ExecutionTaskId completedChildTaskId = default;
+
+        /* This shape reproduces the nested blocked-container invariant: the parent has started through one completed
+           child, while the remaining child container is dependency-blocked even though its own child has no dependencies. */
+        Operation operation = new RuntimeTestUtilities.InlineOperation(root =>
+        {
+            root.Children(ExecutionChildMode.Parallel, scope =>
+            {
+                ExecutionTaskBuilder blocker = scope.Task("Blocker");
+                blockerTaskId = blocker.Id;
+                blocker.Run(async _ =>
+                {
+                    await releaseBlocker.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    return OperationResult.Succeeded();
+                });
+
+                ExecutionTaskBuilder parentScope = scope.Task("Parent Scope");
+                parentScopeTaskId = parentScope.Id;
+                parentScope.Children(childScope =>
+                {
+                    ExecutionTaskBuilder completedChild = childScope.Task("Completed Child");
+                    completedChildTaskId = completedChild.Id;
+                    completedChild.Run(() => Task.CompletedTask);
+
+                    childScope.Task("Blocked Child Container")
+                        .After(blockerTaskId)
+                        .Children(blockedScope =>
+                        {
+                            blockedScope.Task("Locally Ready Grandchild")
+                                .Run(() => Task.CompletedTask);
+                        });
+                });
+            });
+        });
+
+        /* Wait until the blocker is running and the first child already completed. That leaves the parent started with no
+           active work, and its only remaining reachable child container is still blocked by the external dependency. */
+        (ExecutionPlan _, ExecutionSession session, ExecutionPlanScheduler scheduler) = RuntimeTestUtilities.CreateRuntime(operation);
+        Task<OperationResult> executeTask = scheduler.ExecuteAsync(CancellationToken.None);
+        try
+        {
+            await session.GetTask(blockerTaskId).WaitForStartAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            await session.GetTask(completedChildTaskId).WaitForCompletionAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(ExecutionTaskState.WaitingForDependencies, session.GetTask(parentScopeTaskId).State);
+        }
+        finally
+        {
+            /* Always release the blocker so the background scheduler run can drain after the red-state assertion. */
+            releaseBlocker.TrySetResult(true);
+        }
+
+        OperationResult result = await executeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ExecutionTaskOutcome.Completed, result.Outcome);
+    }
 }

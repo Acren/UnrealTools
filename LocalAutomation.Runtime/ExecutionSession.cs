@@ -432,8 +432,6 @@ public sealed class ExecutionSession
                 }
 
                 WireObservedDependencies(insertedTasks.Tasks);
-                GetTaskCore(insertedTasks.RootTaskId).PublishStateChanged();
-
                 addTasksActivity.SetTag("inserted.task.count", insertedTaskIds.Count);
                 return new ChildTaskMergeResult(GetTaskCore(insertedTasks.RootTaskId), insertedTasks.Tasks, insertedTaskIds);
             });
@@ -580,7 +578,7 @@ public sealed class ExecutionSession
         {
             /* Session task-state subscribers can run while the graph write lock is still held, so this callback must not
                perform any additional session graph reads before it acquires its own local completion bookkeeping lock.
-               The published state already tells us whether the task reached the terminal lifecycle state we care about. */
+               The changed state already tells us whether the task reached the terminal lifecycle state we care about. */
             if (state != ExecutionTaskState.Completed)
             {
                 return;
@@ -1436,41 +1434,33 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Writes one task status transition to the session log after the graph mutation that produced it has completed.
-    /// This observes both direct task transitions and derived parent rollups, so the launch log matches what the UI sees.
+    /// Writes one actual task state/outcome transition to the session log and re-emits it through the session-wide fanout
+    /// after the graph mutation that produced it has completed.
     /// </summary>
-    private void HandleTaskStatusChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
+    private void HandleTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
     {
+        Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?>? taskStateChanged = TaskStateChanged;
+
+        /* Capture the payload at mutation time, then publish it only after the outermost graph write scope releases.
+           Subscribers and logging should observe the completed task-state snapshot, but they must not become part of the
+           graph-lock critical section. */
         AfterGraphWriteReleased(() =>
         {
             string taskPath = GetTaskDisplayPath(task.Id);
             if (outcome == null)
             {
                 _sessionLogger.LogDebug("Execution task '{TaskPath}' ({TaskId}) -> {State}.", taskPath, task.Id, state);
+            }
+            else
+            {
+                _sessionLogger.LogDebug("Execution task '{TaskPath}' ({TaskId}) -> {State} ({Outcome}).", taskPath, task.Id, state, outcome);
+            }
+
+            if (taskStateChanged == null)
+            {
                 return;
             }
 
-            _sessionLogger.LogDebug("Execution task '{TaskPath}' ({TaskId}) -> {State} ({Outcome}).", taskPath, task.Id, state, outcome);
-        });
-    }
-
-    /// <summary>
-    /// Re-emits one task-owned change through the session-wide fanout so scheduler, UI, and any other session-level
-    /// observers can subscribe once per session instead of wiring every task individually.
-    /// </summary>
-    private void HandleTaskStateChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
-    {
-        Action<ExecutionTaskId, ExecutionTaskState, ExecutionTaskOutcome?>? taskStateChanged = TaskStateChanged;
-        if (taskStateChanged == null)
-        {
-            return;
-        }
-
-        /* Capture the subscriber status payload at mutation time, then publish it only after the outermost
-           graph write scope releases. Subscribers should observe the completed task-state change, but they must not become
-           part of the graph-lock critical section. */
-        AfterGraphWriteReleased(() =>
-        {
             using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("ExecutionSession.TaskStateChanged.InvokePostLock")
                 .SetTag("task.id", task.Id.Value)
                 .SetTag("task.state", state.ToString())
@@ -1659,7 +1649,6 @@ public sealed class ExecutionSession
         }
 
         task.InitializeRuntimeState();
-        task.StatusChanged += HandleTaskStatusChanged;
         task.StateChanged += HandleTaskStateChanged;
 
         if (task.ParentId is ExecutionTaskId parentId)

@@ -95,7 +95,7 @@ public class ExecutionTask : INotifyPropertyChanged
     private OperationParameters? _resolvedOperationParameters;
     private bool _operationParametersResolved;
     /* Guards the atomic "subscribe then inspect current state" path used by task-local state waiters so they can rely
-       directly on the task's own StateChanged event without a second waiter registry. */
+       directly on the task's actual transition event without a second waiter registry. */
     private readonly object _stateChangeSyncRoot = new();
 
     /// <summary>
@@ -130,15 +130,7 @@ public class ExecutionTask : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// Raised only when this task's lifecycle state or semantic outcome actually changes. Session-level logging uses this
-    /// narrower event so structural wake-up publications do not appear as duplicate state transitions in diagnostic logs.
-    /// </summary>
-    internal event Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?>? StatusChanged;
-
-    /// <summary>
-    /// Raised whenever this task's task-owned runtime facts change. The event carries the task plus the current visible
-    /// state snapshot so waiters, session fanout, and internal propagation can all share one task event without re-reading
-    /// state unless they want to.
+    /// Raised only when this task's lifecycle state or semantic outcome actually changes.
     /// </summary>
     public event Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?>? StateChanged;
 
@@ -606,8 +598,7 @@ public class ExecutionTask : INotifyPropertyChanged
 
         _children.Add(child);
         child._parent = this;
-        /* Parents observe the child's task-owned change event directly so child-frontier changes can roll up immediately
-           even when the child's visible lifecycle state itself stays unchanged. */
+        // Parents observe child state transitions so child lifecycle changes roll up immediately.
         child.StateChanged += HandleObservedTaskChanged;
         RaisePropertyChanged(nameof(Children));
         RaisePropertyChanged(nameof(ChildTaskIds));
@@ -635,6 +626,7 @@ public class ExecutionTask : INotifyPropertyChanged
         }
 
         _observedDependencies.Add(dependency);
+        // Dependency state transitions can change this task's visible blocker state.
         dependency.StateChanged += HandleObservedTaskChanged;
     }
 
@@ -646,20 +638,7 @@ public class ExecutionTask : INotifyPropertyChanged
     internal void RefreshDerivedStateFromObservations()
     {
         (ExecutionTaskState state, ExecutionTaskOutcome? outcome) = ComputeRolledUpStateFromChildren();
-        if (!TransitionStatus(state, outcome))
-        {
-            RaiseStateChanged();
-        }
-    }
-
-    /// <summary>
-    /// Publishes this task's current task-owned state to observers without changing its visible runtime status.
-    /// Structural graph mutations such as child insertion use this after wiring the new topology so observers can refresh
-    /// from the completed graph shape.
-    /// </summary>
-    internal void PublishStateChanged()
-    {
-        RaiseStateChanged();
+        TransitionStatus(state, outcome);
     }
 
     /// <summary>
@@ -934,21 +913,12 @@ public class ExecutionTask : INotifyPropertyChanged
 
         if (stateChanged || outcomeChanged)
         {
-            RaiseStatusChanged();
             RaiseStateChanged();
         }
     }
 
     /// <summary>
-    /// Raises the transition-only status event after the task has already published a self-consistent state/outcome pair.
-    /// </summary>
-    private void RaiseStatusChanged()
-    {
-        StatusChanged?.Invoke(this, State, Outcome);
-    }
-
-    /// <summary>
-    /// Raises the task-owned change event while preserving the existing subscribe/inspect synchronization used by local
+    /// Raises the actual transition event while preserving the existing subscribe/inspect synchronization used by local
     /// waiters. The payload snapshots the current visible task state at raise time so subscribers can use it directly.
     /// </summary>
     private void RaiseStateChanged()
@@ -1077,6 +1047,25 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Returns this task subtree's scheduler frontier only when this task's own dependency gate is open. Descendant-local
+    /// readiness is not reachable while the container itself is still blocked by dependencies.
+    /// </summary>
+    private TaskStartState GetReachableTaskStartStateForParentRollup()
+    {
+        if (State == ExecutionTaskState.Completed || Outcome != null)
+        {
+            return TaskStartState.NoStartableWork;
+        }
+
+        if (!AreDependenciesSatisfied())
+        {
+            return TaskStartState.AwaitingDependency;
+        }
+
+        return GetTaskStartState();
+    }
+
+    /// <summary>
     /// Returns whether this task's own executable body is the task currently waiting on an execution lock. Direct task
     /// lock wait happens before the task has ever reached Running, so StartedAt remains unset. Rolled-up descendant lock
     /// wait can also use the AwaitingLock state, but those parents already have StartedAt once their own body
@@ -1176,7 +1165,7 @@ public class ExecutionTask : INotifyPropertyChanged
         bool allChildrenDisabled = _children.Count > 0;
         foreach (ExecutionTask childTask in _children)
         {
-            TaskStartState childStartState = childTask.GetTaskStartState();
+            TaskStartState childStartState = childTask.GetReachableTaskStartStateForParentRollup();
             subtreeStartState = CombineSubtreeStartStates(subtreeStartState, childStartState);
             /* Each child's observed state and outcome already roll up its whole subtree, so the parent can infer whether
                work started anywhere below that child from the direct-child snapshot. A child whose runtime lifecycle is
@@ -1274,6 +1263,11 @@ public class ExecutionTask : INotifyPropertyChanged
         if (scopeRoot == null)
         {
             throw new ArgumentNullException(nameof(scopeRoot));
+        }
+
+        if (!AreDependenciesSatisfied())
+        {
+            return HasUnsatisfiedDependenciesOutsideScope(scopeRoot);
         }
 
         if (GetTaskStartState() != TaskStartState.AwaitingDependency)
