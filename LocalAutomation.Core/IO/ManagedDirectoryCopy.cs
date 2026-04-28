@@ -27,6 +27,26 @@ internal static class ManagedDirectoryCopy
     }
 
     /// <summary>
+    /// Mirrors one directory tree by recreating the destination before using the portable recursive copy fallback.
+    /// </summary>
+    public static void Mirror(
+        string sourcePath,
+        string destinationPath,
+        IReadOnlyList<string> excludedRelativePaths,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = excludedRelativePaths ?? throw new ArgumentNullException(nameof(excludedRelativePaths));
+        if (File.Exists(destinationPath))
+        {
+            File.Delete(destinationPath);
+        }
+
+        FileUtils.DeleteDirectoryIfExists(destinationPath);
+        Copy(sourcePath, destinationPath, excludedRelativePaths, cancellationToken);
+    }
+
+    /// <summary>
     /// Recursively copies allowed entries while avoiding traversal into excluded directory subtrees.
     /// </summary>
     private static void CopyDirectoryContents(
@@ -51,7 +71,7 @@ internal static class ManagedDirectoryCopy
             CopyDirectoryContents(sourceRootPath, directoryPath, destinationRootPath, excludedRelativePaths, cancellationToken);
         }
 
-        // Copy allowed files with overwrite enabled so repeated materializations can refresh an existing destination tree.
+        // Copy allowed files with overwrite enabled and source timestamps so repeated materializations stay deterministic.
         foreach (string filePath in Directory.GetFiles(currentSourcePath, "*.*", SearchOption.TopDirectoryOnly)
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
@@ -70,6 +90,7 @@ internal static class ManagedDirectoryCopy
             }
 
             File.Copy(filePath, destinationFilePath, true);
+            File.SetLastWriteTimeUtc(destinationFilePath, File.GetLastWriteTimeUtc(filePath));
         }
     }
 

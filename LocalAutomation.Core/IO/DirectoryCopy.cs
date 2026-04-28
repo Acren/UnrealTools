@@ -20,16 +20,42 @@ internal static class DirectoryCopy
         IEnumerable<string>? excludedRelativePaths = null,
         CancellationToken cancellationToken = default)
     {
+        Run(sourcePath, destinationPath, excludedRelativePaths, cancellationToken, WindowsDirectoryCopy.TryCopy, ManagedDirectoryCopy.Copy);
+    }
+
+    /// <summary>
+    /// Mirrors one directory tree to another destination, preferring the platform fast path when available.
+    /// </summary>
+    public static void Mirror(
+        string sourcePath,
+        string destinationPath,
+        IEnumerable<string>? excludedRelativePaths = null,
+        CancellationToken cancellationToken = default)
+    {
+        Run(sourcePath, destinationPath, excludedRelativePaths, cancellationToken, WindowsDirectoryCopy.TryMirror, ManagedDirectoryCopy.Mirror);
+    }
+
+    /// <summary>
+    /// Normalizes one directory operation and dispatches to the platform implementation before the portable fallback.
+    /// </summary>
+    private static void Run(
+        string sourcePath,
+        string destinationPath,
+        IEnumerable<string>? excludedRelativePaths,
+        CancellationToken cancellationToken,
+        Func<string, string, IReadOnlyList<string>, CancellationToken, bool> tryPlatformCopy,
+        Action<string, string, IReadOnlyList<string>, CancellationToken> managedCopy)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         sourcePath = NormalizeDirectoryPath(sourcePath);
         destinationPath = NormalizeDirectoryPath(destinationPath);
         IReadOnlyList<string> normalizedExcludedRelativePaths = NormalizeExcludedRelativePaths(sourcePath, excludedRelativePaths);
-        if (WindowsDirectoryCopy.TryCopy(sourcePath, destinationPath, normalizedExcludedRelativePaths, cancellationToken))
+        if (tryPlatformCopy(sourcePath, destinationPath, normalizedExcludedRelativePaths, cancellationToken))
         {
             return;
         }
 
-        ManagedDirectoryCopy.Copy(sourcePath, destinationPath, normalizedExcludedRelativePaths, cancellationToken);
+        managedCopy(sourcePath, destinationPath, normalizedExcludedRelativePaths, cancellationToken);
     }
 
     /// <summary>

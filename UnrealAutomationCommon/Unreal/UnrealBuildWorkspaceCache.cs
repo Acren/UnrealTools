@@ -31,16 +31,6 @@ namespace UnrealAutomationCommon.Unreal
         private const string BuildPluginHostProjectDirectoryName = "HostProject";
 
         /// <summary>
-        /// Names project cache directories that are refreshed or regenerated for each direct build run.
-        /// </summary>
-        private static readonly string[] ProjectRefreshDirectories = { "Binaries", "Build", "Saved", "DerivedDataCache", "Config", "Source", "Content", "Plugins" };
-
-        /// <summary>
-        /// Names top-level project files that are refreshed before source inputs are materialized into a cache workspace.
-        /// </summary>
-        private static readonly string[] ProjectRefreshFilePatterns = { "*.uproject", "*.png" };
-
-        /// <summary>
         /// Creates one cached direct-build workspace from the source project and compile-environment identity.
         /// </summary>
         internal static ProjectBuildWorkspace CreateProjectBuildWorkspace(
@@ -56,11 +46,17 @@ namespace UnrealAutomationCommon.Unreal
             _ = engine ?? throw new ArgumentNullException(nameof(engine));
             string resolvedRole = RequireText(role, nameof(role), "Role is required for a cached project build.");
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, $"Cached build source project is not available for role '{resolvedRole}'");
-            IReadOnlySet<string> projectPluginNames = MaterializationSpecs.GetProjectPluginNames(sourceProject);
+            IReadOnlySet<string> projectPluginRelativePaths = MaterializationSpecs.GetProjectPluginRelativePaths(sourceProject);
+            IReadOnlySet<string> projectPluginModuleShape = MaterializationSpecs.GetProjectPluginModuleShape(sourceProject);
+            IReadOnlySet<string> projectPluginNames = projectPluginRelativePaths
+                .Select(Path.GetFileName)
+                .Where(pluginName => !string.IsNullOrWhiteSpace(pluginName))
+                .Select(pluginName => pluginName!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             FileMaterializationSpec projectInputs = MaterializationSpecs.CreateProject(sourceProject, projectPluginNames);
             FileMaterializationSpec buildOutputs = MaterializationSpecs.CreateProjectBuildOutputs(sourceProject);
-            string cachePath = GetProjectBuildCachePath(engine, operationName, resolvedRole, subjectName, sourceProject, configuration, compiler, cppStandard, projectPluginNames);
-            return new ProjectBuildWorkspace(cachePath, sourceProject.ProjectPath, projectInputs, buildOutputs, resolvedRole);
+            string cachePath = GetProjectBuildCachePath(engine, operationName, resolvedRole, subjectName, sourceProject, configuration, compiler, cppStandard, projectPluginRelativePaths.Concat(projectPluginModuleShape));
+            return new ProjectBuildWorkspace(cachePath, sourceProject.ProjectPath, projectInputs, buildOutputs, projectPluginRelativePaths, resolvedRole);
         }
 
         /// <summary>
@@ -90,12 +86,13 @@ namespace UnrealAutomationCommon.Unreal
             /// <summary>
             /// Captures the stable cache path plus the source and output materialization specs for one direct build cache.
             /// </summary>
-            internal ProjectBuildWorkspace(string cachePath, string sourceProjectPath, FileMaterializationSpec projectInputs, FileMaterializationSpec buildOutputs, string role)
+            internal ProjectBuildWorkspace(string cachePath, string sourceProjectPath, FileMaterializationSpec projectInputs, FileMaterializationSpec buildOutputs, IReadOnlySet<string> projectPluginRelativePaths, string role)
             {
                 CachePath = RequireText(cachePath, nameof(cachePath), "Cached project workspace path is required.");
                 SourceProjectPath = RequireText(sourceProjectPath, nameof(sourceProjectPath), "Cached project source path is required.");
                 ProjectInputs = projectInputs ?? throw new ArgumentNullException(nameof(projectInputs));
                 BuildOutputs = buildOutputs ?? throw new ArgumentNullException(nameof(buildOutputs));
+                ProjectPluginRelativePaths = projectPluginRelativePaths ?? throw new ArgumentNullException(nameof(projectPluginRelativePaths));
                 Role = RequireText(role, nameof(role), "Cached project build role is required.");
             }
 
@@ -120,6 +117,11 @@ namespace UnrealAutomationCommon.Unreal
             private FileMaterializationSpec BuildOutputs { get; }
 
             /// <summary>
+            /// Gets the current project plugin directory set relative to the Plugins root, used to remove stale plugin trees.
+            /// </summary>
+            private IReadOnlySet<string> ProjectPluginRelativePaths { get; }
+
+            /// <summary>
             /// Gets the role text used in failure messages for this cached build workspace.
             /// </summary>
             private string Role { get; }
@@ -130,10 +132,9 @@ namespace UnrealAutomationCommon.Unreal
             internal async Task PrepareAsync(ExecutionTaskContext context)
             {
                 Directory.CreateDirectory(CachePath);
-                FileUtils.DeleteRelativeDirectories(CachePath, ProjectRefreshDirectories, context.Logger);
-                FileUtils.DeleteTopLevelFiles(CachePath, ProjectRefreshFilePatterns, context.Logger);
+                DeleteStaleCachedPluginDirectories(context);
                 context.Logger.LogInformation("Refreshing Unreal build cache workspace from '{SourceProjectPath}' to '{CachedProjectPath}'.", SourceProjectPath, CachePath);
-                FileUtils.MaterializeDirectory(SourceProjectPath, CachePath, ProjectInputs, context.Logger, context.CancellationToken);
+                FileUtils.MaterializeDirectory(SourceProjectPath, CachePath, ProjectInputs, context.Logger, context.CancellationToken, mirrorDirectories: true);
 
                 if (ProjectPaths.Instance.IsTargetDirectory(CachePath))
                 {
@@ -144,13 +145,38 @@ namespace UnrealAutomationCommon.Unreal
                 context.Logger.LogWarning("Cached Unreal build workspace '{CachedProjectPath}' was invalid after refresh; recreating it without preserved intermediates.", CachePath);
                 FileUtils.DeleteDirectoryIfExists(CachePath);
                 Directory.CreateDirectory(CachePath);
-                FileUtils.MaterializeDirectory(SourceProjectPath, CachePath, ProjectInputs, context.Logger, context.CancellationToken);
+                FileUtils.MaterializeDirectory(SourceProjectPath, CachePath, ProjectInputs, context.Logger, context.CancellationToken, mirrorDirectories: true);
                 if (!ProjectPaths.Instance.IsTargetDirectory(CachePath))
                 {
                     throw new InvalidOperationException($"Cached Unreal build workspace is not a valid project after refresh: {CachePath}");
                 }
 
                 await Task.CompletedTask;
+            }
+
+            /// <summary>
+            /// Removes cached plugin directories that are no longer part of this project shape while preserving output
+            /// folders for plugins that are still present at the same Unreal-scanned relative path.
+            /// </summary>
+            private void DeleteStaleCachedPluginDirectories(ExecutionTaskContext context)
+            {
+                string cachedPluginsPath = Path.Combine(CachePath, "Plugins");
+                if (!Directory.Exists(cachedPluginsPath))
+                {
+                    return;
+                }
+
+                // Delete deeper plugin directories first so grouped plugin trees can be removed without parent conflicts.
+                foreach (string pluginDirectoryPath in Directory.GetDirectories(cachedPluginsPath, "*", SearchOption.AllDirectories)
+                             .Where(PluginPaths.Instance.IsTargetDirectory)
+                             .OrderByDescending(path => path.Length))
+                {
+                    string relativePluginPath = Path.GetRelativePath(cachedPluginsPath, pluginDirectoryPath);
+                    if (!ProjectPluginRelativePaths.Contains(relativePluginPath))
+                    {
+                        FileUtils.DeleteDirectoryIfExists(pluginDirectoryPath, context.Logger);
+                    }
+                }
             }
 
             /// <summary>
@@ -372,7 +398,7 @@ namespace UnrealAutomationCommon.Unreal
             BuildConfiguration configuration,
             UbtCompiler compiler,
             UbtCppStandard cppStandard,
-            IReadOnlySet<string> projectPluginNames)
+            IEnumerable<string> projectPluginShapeParts)
         {
             string resolvedOperationName = RequireText(operationName, nameof(operationName), "Operation name is required for a cached project build.");
             string resolvedRole = RequireText(role, nameof(role), "Role is required for a cached project build.");
@@ -386,7 +412,7 @@ namespace UnrealAutomationCommon.Unreal
                 configuration,
                 compiler,
                 cppStandard,
-                projectPluginNames.Select(pluginName => $"ProjectPlugin:{pluginName}"));
+                projectPluginShapeParts.Select(shapePart => $"ProjectPlugin:{shapePart}"));
 
             return GetProjectWorkspacePath(cacheKey);
         }

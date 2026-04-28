@@ -24,6 +24,31 @@ internal static class WindowsDirectoryCopy
         IReadOnlyList<string> excludedRelativePaths,
         CancellationToken cancellationToken = default)
     {
+        return TryRun(sourcePath, destinationPath, excludedRelativePaths, "/E", cancellationToken);
+    }
+
+    /// <summary>
+    /// Attempts to mirror one directory tree with robocopy, returning false when unavailable.
+    /// </summary>
+    public static bool TryMirror(
+        string sourcePath,
+        string destinationPath,
+        IReadOnlyList<string> excludedRelativePaths,
+        CancellationToken cancellationToken = default)
+    {
+        return TryRun(sourcePath, destinationPath, excludedRelativePaths, "/MIR", cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes one robocopy operation mode while sharing diagnostics, cancellation, and unavailable-tool fallback behavior.
+    /// </summary>
+    private static bool TryRun(
+        string sourcePath,
+        string destinationPath,
+        IReadOnlyList<string> excludedRelativePaths,
+        string copyMode,
+        CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         _ = excludedRelativePaths ?? throw new ArgumentNullException(nameof(excludedRelativePaths));
         if (Environment.OSVersion.Platform != PlatformID.Win32NT || !Directory.Exists(sourcePath))
@@ -31,8 +56,14 @@ internal static class WindowsDirectoryCopy
             return false;
         }
 
+        // Robocopy requires a directory destination, so remove a stale file occupying that path before launching it.
+        if (File.Exists(destinationPath))
+        {
+            File.Delete(destinationPath);
+        }
+
         Directory.CreateDirectory(destinationPath);
-        string arguments = BuildArguments(sourcePath, destinationPath, excludedRelativePaths);
+        string arguments = BuildArguments(sourcePath, destinationPath, copyMode, excludedRelativePaths);
         ProcessStartInfo startInfo = new()
         {
             FileName = "robocopy",
@@ -99,16 +130,15 @@ internal static class WindowsDirectoryCopy
     }
 
     /// <summary>
-    /// Builds one robocopy command line that performs a multithreaded recursive copy while suppressing noisy progress
-    /// output.
+    /// Builds one robocopy command line for the selected recursive copy mode while suppressing noisy progress output.
     /// </summary>
-    private static string BuildArguments(string sourcePath, string destinationPath, IReadOnlyList<string> excludedRelativePaths)
+    private static string BuildArguments(string sourcePath, string destinationPath, string copyMode, IReadOnlyList<string> excludedRelativePaths)
     {
         List<string> arguments = new()
         {
             Quote(sourcePath),
             Quote(destinationPath),
-            "/E",
+            copyMode,
             "/COPY:DAT",
             "/DCOPY:DAT",
             "/R:1",

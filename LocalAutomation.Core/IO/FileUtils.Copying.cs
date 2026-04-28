@@ -13,6 +13,25 @@ public static partial class FileUtils
     public static void CopyDirectory(string sourcePath, string destinationPath, bool placeInside = false, IEnumerable<string>? excludedRelativePaths = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        (sourcePath, destinationPath) = ResolveDirectoryOperationPaths(sourcePath, destinationPath, placeInside);
+        DirectoryCopy.Copy(sourcePath, destinationPath, excludedRelativePaths, cancellationToken);
+    }
+
+    /// <summary>
+    /// Mirrors one directory tree to the destination path, deleting destination entries absent from the source tree.
+    /// </summary>
+    public static void MirrorDirectory(string sourcePath, string destinationPath, bool placeInside = false, IEnumerable<string>? excludedRelativePaths = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        (sourcePath, destinationPath) = ResolveDirectoryOperationPaths(sourcePath, destinationPath, placeInside);
+        DirectoryCopy.Mirror(sourcePath, destinationPath, excludedRelativePaths, cancellationToken);
+    }
+
+    /// <summary>
+    /// Normalizes directory operation paths and applies optional source-directory nesting consistently.
+    /// </summary>
+    private static (string SourcePath, string DestinationPath) ResolveDirectoryOperationPaths(string sourcePath, string destinationPath, bool placeInside)
+    {
         sourcePath = Path.GetFullPath(sourcePath);
         destinationPath = Path.GetFullPath(destinationPath);
 
@@ -22,7 +41,7 @@ public static partial class FileUtils
             destinationPath = Path.Combine(destinationPath, directoryName);
         }
 
-        DirectoryCopy.Copy(sourcePath, destinationPath, excludedRelativePaths, cancellationToken);
+        return (sourcePath, destinationPath);
     }
 
     /// <summary>

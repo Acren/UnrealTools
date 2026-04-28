@@ -63,16 +63,32 @@ namespace UnrealAutomationCommon.Unreal
         /// </summary>
         public static IReadOnlySet<string> GetProjectPluginNames(Project project)
         {
-            if (!Directory.Exists(project.PluginsPath))
-            {
-                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            }
-
-            return Directory.GetDirectories(project.PluginsPath, "*", SearchOption.AllDirectories)
-                .Where(PluginPaths.Instance.IsTargetDirectory)
+            return GetProjectPluginDirectories(project)
                 .Select(Path.GetFileName)
                 .Where(pluginName => !string.IsNullOrWhiteSpace(pluginName))
                 .Select(pluginName => pluginName!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Reads plugin directory paths relative to the project Plugins root so cache identity and stale-plugin cleanup use
+        /// the filesystem location Unreal will scan, not only the plugin display name.
+        /// </summary>
+        public static IReadOnlySet<string> GetProjectPluginRelativePaths(Project project)
+        {
+            return GetProjectPluginDirectories(project)
+                .Select(pluginDirectoryPath => Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Reads project plugin module declarations as stable shape strings so structural plugin changes receive a fresh
+        /// build cache while ordinary source edits keep using the warm cache for the same module layout.
+        /// </summary>
+        public static IReadOnlySet<string> GetProjectPluginModuleShape(Project project)
+        {
+            return GetProjectPluginDirectories(project)
+                .SelectMany(pluginDirectoryPath => GetPluginModuleShape(project, pluginDirectoryPath))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
@@ -196,6 +212,18 @@ namespace UnrealAutomationCommon.Unreal
 
             return Directory.GetDirectories(project.PluginsPath, "*", SearchOption.AllDirectories)
                 .Where(PluginPaths.Instance.IsTargetDirectory);
+        }
+
+        /// <summary>
+        /// Builds module-shape entries for one plugin without creating a watcher-backed Plugin target.
+        /// </summary>
+        private static IEnumerable<string> GetPluginModuleShape(Project project, string pluginDirectoryPath)
+        {
+            string relativePluginPath = Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath);
+            string pluginDescriptorPath = PluginPaths.Instance.FindRequiredTargetFile(pluginDirectoryPath);
+            PluginDescriptor pluginDescriptor = PluginDescriptor.Load(pluginDescriptorPath);
+            return pluginDescriptor.Modules
+                .Select(module => $"{relativePluginPath}:Module:{module.Name}:{module.Type}");
         }
     }
 }
