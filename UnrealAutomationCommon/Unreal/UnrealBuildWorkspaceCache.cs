@@ -1,12 +1,10 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using LocalAutomation.Core.IO;
 using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
@@ -20,83 +18,16 @@ namespace UnrealAutomationCommon.Unreal
     internal static class UnrealBuildWorkspaceCache
     {
         /// <summary>
-        /// Stores one in-process semaphore per stable cache key so refresh, build, and copy-back remain single-writer for
-        /// each cached project path while unrelated cache keys can still proceed independently.
-        /// </summary>
-        private static readonly ConcurrentDictionary<string, SemaphoreSlim> ProjectWorkspaceLocks = new(StringComparer.Ordinal);
-
-        /// <summary>
         /// Keeps cache hash folders short while leaving enough entropy that unrelated build identities do not collide in
         /// the persistent Unreal build cache root.
         /// </summary>
         private const int CacheHashLength = 16;
 
         /// <summary>
-        /// Refreshes a stable cached project workspace, runs a build against that cached path, and copies build outputs
-        /// back to the session project that downstream package and launch steps continue to use.
-        /// </summary>
-        public static async Task RunProjectBuildAsync(
-            Engine engine,
-            Project sourceProject,
-            string operationName,
-            string role,
-            string subjectName,
-            BuildConfiguration configuration,
-            UbtCompiler compiler,
-            UbtCppStandard cppStandard,
-            FileMaterializationSpec materializationSpec,
-            IEnumerable<string> shapeParts,
-            Func<Project, Task> buildAsync,
-            ILogger logger,
-            CancellationToken cancellationToken)
-        {
-            if (engine == null)
-            {
-                throw new ArgumentNullException(nameof(engine));
-            }
-
-            if (sourceProject == null)
-            {
-                throw new ArgumentNullException(nameof(sourceProject));
-            }
-
-            if (materializationSpec == null)
-            {
-                throw new ArgumentNullException(nameof(materializationSpec));
-            }
-            if (buildAsync == null)
-            {
-                throw new ArgumentNullException(nameof(buildAsync));
-            }
-            if (logger == null)
-            {
-                throw new ArgumentNullException(nameof(logger));
-            }
-
-            string cacheKey = CreateProjectCacheKey(engine, operationName, role, subjectName, sourceProject.Name, configuration, compiler, cppStandard, shapeParts);
-            string cachedProjectPath = GetProjectWorkspacePath(cacheKey);
-            SemaphoreSlim cacheLock = ProjectWorkspaceLocks.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
-
-            logger.LogInformation("Waiting for Unreal build workspace cache '{CacheKey}' at '{CachePath}'.", cacheKey, cachedProjectPath);
-            await cacheLock.WaitAsync(cancellationToken);
-            try
-            {
-                logger.LogInformation("Using Unreal build workspace cache '{CacheKey}' at '{CachePath}'.", cacheKey, cachedProjectPath);
-                using Project cachedProject = PrepareProjectWorkspace(sourceProject, cachedProjectPath, materializationSpec, logger, cancellationToken);
-                await buildAsync(cachedProject);
-                CopyProjectBuildOutputs(cachedProject, sourceProject, logger, cancellationToken);
-            }
-            finally
-            {
-                cacheLock.Release();
-            }
-        }
-
-        /// <summary>
         /// Builds a stable opaque identity for one cached project workspace from compile-environment inputs rather than
         /// source content, allowing normal source edits to reuse the same warm Intermediate tree.
         /// </summary>
-        private static string CreateProjectCacheKey(
+        internal static string CreateProjectCacheKey(
             Engine engine,
             string operationName,
             string role,
@@ -133,7 +64,7 @@ namespace UnrealAutomationCommon.Unreal
         /// Returns the stable cached project directory for one build identity. The cache key already encodes the readable
         /// build identity, so the on-disk path stays deliberately short for Unreal's deep Intermediate output tree.
         /// </summary>
-        private static string GetProjectWorkspacePath(string cacheKey)
+        internal static string GetProjectWorkspacePath(string cacheKey)
         {
             return Path.Combine(
                 global::LocalAutomation.Runtime.OutputPaths.TempRoot(),
@@ -146,7 +77,7 @@ namespace UnrealAutomationCommon.Unreal
         /// Refreshes authored project inputs into a stable cache path without deleting Intermediate, then returns a project
         /// target rooted at that cached path for direct UBT/UAT build operations.
         /// </summary>
-        private static Project PrepareProjectWorkspace(Project sourceProject, string cachedProjectPath, FileMaterializationSpec materializationSpec, ILogger logger, CancellationToken cancellationToken)
+        internal static Project PrepareProjectWorkspace(Project sourceProject, string cachedProjectPath, FileMaterializationSpec materializationSpec, ILogger logger, CancellationToken cancellationToken)
         {
             Directory.CreateDirectory(cachedProjectPath);
             DeleteVolatileProjectState(cachedProjectPath, logger);
@@ -233,7 +164,7 @@ namespace UnrealAutomationCommon.Unreal
         /// Copies generated project and plugin build outputs from the cached build project back into the session project
         /// that package, launch, and archive tasks read from.
         /// </summary>
-        private static void CopyProjectBuildOutputs(Project cachedProject, Project sessionProject, ILogger logger, CancellationToken cancellationToken)
+        internal static void CopyProjectBuildOutputs(Project cachedProject, Project sessionProject, ILogger logger, CancellationToken cancellationToken)
         {
             FileMaterializationSpec buildOutputs = MaterializationSpecs.CreateProjectBuildOutputs(cachedProject);
             /* Session projects accumulate outputs from several independent build steps: editor receipts, game receipts,

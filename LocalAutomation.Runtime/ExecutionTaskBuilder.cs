@@ -50,7 +50,6 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
         _task = task;
         _parentId = parentId;
         _lastTaskIds = lastTaskIds;
-        _owner.SetOperationParameters(_task, owner.OperationParameters);
         Id = _task.Id;
     }
 
@@ -194,22 +193,28 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// <summary>
     /// Declares one child operation using the child operation's own default root title.
     /// </summary>
-    public ExecutionChildOperationBuilder AddChildOperation<TOperation>(Func<OperationParameters> createParameters)
+    public ExecutionChildOperationBuilder AddChildOperation<TOperation>(
+        Func<OperationParameters> createParameters,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
         where TOperation : Operation, new()
     {
         Operation childOperation = Operation.CreateOperation(typeof(TOperation));
-        return AddChildOperation(childOperation, createParameters);
+        return AddChildOperation(childOperation, createParameters, createRuntimeParameters);
     }
 
     /// <summary>
-    /// Declares one child operation beneath the current task and returns a builder that configures the imported child root
-    /// directly after the child plan is expanded and inserted.
+    /// Declares one child operation beneath the current task, expands its plan from authoring parameters, and optionally
+    /// supplies runtime parameters for execution-time targets that do not exist during plan authoring.
     /// </summary>
-    public ExecutionChildOperationBuilder AddChildOperation<TOperation>(string title, Func<OperationParameters> createParameters, string? description = null)
+    public ExecutionChildOperationBuilder AddChildOperation<TOperation>(
+        string title,
+        Func<OperationParameters> createParameters,
+        string? description = null,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
         where TOperation : Operation, new()
     {
         Operation childOperation = Operation.CreateOperation(typeof(TOperation));
-        return AddChildOperation(title, childOperation, createParameters, description);
+        return AddChildOperation(title, childOperation, createParameters, description, createRuntimeParameters);
     }
 
     /// <summary>
@@ -217,19 +222,27 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     /// to author inline or stateful child operations without creating a one-off operation type only to satisfy the builder
     /// API.
     /// </summary>
-    public ExecutionChildOperationBuilder AddChildOperation(Operation childOperation, Func<OperationParameters> createParameters)
+    public ExecutionChildOperationBuilder AddChildOperation(
+        Operation childOperation,
+        Func<OperationParameters> createParameters,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
     {
         _ = childOperation ?? throw new ArgumentNullException(nameof(childOperation));
-        return AddChildOperation(childOperation.OperationName, childOperation, createParameters);
+        return AddChildOperation(childOperation.OperationName, childOperation, createParameters, createRuntimeParameters: createRuntimeParameters);
     }
 
     /// <summary>
     /// Declares one specific child operation instance beneath the current task and returns a builder that configures the
     /// imported child root directly after the child plan is expanded and inserted.
     /// </summary>
-    public ExecutionChildOperationBuilder AddChildOperation(string title, Operation childOperation, Func<OperationParameters> createParameters, string? description = null)
+    public ExecutionChildOperationBuilder AddChildOperation(
+        string title,
+        Operation childOperation,
+        Func<OperationParameters> createParameters,
+        string? description = null,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
     {
-        return _owner.AttachChildOperation(_task, childOperation, createParameters, title, description);
+        return _owner.AttachChildOperation(_task, childOperation, createParameters, title, description, createRuntimeParameters);
     }
 
     /// <summary>

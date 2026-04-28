@@ -51,6 +51,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 ? enabledVersions.ToList()
                 : new List<EngineVersion> { plugin.EngineInstance.Version };
             AutomationOptions automationOptions = operationParameters.GetOptions<AutomationOptions>();
+
             root.Children(engines =>
             {
                 foreach (EngineVersion engineVersion in targetVersions)
@@ -72,7 +73,26 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 .Run(TestStandaloneAsync)
                             .Then("Package Project")
                                 .Describe("Package the example project with the installed plugin")
-                                .Run(PackageProjectAsync)
+                                .Children(packageScope =>
+                                {
+                                    CachedProjectWorkspaceTasks.AddBuild(
+                                            packageScope,
+                                            operationParameters,
+                                            "Build Example Project Target",
+                                            UnrealExecutionLocks.GetBuildWorkspaceCacheLock(nameof(VerifyDeployment), "PackageProjectBuild", plugin.Name, currentEngineVersion),
+                                            nameof(VerifyDeployment),
+                                            "PackageProjectBuild",
+                                            plugin.Name,
+                                            context => context.GetData<VerificationState>().Engine,
+                                            context => context.GetData<VerificationState>().ExampleProject.ProjectPath,
+                                            new BuildProjectTarget(),
+                                            CreateCachedVerificationBuildParameters)
+                                        .Describe("Build the example project target through a stable cached workspace before package-only BuildCookRun");
+
+                                    packageScope.Task("Package Example Project")
+                                        .Describe("Package the example project using the binaries copied back from the cached build workspace")
+                                        .Run(PackageProjectAsync);
+                                })
                             .Then("Test Package")
                                 .Describe("Run the packaged project verification pass")
                                 .When(automationOptions.RunTests, "Run Tests is off.")
@@ -173,9 +193,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             VerificationState state = context.GetOperationData<VerificationState>();
 
-            // Build from a stable cached project path first so UBT can reuse shared PCH state, then package the session
-            // project with BuildCookRun's build phase disabled so package and launch artifacts remain session-isolated.
-            await BuildExampleProjectThroughCacheAsync(state, context);
+            // Package the session project with BuildCookRun's build phase disabled because the authored cached-build
+            // sibling already copied the required receipts and binaries back into the session project.
             global::LocalAutomation.Runtime.OperationParameters packageParameters = CreateExampleProjectParams(state, outputPathOverride: state.PackageOutputPath);
             packageParameters.GetOptions<PackageOptions>().Build = false;
             packageParameters.GetOptions<AdditionalArgumentsOptions>().Arguments = "-nocompileeditor";
@@ -183,40 +202,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Compiles the extracted example project through a stable cache workspace and copies build outputs back before the
-        /// package-only BuildCookRun pass reads receipts and binaries from the session project.
+        /// Creates direct Build.bat parameters for the cached example-project build used before package-only verification.
         /// </summary>
-        private Task BuildExampleProjectThroughCacheAsync(VerificationState state, global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        private global::LocalAutomation.Runtime.OperationParameters CreateCachedVerificationBuildParameters(global::LocalAutomation.Runtime.IOperationParameterContext context, Project cachedProject)
         {
-            IReadOnlySet<string> projectPluginNames = MaterializationSpecs.GetProjectPluginNames(state.ExampleProject);
-            FileMaterializationSpec materializationSpec = MaterializationSpecs.CreateProject(state.ExampleProject, projectPluginNames);
-            return UnrealBuildWorkspaceCache.RunProjectBuildAsync(
-                state.Engine,
-                state.ExampleProject,
-                nameof(VerifyDeployment),
-                "PackageProjectBuild",
-                state.SourcePlugin.Name,
-                BuildConfiguration.Development,
-                UbtCompiler.Default,
-                UbtCppStandard.Default,
-                materializationSpec,
-                projectPluginNames.Select(pluginName => $"ProjectPlugin:{pluginName}"),
-                cachedProject => RunChildOperationAsync(
-                    new BuildProjectTarget(),
-                    CreateCachedExampleProjectBuildParams(state, cachedProject),
-                    context,
-                    required: true,
-                    failureMessage: "Failed to build example project for packaging",
-                    hideChildOperationRootInGraph: true),
-                context.Logger,
-                context.CancellationToken);
-        }
-
-        /// <summary>
-        /// Creates direct Build.bat parameters for the cached example project build used before package-only verification.
-        /// </summary>
-        private global::LocalAutomation.Runtime.OperationParameters CreateCachedExampleProjectBuildParams(VerificationState state, Project cachedProject)
-        {
+            VerificationState state = context.GetData<VerificationState>();
             global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
             parameters.Target = cachedProject;
             parameters.OutputPathOverride = Path.Combine(state.TempPath, "CachedExampleProjectBuild");

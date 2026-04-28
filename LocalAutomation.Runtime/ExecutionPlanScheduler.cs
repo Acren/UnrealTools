@@ -27,6 +27,8 @@ public sealed class ExecutionPlanScheduler
     private readonly ExecutionSession _session;
     private readonly object _workSignalSyncRoot = new();
     private readonly object _executionCancellationSyncRoot = new();
+    // Task-scope locks are held by the task that declared them, whether that task owns a body or an authored subtree.
+    private readonly Dictionary<ExecutionTaskId, ActiveExecutionLockScope> _activeExecutionLockScopes = new();
     private TaskCompletionSource<bool> _workAvailableSignal = CreateWorkAvailableSignal();
     private CancellationTokenSource? _schedulerCancellationSource;
     private CancellationToken _executionCancellationToken;
@@ -121,6 +123,7 @@ public sealed class ExecutionPlanScheduler
         }
         finally
         {
+            ReleaseAllActiveExecutionLockScopes();
             ExecutionLocks.Changed -= HandleExecutionLocksChanged;
             _session.TaskGraphChanged -= HandleSessionWorkChanged;
             _session.TaskStateChanged -= HandleSessionTaskChanged;
@@ -288,6 +291,7 @@ public sealed class ExecutionPlanScheduler
         if (state == ExecutionTaskState.Completed || outcome != null)
         {
             ExecutionLocks.UnregisterWaiter(taskId);
+            ReleaseExecutionLockScopeIfComplete(taskId);
         }
 
         NormalizeRunningTaskTerminalOutcome(taskId, state, outcome);
@@ -308,6 +312,125 @@ public sealed class ExecutionPlanScheduler
         }
 
         SignalWorkAvailable();
+    }
+
+    /// <summary>
+    /// Acquires every task-scope lock required before the concrete task body starts. One atomic acquisition covers the
+    /// whole owner chain so parent subtree locks and body locks cannot be granted in a deadlocking partial order.
+    /// </summary>
+    private bool TryAcquireExecutionLocksForStart(ExecutionTask visibleTask, ExecutionTask executingTask, int priority)
+    {
+        ExecutionTaskRuntimeServices runtime = new(_session, this, CreateTaskLogger);
+        IReadOnlyList<PendingExecutionLockScope> pendingScopes = GetPendingExecutionLockScopes(executingTask, runtime);
+        if (pendingScopes.Count == 0)
+        {
+            return true;
+        }
+
+        IReadOnlyList<IReadOnlyList<ExecutionLock>> lockGroups = pendingScopes.Select(scope => scope.Locks).ToList();
+        if (!ExecutionLocks.TryAcquireOrWait(visibleTask.Id, lockGroups, priority, out IReadOnlyList<IAsyncDisposable> acquiredHandles))
+        {
+            MarkTaskWaitingForExecutionLocks(visibleTask, executingTask, pendingScopes.SelectMany(scope => scope.Locks).ToList());
+            return false;
+        }
+
+        for (int index = 0; index < pendingScopes.Count; index += 1)
+        {
+            PendingExecutionLockScope pendingScope = pendingScopes[index];
+            ILogger taskLogger = CreateTaskLogger(pendingScope.Owner.Id);
+            string lockSummary = string.Join(", ", pendingScope.Locks.Select(executionLock => executionLock.Key));
+            taskLogger.LogInformation("Acquired execution lock(s): {ExecutionLocks}", lockSummary);
+            _activeExecutionLockScopes.Add(
+                pendingScope.Owner.Id,
+                new ActiveExecutionLockScope(
+                    pendingScope.Locks.Select(executionLock => executionLock.Key).ToList(),
+                    new LoggedExecutionLockHandle(acquiredHandles[index], taskLogger, lockSummary)));
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Builds the ordered list of lock scopes that must be active before the supplied task body can run. Ancestor scopes
+    /// appear before the body scope so broad subtree locks are acquired and released by their authored owner tasks.
+    /// </summary>
+    private IReadOnlyList<PendingExecutionLockScope> GetPendingExecutionLockScopes(ExecutionTask executingTask, ExecutionTaskRuntimeServices runtime)
+    {
+        HashSet<string> coveredKeys = new(StringComparer.Ordinal);
+        List<PendingExecutionLockScope> pendingScopes = new();
+        foreach (ExecutionTask owner in GetExecutionLockOwners(executingTask))
+        {
+            if (_activeExecutionLockScopes.TryGetValue(owner.Id, out ActiveExecutionLockScope? activeScope))
+            {
+                foreach (string key in activeScope.Keys)
+                {
+                    coveredKeys.Add(key);
+                }
+
+                continue;
+            }
+
+            ExecutionParameterContext parameterContext = new(owner.Id, owner.Title, CreateTaskLogger(owner.Id), _executionCancellationToken, owner.Operation, runtime);
+            List<ExecutionLock> uncoveredLocks = owner.GetExecutionScopeLocks(parameterContext)
+                .Where(executionLock => coveredKeys.Add(executionLock.Key))
+                .ToList();
+            if (uncoveredLocks.Count > 0)
+            {
+                pendingScopes.Add(new PendingExecutionLockScope(owner, uncoveredLocks));
+            }
+        }
+
+        return pendingScopes;
+    }
+
+    /// <summary>
+    /// Returns the ancestor-to-descendant task chain whose lock declarations can protect the supplied executable body.
+    /// The executable task itself is included so body-only locks use the same task-scope mechanism as container locks.
+    /// </summary>
+    private static IReadOnlyList<ExecutionTask> GetExecutionLockOwners(ExecutionTask executingTask)
+    {
+        List<ExecutionTask> owners = new();
+        for (ExecutionTask? currentTask = executingTask; currentTask != null; currentTask = currentTask.Parent)
+        {
+            owners.Add(currentTask);
+        }
+
+        owners.Reverse();
+        return owners;
+    }
+
+    /// <summary>
+    /// Releases a task-scope lock once the owning task has reached a terminal or doomed state and no active descendant
+    /// body is still unwinding inside that scope.
+    /// </summary>
+    private void ReleaseExecutionLockScopeIfComplete(ExecutionTaskId taskId)
+    {
+        if (!_activeExecutionLockScopes.TryGetValue(taskId, out ActiveExecutionLockScope? activeScope))
+        {
+            return;
+        }
+
+        if (_session.GetTask(taskId).HasActiveExecutionInSubtree)
+        {
+            return;
+        }
+
+        _activeExecutionLockScopes.Remove(taskId);
+        ExecutionLocks.ReleaseHandle(activeScope.Handle);
+    }
+
+    /// <summary>
+    /// Releases every still-held task-scope lock during scheduler teardown so fatal errors cannot leave process-wide lock
+    /// keys stranded for later sessions.
+    /// </summary>
+    private void ReleaseAllActiveExecutionLockScopes()
+    {
+        foreach (ActiveExecutionLockScope activeScope in _activeExecutionLockScopes.Values.ToList())
+        {
+            ExecutionLocks.ReleaseHandle(activeScope.Handle);
+        }
+
+        _activeExecutionLockScopes.Clear();
     }
 
     /// <summary>
@@ -371,43 +494,34 @@ public sealed class ExecutionPlanScheduler
                     continue;
                 }
 
-                IReadOnlyList<ExecutionLock> executionLocks = nextStartTask.GetDeclaredExecutionLocks();
                 int priority = CountDownstreamWork(nextStartTask);
-                if (!TryAcquireExecutionLocksForStart(task, nextStartTask, executionLocks, priority, out IAsyncDisposable acquiredLocks))
+                if (!TryAcquireExecutionLocksForStart(task, nextStartTask, priority))
                 {
                     continue;
                 }
 
-                try
-                {
-                    _session.StartTaskAsync(
-                        task.Id,
-                        CreateTaskLogger,
-                        cancellationToken,
-                        this,
-                        acquiredLocks,
-                        (startedTask, executeAsync) =>
-                        {
-                            TaskCompletionSource<OperationResult> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                            startedTask.AttachActiveExecution(completionSource.Task);
+                _session.StartTaskAsync(
+                    task.Id,
+                    CreateTaskLogger,
+                    cancellationToken,
+                    this,
+                    (startedTask, executeAsync) =>
+                    {
+                        TaskCompletionSource<OperationResult> completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                        startedTask.AttachActiveExecution(completionSource.Task);
 
-                            _logger.LogDebug(
-                                "Dispatching task '{TaskPath}' ({TaskId}) to worker execution.",
-                                _session.GetTaskDisplayPath(startedTask.Id),
-                                startedTask.Id);
-                            StartTaskExecutionAsync(startedTask, executeAsync, completionSource);
-                            return completionSource.Task;
-                        });
+                        _logger.LogDebug(
+                            "Dispatching task '{TaskPath}' ({TaskId}) to worker execution.",
+                            _session.GetTaskDisplayPath(startedTask.Id),
+                            startedTask.Id);
+                        StartTaskExecutionAsync(startedTask, executeAsync, completionSource);
+                        return completionSource.Task;
+                    },
+                    executionLocksAdmitted: true);
 
-                    startedAny = true;
-                    startedThisPass = true;
-                    startedCount += 1;
-                }
-                catch
-                {
-                    acquiredLocks.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                    throw;
-                }
+                startedAny = true;
+                startedThisPass = true;
+                startedCount += 1;
             }
 
             /* A pass that found structurally ready work but could not start any of it means every candidate is blocked on
@@ -421,35 +535,6 @@ public sealed class ExecutionPlanScheduler
         readyActivity.SetTag("started.count", startedCount);
         readyActivity.SetTag("pass.count", passCount);
         return startedAny;
-    }
-
-    /// <summary>
-    /// Acquires the declared locks for a ready task or records that the task is globally waiting for those locks.
-    /// </summary>
-    private bool TryAcquireExecutionLocksForStart(
-        ExecutionTask visibleTask,
-        ExecutionTask executingTask,
-        IReadOnlyList<ExecutionLock> executionLocks,
-        int priority,
-        out IAsyncDisposable acquiredLocks)
-    {
-        if (executionLocks.Count == 0)
-        {
-            acquiredLocks = ExecutionLocks.EmptyHandle;
-            return true;
-        }
-
-        if (ExecutionLocks.TryAcquireOrWait(visibleTask.Id, executionLocks, priority, out acquiredLocks))
-        {
-            ILogger taskLogger = CreateTaskLogger(executingTask.Id);
-            string lockSummary = string.Join(", ", executionLocks.Select(executionLock => executionLock.Key));
-            taskLogger.LogInformation("Acquired execution lock(s): {ExecutionLocks}", lockSummary);
-            acquiredLocks = new LoggedExecutionLockHandle(acquiredLocks, taskLogger, lockSummary);
-            return true;
-        }
-
-        MarkTaskWaitingForExecutionLocks(visibleTask, executingTask, executionLocks);
-        return false;
     }
 
     /// <summary>
@@ -559,6 +644,17 @@ public sealed class ExecutionPlanScheduler
             }
         }
     }
+
+    /// <summary>
+    /// Carries one not-yet-acquired task-scope lock declaration together with the task that owns the eventual release.
+    /// </summary>
+    private sealed record PendingExecutionLockScope(ExecutionTask Owner, IReadOnlyList<ExecutionLock> Locks);
+
+    /// <summary>
+    /// Tracks one granted task-scope lock so descendant duplicate declarations can see which keys are already protected
+    /// and the scheduler can release the exact grant when the owning task scope closes.
+    /// </summary>
+    private sealed record ActiveExecutionLockScope(IReadOnlyList<string> Keys, IAsyncDisposable Handle);
 
     private sealed record OrderedReadyTask(
         ExecutionTask Task,

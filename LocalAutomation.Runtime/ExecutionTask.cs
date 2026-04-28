@@ -58,9 +58,9 @@ internal record TaskSpec(
     IReadOnlyList<ExecutionTaskId> Dependencies,
     bool Enabled,
     string DisabledReason,
-    OperationParameters OperationParameters,
     IReadOnlyList<Type> DeclaredOptionTypes,
     IReadOnlyList<ExecutionLock> DeclaredExecutionLocks,
+    Func<IOperationParameterContext, OperationParameters>? ResolveOperationParameters,
     Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync,
     bool IsOperationRoot,
     bool IsHiddenInGraph);
@@ -89,6 +89,11 @@ public class ExecutionTask : INotifyPropertyChanged
     private readonly object _activeExecutionSyncRoot = new();
     private Task<OperationResult>? _activeExecutionTask;
     private readonly Dictionary<Type, object> _dataByType = new();
+    /* Operation parameters are resolved lazily once per operation root so every task in that operation subtree observes
+       one coherent target, option, and output-path bag during the live run. */
+    private readonly object _operationParametersSyncRoot = new();
+    private OperationParameters? _resolvedOperationParameters;
+    private bool _operationParametersResolved;
     /* Guards the atomic "subscribe then inspect current state" path used by task-local state waiters so they can rely
        directly on the task's own StateChanged event without a second waiter registry. */
     private readonly object _stateChangeSyncRoot = new();
@@ -185,8 +190,6 @@ public class ExecutionTask : INotifyPropertyChanged
 
     public string DisabledReason => _spec.DisabledReason;
 
-    public OperationParameters OperationParameters => _spec.OperationParameters;
-
     public IReadOnlyList<Type> DeclaredOptionTypes => _spec.DeclaredOptionTypes;
 
     /// <summary>
@@ -260,6 +263,12 @@ public class ExecutionTask : INotifyPropertyChanged
             }
         }
     }
+
+    /// <summary>
+    /// Returns whether this task or any descendant currently owns a live execution handle. Scope-level execution locks use
+    /// this to stay held while cancellation or failure cleanup is still unwinding active descendant bodies.
+    /// </summary>
+    internal bool HasActiveExecutionInSubtree => HasActiveExecution || _children.Any(child => child.HasActiveExecutionInSubtree);
 
     /// <summary>
     /// Gets whether this task is the root container for one operation subtree. Operation-scoped context walks upward to
@@ -547,32 +556,20 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Returns the execution locks required for the next startable work item in this task subtree.
+    /// Returns the locks that protect this task's execution scope. Explicit task-authored locks protect both body tasks
+    /// and bodyless containers, while operation-declared locks apply only to executable task bodies so operation defaults
+    /// do not accidentally serialize structural parent scopes.
     /// </summary>
-    internal IReadOnlyList<ExecutionLock> GetExecutionLocksForNextStart()
-    {
-        ExecutionTask? nextStartTask = TryGetNextStartableTask();
-        if (nextStartTask == null)
-        {
-            return Array.Empty<ExecutionLock>();
-        }
-
-        return nextStartTask.GetDeclaredExecutionLocks();
-    }
-
-    /// <summary>
-    /// Returns the execution locks that the runtime should hold while this specific task body executes. Task-authored
-    /// locks take priority so inline builder-authored tasks can express contention surgically, and otherwise the task
-    /// falls back to the owning operation's declared lock policy.
-    /// </summary>
-    internal IReadOnlyList<ExecutionLock> GetDeclaredExecutionLocks()
+    internal IReadOnlyList<ExecutionLock> GetExecutionScopeLocks(IOperationParameterContext context)
     {
         if (_spec.DeclaredExecutionLocks.Count > 0)
         {
             return _spec.DeclaredExecutionLocks;
         }
 
-        return Operation.GetDeclaredExecutionLocks(CreateValidatedOperationParameters());
+        return HasAuthoredBody
+            ? Operation.GetDeclaredExecutionLocks(CreateValidatedOperationParameters(context))
+            : Array.Empty<ExecutionLock>();
     }
 
     /// <summary>
@@ -771,15 +768,59 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Assigns the validated parameter context that builder-authored execution will use at runtime.
+    /// Assigns the operation-root parameter resolver that all tasks inside this operation subtree use during execution.
     /// </summary>
-    internal void SetOperationParameters(OperationParameters operationParameters, IReadOnlyList<Type> declaredOptionTypes)
+    internal void SetOperationParameterResolver(Func<IOperationParameterContext, OperationParameters> resolveOperationParameters)
     {
-        _spec = _spec with
+        _spec = _spec with { ResolveOperationParameters = resolveOperationParameters ?? throw new ArgumentNullException(nameof(resolveOperationParameters)) };
+    }
+
+    /// <summary>
+    /// Resolves the single operation parameter bag for this task's nearest operation root.
+    /// </summary>
+    internal OperationParameters ResolveOperationParameters(IOperationParameterContext context)
+    {
+        return GetOperationRoot().GetOrCreateOperationParameters(context);
+    }
+
+    /// <summary>
+    /// Finds the nearest operation-root ancestor so runtime child-operation parameters stay scoped to the operation that
+    /// declared them and never leak into nested child operations with their own parameter identity.
+    /// </summary>
+    private ExecutionTask GetOperationRoot()
+    {
+        for (ExecutionTask? currentTask = this; currentTask != null; currentTask = currentTask.Parent)
         {
-            OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters)),
-            DeclaredOptionTypes = declaredOptionTypes ?? throw new ArgumentNullException(nameof(declaredOptionTypes))
-        };
+            if (currentTask.IsOperationRoot)
+            {
+                return currentTask;
+            }
+        }
+
+        throw new InvalidOperationException($"Task '{Id}' is not contained within any operation root.");
+    }
+
+    /// <summary>
+    /// Lazily creates and caches the operation parameter bag for one operation root so parameter resolution has one
+    /// runtime path for normal operations and imported child operations alike.
+    /// </summary>
+    private OperationParameters GetOrCreateOperationParameters(IOperationParameterContext context)
+    {
+        lock (_operationParametersSyncRoot)
+        {
+            if (_operationParametersResolved)
+            {
+                return _resolvedOperationParameters
+                    ?? throw new InvalidOperationException($"Operation parameters for task '{Id}' were resolved as null.");
+            }
+
+            Func<IOperationParameterContext, OperationParameters> resolveOperationParameters = _spec.ResolveOperationParameters
+                ?? throw new InvalidOperationException($"Operation root task '{Id}' does not define an operation parameter resolver.");
+            _resolvedOperationParameters = resolveOperationParameters(context)
+                ?? throw new InvalidOperationException($"Operation root task '{Id}' resolved null operation parameters.");
+            _operationParametersResolved = true;
+            return _resolvedOperationParameters;
+        }
     }
 
     /// <summary>
@@ -807,12 +848,12 @@ public class ExecutionTask : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Builds the validated parameter view that both operation-declared locks and task execution use for this specific
-    /// task identity.
+    /// Builds the validated parameter view that operation-declared locks use for this task's resolved operation parameter
+    /// bag.
     /// </summary>
-    private ValidatedOperationParameters CreateValidatedOperationParameters()
+    private ValidatedOperationParameters CreateValidatedOperationParameters(IOperationParameterContext context)
     {
-        return new ValidatedOperationParameters(Title, OperationParameters, DeclaredOptionTypes);
+        return new ValidatedOperationParameters(Title, ResolveOperationParameters(context), DeclaredOptionTypes);
     }
 
     /// <summary>

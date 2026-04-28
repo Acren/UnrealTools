@@ -117,7 +117,7 @@ public sealed class ExecutionSession
 
     public string OperationName => RootTask.Operation.OperationName;
 
-    public string TargetName => RootTask.OperationParameters.Target?.DisplayName ?? string.Empty;
+    public string TargetName => GetRootOperationParameters().Target?.DisplayName ?? string.Empty;
 
     /// <summary>
     /// Gets the session-scoped logger that writes into this session's buffered log streams while still mirroring output
@@ -138,7 +138,7 @@ public sealed class ExecutionSession
 
         ExecutionTask rootTask = RootTask;
         Operation operation = rootTask.Operation;
-        OperationParameters operationParameters = rootTask.OperationParameters;
+        OperationParameters operationParameters = GetRootOperationParameters();
 
         /* Top-level execution owns the concrete output directory lifecycle so each run starts from a clean workspace
            before any schedulable task body begins. */
@@ -536,6 +536,16 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
+    /// Resolves the top-level operation parameters through the same operation-root resolver used by scheduled task bodies.
+    /// </summary>
+    private OperationParameters GetRootOperationParameters()
+    {
+        ExecutionTask rootTask = RootTask;
+        ExecutionParameterContext parameterContext = new(rootTask.Id, rootTask.Title, _sessionLogger, _cancellationTokenSource.Token, rootTask.Operation, runtime: null);
+        return rootTask.ResolveOperationParameters(parameterContext);
+    }
+
+    /// <summary>
     /// Blocks until the supplied task ids reach terminal runtime states.
     /// </summary>
     public Task WaitForTaskCompletionAsync(IReadOnlyCollection<ExecutionTaskId> taskIds, CancellationToken cancellationToken)
@@ -721,31 +731,11 @@ public sealed class ExecutionSession
     /// <summary>
     /// Starts one lock-free scheduler-ready task through the single runtime start path for direct internal callers.
     /// </summary>
-    internal TaskStartResult StartTaskAsync(ExecutionTaskId taskId, Func<ExecutionTaskId, ILogger> createLogger, CancellationToken cancellationToken, ExecutionPlanScheduler scheduler, TaskExecutionRunner runTaskAsync)
-    {
-        // Direct session-start callers may only bypass the scheduler's lock coordinator for genuinely lock-free work.
-        ExecutionTask startedTask = GetTask(taskId).ResolveTaskToStart();
-        if (startedTask.GetDeclaredExecutionLocks().Count > 0)
-        {
-            throw new InvalidOperationException($"Task '{startedTask.Id}' cannot start without an acquired execution-lock handle.");
-        }
-
-        return StartTaskAsync(taskId, createLogger, cancellationToken, scheduler, ExecutionLocks.EmptyHandle, runTaskAsync);
-    }
-
-    /// <summary>
-    /// Starts one scheduler-ready task after the scheduler has already acquired any declared execution locks for it.
-    /// </summary>
-    internal TaskStartResult StartTaskAsync(ExecutionTaskId taskId, Func<ExecutionTaskId, ILogger> createLogger, CancellationToken cancellationToken, ExecutionPlanScheduler scheduler, IAsyncDisposable acquiredLocks, TaskExecutionRunner runTaskAsync)
+    internal TaskStartResult StartTaskAsync(ExecutionTaskId taskId, Func<ExecutionTaskId, ILogger> createLogger, CancellationToken cancellationToken, ExecutionPlanScheduler scheduler, TaskExecutionRunner runTaskAsync, bool executionLocksAdmitted = false)
     {
         if (createLogger == null)
         {
             throw new ArgumentNullException(nameof(createLogger));
-        }
-
-        if (acquiredLocks == null)
-        {
-            throw new ArgumentNullException(nameof(acquiredLocks));
         }
 
         if (runTaskAsync == null)
@@ -753,11 +743,16 @@ public sealed class ExecutionSession
             throw new ArgumentNullException(nameof(runTaskAsync));
         }
 
+        // Direct session-start callers may only bypass the scheduler's lock coordinator for genuinely lock-free work.
         ExecutionTask task = GetTask(taskId);
-        ValidatedOperationParameters validatedOperationParameters = new(task.Title, task.OperationParameters, task.DeclaredOptionTypes);
-        ExecutionTaskRuntimeServices runtime = new(this, scheduler, createLogger);
-        ExecutionTaskContext context = new(task.Id, task.Title, createLogger(task.Id), cancellationToken, validatedOperationParameters, task.Operation, runtime);
         ExecutionTask startedTask = task.ResolveTaskToStart();
+        ExecutionTaskRuntimeServices runtime = new(this, scheduler, createLogger);
+        if (!executionLocksAdmitted && GetRequiredExecutionLockScopesForStart(startedTask).Any(scope => scope.GetExecutionScopeLocks(new ExecutionParameterContext(scope.Id, scope.Title, createLogger(scope.Id), cancellationToken, scope.Operation, runtime)).Count > 0))
+        {
+            throw new InvalidOperationException($"Task '{startedTask.Id}' cannot start without scheduler-managed execution-lock admission.");
+        }
+
+        ExecutionTaskContext context = ExecutionTaskContext.CreateForRuntimeTask(task, createLogger(task.Id), cancellationToken, runtime);
         ExecutionTask visibleStartedTask = task;
         ExecutionTaskContext startedContext = startedTask.Id == task.Id ? context : context.CreateForTask(startedTask);
 
@@ -767,14 +762,28 @@ public sealed class ExecutionSession
 
         Func<Task<OperationResult>> executeAsync = async () =>
         {
-            /* The granted lock handle is scoped around the body so release happens for success, failure, and cooperative
-               cancellation before the scheduler chooses the next lock waiter. */
-            await using IAsyncDisposable lockScope = acquiredLocks;
             return await startedTask.Spec.ExecuteAsync!(startedContext).ConfigureAwait(false);
         };
 
         Task<OperationResult> runningTask = runTaskAsync(visibleStartedTask, executeAsync);
         return new TaskStartResult(visibleStartedTask, runningTask);
+    }
+
+    /// <summary>
+    /// Returns the ancestor-to-descendant scopes whose lock declarations must be admitted before the supplied task can run.
+    /// This direct-start guard mirrors the scheduler's ownership chain so test-only direct starts cannot bypass parent
+    /// container locks.
+    /// </summary>
+    private static IReadOnlyList<ExecutionTask> GetRequiredExecutionLockScopesForStart(ExecutionTask startedTask)
+    {
+        List<ExecutionTask> scopes = new();
+        for (ExecutionTask? currentTask = startedTask; currentTask != null; currentTask = currentTask.Parent)
+        {
+            scopes.Add(currentTask);
+        }
+
+        scopes.Reverse();
+        return scopes;
     }
 
     /// <summary>

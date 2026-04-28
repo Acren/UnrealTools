@@ -43,18 +43,43 @@ internal static class ExecutionLocks
         int priority,
         out IAsyncDisposable handle)
     {
-        handle = EmptyHandle;
+        bool acquired = TryAcquireOrWait(
+            taskId,
+            new[] { (executionLocks ?? throw new ArgumentNullException(nameof(executionLocks))).ToList() },
+            priority,
+            out IReadOnlyList<IAsyncDisposable> handles);
+        handle = handles.Count > 0 ? handles[0] : EmptyHandle;
+        return acquired;
+    }
+
+    /// <summary>
+    /// Registers or refreshes one scheduler-ready task and atomically acquires all requested lock groups only when that
+    /// ready task is the best eligible waiter. Each group receives its own release handle so a task-scope lock can be
+    /// released when its owning task completes without holding unrelated inner task locks for too long.
+    /// </summary>
+    internal static bool TryAcquireOrWait(
+        ExecutionTaskId taskId,
+        IReadOnlyList<IReadOnlyList<ExecutionLock>> executionLockGroups,
+        int priority,
+        out IReadOnlyList<IAsyncDisposable> handles)
+    {
+        handles = Array.Empty<IAsyncDisposable>();
         if (taskId == default)
         {
             throw new ArgumentException("A task id is required for lock wait registration.", nameof(taskId));
         }
 
-        if (executionLocks == null)
+        if (executionLockGroups == null)
         {
-            throw new ArgumentNullException(nameof(executionLocks));
+            throw new ArgumentNullException(nameof(executionLockGroups));
         }
 
-        IReadOnlyList<string> keys = GetOrderedKeys(executionLocks);
+        IReadOnlyList<IReadOnlyList<string>> keyGroups = GetOrderedKeyGroups(executionLockGroups);
+        IReadOnlyList<string> keys = keyGroups
+            .SelectMany(group => group)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .ToList();
         if (keys.Count == 0)
         {
             return true;
@@ -91,7 +116,7 @@ internal static class ExecutionLocks
                     _heldKeys.Add(key);
                 }
 
-                handle = new Releaser(keys);
+                handles = keyGroups.Select(group => (IAsyncDisposable)new Releaser(group)).ToList();
                 return true;
             }
 
@@ -104,6 +129,17 @@ internal static class ExecutionLocks
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Releases one previously granted lock handle through the same synchronous boundary the scheduler already uses for
+    /// failed task admission. Lock handles only mutate the in-process lock table, so blocking here keeps release ordering
+    /// deterministic without introducing fire-and-forget cleanup.
+    /// </summary>
+    internal static void ReleaseHandle(IAsyncDisposable handle)
+    {
+        _ = handle ?? throw new ArgumentNullException(nameof(handle));
+        handle.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -135,6 +171,36 @@ internal static class ExecutionLocks
             .Distinct(StringComparer.Ordinal)
             .OrderBy(key => key, StringComparer.Ordinal)
             .ToList();
+    }
+
+    /// <summary>
+    /// Normalizes grouped lock declarations into deterministic key sets and rejects duplicate ownership of one key inside
+    /// the same atomic acquisition because each granted key must have exactly one release handle.
+    /// </summary>
+    private static IReadOnlyList<IReadOnlyList<string>> GetOrderedKeyGroups(IReadOnlyList<IReadOnlyList<ExecutionLock>> executionLockGroups)
+    {
+        HashSet<string> assignedKeys = new(StringComparer.Ordinal);
+        List<IReadOnlyList<string>> keyGroups = new();
+        foreach (IReadOnlyList<ExecutionLock> executionLockGroup in executionLockGroups)
+        {
+            IReadOnlyList<string> groupKeys = GetOrderedKeys(executionLockGroup);
+            if (groupKeys.Count == 0)
+            {
+                continue;
+            }
+
+            foreach (string key in groupKeys)
+            {
+                if (!assignedKeys.Add(key))
+                {
+                    throw new InvalidOperationException($"Execution lock key '{key}' cannot be assigned to more than one release scope in the same acquisition.");
+                }
+            }
+
+            keyGroups.Add(groupKeys);
+        }
+
+        return keyGroups;
     }
 
     /// <summary>

@@ -48,9 +48,161 @@ internal sealed class ExecutionTaskRuntimeServices
 }
 
 /// <summary>
+/// Exposes the minimal runtime data available while resolving operation parameters before full task execution begins.
+/// </summary>
+public interface IOperationParameterContext
+{
+    /// <summary>
+    /// Gets the task id for the active runtime context.
+    /// </summary>
+    ExecutionTaskId TaskId { get; }
+
+    /// <summary>
+    /// Gets the display title for the active runtime context.
+    /// </summary>
+    string Title { get; }
+
+    /// <summary>
+    /// Gets the logger scoped to the active runtime context.
+    /// </summary>
+    ILogger Logger { get; }
+
+    /// <summary>
+    /// Gets the cancellation token for the active runtime context.
+    /// </summary>
+    CancellationToken CancellationToken { get; }
+
+    /// <summary>
+    /// Gets the operation associated with the active runtime context.
+    /// </summary>
+    Operation Operation { get; }
+
+    /// <summary>
+    /// Reads previously stored data from the current task or an ancestor task.
+    /// </summary>
+    T GetData<T>() where T : class;
+
+    /// <summary>
+    /// Tries to read previously stored data from the current task or an ancestor task.
+    /// </summary>
+    bool TryGetData<T>(out T? value) where T : class;
+}
+
+/// <summary>
+/// Provides the minimal live-session surface needed to resolve operation parameters before a full task execution context
+/// exists. Parameter resolution deliberately cannot read validated options because resolving the parameter bag is what
+/// creates that validated view.
+/// </summary>
+internal sealed class ExecutionParameterContext : IOperationParameterContext
+{
+    private readonly ExecutionTaskRuntimeServices? _runtime;
+
+    /// <summary>
+    /// Creates one parameter-resolution context for a task that may not yet have a validated operation context.
+    /// </summary>
+    internal ExecutionParameterContext(ExecutionTaskId taskId, string title, ILogger logger, CancellationToken cancellationToken, Operation operation, ExecutionTaskRuntimeServices? runtime)
+    {
+        TaskId = taskId;
+        Title = string.IsNullOrWhiteSpace(title)
+            ? throw new ArgumentException("Execution step title is required.", nameof(title))
+            : title;
+        Logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        CancellationToken = cancellationToken;
+        Operation = operation ?? throw new ArgumentNullException(nameof(operation));
+        _runtime = runtime;
+    }
+
+    /// <summary>
+    /// Gets the internal runtime identifier for the task whose parameters are being resolved.
+    /// </summary>
+    public ExecutionTaskId TaskId { get; }
+
+    /// <summary>
+    /// Gets the display title for the task whose parameters are being resolved.
+    /// </summary>
+    public string Title { get; }
+
+    /// <summary>
+    /// Gets the task logger available during parameter resolution.
+    /// </summary>
+    public ILogger Logger { get; }
+
+    /// <summary>
+    /// Gets the cancellation token for the live scheduler pass that requested parameter resolution.
+    /// </summary>
+    public CancellationToken CancellationToken { get; }
+
+    /// <summary>
+    /// Gets the operation whose parameter bag is being resolved.
+    /// </summary>
+    public Operation Operation { get; }
+
+    /// <summary>
+    /// Reads previously stored data from the current task or any ancestor task.
+    /// </summary>
+    public T GetData<T>() where T : class
+    {
+        if (TryGetData(out T? value))
+        {
+            return value ?? throw new InvalidOperationException($"Execution data '{typeof(T).FullName}' was resolved as null for task '{Title}'.");
+        }
+
+        throw new InvalidOperationException($"No execution data of type '{typeof(T).FullName}' is available for task '{Title}' or its ancestors.");
+    }
+
+    /// <summary>
+    /// Tries to read previously stored data from the current task or any ancestor task.
+    /// </summary>
+    public bool TryGetData<T>(out T? value) where T : class
+    {
+        ExecutionTask? currentTask = GetRequiredTask();
+        while (currentTask != null)
+        {
+            if (currentTask.TryGetLocalData(out value))
+            {
+                return true;
+            }
+
+            currentTask = currentTask.Parent;
+        }
+
+        value = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Returns the current live session temp root when parameter resolution is running inside a session.
+    /// </summary>
+    internal bool TryGetSessionTempRootPath(out string sessionTempRootPath)
+    {
+        if (_runtime == null)
+        {
+            sessionTempRootPath = string.Empty;
+            return false;
+        }
+
+        sessionTempRootPath = _runtime.SessionTempRootPath;
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the live task for this context and throws when data APIs are used outside a live session run.
+    /// </summary>
+    private ExecutionTask GetRequiredTask()
+    {
+        if (_runtime == null)
+        {
+            throw new InvalidOperationException($"Execution data is only available while task '{Title}' is running inside a live session.");
+        }
+
+        return _runtime.GetTask(TaskId);
+    }
+}
+
+/// <summary>
 /// Carries the runtime services a declared plan step needs while it executes.
 /// </summary>
-public sealed class ExecutionTaskContext
+public sealed class ExecutionTaskContext : IOperationParameterContext
 {
     private readonly ExecutionTaskRuntimeServices? _runtime;
 
@@ -102,13 +254,37 @@ public sealed class ExecutionTaskContext
     public Operation Operation { get; }
 
     /// <summary>
+    /// Creates the live execution context for one task and applies any runtime parameter override declared by an imported
+    /// child-operation root before the task body reads its validated parameter view.
+    /// </summary>
+    internal static ExecutionTaskContext CreateForRuntimeTask(ExecutionTask task, ILogger logger, CancellationToken cancellationToken, ExecutionTaskRuntimeServices runtime)
+    {
+        _ = task ?? throw new ArgumentNullException(nameof(task));
+        _ = logger ?? throw new ArgumentNullException(nameof(logger));
+        _ = runtime ?? throw new ArgumentNullException(nameof(runtime));
+
+        ExecutionParameterContext parameterContext = new(task.Id, task.Title, logger, cancellationToken, task.Operation, runtime);
+        OperationParameters operationParameters = task.ResolveOperationParameters(parameterContext);
+        return CreateWithParameters(task, operationParameters, logger, cancellationToken, runtime);
+    }
+
+    /// <summary>
+    /// Builds one context from a concrete parameter bag while keeping operation identity tied to the task that will run.
+    /// </summary>
+    private static ExecutionTaskContext CreateWithParameters(ExecutionTask task, OperationParameters operationParameters, ILogger logger, CancellationToken cancellationToken, ExecutionTaskRuntimeServices runtime)
+    {
+        ValidatedOperationParameters validatedOperationParameters = new(task.Title, operationParameters, task.DeclaredOptionTypes);
+        return new ExecutionTaskContext(task.Id, task.Title, logger, cancellationToken, validatedOperationParameters, task.Operation, runtime);
+    }
+
+    /// <summary>
     /// Creates a sibling execution context for another task within the same logical execution flow while preserving the
     /// current cancellation token and live session.
     /// </summary>
     internal ExecutionTaskContext CreateForTask(ExecutionTask task)
     {
-        ValidatedOperationParameters validatedOperationParameters = new(task.Title, task.OperationParameters, task.DeclaredOptionTypes);
-        return new ExecutionTaskContext(task.Id, task.Title, GetRequiredRuntime().CreateLogger(task.Id), CancellationToken, validatedOperationParameters, Operation, _runtime);
+        ExecutionTaskRuntimeServices runtime = GetRequiredRuntime();
+        return CreateForRuntimeTask(task, runtime.CreateLogger(task.Id), CancellationToken, runtime);
     }
 
     /// <summary>

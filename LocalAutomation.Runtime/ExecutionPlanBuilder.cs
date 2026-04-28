@@ -19,8 +19,7 @@ public sealed class ExecutionPlanBuilder
     private readonly Func<Operation, OperationParameters, ExecutionPlan?> _buildChildPlan;
     private IReadOnlyList<Type> _declaredOptionTypes = Array.Empty<Type>();
     private Operation _operation = null!;
-
-    internal OperationParameters OperationParameters { get; private set; } = null!;
+    private Func<IOperationParameterContext, OperationParameters> _resolveOperationParameters = null!;
 
     /// <summary>
     /// Creates a builder for one composite execution plan.
@@ -79,7 +78,8 @@ public sealed class ExecutionPlanBuilder
 
     internal void SetBuilderOperationParameters(OperationParameters operationParameters)
     {
-        OperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
+        OperationParameters resolvedOperationParameters = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
+        _resolveOperationParameters = _ => resolvedOperationParameters;
     }
 
     internal void SetOperation(Operation operation)
@@ -213,19 +213,33 @@ public sealed class ExecutionPlanBuilder
     /// Expands one child operation immediately, attaches the imported root beneath the current parent, and advances the
     /// parent's completion frontier to the imported subtree's leaf tasks.
     /// </summary>
-    internal ExecutionChildOperationBuilder AttachChildOperation(ExecutionTask parentTask, Type operationType, Func<OperationParameters> createParameters, string title, string? description)
+    internal ExecutionChildOperationBuilder AttachChildOperation(
+        ExecutionTask parentTask,
+        Type operationType,
+        Func<OperationParameters> createParameters,
+        string title,
+        string? description,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters)
     {
         _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
         Type resolvedOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
         Operation childOperation = Operation.CreateOperation(resolvedOperationType);
-        return AttachChildOperation(parentTask, childOperation, createParameters, title, description);
+        return AttachChildOperation(parentTask, childOperation, createParameters, title, description, createRuntimeParameters);
     }
 
     /// <summary>
     /// Expands one specific child operation instance immediately, attaches the imported root beneath the current parent,
-    /// and advances the parent's completion frontier to the imported subtree's leaf tasks.
+    /// and advances the parent's completion frontier to the imported subtree's leaf tasks. When provided, the runtime
+    /// parameter factory replaces only the imported operation's execution parameters; the static authored shape still
+    /// comes from the authoring parameters.
     /// </summary>
-    internal ExecutionChildOperationBuilder AttachChildOperation(ExecutionTask parentTask, Operation childOperation, Func<OperationParameters> createParameters, string title, string? description)
+    internal ExecutionChildOperationBuilder AttachChildOperation(
+        ExecutionTask parentTask,
+        Operation childOperation,
+        Func<OperationParameters> createParameters,
+        string title,
+        string? description,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters)
     {
         _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
         Operation resolvedChildOperation = childOperation ?? throw new ArgumentNullException(nameof(childOperation));
@@ -250,17 +264,14 @@ public sealed class ExecutionPlanBuilder
 
         ParentBuildState parentState = GetParentState(parentTask.Id);
         ExecutionTask importedRootTask = GetDefinition(insertedTasks.RootTaskId);
+        if (createRuntimeParameters != null)
+        {
+            importedRootTask.SetOperationParameterResolver(createRuntimeParameters);
+        }
+
         WireDependencies(importedRootTask, parentState.CompletionFrontier);
         ReplaceFrontier(parentState.CompletionFrontier, GetLeafCompletionTaskIds(insertedTasks.Tasks));
         return new ExecutionChildOperationBuilder(this, importedRootTask);
-    }
-
-    /// <summary>
-    /// Assigns the current validated operation parameters to one task while it is still only authored plan data.
-    /// </summary>
-    internal void SetOperationParameters(ExecutionTask task, OperationParameters operationParameters)
-    {
-        task.SetOperationParameters(operationParameters ?? throw new ArgumentNullException(nameof(operationParameters)), _declaredOptionTypes);
     }
 
     /// <summary>
@@ -345,9 +356,9 @@ public sealed class ExecutionPlanBuilder
             Dependencies: Array.Empty<ExecutionTaskId>(),
             Enabled: true,
             DisabledReason: string.Empty,
-            OperationParameters: OperationParameters,
             DeclaredOptionTypes: _declaredOptionTypes,
             DeclaredExecutionLocks: Array.Empty<ExecutionLock>(),
+            ResolveOperationParameters: parentId == null ? _resolveOperationParameters : null,
             ExecuteAsync: null,
             IsOperationRoot: parentId == null,
             IsHiddenInGraph: false);
