@@ -38,6 +38,50 @@ namespace UnrealAutomationCommon.Unreal
             UbtCppStandard cppStandard,
             IEnumerable<string> shapeParts)
         {
+            return CreateCacheKey(
+                engine,
+                new[]
+                {
+                    operationName,
+                    role,
+                    subjectName,
+                    projectName,
+                    configuration.ToString(),
+                    compiler.ToString(),
+                    cppStandard.ToString()
+                },
+                shapeParts);
+        }
+
+        /// <summary>
+        /// Builds a stable opaque identity for one cached plugin-packaging workspace from packaging-environment inputs
+        /// rather than source content, allowing Unreal's generated host-project intermediates to stay warm across runs.
+        /// </summary>
+        internal static string CreatePluginPackageCacheKey(
+            Engine engine,
+            string operationName,
+            string role,
+            string pluginName,
+            IEnumerable<string> shapeParts)
+        {
+            return CreateCacheKey(
+                engine,
+                new[]
+                {
+                    operationName,
+                    role,
+                    pluginName
+                },
+                shapeParts);
+        }
+
+        /// <summary>
+        /// Builds the final hash source from engine identity, primary operation identity, and ordered shape parts so cache
+        /// keys remain compact while still separating incompatible build environments.
+        /// </summary>
+        private static string CreateCacheKey(Engine engine, IEnumerable<string> identityParts, IEnumerable<string> shapeParts)
+        {
+            _ = engine ?? throw new ArgumentNullException(nameof(engine));
             IEnumerable<string> orderedShapeParts = (shapeParts ?? Array.Empty<string>())
                 .Where(part => !string.IsNullOrWhiteSpace(part))
                 .OrderBy(part => part, StringComparer.OrdinalIgnoreCase);
@@ -47,15 +91,10 @@ namespace UnrealAutomationCommon.Unreal
             string keySource = string.Join("|", new[]
                 {
                     normalizedEnginePath,
-                    engine.Version.ToString(),
-                    operationName,
-                    role,
-                    subjectName,
-                    projectName,
-                    configuration.ToString(),
-                    compiler.ToString(),
-                    cppStandard.ToString()
-                }.Concat(orderedShapeParts));
+                    engine.Version.ToString()
+                }
+                .Concat(identityParts)
+                .Concat(orderedShapeParts));
 
             return ComputeHash(keySource, CacheHashLength);
         }
@@ -71,6 +110,86 @@ namespace UnrealAutomationCommon.Unreal
                 "UnrealCache",
                 cacheKey,
                 "Project");
+        }
+
+        /// <summary>
+        /// Returns the stable package directory that UAT BuildPlugin can use as both its output root and generated
+        /// host-project cache for one plugin packaging identity.
+        /// </summary>
+        internal static string GetPluginPackageWorkspacePath(string cacheKey)
+        {
+            return Path.Combine(
+                global::LocalAutomation.Runtime.OutputPaths.TempRoot(),
+                "UnrealCache",
+                cacheKey,
+                "PluginPackage");
+        }
+
+        /// <summary>
+        /// Clears one cached plugin package root before UAT writes a fresh distributable payload while preserving the
+        /// generated host project's Intermediate directory, which is the reusable part of BuildPlugin's packaging flow.
+        /// </summary>
+        internal static void PreparePluginPackageWorkspace(string cachedPackagePath, string pluginName, ILogger logger)
+        {
+            _ = logger ?? throw new ArgumentNullException(nameof(logger));
+            if (string.IsNullOrWhiteSpace(cachedPackagePath))
+            {
+                throw new ArgumentException("Cached plugin package path is required.", nameof(cachedPackagePath));
+            }
+
+            if (string.IsNullOrWhiteSpace(pluginName))
+            {
+                throw new ArgumentException("Plugin name is required for cached plugin packaging.", nameof(pluginName));
+            }
+
+            Directory.CreateDirectory(cachedPackagePath);
+            DeletePluginPackagePayload(cachedPackagePath, logger);
+            DeleteCachedHostProjectPluginInputs(cachedPackagePath, pluginName, logger);
+        }
+
+        /// <summary>
+        /// Copies the freshly produced distributable plugin payload out of a cached package root without copying the
+        /// generated host project that UAT keeps beside the payload for future incremental builds.
+        /// </summary>
+        internal static void CopyPluginPackageOutput(string cachedPackagePath, string destinationPluginPath, ILogger logger, CancellationToken cancellationToken)
+        {
+            _ = logger ?? throw new ArgumentNullException(nameof(logger));
+            if (string.IsNullOrWhiteSpace(cachedPackagePath))
+            {
+                throw new ArgumentException("Cached plugin package path is required.", nameof(cachedPackagePath));
+            }
+
+            if (string.IsNullOrWhiteSpace(destinationPluginPath))
+            {
+                throw new ArgumentException("Destination plugin path is required.", nameof(destinationPluginPath));
+            }
+
+            if (!Directory.Exists(cachedPackagePath))
+            {
+                throw new DirectoryNotFoundException($"Cached plugin package output does not exist: {cachedPackagePath}");
+            }
+
+            logger.LogInformation("Copying cached Unreal plugin package output from '{CachedPackagePath}' to '{DestinationPluginPath}'.", cachedPackagePath, destinationPluginPath);
+            Directory.CreateDirectory(destinationPluginPath);
+
+            foreach (string sourceFilePath in Directory.GetFiles(cachedPackagePath, "*", SearchOption.TopDirectoryOnly))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string destinationFilePath = Path.Combine(destinationPluginPath, Path.GetFileName(sourceFilePath));
+                File.Copy(sourceFilePath, destinationFilePath, true);
+            }
+
+            foreach (string sourceDirectoryPath in Directory.GetDirectories(cachedPackagePath, "*", SearchOption.TopDirectoryOnly))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string directoryName = Path.GetFileName(sourceDirectoryPath);
+                if (IsBuildPluginHostProjectDirectory(directoryName))
+                {
+                    continue;
+                }
+
+                FileUtils.CopyDirectory(sourceDirectoryPath, Path.Combine(destinationPluginPath, directoryName), cancellationToken: cancellationToken);
+            }
         }
 
         /// <summary>
@@ -158,6 +277,54 @@ namespace UnrealAutomationCommon.Unreal
 
             logger.LogInformation("Deleting cached Unreal project directory before refresh: {CachedDirectoryPath}", absolutePath);
             FileUtils.DeleteDirectoryIfExists(absolutePath);
+        }
+
+        /// <summary>
+        /// Deletes the distributable payload files from a cached plugin package root while leaving UAT's generated
+        /// HostProject directory available for incremental compilation state.
+        /// </summary>
+        private static void DeletePluginPackagePayload(string cachedPackagePath, ILogger logger)
+        {
+            foreach (string filePath in Directory.GetFiles(cachedPackagePath, "*", SearchOption.TopDirectoryOnly))
+            {
+                logger.LogInformation("Deleting cached plugin package file before refresh: {CachedPackageFilePath}", filePath);
+                FileUtils.DeleteFileIfExists(filePath);
+            }
+
+            foreach (string directoryPath in Directory.GetDirectories(cachedPackagePath, "*", SearchOption.TopDirectoryOnly))
+            {
+                if (IsBuildPluginHostProjectDirectory(Path.GetFileName(directoryPath)))
+                {
+                    continue;
+                }
+
+                logger.LogInformation("Deleting cached plugin package directory before refresh: {CachedPackageDirectoryPath}", directoryPath);
+                FileUtils.DeleteDirectoryIfExists(directoryPath);
+            }
+        }
+
+        /// <summary>
+        /// Removes copied plugin inputs from the cached UAT host project so deleted source files cannot linger while the
+        /// host project's own Intermediate tree remains available for UnrealBuildTool reuse.
+        /// </summary>
+        private static void DeleteCachedHostProjectPluginInputs(string cachedPackagePath, string pluginName, ILogger logger)
+        {
+            string cachedHostProjectPluginPath = Path.Combine(cachedPackagePath, "HostProject", "Plugins", pluginName);
+            if (!Directory.Exists(cachedHostProjectPluginPath))
+            {
+                return;
+            }
+
+            logger.LogInformation("Deleting cached BuildPlugin host-project plugin inputs before refresh: {CachedHostProjectPluginPath}", cachedHostProjectPluginPath);
+            FileUtils.DeleteDirectoryIfExists(cachedHostProjectPluginPath);
+        }
+
+        /// <summary>
+        /// Identifies the generated host project UAT BuildPlugin creates beside the distributable payload.
+        /// </summary>
+        private static bool IsBuildPluginHostProjectDirectory(string directoryName)
+        {
+            return string.Equals(directoryName, "HostProject", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>

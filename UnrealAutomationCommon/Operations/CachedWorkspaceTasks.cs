@@ -10,11 +10,82 @@ using UnrealAutomationCommon.Unreal;
 namespace UnrealAutomationCommon.Operations
 {
     /// <summary>
-    /// Authors the repeated cached-project workspace lifecycle while leaving build semantics to ordinary operations such
-    /// as BuildEditorTarget, BuildProjectTarget, and BuildPlugin.
+    /// Authors repeated cached-workspace lifecycles while leaving cache semantics and child-operation behavior to callers.
     /// </summary>
-    internal static class CachedProjectWorkspaceTasks
+    internal static class CachedWorkspaceTasks
     {
+        /// <summary>
+        /// Creates a visible cached-workspace parent task with explicit prepare, operation, and copy-back children.
+        /// </summary>
+        public static ExecutionTaskBuilder Add(
+            ExecutionTaskScopeBuilder scope,
+            string title,
+            ExecutionLock cacheLock,
+            Operation cachedOperation,
+            Func<OperationParameters> createAuthoringParameters,
+            Func<ExecutionTaskContext, Task> prepareCacheAsync,
+            Func<IOperationParameterContext, OperationParameters> createRuntimeParameters,
+            Func<ExecutionTaskContext, Task> copyOutputsAsync)
+        {
+            _ = scope ?? throw new ArgumentNullException(nameof(scope));
+            string resolvedTitle = string.IsNullOrWhiteSpace(title)
+                ? throw new ArgumentException("A cached workspace task title is required.", nameof(title))
+                : title;
+            _ = cacheLock ?? throw new ArgumentNullException(nameof(cacheLock));
+            Operation resolvedOperation = cachedOperation ?? throw new ArgumentNullException(nameof(cachedOperation));
+            _ = createAuthoringParameters ?? throw new ArgumentNullException(nameof(createAuthoringParameters));
+            _ = prepareCacheAsync ?? throw new ArgumentNullException(nameof(prepareCacheAsync));
+            _ = createRuntimeParameters ?? throw new ArgumentNullException(nameof(createRuntimeParameters));
+            _ = copyOutputsAsync ?? throw new ArgumentNullException(nameof(copyOutputsAsync));
+
+            ExecutionTaskBuilder parent = scope.Task(resolvedTitle)
+                .WithExecutionLocks(cacheLock);
+            parent.Children(steps =>
+            {
+                steps.Task("Prepare Cached Workspace")
+                    .Describe("Prepare cache inputs before the cached operation runs")
+                    .Run(prepareCacheAsync);
+
+                steps.Task("Run Cached Operation")
+                    .Describe($"Run {resolvedOperation.OperationName} against the prepared cache workspace")
+                    .AddChildOperation(
+                        resolvedOperation,
+                        createAuthoringParameters,
+                        context => CreateRuntimeParameters(context, resolvedOperation, createRuntimeParameters))
+                    .HideInGraph();
+
+                steps.Task("Copy Cached Outputs")
+                    .Describe("Copy generated cache outputs back into the session workspace")
+                    .Run(copyOutputsAsync);
+            });
+
+            return parent;
+        }
+
+        /// <summary>
+        /// Creates and validates runtime parameters for the supplied child operation before the scheduler starts it.
+        /// </summary>
+        private static OperationParameters CreateRuntimeParameters(
+            IOperationParameterContext context,
+            Operation cachedOperation,
+            Func<IOperationParameterContext, OperationParameters> createRuntimeParameters)
+        {
+            OperationParameters parameters = createRuntimeParameters(context)
+                ?? throw new InvalidOperationException($"Cached operation '{cachedOperation.OperationName}' did not create operation parameters.");
+
+            if (parameters.Target == null)
+            {
+                throw new InvalidOperationException($"Cached operation '{cachedOperation.OperationName}' did not select a target.");
+            }
+
+            if (!cachedOperation.SupportsTarget(parameters.Target))
+            {
+                throw new InvalidOperationException($"Cached operation '{cachedOperation.OperationName}' does not support runtime target '{parameters.Target.TypeName}'.");
+            }
+
+            return parameters;
+        }
+
         /// <summary>
         /// Creates a visible cached-workspace parent task with refresh, build, and copy-back child tasks beneath it.
         /// </summary>
@@ -51,28 +122,15 @@ namespace UnrealAutomationCommon.Operations
             Operation resolvedBuildOperation = buildOperation ?? throw new ArgumentNullException(nameof(buildOperation));
             _ = createBuildParameters ?? throw new ArgumentNullException(nameof(createBuildParameters));
 
-            ExecutionTaskBuilder parent = scope.Task(resolvedTitle)
-                .WithExecutionLocks(cacheLock);
-            parent.Children(steps =>
-            {
-                steps.Task("Refresh Cached Workspace")
-                    .Describe("Refresh authored project inputs into the stable cached build workspace while preserving reusable intermediates")
-                    .Run(context => RefreshCachedWorkspaceAsync(context, resolvedOperationName, resolvedRole, resolvedSubjectName, getEngine, getSourceProjectPath, createBuildParameters));
-
-                steps.Task("Build Cached Target")
-                    .Describe("Run the direct Unreal build against the refreshed cached project workspace")
-                    .AddChildOperation(
-                        resolvedBuildOperation,
-                        () => CreateBuildAuthoringParameters(operationParameters, resolvedBuildOperation),
-                        context => CreateCachedBuildParameters(context, resolvedOperationName, resolvedRole, resolvedSubjectName, getEngine, getSourceProjectPath, resolvedBuildOperation, createBuildParameters))
-                    .HideInGraph();
-
-                steps.Task("Copy Cached Build Outputs")
-                    .Describe("Merge generated cached build outputs back into the session project used by later steps")
-                    .Run(context => CopyCachedBuildOutputsAsync(context, resolvedOperationName, resolvedRole, resolvedSubjectName, getEngine, getSourceProjectPath, createBuildParameters));
-            });
-
-            return parent;
+            return Add(
+                scope,
+                resolvedTitle,
+                cacheLock,
+                resolvedBuildOperation,
+                () => CreateBuildAuthoringParameters(operationParameters, resolvedBuildOperation),
+                context => RefreshCachedWorkspaceAsync(context, resolvedOperationName, resolvedRole, resolvedSubjectName, getEngine, getSourceProjectPath, createBuildParameters),
+                context => CreateCachedBuildParameters(context, resolvedOperationName, resolvedRole, resolvedSubjectName, getEngine, getSourceProjectPath, resolvedBuildOperation, createBuildParameters),
+                context => CopyCachedBuildOutputsAsync(context, resolvedOperationName, resolvedRole, resolvedSubjectName, getEngine, getSourceProjectPath, createBuildParameters));
         }
 
         /// <summary>

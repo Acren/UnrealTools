@@ -75,7 +75,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 .Describe("Package the example project with the installed plugin")
                                 .Children(packageScope =>
                                 {
-                                    CachedProjectWorkspaceTasks.AddBuild(
+                                    CachedWorkspaceTasks.AddBuild(
                                             packageScope,
                                             operationParameters,
                                             "Build Example Project Target",
