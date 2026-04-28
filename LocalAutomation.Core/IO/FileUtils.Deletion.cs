@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 
 namespace LocalAutomation.Core.IO;
 
@@ -22,12 +24,89 @@ public static partial class FileUtils
     /// </summary>
     public static void DeleteOtherSubdirectories(string topPath, string[] subdirectoriesToKeep)
     {
-        foreach (string subDirectory in Directory.GetDirectories(topPath, "*", SearchOption.TopDirectoryOnly))
+        DeleteTopLevelDirectoriesExcept(topPath, subdirectoriesToKeep);
+    }
+
+    /// <summary>
+    /// Deletes relative child directories under a root path when they exist.
+    /// </summary>
+    public static void DeleteRelativeDirectories(string rootPath, IEnumerable<string> relativeDirectories, ILogger? logger = null)
+    {
+        _ = relativeDirectories ?? throw new ArgumentNullException(nameof(relativeDirectories));
+
+        foreach (string relativeDirectory in relativeDirectories)
         {
-            if (Array.IndexOf(subdirectoriesToKeep, Path.GetFileName(subDirectory)) < 0)
+            DeleteDirectoryIfExists(Path.Combine(rootPath, relativeDirectory), logger);
+        }
+    }
+
+    /// <summary>
+    /// Deletes top-level files under a directory for each supplied search pattern and logs each deletion.
+    /// </summary>
+    public static void DeleteTopLevelFiles(string path, IEnumerable<string> filePatterns, ILogger? logger = null)
+    {
+        _ = filePatterns ?? throw new ArgumentNullException(nameof(filePatterns));
+
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        foreach (string filePattern in filePatterns)
+        {
+            foreach (string filePath in Directory.GetFiles(path, filePattern, SearchOption.TopDirectoryOnly))
             {
-                DeleteDirectoryIfExists(subDirectory);
+                logger?.LogInformation("Deleting file: {FilePath}", filePath);
+                DeleteFileIfExists(filePath);
             }
+        }
+    }
+
+    /// <summary>
+    /// Deletes every immediate child directory except the explicitly preserved names.
+    /// </summary>
+    public static void DeleteTopLevelDirectoriesExcept(string path, IEnumerable<string> preservedDirectoryNames)
+    {
+        _ = preservedDirectoryNames ?? throw new ArgumentNullException(nameof(preservedDirectoryNames));
+
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        HashSet<string> preservedNames = preservedDirectoryNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (string directoryPath in Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly))
+        {
+            if (preservedNames.Contains(Path.GetFileName(directoryPath)))
+            {
+                continue;
+            }
+
+            DeleteDirectoryIfExists(directoryPath);
+        }
+    }
+
+    /// <summary>
+    /// Deletes every immediate child directory except the explicitly preserved names and logs each deletion.
+    /// </summary>
+    public static void DeleteTopLevelDirectoriesExcept(string path, IEnumerable<string> preservedDirectoryNames, ILogger? logger = null)
+    {
+        _ = preservedDirectoryNames ?? throw new ArgumentNullException(nameof(preservedDirectoryNames));
+
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        HashSet<string> preservedNames = preservedDirectoryNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (string directoryPath in Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly))
+        {
+            if (preservedNames.Contains(Path.GetFileName(directoryPath)))
+            {
+                continue;
+            }
+
+            DeleteDirectoryIfExists(directoryPath, logger);
         }
     }
 
@@ -48,6 +127,20 @@ public static partial class FileUtils
         {
             DeleteFile(filePath);
         }
+    }
+
+    /// <summary>
+    /// Deletes one directory tree only when it exists and logs the deletion.
+    /// </summary>
+    public static void DeleteDirectoryIfExists(string path, ILogger? logger = null)
+    {
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        logger?.LogInformation("Deleting directory: {DirectoryPath}", path);
+        DeleteDirectoryIfExists(path);
     }
 
     /// <summary>
