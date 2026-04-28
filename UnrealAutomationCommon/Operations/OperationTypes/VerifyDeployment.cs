@@ -75,18 +75,27 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 .Describe("Package the example project with the installed plugin")
                                 .Children(packageScope =>
                                 {
-                                    CachedWorkspaceTasks.AddBuild(
+                                    BuildProjectTarget buildProjectTarget = new();
+                                    CachedWorkspaceTasks.Add(
                                             packageScope,
-                                            operationParameters,
                                             "Build Example Project Target",
                                             UnrealExecutionLocks.GetBuildWorkspaceCacheLock(nameof(VerifyDeployment), "PackageProjectBuild", plugin.Name, currentEngineVersion),
-                                            nameof(VerifyDeployment),
-                                            "PackageProjectBuild",
-                                            plugin.Name,
-                                            context => context.GetData<VerificationState>().Engine,
-                                            context => context.GetData<VerificationState>().ExampleProject.ProjectPath,
-                                            new BuildProjectTarget(),
-                                            CreateCachedVerificationBuildParameters)
+                                            buildProjectTarget,
+                                            operationParameters,
+                                            context =>
+                                            {
+                                                VerificationState state = context.GetData<VerificationState>();
+                                                return CachedUnrealWorkspaceSpecs.CreateProjectBuildSpec(
+                                                    state.Engine,
+                                                    nameof(VerifyDeployment),
+                                                    "PackageProjectBuild",
+                                                    plugin.Name,
+                                                    state.ExampleProject.ProjectPath,
+                                                    BuildConfiguration.Development,
+                                                    UbtCompiler.Default,
+                                                    UbtCppStandard.Default);
+                                            },
+                                            (context, workspaceSpec) => CachedUnrealWorkspaceSpecs.CreateProjectBuildParameters(context, workspaceSpec, "PackageProjectBuild", buildProjectTarget, CreateCachedVerificationBuildParameters))
                                         .Describe("Build the example project target through a stable cached workspace before package-only BuildCookRun");
 
                                     packageScope.Task("Package Example Project")

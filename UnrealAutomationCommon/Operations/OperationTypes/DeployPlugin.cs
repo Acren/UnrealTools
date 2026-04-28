@@ -415,42 +415,72 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             AutomationOptions automationOptions = operationParameters.GetOptions<AutomationOptions>();
             PluginDeployOptions deployOptions = operationParameters.GetOptions<PluginDeployOptions>();
 
-            // Cached workspace builds all share the same deploy-wide lock identity and runtime state access, so the local
-            // helper keeps the plan body focused on the concrete build operation and its source/output paths.
+            // Cached workspace builds all share the same deploy runtime state access, so the local helper keeps the plan
+            // body focused on the concrete build operation and its source/output paths.
             global::LocalAutomation.Runtime.ExecutionTaskBuilder CachedWorkspaceBuild(
                 global::LocalAutomation.Runtime.ExecutionTaskScopeBuilder scope,
                 string title,
                 string role,
                 Func<DeploymentWorkspaceState, string> getSourceProjectPath,
                 global::LocalAutomation.Runtime.Operation buildOperation,
-                Func<global::LocalAutomation.Runtime.IOperationParameterContext, Project, global::LocalAutomation.Runtime.OperationParameters> createBuildParameters)
+                BuildConfiguration configuration,
+                Func<global::LocalAutomation.Runtime.IOperationParameterContext, Project, global::LocalAutomation.Runtime.OperationParameters> createBuildParameters,
+                UbtCompiler compiler = UbtCompiler.Default,
+                UbtCppStandard cppStandard = UbtCppStandard.Default)
             {
-                return CachedWorkspaceTasks.AddBuild(
+                return CachedWorkspaceTasks.Add(
                     scope,
-                    operationParameters,
                     title,
                     UnrealExecutionLocks.GetBuildWorkspaceCacheLock(nameof(DeployPlugin), role, plugin.Name, engine.Version),
-                    nameof(DeployPlugin),
-                    role,
-                    plugin.Name,
-                    context => context.GetData<DeploymentWorkspaceState>().Engine,
-                    context => getSourceProjectPath(context.GetData<DeploymentWorkspaceState>()),
                     buildOperation,
-                    createBuildParameters);
+                    operationParameters,
+                    context =>
+                    {
+                        DeploymentWorkspaceState state = context.GetData<DeploymentWorkspaceState>();
+                        return CachedUnrealWorkspaceSpecs.CreateProjectBuildSpec(
+                            state.Engine,
+                            nameof(DeployPlugin),
+                            role,
+                            plugin.Name,
+                            getSourceProjectPath(state),
+                            configuration,
+                            compiler,
+                            cppStandard);
+                    },
+                    (context, workspaceSpec) => CachedUnrealWorkspaceSpecs.CreateProjectBuildParameters(context, workspaceSpec, role, buildOperation, createBuildParameters));
             }
 
             global::LocalAutomation.Runtime.ExecutionTaskBuilder CachedPluginPackage(global::LocalAutomation.Runtime.ExecutionTaskScopeBuilder scope)
             {
-                // The generic cache wrapper owns task shape; DeployPlugin only supplies package-specific cache behavior.
+                PackagePlugin packageOperation = new();
                 return CachedWorkspaceTasks.Add(
                     scope,
                     "Build Distributable Plugin",
                     UnrealExecutionLocks.GetBuildWorkspaceCacheLock(nameof(DeployPlugin), "DistributablePluginPackage", plugin.Name, engine.Version),
-                    new PackagePlugin(),
-                    () => CreatePluginPackageAuthoringParameters(operationParameters),
-                    PrepareCachedPluginPackageAsync,
-                    context => CreateCachedPluginPackageParameters(context, operationParameters.GetOptions<PluginBuildOptions>()),
-                    CopyCachedPluginPackageOutputAsync);
+                    packageOperation,
+                    operationParameters,
+                    context =>
+                    {
+                        DeploymentWorkspaceState state = context.GetData<DeploymentWorkspaceState>();
+                        return CachedUnrealWorkspaceSpecs.CreatePluginPackageSpec(
+                            state.Engine,
+                            nameof(DeployPlugin),
+                            "DistributablePluginPackage",
+                            GetStagingPluginPath(state),
+                            GetBuiltPluginPath(state),
+                            operationParameters.GetOptions<PluginBuildOptions>());
+                    },
+                    (context, workspaceSpec) =>
+                    {
+                        DeploymentWorkspaceState state = context.GetData<DeploymentWorkspaceState>();
+                        return CachedUnrealWorkspaceSpecs.CreatePluginPackageParameters(
+                            context,
+                            workspaceSpec,
+                            packageOperation,
+                            state.Engine,
+                            GetStagingPluginPath(state),
+                            operationParameters.GetOptions<PluginBuildOptions>());
+                    });
             }
 
             /* The per-engine flow is authored as an explicit DAG so validation, packaging, and variant-preparation work can
@@ -516,6 +546,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         "ProjectPluginBaseEditor",
                         GetExampleProjectBasePath,
                         new BuildEditorTarget(),
+                        BuildConfiguration.Development,
                         (context, cachedProject) => CreateCachedProjectTargetBuildParameters(
                             context,
                             cachedProject,
@@ -572,13 +603,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         "ClangValidation",
                         GetClangVariantPath,
                         new BuildPlugin(),
+                        BuildConfiguration.Development,
                         (context, cachedProject) => CreateCachedHostedPluginBuildParameters(
                             context,
                             cachedProject,
                             state => GetWorkspacePath(state.WorkspacePath, "ClangCheckOutput"),
                             BuildConfiguration.Development,
                             UbtCompiler.Clang,
-                            UbtCppStandard.Default))
+                            UbtCppStandard.Default),
+                        UbtCompiler.Clang,
+                        UbtCppStandard.Default)
                         .Describe("Rebuild the packaged plugin in the Clang validation variant to verify the distributable plugin payload under Clang")
                         .After(prepareClangVariant.Id);
                 });
@@ -617,6 +651,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         "ProjectPluginPackageTarget",
                         GetExampleProjectBasePath,
                         new BuildProjectTarget(),
+                        BuildConfiguration.Development,
                         (context, cachedProject) => CreateCachedProjectTargetBuildParameters(
                             context,
                             cachedProject,
@@ -658,6 +693,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         "EnginePluginPackageTarget",
                         GetEnginePluginVariantPath,
                         new BuildProjectTarget(),
+                        BuildConfiguration.Development,
                         (context, cachedProject) => CreateCachedProjectTargetBuildParameters(
                             context,
                             cachedProject,
@@ -699,6 +735,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         "BlueprintOnlyPackageTarget",
                         GetBlueprintDemoVariantPath,
                         new BuildProjectTarget(),
+                        BuildConfiguration.Development,
                         (context, cachedProject) => CreateCachedProjectTargetBuildParameters(
                             context,
                             cachedProject,
@@ -739,6 +776,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         "DemoExecutableTarget",
                         GetBlueprintDemoVariantPath,
                         new BuildProjectTarget(),
+                        BuildConfiguration.Shipping,
                         (context, cachedProject) => CreateCachedProjectTargetBuildParameters(
                             context,
                             cachedProject,
@@ -956,92 +994,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             await RunChildOperationAsync<LaunchStandalone>(launchStandaloneParams, context, required: true, failureMessage: "Failed to launch project-plugin base in standalone", hideChildOperationRootInGraph: true);
             activity.SetTag("result", "Completed");
-        }
-
-        /// <summary>
-        /// Creates the authoring-time parameter bag that lets the PackagePlugin child declare its static task shape.
-        /// </summary>
-        private global::LocalAutomation.Runtime.OperationParameters CreatePluginPackageAuthoringParameters(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
-        {
-            global::LocalAutomation.Runtime.OperationParameters parameters = operationParameters.CreateChild();
-            parameters.Target = GetRequiredTarget(operationParameters);
-            return parameters;
-        }
-
-        /// <summary>
-        /// Prepares the cached UAT BuildPlugin package root before the PackagePlugin child writes a fresh payload into it.
-        /// </summary>
-        private async Task PrepareCachedPluginPackageAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
-        {
-            using IDisposable nodeScope = context.Logger.BeginSection("Preparing cached plugin package workspace");
-            DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
-            using Plugin stagingPlugin = CreateRequiredPlugin(GetStagingPluginPath(state), "Staged plugin is not available for cached packaging");
-            string cachedPluginPackagePath = GetPluginPackageCachePath(state, stagingPlugin, context.ValidatedOperationParameters.GetOptions<PluginBuildOptions>());
-
-            UnrealBuildWorkspaceCache.PreparePluginPackageWorkspace(cachedPluginPackagePath, stagingPlugin.Name, context.Logger);
-            await Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// Creates runtime PackagePlugin parameters that direct UAT output into the prepared cache package root.
-        /// </summary>
-        private global::LocalAutomation.Runtime.OperationParameters CreateCachedPluginPackageParameters(global::LocalAutomation.Runtime.IOperationParameterContext context, PluginBuildOptions pluginBuildOptions)
-        {
-            DeploymentWorkspaceState state = context.GetData<DeploymentWorkspaceState>();
-            Plugin stagingPlugin = CreateRequiredPlugin(GetStagingPluginPath(state), "Staged plugin is not available for cached packaging");
-            string cachedPluginPackagePath = GetPluginPackageCachePath(state, stagingPlugin, pluginBuildOptions);
-            global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
-
-            parameters.Target = stagingPlugin;
-            parameters.OutputPathOverride = cachedPluginPackagePath;
-            parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
-            parameters.SetOptions(pluginBuildOptions);
-            parameters.GetOptions<AdditionalArgumentsOptions>().Arguments = "-NoDeleteHostProject";
-            return parameters;
-        }
-
-        /// <summary>
-        /// Copies the cached distributable plugin payload back to the deploy workspace and validates the final output.
-        /// </summary>
-        private async Task CopyCachedPluginPackageOutputAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
-        {
-            using IDisposable nodeScope = context.Logger.BeginSection("Copying cached plugin package output");
-            DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
-            using Plugin stagingPlugin = CreateRequiredPlugin(GetStagingPluginPath(state), "Staged plugin is not available for cached package copy-back");
-            string cachedPluginPackagePath = GetPluginPackageCachePath(state, stagingPlugin, context.ValidatedOperationParameters.GetOptions<PluginBuildOptions>());
-            string pluginBuildPath = GetBuiltPluginPath(state);
-
-            // The final deploy artifact is recreated from the fresh cached output so stale files cannot survive.
-            FileUtils.DeleteDirectoryIfExists(pluginBuildPath);
-
-            // The cached package root also contains UAT's generated HostProject, so only payload files are copied out.
-            UnrealBuildWorkspaceCache.CopyPluginPackageOutput(cachedPluginPackagePath, pluginBuildPath, context.Logger, context.CancellationToken);
-
-            using Plugin builtPlugin = CreateRequiredPlugin(pluginBuildPath, "Built plugin output is missing after cached package copy-back");
-            context.Logger.LogInformation($"Validated built plugin output: {builtPlugin.PluginPath}");
-            await Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// Builds the stable cache path for the distributable plugin package from the engine, selected platform set,
-        /// strict-include mode, and plugin module shape that affect Unreal's BuildPlugin compile environment.
-        /// </summary>
-        private static string GetPluginPackageCachePath(DeploymentWorkspaceState state, Plugin stagingPlugin, PluginBuildOptions pluginBuildOptions)
-        {
-            IEnumerable<string> targetPlatformShape = PluginBuildPlatformValidation.GetSelectedTargetPlatforms(pluginBuildOptions)
-                .Select(platform => $"TargetPlatform:{platform}");
-            IEnumerable<string> moduleShape = stagingPlugin.PluginDescriptor.Modules
-                .Select(module => $"Module:{module.Name}:{module.Type}");
-            string cacheKey = UnrealBuildWorkspaceCache.CreatePluginPackageCacheKey(
-                state.Engine,
-                nameof(DeployPlugin),
-                "DistributablePluginPackage",
-                stagingPlugin.Name,
-                targetPlatformShape
-                    .Concat(moduleShape)
-                    .Concat(new[] { $"StrictIncludes:{pluginBuildOptions.StrictIncludes}" }));
-
-            return UnrealBuildWorkspaceCache.GetPluginPackageWorkspacePath(cacheKey);
         }
 
         /// <summary>
