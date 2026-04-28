@@ -1143,14 +1143,13 @@ public sealed class ExecutionPlanScheduler
     }
 
     /// <summary>
-    /// Records one task-status transition in the session and mirrors it through the active task-state sink.
+    /// Records one explicit task-state transition in the session and mirrors it through the active task-state sink. The
+    /// session owns transition logging so direct scheduler changes and derived parent rollups share one log path.
     /// </summary>
     private void SetState(ExecutionTaskId taskId, ExecutionTaskState state)
     {
         _session.SetTaskState(taskId, state);
         _taskStateSink?.SetTaskState(taskId, state);
-        string taskPath = _session.GetTaskDisplayPath(taskId);
-        _logger.LogDebug("Execution task '{TaskPath}' ({TaskId}) -> {State}.", taskPath, taskId, state);
     }
 
     /// <summary>

@@ -1436,6 +1436,25 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
+    /// Writes one task status transition to the session log after the graph mutation that produced it has completed.
+    /// This observes both direct task transitions and derived parent rollups, so the launch log matches what the UI sees.
+    /// </summary>
+    private void HandleTaskStatusChanged(ExecutionTask task, ExecutionTaskState state, ExecutionTaskOutcome? outcome)
+    {
+        AfterGraphWriteReleased(() =>
+        {
+            string taskPath = GetTaskDisplayPath(task.Id);
+            if (outcome == null)
+            {
+                _sessionLogger.LogDebug("Execution task '{TaskPath}' ({TaskId}) -> {State}.", taskPath, task.Id, state);
+                return;
+            }
+
+            _sessionLogger.LogDebug("Execution task '{TaskPath}' ({TaskId}) -> {State} ({Outcome}).", taskPath, task.Id, state, outcome);
+        });
+    }
+
+    /// <summary>
     /// Re-emits one task-owned change through the session-wide fanout so scheduler, UI, and any other session-level
     /// observers can subscribe once per session instead of wiring every task individually.
     /// </summary>
@@ -1640,6 +1659,7 @@ public sealed class ExecutionSession
         }
 
         task.InitializeRuntimeState();
+        task.StatusChanged += HandleTaskStatusChanged;
         task.StateChanged += HandleTaskStateChanged;
 
         if (task.ParentId is ExecutionTaskId parentId)

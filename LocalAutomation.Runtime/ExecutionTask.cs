@@ -130,6 +130,12 @@ public class ExecutionTask : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
+    /// Raised only when this task's lifecycle state or semantic outcome actually changes. Session-level logging uses this
+    /// narrower event so structural wake-up publications do not appear as duplicate state transitions in diagnostic logs.
+    /// </summary>
+    internal event Action<ExecutionTask, ExecutionTaskState, ExecutionTaskOutcome?>? StatusChanged;
+
+    /// <summary>
     /// Raised whenever this task's task-owned runtime facts change. The event carries the task plus the current visible
     /// state snapshot so waiters, session fanout, and internal propagation can all share one task event without re-reading
     /// state unless they want to.
@@ -928,8 +934,17 @@ public class ExecutionTask : INotifyPropertyChanged
 
         if (stateChanged || outcomeChanged)
         {
+            RaiseStatusChanged();
             RaiseStateChanged();
         }
+    }
+
+    /// <summary>
+    /// Raises the transition-only status event after the task has already published a self-consistent state/outcome pair.
+    /// </summary>
+    private void RaiseStatusChanged()
+    {
+        StatusChanged?.Invoke(this, State, Outcome);
     }
 
     /// <summary>
