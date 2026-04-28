@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 
 namespace LocalAutomation.Core.IO;
@@ -39,14 +40,17 @@ internal static class WindowsDirectoryCopy
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden,
-            RedirectStandardOutput = false,
-            RedirectStandardError = false
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
         };
 
         try
         {
             using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start robocopy.");
             using CancellationTokenRegistration cancellationRegistration = cancellationToken.Register(() => KillProcessTree(process));
+            // Read redirected streams while robocopy runs so Windows cannot block the copy on a full output pipe.
+            var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             try
             {
                 process.WaitForExitAsync(cancellationToken).GetAwaiter().GetResult();
@@ -62,7 +66,9 @@ internal static class WindowsDirectoryCopy
                 return true;
             }
 
-            throw new IOException($"robocopy failed with exit code {process.ExitCode} when copying '{sourcePath}' to '{destinationPath}'. Arguments: {arguments}");
+            string standardOutput = standardOutputTask.GetAwaiter().GetResult();
+            string standardError = standardErrorTask.GetAwaiter().GetResult();
+            throw new IOException(BuildFailureMessage(process.ExitCode, sourcePath, destinationPath, arguments, standardOutput, standardError));
         }
         catch (Win32Exception)
         {
@@ -111,7 +117,6 @@ internal static class WindowsDirectoryCopy
             "/NFL",
             "/NDL",
             "/NJH",
-            "/NJS",
             "/NP"
         };
 
@@ -140,5 +145,84 @@ internal static class WindowsDirectoryCopy
     private static string Quote(string value)
     {
         return $"\"{value}\"";
+    }
+
+    /// <summary>
+    /// Builds a diagnostic exception message that preserves robocopy's own failure details for later troubleshooting.
+    /// </summary>
+    private static string BuildFailureMessage(int exitCode, string sourcePath, string destinationPath, string arguments, string standardOutput, string standardError)
+    {
+        StringBuilder message = new();
+        message.Append("robocopy failed with exit code ")
+            .Append(exitCode)
+            .Append(" (")
+            .Append(DescribeExitCode(exitCode))
+            .Append(") when copying '")
+            .Append(sourcePath)
+            .Append("' to '")
+            .Append(destinationPath)
+            .Append("'. Arguments: ")
+            .Append(arguments);
+
+        // Robocopy reports copy failures on stdout in most cases, while stderr remains available for process errors.
+        AppendProcessOutput(message, "Standard output", standardOutput);
+        AppendProcessOutput(message, "Standard error", standardError);
+        return message.ToString();
+    }
+
+    /// <summary>
+    /// Appends one captured process stream only when it contains useful text.
+    /// </summary>
+    private static void AppendProcessOutput(StringBuilder message, string label, string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return;
+        }
+
+        message.AppendLine()
+            .Append(label)
+            .AppendLine(":")
+            .Append(output.Trim());
+    }
+
+    /// <summary>
+    /// Decodes robocopy's bitmask exit code into the documented conditions that contributed to the result.
+    /// </summary>
+    private static string DescribeExitCode(int exitCode)
+    {
+        List<string> conditions = new();
+        if ((exitCode & 1) != 0)
+        {
+            conditions.Add("files copied");
+        }
+
+        if ((exitCode & 2) != 0)
+        {
+            conditions.Add("extra files or directories detected");
+        }
+
+        if ((exitCode & 4) != 0)
+        {
+            conditions.Add("mismatched files or directories detected");
+        }
+
+        if ((exitCode & 8) != 0)
+        {
+            conditions.Add("copy failures occurred");
+        }
+
+        if ((exitCode & 16) != 0)
+        {
+            conditions.Add("serious robocopy error");
+        }
+
+        int unknownBits = exitCode & ~31;
+        if (unknownBits != 0)
+        {
+            conditions.Add($"unknown bits {unknownBits}");
+        }
+
+        return conditions.Count == 0 ? "no changes" : string.Join(", ", conditions);
     }
 }
