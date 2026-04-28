@@ -1,5 +1,4 @@
 using System;
-using System.Threading.Tasks;
 using LocalAutomation.Runtime;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Operations.OperationTypes;
@@ -43,11 +42,10 @@ namespace UnrealAutomationCommon.Operations
             _ = getEngine ?? throw new ArgumentNullException(nameof(getEngine));
             _ = getSourceProjectPath ?? throw new ArgumentNullException(nameof(getSourceProjectPath));
             _ = createBuildParameters ?? throw new ArgumentNullException(nameof(createBuildParameters));
-            UnrealBuildWorkspaceCache.ProjectBuildWorkspace? workspace = null;
 
-            // The cached workspace is created during prepare and reused by the run and copy-back steps so cache identity
-            // and materialization data are computed once for this authored cached operation.
-            return AddCachedOperation(
+            // The generic cached-task core owns the prepare/run/copy task shape; this adapter only supplies Unreal cache
+            // identity, workspace creation, and wrapped build parameters.
+            return CachedWorkspaceTasks.Add<UnrealBuildWorkspaceCache.ProjectBuildWorkspace>(
                 scope,
                 title,
                 UnrealExecutionLocks.GetBuildWorkspaceCacheLock(operationName, role, subjectName, engineVersion),
@@ -56,7 +54,7 @@ namespace UnrealAutomationCommon.Operations
                 context =>
                 {
                     TState state = context.GetData<TState>();
-                    workspace = UnrealBuildWorkspaceCache.CreateProjectBuildWorkspace(
+                    return UnrealBuildWorkspaceCache.CreateProjectBuildWorkspace(
                         getEngine(state),
                         operationName,
                         role,
@@ -65,10 +63,10 @@ namespace UnrealAutomationCommon.Operations
                         configuration,
                         compiler,
                         cppStandard);
-                    return workspace.PrepareAsync(context);
                 },
-                context => CreateProjectBuildParameters(context, GetPreparedWorkspace(workspace, title), resolvedBuildOperation, createBuildParameters),
-                context => GetPreparedWorkspace(workspace, title).CopyOutputsAsync(context));
+                (workspace, context) => workspace.PrepareAsync(context),
+                (context, workspace) => CreateProjectBuildParameters(context, workspace, resolvedBuildOperation, createBuildParameters),
+                (workspace, context) => workspace.CopyOutputsAsync(context));
         }
 
         /// <summary>
@@ -94,11 +92,10 @@ namespace UnrealAutomationCommon.Operations
             _ = getDestinationPluginPath ?? throw new ArgumentNullException(nameof(getDestinationPluginPath));
             PackagePlugin packageOperation = new();
             PluginBuildOptions pluginBuildOptions = operationParameters.GetOptions<PluginBuildOptions>();
-            UnrealBuildWorkspaceCache.PluginPackageWorkspace? workspace = null;
 
             // PackagePlugin needs a fresh runtime parameter bag because UAT writes the package payload directly into the
             // prepared cache root.
-            return AddCachedOperation(
+            return CachedWorkspaceTasks.Add<UnrealBuildWorkspaceCache.PluginPackageWorkspace>(
                 scope,
                 title,
                 UnrealExecutionLocks.GetBuildWorkspaceCacheLock(operationName, role, pluginName, engineVersion),
@@ -107,106 +104,17 @@ namespace UnrealAutomationCommon.Operations
                 context =>
                 {
                     TState state = context.GetData<TState>();
-                    workspace = UnrealBuildWorkspaceCache.CreatePluginPackageWorkspace(
+                    return UnrealBuildWorkspaceCache.CreatePluginPackageWorkspace(
                         getEngine(state),
                         operationName,
                         role,
                         getStagingPluginPath(state),
                         getDestinationPluginPath(state),
                         pluginBuildOptions);
-                    return workspace.PrepareAsync(context);
                 },
-                context => CreatePluginPackageParameters(context, GetPreparedWorkspace(workspace, title), packageOperation, pluginBuildOptions),
-                context => GetPreparedWorkspace(workspace, title).CopyOutputsAsync(context));
-        }
-
-        /// <summary>
-        /// Creates a visible cached-operation parent with explicit prepare, wrapped operation, and copy-back children.
-        /// </summary>
-        private static ExecutionTaskBuilder AddCachedOperation(
-            ExecutionTaskScopeBuilder scope,
-            string title,
-            ExecutionLock cacheLock,
-            Operation cachedOperation,
-            ValidatedOperationParameters operationParameters,
-            Func<ExecutionTaskContext, Task> prepareAsync,
-            Func<IOperationParameterContext, OperationParameters> createRuntimeParameters,
-            Func<ExecutionTaskContext, Task> copyOutputsAsync)
-        {
-            _ = scope ?? throw new ArgumentNullException(nameof(scope));
-            string resolvedTitle = string.IsNullOrWhiteSpace(title)
-                ? throw new ArgumentException("A cached operation title is required.", nameof(title))
-                : title;
-            _ = cacheLock ?? throw new ArgumentNullException(nameof(cacheLock));
-            Operation resolvedOperation = cachedOperation ?? throw new ArgumentNullException(nameof(cachedOperation));
-            _ = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
-            _ = prepareAsync ?? throw new ArgumentNullException(nameof(prepareAsync));
-            _ = createRuntimeParameters ?? throw new ArgumentNullException(nameof(createRuntimeParameters));
-            _ = copyOutputsAsync ?? throw new ArgumentNullException(nameof(copyOutputsAsync));
-
-            ExecutionTaskBuilder parent = scope.Task(resolvedTitle)
-                .WithExecutionLocks(cacheLock);
-            parent.Children(steps =>
-            {
-                steps.Task("Prepare Cached Workspace")
-                    .Describe("Prepare cache inputs before the cached operation runs")
-                    .Run(context => prepareAsync(context));
-
-                steps.Task("Run Cached Operation")
-                    .Describe($"Run {resolvedOperation.OperationName} against the prepared cache workspace")
-                    .AddChildOperation(
-                        resolvedOperation,
-                        () => CreateAuthoringParameters(operationParameters, resolvedOperation),
-                        context => CreateRuntimeParameters(context, resolvedOperation, createRuntimeParameters))
-                    .HideInGraph();
-
-                steps.Task("Copy Cached Outputs")
-                    .Describe("Copy generated cache outputs back into the session workspace")
-                    .Run(context => copyOutputsAsync(context));
-            });
-
-            return parent;
-        }
-
-        /// <summary>
-        /// Creates authoring-time parameters by selecting the nearest plan target supported by the wrapped operation.
-        /// </summary>
-        private static OperationParameters CreateAuthoringParameters(ValidatedOperationParameters operationParameters, Operation cachedOperation)
-        {
-            IOperationTarget planTarget = GetPlanTarget(operationParameters.Target, cachedOperation);
-            OperationParameters parameters = operationParameters.CreateChild();
-            parameters.Target = planTarget;
-            return parameters;
-        }
-
-        /// <summary>
-        /// Walks the plan target hierarchy until it finds a target that the wrapped operation can declare against.
-        /// </summary>
-        private static IOperationTarget GetPlanTarget(IOperationTarget sourceTarget, Operation cachedOperation)
-        {
-            for (IOperationTarget? currentTarget = sourceTarget; currentTarget != null; currentTarget = currentTarget.ParentTarget)
-            {
-                if (cachedOperation.SupportsTarget(currentTarget))
-                {
-                    return currentTarget;
-                }
-            }
-
-            throw new InvalidOperationException($"Cached operation '{cachedOperation.OperationName}' does not support target '{sourceTarget.TypeName}' or any parent target.");
-        }
-
-        /// <summary>
-        /// Creates and validates runtime parameters for the supplied child operation before the scheduler starts it.
-        /// </summary>
-        private static OperationParameters CreateRuntimeParameters(
-            IOperationParameterContext context,
-            Operation cachedOperation,
-            Func<IOperationParameterContext, OperationParameters> createRuntimeParameters)
-        {
-            OperationParameters parameters = createRuntimeParameters(context)
-                ?? throw new InvalidOperationException($"Cached operation '{cachedOperation.OperationName}' did not create operation parameters.");
-            ValidateRuntimeTarget(cachedOperation, parameters);
-            return parameters;
+                (workspace, context) => workspace.PrepareAsync(context),
+                (context, workspace) => CreatePluginPackageParameters(context, workspace, packageOperation, pluginBuildOptions),
+                (workspace, context) => workspace.CopyOutputsAsync(context));
         }
 
         /// <summary>
@@ -229,7 +137,7 @@ namespace UnrealAutomationCommon.Operations
                 OperationParameters buildParameters = createBuildParameters(context, cachedProject)
                     ?? throw new InvalidOperationException($"Cached build operation '{buildOperation.OperationName}' did not create operation parameters.");
                 createdParameters = buildParameters;
-                ValidateRuntimeTarget(buildOperation, buildParameters);
+                CachedWorkspaceTasks.ValidateRuntimeTarget(buildOperation, buildParameters);
                 if (!ReferenceEquals(buildParameters.Target, cachedProject))
                 {
                     cachedProject.Dispose();
@@ -271,7 +179,7 @@ namespace UnrealAutomationCommon.Operations
                 parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { workspace.EngineVersion };
                 parameters.SetOptions((PluginBuildOptions)pluginBuildOptions.Clone());
                 parameters.GetOptions<AdditionalArgumentsOptions>().Arguments = PreserveHostProjectArgument;
-                ValidateRuntimeTarget(packageOperation, parameters);
+                CachedWorkspaceTasks.ValidateRuntimeTarget(packageOperation, parameters);
                 return parameters;
             }
             catch
@@ -279,31 +187,6 @@ namespace UnrealAutomationCommon.Operations
                 // Runtime parameters own the staging-plugin target only after successful creation.
                 stagingPlugin.Dispose();
                 throw;
-            }
-        }
-
-        /// <summary>
-        /// Ensures a workspace prepared earlier in the cached task sequence is available to a later sibling step.
-        /// </summary>
-        private static TWorkspace GetPreparedWorkspace<TWorkspace>(TWorkspace? workspace, string taskTitle)
-            where TWorkspace : class
-        {
-            return workspace ?? throw new InvalidOperationException($"Cached workspace for '{taskTitle}' was requested before the prepare step completed.");
-        }
-
-        /// <summary>
-        /// Ensures a wrapped operation parameter factory selected a supported runtime target before returning it.
-        /// </summary>
-        private static void ValidateRuntimeTarget(Operation operation, OperationParameters parameters)
-        {
-            if (parameters.Target == null)
-            {
-                throw new InvalidOperationException($"Cached operation '{operation.OperationName}' did not select a target.");
-            }
-
-            if (!operation.SupportsTarget(parameters.Target))
-            {
-                throw new InvalidOperationException($"Cached operation '{operation.OperationName}' does not support runtime target '{parameters.Target.TypeName}'.");
             }
         }
     }
