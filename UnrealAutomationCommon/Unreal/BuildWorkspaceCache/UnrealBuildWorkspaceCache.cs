@@ -4,10 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 using LocalAutomation.Core.IO;
 using LocalAutomation.Runtime;
-using Microsoft.Extensions.Logging;
 using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
@@ -17,7 +15,7 @@ namespace UnrealAutomationCommon.Unreal
     /// Provides stable project build workspaces for temporary Unreal projects so UBT can reuse its Intermediate tree and
     /// shared PCH outputs across repeated automation runs.
     /// </summary>
-    internal static class UnrealBuildWorkspaceCache
+    internal static partial class UnrealBuildWorkspaceCache
     {
         /// <summary>
         /// Keeps cache hash folders short while leaving enough entropy that unrelated build identities do not collide in
@@ -73,206 +71,6 @@ namespace UnrealAutomationCommon.Unreal
             using Plugin stagingPlugin = CreateRequiredPlugin(stagingPluginPath, "Staged plugin is not available for cached packaging");
             string cachePath = GetPluginPackageCachePath(engine, operationName, resolvedRole, stagingPlugin, pluginBuildOptions);
             return new PluginPackageWorkspace(cachePath, engine.Version, stagingPlugin.PluginPath, destinationPluginPath, stagingPlugin.Name);
-        }
-
-        /// <summary>
-        /// Represents one concrete cached project workspace and the materialization rules needed around a direct UBT build.
-        /// </summary>
-        internal sealed class ProjectBuildWorkspace
-        {
-            /// <summary>
-            /// Captures the stable cache path plus the source and output materialization specs for one direct build cache.
-            /// </summary>
-            internal ProjectBuildWorkspace(string cachePath, string sourceProjectPath, FileMaterializationSpec projectInputs, FileMaterializationSpec buildOutputs, IReadOnlySet<string> projectPluginRelativePaths)
-            {
-                CachePath = RequireText(cachePath, nameof(cachePath), "Cached project workspace path is required.");
-                SourceProjectPath = RequireText(sourceProjectPath, nameof(sourceProjectPath), "Cached project source path is required.");
-                ProjectInputs = projectInputs ?? throw new ArgumentNullException(nameof(projectInputs));
-                BuildOutputs = buildOutputs ?? throw new ArgumentNullException(nameof(buildOutputs));
-                ProjectPluginRelativePaths = projectPluginRelativePaths ?? throw new ArgumentNullException(nameof(projectPluginRelativePaths));
-            }
-
-            /// <summary>
-            /// Gets the stable cached project root used by the wrapped build operation.
-            /// </summary>
-            internal string CachePath { get; }
-
-            /// <summary>
-            /// Gets the session project path that supplies cache inputs and receives generated build outputs.
-            /// </summary>
-            private string SourceProjectPath { get; }
-
-            /// <summary>
-            /// Gets the materialization rules used to refresh source inputs while preserving reusable Intermediate state.
-            /// </summary>
-            private FileMaterializationSpec ProjectInputs { get; }
-
-            /// <summary>
-            /// Gets the materialization rules used to copy generated build outputs back into the session project.
-            /// </summary>
-            private FileMaterializationSpec BuildOutputs { get; }
-
-            /// <summary>
-            /// Gets the current project plugin directory set relative to the Plugins root, used to remove stale plugin trees.
-            /// </summary>
-            private IReadOnlySet<string> ProjectPluginRelativePaths { get; }
-
-            /// <summary>
-            /// Refreshes the source project into the cache while preserving Unreal's reusable Intermediate tree.
-            /// </summary>
-            internal async Task PrepareAsync(ExecutionTaskContext context)
-            {
-                Directory.CreateDirectory(CachePath);
-                DeleteStaleCachedPluginDirectories(context);
-                context.Logger.LogInformation("Refreshing Unreal build cache workspace from '{SourceProjectPath}' to '{CachedProjectPath}'.", SourceProjectPath, CachePath);
-                FileUtils.MaterializeDirectory(SourceProjectPath, CachePath, ProjectInputs, context.Logger, context.CancellationToken, mirrorDirectories: true);
-
-                if (ProjectPaths.Instance.IsTargetDirectory(CachePath))
-                {
-                    await Task.CompletedTask;
-                    return;
-                }
-
-                context.Logger.LogWarning("Cached Unreal build workspace '{CachedProjectPath}' was invalid after refresh; recreating it without preserved intermediates.", CachePath);
-                FileUtils.DeleteDirectoryIfExists(CachePath);
-                Directory.CreateDirectory(CachePath);
-                FileUtils.MaterializeDirectory(SourceProjectPath, CachePath, ProjectInputs, context.Logger, context.CancellationToken, mirrorDirectories: true);
-                if (!ProjectPaths.Instance.IsTargetDirectory(CachePath))
-                {
-                    throw new InvalidOperationException($"Cached Unreal build workspace is not a valid project after refresh: {CachePath}");
-                }
-
-                await Task.CompletedTask;
-            }
-
-            /// <summary>
-            /// Removes cached plugin directories that are no longer part of this project shape while preserving output
-            /// folders for plugins that are still present at the same Unreal-scanned relative path.
-            /// </summary>
-            private void DeleteStaleCachedPluginDirectories(ExecutionTaskContext context)
-            {
-                string cachedPluginsPath = Path.Combine(CachePath, "Plugins");
-                if (!Directory.Exists(cachedPluginsPath))
-                {
-                    return;
-                }
-
-                // Delete deeper plugin directories first so grouped plugin trees can be removed without parent conflicts.
-                foreach (string pluginDirectoryPath in Directory.GetDirectories(cachedPluginsPath, "*", SearchOption.AllDirectories)
-                             .Where(PluginPaths.Instance.IsTargetDirectory)
-                             .OrderByDescending(path => path.Length))
-                {
-                    string relativePluginPath = Path.GetRelativePath(cachedPluginsPath, pluginDirectoryPath);
-                    if (!ProjectPluginRelativePaths.Contains(relativePluginPath))
-                    {
-                        FileUtils.DeleteDirectoryIfExists(pluginDirectoryPath, context.Logger);
-                    }
-                }
-            }
-
-            /// <summary>
-            /// Opens the cached project for a wrapped build operation parameter bag.
-            /// </summary>
-            internal Project OpenCachedProject()
-            {
-                return CreateRequiredProject(CachePath, "Cached build workspace is not available");
-            }
-
-            /// <summary>
-            /// Copies generated build outputs from the cache project back to the session project.
-            /// </summary>
-            internal async Task CopyOutputsAsync(ExecutionTaskContext context)
-            {
-                using Project cachedProject = CreateRequiredProject(CachePath, "Cached build workspace is not available for output copy");
-                context.Logger.LogInformation("Copying cached Unreal build outputs from '{CachedProjectPath}' to session project '{SessionProjectPath}'.", cachedProject.ProjectPath, SourceProjectPath);
-                FileUtils.MaterializeDirectory(cachedProject.ProjectPath, SourceProjectPath, BuildOutputs, context.Logger, context.CancellationToken);
-                await Task.CompletedTask;
-            }
-        }
-
-        /// <summary>
-        /// Represents one concrete cached BuildPlugin package workspace and its payload copy-back rules.
-        /// </summary>
-        internal sealed class PluginPackageWorkspace
-        {
-            /// <summary>
-            /// Captures the stable package cache, staging plugin input, and deployment output path for one package run.
-            /// </summary>
-            internal PluginPackageWorkspace(string cachePath, EngineVersion engineVersion, string stagingPluginPath, string destinationPluginPath, string pluginName)
-            {
-                CachePath = RequireText(cachePath, nameof(cachePath), "Cached plugin package path is required.");
-                EngineVersion = engineVersion ?? throw new ArgumentNullException(nameof(engineVersion));
-                StagingPluginPath = RequireText(stagingPluginPath, nameof(stagingPluginPath), "Staged plugin path is required for cached packaging.");
-                DestinationPluginPath = RequireText(destinationPluginPath, nameof(destinationPluginPath), "Destination plugin path is required for cached packaging.");
-                PluginName = RequireText(pluginName, nameof(pluginName), "Plugin name is required for cached packaging.");
-            }
-
-            /// <summary>
-            /// Gets the stable cache root used as PackagePlugin's output path.
-            /// </summary>
-            internal string CachePath { get; }
-
-            /// <summary>
-            /// Gets the engine version that package parameters must target.
-            /// </summary>
-            internal EngineVersion EngineVersion { get; }
-
-            /// <summary>
-            /// Gets the staged source-style plugin path consumed by PackagePlugin.
-            /// </summary>
-            private string StagingPluginPath { get; }
-
-            /// <summary>
-            /// Gets the session distributable plugin output path recreated from the package cache payload.
-            /// </summary>
-            private string DestinationPluginPath { get; }
-
-            /// <summary>
-            /// Gets the plugin folder name used to clear stale generated host-project plugin copies.
-            /// </summary>
-            private string PluginName { get; }
-
-            /// <summary>
-            /// Clears stale package payload files while preserving UAT's generated HostProject intermediate tree.
-            /// </summary>
-            internal async Task PrepareAsync(ExecutionTaskContext context)
-            {
-                using IDisposable nodeScope = context.Logger.BeginSection("Preparing cached plugin package workspace");
-                Directory.CreateDirectory(CachePath);
-                FileUtils.DeleteTopLevelFiles(CachePath, new[] { "*" }, context.Logger);
-                FileUtils.DeleteTopLevelDirectoriesExcept(CachePath, new[] { BuildPluginHostProjectDirectoryName }, context.Logger);
-                FileUtils.DeleteDirectoryIfExists(Path.Combine(CachePath, BuildPluginHostProjectDirectoryName, "Plugins", PluginName), context.Logger);
-                await Task.CompletedTask;
-            }
-
-            /// <summary>
-            /// Opens the staged plugin for the PackagePlugin runtime parameter bag.
-            /// </summary>
-            internal Plugin OpenStagingPlugin()
-            {
-                return CreateRequiredPlugin(StagingPluginPath, "Staged plugin is not available for cached packaging");
-            }
-
-            /// <summary>
-            /// Recreates the session distributable plugin output from the fresh cached package payload.
-            /// </summary>
-            internal async Task CopyOutputsAsync(ExecutionTaskContext context)
-            {
-                using IDisposable nodeScope = context.Logger.BeginSection("Copying cached plugin package output");
-                if (!Directory.Exists(CachePath))
-                {
-                    throw new DirectoryNotFoundException($"Cached plugin package output does not exist: {CachePath}");
-                }
-
-                FileMaterializationSpec payloadSpec = new();
-                payloadSpec.AddRootDirectory(required: true, excludedRelativePaths: new[] { BuildPluginHostProjectDirectoryName });
-                FileUtils.DeleteDirectoryIfExists(DestinationPluginPath);
-                context.Logger.LogInformation("Copying cached Unreal plugin package output from '{CachedPackagePath}' to '{DestinationPluginPath}'.", CachePath, DestinationPluginPath);
-                FileUtils.MaterializeDirectory(CachePath, DestinationPluginPath, payloadSpec, context.Logger, context.CancellationToken);
-                using Plugin builtPlugin = CreateRequiredPlugin(DestinationPluginPath, "Built plugin output is missing after cached package copy-back");
-                context.Logger.LogInformation($"Validated built plugin output: {builtPlugin.PluginPath}");
-                await Task.CompletedTask;
-            }
         }
 
         /// <summary>
