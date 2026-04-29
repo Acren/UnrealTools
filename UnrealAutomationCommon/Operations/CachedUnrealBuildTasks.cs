@@ -24,10 +24,10 @@ namespace UnrealAutomationCommon.Operations
         public static ExecutionTaskBuilder AddProjectBuild(
             ExecutionTaskScopeBuilder scope,
             string title,
-            Operation buildOperation,
+            UnrealOperation buildOperation,
             Func<IOperationParameterContext, OperationParameters> createSourceParameters)
         {
-            Operation resolvedBuildOperation = buildOperation ?? throw new ArgumentNullException(nameof(buildOperation));
+            UnrealOperation resolvedBuildOperation = buildOperation ?? throw new ArgumentNullException(nameof(buildOperation));
             _ = createSourceParameters ?? throw new ArgumentNullException(nameof(createSourceParameters));
 
             // The generic cached-task core owns the prepare/run/copy task shape; this adapter only supplies Unreal cache
@@ -75,7 +75,7 @@ namespace UnrealAutomationCommon.Operations
         /// <summary>
         /// Creates the cached project workspace from the same source parameters that describe the operation's source target.
         /// </summary>
-        private static UnrealBuildWorkspaceCache.ProjectBuildWorkspace CreateProjectBuildWorkspace(Operation buildOperation, OperationParameters sourceParameters)
+        private static UnrealBuildWorkspaceCache.ProjectBuildWorkspace CreateProjectBuildWorkspace(UnrealOperation buildOperation, OperationParameters sourceParameters)
         {
             _ = sourceParameters ?? throw new ArgumentNullException(nameof(sourceParameters));
             BuildConfigurationOptions buildOptions = sourceParameters.GetOptions<BuildConfigurationOptions>();
@@ -91,10 +91,14 @@ namespace UnrealAutomationCommon.Operations
         /// <summary>
         /// Creates the cached BuildPlugin workspace from the staged plugin target and destination in the source parameters.
         /// </summary>
-        private static UnrealBuildWorkspaceCache.PluginPackageWorkspace CreatePluginPackageWorkspace(Operation packageOperation, OperationParameters sourceParameters, string operationName, string role)
+        private static UnrealBuildWorkspaceCache.PluginPackageWorkspace CreatePluginPackageWorkspace(PackagePlugin packageOperation, OperationParameters sourceParameters, string operationName, string role)
         {
             _ = sourceParameters ?? throw new ArgumentNullException(nameof(sourceParameters));
-            Plugin stagingPlugin = GetRequiredTarget<Plugin>(sourceParameters, packageOperation.OperationName);
+            if (sourceParameters.Target is not Plugin stagingPlugin)
+            {
+                throw new InvalidOperationException($"Cached operation '{packageOperation.OperationName}' requires a Plugin source target.");
+            }
+
             string destinationPluginPath = string.IsNullOrWhiteSpace(sourceParameters.OutputPathOverride)
                 ? throw new InvalidOperationException($"Cached operation '{packageOperation.OperationName}' requires OutputPathOverride to identify the copied plugin destination.")
                 : sourceParameters.OutputPathOverride;
@@ -112,19 +116,19 @@ namespace UnrealAutomationCommon.Operations
         /// </summary>
         private static OperationParameters CreateProjectBuildParameters(
             UnrealBuildWorkspaceCache.ProjectBuildWorkspace workspace,
-            OperationParameters baseParameters,
-            Operation buildOperation)
+            OperationParameters sourceParameters,
+            UnrealOperation buildOperation)
         {
             _ = workspace ?? throw new ArgumentNullException(nameof(workspace));
-            _ = baseParameters ?? throw new ArgumentNullException(nameof(baseParameters));
+            _ = sourceParameters ?? throw new ArgumentNullException(nameof(sourceParameters));
             _ = buildOperation ?? throw new ArgumentNullException(nameof(buildOperation));
             Project cachedProject = workspace.OpenCachedProject();
             OperationParameters? buildParameters = null;
             try
             {
-                buildParameters = buildOperation.CreateParameters(baseParameters);
-                buildParameters.Target = CreateCachedTarget(baseParameters, cachedProject, buildOperation.OperationName);
-                CachedWorkspaceTasks.ValidateRuntimeTarget(buildOperation, buildParameters);
+                buildParameters = buildOperation.CreateParameters(sourceParameters);
+                buildParameters.Target = CreateCachedProjectBuildTarget(sourceParameters, cachedProject);
+                CachedWorkspaceTasks.ValidateSupportedTarget(buildOperation, buildParameters);
                 if (!ReferenceEquals(buildParameters.Target, cachedProject))
                 {
                     cachedProject.Dispose();
@@ -149,21 +153,21 @@ namespace UnrealAutomationCommon.Operations
         /// </summary>
         private static OperationParameters CreatePluginPackageParameters(
             UnrealBuildWorkspaceCache.PluginPackageWorkspace workspace,
-            OperationParameters baseParameters,
-            Operation packageOperation)
+            OperationParameters sourceParameters,
+            PackagePlugin packageOperation)
         {
             _ = workspace ?? throw new ArgumentNullException(nameof(workspace));
-            _ = baseParameters ?? throw new ArgumentNullException(nameof(baseParameters));
+            _ = sourceParameters ?? throw new ArgumentNullException(nameof(sourceParameters));
             _ = packageOperation ?? throw new ArgumentNullException(nameof(packageOperation));
             Plugin stagingPlugin = workspace.OpenStagingPlugin();
             try
             {
-                OperationParameters parameters = packageOperation.CreateParameters(baseParameters);
+                OperationParameters parameters = packageOperation.CreateParameters(sourceParameters);
                 parameters.Target = stagingPlugin;
                 parameters.OutputPathOverride = workspace.CachePath;
                 parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { workspace.EngineVersion };
                 parameters.GetOptions<AdditionalArgumentsOptions>().Arguments = PreserveHostProjectArgument;
-                CachedWorkspaceTasks.ValidateRuntimeTarget(packageOperation, parameters);
+                CachedWorkspaceTasks.ValidateSupportedTarget(packageOperation, parameters);
                 return parameters;
             }
             catch
@@ -177,14 +181,9 @@ namespace UnrealAutomationCommon.Operations
         /// <summary>
         /// Resolves the Unreal engine from the same parameters the wrapped operation will later execute with.
         /// </summary>
-        private static Engine ResolveEngine(Operation operation, OperationParameters parameters)
+        private static Engine ResolveEngine(UnrealOperation operation, OperationParameters parameters)
         {
-            if (operation is not UnrealOperation unrealOperation)
-            {
-                throw new InvalidOperationException($"Cached Unreal build operation '{operation.OperationName}' must derive from UnrealOperation.");
-            }
-
-            return unrealOperation.GetTargetEngineInstall(new ValidatedOperationParameters(operation, parameters))
+            return operation.GetTargetEngineInstall(new ValidatedOperationParameters(operation, parameters))
                 ?? throw new InvalidOperationException($"Cached Unreal build operation '{operation.OperationName}' could not resolve an engine from its parameters.");
         }
 
@@ -213,7 +212,7 @@ namespace UnrealAutomationCommon.Operations
         /// <summary>
         /// Retargets cloned source parameters to the matching cached target type.
         /// </summary>
-        private static IOperationTarget CreateCachedTarget(OperationParameters sourceParameters, Project cachedProject, string operationName)
+        private static IOperationTarget CreateCachedProjectBuildTarget(OperationParameters sourceParameters, Project cachedProject)
         {
             if (sourceParameters.Target is Project)
             {
@@ -227,23 +226,13 @@ namespace UnrealAutomationCommon.Operations
                 if (!cachedPlugin.IsValid)
                 {
                     cachedPlugin.Dispose();
-                    throw new InvalidOperationException($"Cached operation '{operationName}' could not find plugin '{sourcePlugin.Name}' in cached project '{cachedProject.ProjectPath}'.");
+                    throw new InvalidOperationException($"Cached project build could not find plugin '{sourcePlugin.Name}' in cached project '{cachedProject.ProjectPath}'.");
                 }
 
                 return cachedPlugin;
             }
 
-            throw new InvalidOperationException($"Cached operation '{operationName}' cannot retarget source target '{sourceParameters.Target?.TypeName ?? "<null>"}'.");
-        }
-
-        /// <summary>
-        /// Reads the target from the parameter bag and verifies it has the expected runtime type.
-        /// </summary>
-        private static TTarget GetRequiredTarget<TTarget>(OperationParameters parameters, string operationName) where TTarget : IOperationTarget
-        {
-            return parameters.Target is TTarget target
-                ? target
-                : throw new InvalidOperationException($"Cached operation '{operationName}' requires a {typeof(TTarget).Name} source target.");
+            throw new InvalidOperationException($"Cached project build cannot retarget source target '{sourceParameters.Target?.TypeName ?? "<null>"}'.");
         }
     }
 }

@@ -75,11 +75,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 .Describe("Package the example project with the installed plugin")
                                 .Children(packageScope =>
                                 {
-                                    BuildProjectTarget buildProjectTarget = new();
                                     CachedUnrealBuildTasks.AddProjectBuild(
                                             packageScope,
                                             "Build Example Project Target",
-                                            buildProjectTarget,
+                                            new BuildProjectTarget(),
                                             context => CreateCachedVerificationBuildParameters(context, operationParameters))
                                         .Describe("Build the example project target through a stable cached workspace before package-only BuildCookRun");
 

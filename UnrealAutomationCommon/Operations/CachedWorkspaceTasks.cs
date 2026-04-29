@@ -43,7 +43,7 @@ namespace UnrealAutomationCommon.Operations
             {
                 sourceParameters ??= createSourceParameters(context)
                     ?? throw new InvalidOperationException($"Cached operation '{resolvedOperation.OperationName}' did not create operation parameters.");
-                ValidateRuntimeTarget(resolvedOperation, sourceParameters);
+                ValidateSupportedTarget(resolvedOperation, sourceParameters);
                 return sourceParameters;
             }
 
@@ -76,12 +76,12 @@ namespace UnrealAutomationCommon.Operations
 
                 steps.Task("Run Cached Operation")
                     .Describe($"Run {resolvedOperation.OperationName} against the prepared cache workspace")
-                    .Run(async context =>
+                    .Run(context =>
                     {
                         OperationParameters parameters = createRuntimeParameters(GetOrCreateWorkspace(context), GetOrCreateSourceParameters(context))
                             ?? throw new InvalidOperationException($"Cached operation '{resolvedOperation.OperationName}' did not create operation parameters.");
-                        ValidateRuntimeTarget(resolvedOperation, parameters);
-                        return await context.RunChildOperationAsync(resolvedOperation, parameters, hideChildOperationRootInGraph: true).ConfigureAwait(false);
+                        ValidateSupportedTarget(resolvedOperation, parameters);
+                        return context.RunChildOperationAsync(resolvedOperation, parameters, hideChildOperationRootInGraph: true);
                     });
 
                 steps.Task("Copy Cached Outputs")
@@ -93,9 +93,9 @@ namespace UnrealAutomationCommon.Operations
         }
 
         /// <summary>
-        /// Validates that runtime parameters selected a target the wrapped cached operation can execute against.
+        /// Validates that a parameter bag selected a target the wrapped cached operation can execute against.
         /// </summary>
-        internal static void ValidateRuntimeTarget(Operation operation, OperationParameters parameters)
+        internal static void ValidateSupportedTarget(Operation operation, OperationParameters parameters)
         {
             if (parameters.Target == null)
             {
