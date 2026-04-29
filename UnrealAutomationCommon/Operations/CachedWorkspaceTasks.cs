@@ -15,10 +15,10 @@ namespace UnrealAutomationCommon.Operations
         public static ExecutionTaskBuilder Add<TWorkspace>(
             ExecutionTaskScopeBuilder scope,
             string title,
-            ExecutionLock cacheLock,
+            Func<TWorkspace, ExecutionLock> createCacheLock,
             Operation cachedOperation,
             ValidatedOperationParameters operationParameters,
-            Func<ExecutionTaskContext, TWorkspace> createWorkspace,
+            Func<IOperationParameterContext, TWorkspace> createWorkspace,
             Func<TWorkspace, ExecutionTaskContext, Task> prepareAsync,
             Func<IOperationParameterContext, TWorkspace, OperationParameters> createRuntimeParameters,
             Func<TWorkspace, ExecutionTaskContext, Task> copyOutputsAsync)
@@ -28,7 +28,7 @@ namespace UnrealAutomationCommon.Operations
             string resolvedTitle = string.IsNullOrWhiteSpace(title)
                 ? throw new ArgumentException("A cached operation title is required.", nameof(title))
                 : title;
-            _ = cacheLock ?? throw new ArgumentNullException(nameof(cacheLock));
+            _ = createCacheLock ?? throw new ArgumentNullException(nameof(createCacheLock));
             Operation resolvedOperation = cachedOperation ?? throw new ArgumentNullException(nameof(cachedOperation));
             _ = operationParameters ?? throw new ArgumentNullException(nameof(operationParameters));
             _ = createWorkspace ?? throw new ArgumentNullException(nameof(createWorkspace));
@@ -37,23 +37,30 @@ namespace UnrealAutomationCommon.Operations
             _ = copyOutputsAsync ?? throw new ArgumentNullException(nameof(copyOutputsAsync));
             TWorkspace? workspace = null;
 
-            // Sibling run/copy tasks rely on the prepare task to publish the concrete workspace first.
-            TWorkspace PreparedWorkspace()
+            // Lock resolution can happen before the prepare task, so the workspace is created lazily from shared task data.
+            TWorkspace GetOrCreateWorkspace(IOperationParameterContext context)
             {
-                return workspace ?? throw new InvalidOperationException($"Cached workspace for '{resolvedTitle}' was requested before the prepare step completed.");
+                return workspace ??= createWorkspace(context)
+                    ?? throw new InvalidOperationException($"Cached workspace for '{resolvedTitle}' was not created.");
+            }
+
+            // The parent lock is derived from the concrete workspace so exact cache identities serialize precisely.
+            ExecutionLock ResolveCacheLock(IOperationParameterContext context)
+            {
+                return createCacheLock(GetOrCreateWorkspace(context))
+                    ?? throw new InvalidOperationException($"Cached workspace '{resolvedTitle}' did not create an execution lock.");
             }
 
             // The parent lock protects the whole refresh/run/copy sequence for one stable cache identity.
             ExecutionTaskBuilder parent = scope.Task(resolvedTitle)
-                .WithExecutionLocks(cacheLock);
+                .WithExecutionLocks(context => new[] { ResolveCacheLock(context) });
             parent.Children(steps =>
             {
                 steps.Task("Prepare Cached Workspace")
                     .Describe("Prepare cache inputs before the cached operation runs")
                     .Run(context =>
                     {
-                        workspace = createWorkspace(context)
-                            ?? throw new InvalidOperationException($"Cached workspace for '{resolvedTitle}' was not created.");
+                        workspace = GetOrCreateWorkspace(context);
                         return prepareAsync(workspace, context);
                     });
 
@@ -64,7 +71,7 @@ namespace UnrealAutomationCommon.Operations
                         () => CreateAuthoringParameters(operationParameters, resolvedOperation),
                         context =>
                         {
-                            OperationParameters parameters = createRuntimeParameters(context, PreparedWorkspace())
+                            OperationParameters parameters = createRuntimeParameters(context, GetOrCreateWorkspace(context))
                                 ?? throw new InvalidOperationException($"Cached operation '{resolvedOperation.OperationName}' did not create operation parameters.");
                             ValidateRuntimeTarget(resolvedOperation, parameters);
                             return parameters;
@@ -73,7 +80,7 @@ namespace UnrealAutomationCommon.Operations
 
                 steps.Task("Copy Cached Outputs")
                     .Describe("Copy generated cache outputs back into the session workspace")
-                    .Run(context => copyOutputsAsync(PreparedWorkspace(), context));
+                    .Run(context => copyOutputsAsync(GetOrCreateWorkspace(context), context));
             });
 
             return parent;

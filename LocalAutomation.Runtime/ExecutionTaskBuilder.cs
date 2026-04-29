@@ -111,6 +111,15 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 
     /// <summary>
+    /// Declares execution locks that must be calculated from live runtime data before this task body starts.
+    /// </summary>
+    public ExecutionTaskBuilder WithExecutionLocks(Func<IOperationParameterContext, IEnumerable<ExecutionLock>> resolveExecutionLocks)
+    {
+        _task.SetExecutionLocks(resolveExecutionLocks ?? throw new ArgumentNullException(nameof(resolveExecutionLocks)));
+        return this;
+    }
+
+    /// <summary>
     /// Attaches the async execution body for this task.
     /// </summary>
     public ExecutionTaskBuilder Run(Func<ExecutionTaskContext, Task> executeAsync)

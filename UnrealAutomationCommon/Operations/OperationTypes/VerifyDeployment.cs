@@ -79,10 +79,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                     CachedUnrealBuildTasks.AddProjectBuild<VerificationState>(
                                             packageScope,
                                             "Build Example Project Target",
-                                            nameof(VerifyDeployment),
-                                            "PackageProjectBuild",
-                                            plugin.Name,
-                                            currentEngineVersion,
                                             buildProjectTarget,
                                             operationParameters,
                                             state => state.Engine,

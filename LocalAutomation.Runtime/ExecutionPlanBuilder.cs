@@ -357,7 +357,7 @@ public sealed class ExecutionPlanBuilder
             Enabled: true,
             DisabledReason: string.Empty,
             DeclaredOptionTypes: _declaredOptionTypes,
-            DeclaredExecutionLocks: Array.Empty<ExecutionLock>(),
+            ResolveExecutionLocks: null,
             ResolveOperationParameters: parentId == null ? _resolveOperationParameters : null,
             ExecuteAsync: null,
             IsOperationRoot: parentId == null,

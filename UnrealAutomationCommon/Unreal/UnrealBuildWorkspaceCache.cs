@@ -35,19 +35,16 @@ namespace UnrealAutomationCommon.Unreal
         /// </summary>
         internal static ProjectBuildWorkspace CreateProjectBuildWorkspace(
             Engine engine,
-            string operationName,
-            string role,
-            string subjectName,
             string sourceProjectPath,
             BuildConfiguration configuration,
             UbtCompiler compiler,
             UbtCppStandard cppStandard)
         {
             _ = engine ?? throw new ArgumentNullException(nameof(engine));
-            string resolvedRole = RequireText(role, nameof(role), "Role is required for a cached project build.");
-            using Project sourceProject = CreateRequiredProject(sourceProjectPath, $"Cached build source project is not available for role '{resolvedRole}'");
+            using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Cached build source project is not available");
             IReadOnlySet<string> projectPluginRelativePaths = MaterializationSpecs.GetProjectPluginRelativePaths(sourceProject);
             IReadOnlySet<string> projectPluginModuleShape = MaterializationSpecs.GetProjectPluginModuleShape(sourceProject);
+            IEnumerable<string> projectShapeParts = GetProjectBuildShapeParts(sourceProject, projectPluginRelativePaths, projectPluginModuleShape);
             IReadOnlySet<string> projectPluginNames = projectPluginRelativePaths
                 .Select(Path.GetFileName)
                 .Where(pluginName => !string.IsNullOrWhiteSpace(pluginName))
@@ -55,8 +52,8 @@ namespace UnrealAutomationCommon.Unreal
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             FileMaterializationSpec projectInputs = MaterializationSpecs.CreateProject(sourceProject, projectPluginNames);
             FileMaterializationSpec buildOutputs = MaterializationSpecs.CreateProjectBuildOutputs(sourceProject);
-            string cachePath = GetProjectBuildCachePath(engine, operationName, resolvedRole, subjectName, sourceProject, configuration, compiler, cppStandard, projectPluginRelativePaths.Concat(projectPluginModuleShape));
-            return new ProjectBuildWorkspace(cachePath, sourceProject.ProjectPath, projectInputs, buildOutputs, projectPluginRelativePaths, resolvedRole);
+            string cachePath = GetProjectBuildCachePath(engine, sourceProject, configuration, compiler, cppStandard, projectShapeParts);
+            return new ProjectBuildWorkspace(cachePath, sourceProject.ProjectPath, projectInputs, buildOutputs, projectPluginRelativePaths);
         }
 
         /// <summary>
@@ -86,14 +83,13 @@ namespace UnrealAutomationCommon.Unreal
             /// <summary>
             /// Captures the stable cache path plus the source and output materialization specs for one direct build cache.
             /// </summary>
-            internal ProjectBuildWorkspace(string cachePath, string sourceProjectPath, FileMaterializationSpec projectInputs, FileMaterializationSpec buildOutputs, IReadOnlySet<string> projectPluginRelativePaths, string role)
+            internal ProjectBuildWorkspace(string cachePath, string sourceProjectPath, FileMaterializationSpec projectInputs, FileMaterializationSpec buildOutputs, IReadOnlySet<string> projectPluginRelativePaths)
             {
                 CachePath = RequireText(cachePath, nameof(cachePath), "Cached project workspace path is required.");
                 SourceProjectPath = RequireText(sourceProjectPath, nameof(sourceProjectPath), "Cached project source path is required.");
                 ProjectInputs = projectInputs ?? throw new ArgumentNullException(nameof(projectInputs));
                 BuildOutputs = buildOutputs ?? throw new ArgumentNullException(nameof(buildOutputs));
                 ProjectPluginRelativePaths = projectPluginRelativePaths ?? throw new ArgumentNullException(nameof(projectPluginRelativePaths));
-                Role = RequireText(role, nameof(role), "Cached project build role is required.");
             }
 
             /// <summary>
@@ -120,11 +116,6 @@ namespace UnrealAutomationCommon.Unreal
             /// Gets the current project plugin directory set relative to the Plugins root, used to remove stale plugin trees.
             /// </summary>
             private IReadOnlySet<string> ProjectPluginRelativePaths { get; }
-
-            /// <summary>
-            /// Gets the role text used in failure messages for this cached build workspace.
-            /// </summary>
-            private string Role { get; }
 
             /// <summary>
             /// Refreshes the source project into the cache while preserving Unreal's reusable Intermediate tree.
@@ -184,7 +175,7 @@ namespace UnrealAutomationCommon.Unreal
             /// </summary>
             internal Project OpenCachedProject()
             {
-                return CreateRequiredProject(CachePath, $"Cached build workspace is not available for role '{Role}'");
+                return CreateRequiredProject(CachePath, "Cached build workspace is not available");
             }
 
             /// <summary>
@@ -290,9 +281,6 @@ namespace UnrealAutomationCommon.Unreal
         /// </summary>
         internal static string CreateProjectCacheKey(
             Engine engine,
-            string operationName,
-            string role,
-            string subjectName,
             string projectName,
             BuildConfiguration configuration,
             UbtCompiler compiler,
@@ -303,9 +291,7 @@ namespace UnrealAutomationCommon.Unreal
                 engine,
                 new[]
                 {
-                    operationName,
-                    role,
-                    subjectName,
+                    "ProjectBuild",
                     projectName,
                     configuration.ToString(),
                     compiler.ToString(),
@@ -387,32 +373,43 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         /// <summary>
-        /// Builds the stable cached project path from engine identity, build role, source-project shape, and compiler shape.
+        /// Builds project-shape entries that separate incompatible workspaces without keying on ordinary source file edits.
+        /// </summary>
+        private static IEnumerable<string> GetProjectBuildShapeParts(Project sourceProject, IEnumerable<string> projectPluginRelativePaths, IEnumerable<string> projectPluginModuleShape)
+        {
+            // Project module and plugin declarations change Unreal's generated build rules, so they define cache shape.
+            IEnumerable<string> projectModules = sourceProject.ProjectDescriptor.Modules
+                .Select(module => $"ProjectModule:{module.Name}:{module.Type}");
+            IEnumerable<string> projectPluginDependencies = sourceProject.ProjectDescriptor.Plugins
+                .Select(plugin => $"ProjectPluginDependency:{plugin.Name}:{plugin.Enabled}");
+            IEnumerable<string> projectPlugins = projectPluginRelativePaths
+                .Select(relativePath => $"ProjectPlugin:{relativePath}");
+            IEnumerable<string> projectPluginModules = projectPluginModuleShape
+                .Select(shapePart => $"ProjectPlugin:{shapePart}");
+            return projectModules
+                .Concat(projectPluginDependencies)
+                .Concat(projectPlugins)
+                .Concat(projectPluginModules);
+        }
+
+        /// <summary>
+        /// Builds the stable cached project path from engine identity, project descriptor shape, and compiler shape.
         /// </summary>
         private static string GetProjectBuildCachePath(
             Engine engine,
-            string operationName,
-            string role,
-            string subjectName,
             Project sourceProject,
             BuildConfiguration configuration,
             UbtCompiler compiler,
             UbtCppStandard cppStandard,
-            IEnumerable<string> projectPluginShapeParts)
+            IEnumerable<string> projectShapeParts)
         {
-            string resolvedOperationName = RequireText(operationName, nameof(operationName), "Operation name is required for a cached project build.");
-            string resolvedRole = RequireText(role, nameof(role), "Role is required for a cached project build.");
-            string resolvedSubjectName = RequireText(subjectName, nameof(subjectName), "Subject name is required for a cached project build.");
             string cacheKey = CreateProjectCacheKey(
                 engine,
-                resolvedOperationName,
-                resolvedRole,
-                resolvedSubjectName,
                 sourceProject.Name,
                 configuration,
                 compiler,
                 cppStandard,
-                projectPluginShapeParts.Select(shapePart => $"ProjectPlugin:{shapePart}"));
+                projectShapeParts);
 
             return GetProjectWorkspacePath(cacheKey);
         }

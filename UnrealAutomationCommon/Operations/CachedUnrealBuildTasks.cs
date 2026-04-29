@@ -23,10 +23,6 @@ namespace UnrealAutomationCommon.Operations
         public static ExecutionTaskBuilder AddProjectBuild<TState>(
             ExecutionTaskScopeBuilder scope,
             string title,
-            string operationName,
-            string role,
-            string subjectName,
-            EngineVersion engineVersion,
             Operation buildOperation,
             ValidatedOperationParameters operationParameters,
             Func<TState, Engine> getEngine,
@@ -48,7 +44,7 @@ namespace UnrealAutomationCommon.Operations
             return CachedWorkspaceTasks.Add<UnrealBuildWorkspaceCache.ProjectBuildWorkspace>(
                 scope,
                 title,
-                UnrealExecutionLocks.GetBuildWorkspaceCacheLock(operationName, role, subjectName, engineVersion),
+                workspace => UnrealExecutionLocks.GetBuildWorkspaceCacheLock(workspace.CachePath),
                 resolvedBuildOperation,
                 operationParameters,
                 context =>
@@ -56,9 +52,6 @@ namespace UnrealAutomationCommon.Operations
                     TState state = context.GetData<TState>();
                     return UnrealBuildWorkspaceCache.CreateProjectBuildWorkspace(
                         getEngine(state),
-                        operationName,
-                        role,
-                        subjectName,
                         getSourceProjectPath(state),
                         configuration,
                         compiler,
@@ -78,8 +71,6 @@ namespace UnrealAutomationCommon.Operations
             string title,
             string operationName,
             string role,
-            string pluginName,
-            EngineVersion engineVersion,
             ValidatedOperationParameters operationParameters,
             Func<TState, Engine> getEngine,
             Func<TState, string> getStagingPluginPath,
@@ -98,7 +89,7 @@ namespace UnrealAutomationCommon.Operations
             return CachedWorkspaceTasks.Add<UnrealBuildWorkspaceCache.PluginPackageWorkspace>(
                 scope,
                 title,
-                UnrealExecutionLocks.GetBuildWorkspaceCacheLock(operationName, role, pluginName, engineVersion),
+                workspace => UnrealExecutionLocks.GetBuildWorkspaceCacheLock(workspace.CachePath),
                 packageOperation,
                 operationParameters,
                 context =>

@@ -59,7 +59,7 @@ internal record TaskSpec(
     bool Enabled,
     string DisabledReason,
     IReadOnlyList<Type> DeclaredOptionTypes,
-    IReadOnlyList<ExecutionLock> DeclaredExecutionLocks,
+    Func<IOperationParameterContext, IReadOnlyList<ExecutionLock>>? ResolveExecutionLocks,
     Func<IOperationParameterContext, OperationParameters>? ResolveOperationParameters,
     Func<ExecutionTaskContext, Task<OperationResult>>? ExecuteAsync,
     bool IsOperationRoot,
@@ -189,12 +189,6 @@ public class ExecutionTask : INotifyPropertyChanged
     public string DisabledReason => _spec.DisabledReason;
 
     public IReadOnlyList<Type> DeclaredOptionTypes => _spec.DeclaredOptionTypes;
-
-    /// <summary>
-    /// Gets any execution locks authored directly on this task body. An empty list means the task falls back to the
-    /// owning operation's declared locks instead.
-    /// </summary>
-    public IReadOnlyList<ExecutionLock> DeclaredExecutionLocks => _spec.DeclaredExecutionLocks;
 
     /// <summary>
     /// Gets the current execution lifecycle status for this task scope.
@@ -560,9 +554,14 @@ public class ExecutionTask : INotifyPropertyChanged
     /// </summary>
     internal IReadOnlyList<ExecutionLock> GetExecutionScopeLocks(IOperationParameterContext context)
     {
-        if (_spec.DeclaredExecutionLocks.Count > 0)
+        if (_spec.ResolveExecutionLocks != null)
         {
-            return _spec.DeclaredExecutionLocks;
+            // Task-authored locks use one resolver path whether they were declared statically or from live task data.
+            IReadOnlyList<ExecutionLock> taskLocks = _spec.ResolveExecutionLocks(context);
+            if (taskLocks.Count > 0)
+            {
+                return taskLocks;
+            }
         }
 
         return HasAuthoredBody
@@ -815,13 +814,36 @@ public class ExecutionTask : INotifyPropertyChanged
     internal void SetExecutionLocks(IReadOnlyList<ExecutionLock> executionLocks)
     {
         _ = executionLocks ?? throw new ArgumentNullException(nameof(executionLocks));
+        // Static lock declarations are stored as a context-independent resolver so all task-authored locks use one path.
+        IReadOnlyList<ExecutionLock> normalizedLocks = NormalizeExecutionLocks(executionLocks);
         _spec = _spec with
         {
-            DeclaredExecutionLocks = executionLocks
-                .Where(executionLock => executionLock != null)
-                .Distinct()
-                .ToList()
+            ResolveExecutionLocks = _ => normalizedLocks
         };
+    }
+
+    /// <summary>
+    /// Assigns execution locks that are resolved from the live runtime parameter context before this task body starts.
+    /// </summary>
+    internal void SetExecutionLocks(Func<IOperationParameterContext, IEnumerable<ExecutionLock>> resolveExecutionLocks)
+    {
+        _ = resolveExecutionLocks ?? throw new ArgumentNullException(nameof(resolveExecutionLocks));
+        _spec = _spec with
+        {
+            ResolveExecutionLocks = context => NormalizeExecutionLocks(resolveExecutionLocks(context))
+        };
+    }
+
+    /// <summary>
+    /// Removes null entries and duplicate lock keys so every lock owner exposes one stable lock list to the scheduler.
+    /// </summary>
+    private static IReadOnlyList<ExecutionLock> NormalizeExecutionLocks(IEnumerable<ExecutionLock> executionLocks)
+    {
+        _ = executionLocks ?? throw new ArgumentNullException(nameof(executionLocks));
+        return executionLocks
+            .Where(executionLock => executionLock != null)
+            .Distinct()
+            .ToList();
     }
 
     /// <summary>
