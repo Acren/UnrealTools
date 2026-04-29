@@ -128,7 +128,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string pluginVersionName = (plugin.PluginDescriptor ?? throw new Exception("Plugin descriptor is not loaded")).VersionName;
             context.Logger.LogInformation($"Source plugin version: {pluginVersionName}");
             string installedPluginVersionName = (installedPlugin.PluginDescriptor ?? throw new Exception("Installed plugin descriptor is not loaded")).VersionName;
-            context.Logger.LogInformation($"Installed plugin version: {pluginVersionName}");
+            context.Logger.LogInformation($"Installed plugin version: {installedPluginVersionName}");
 
             if (!installedPluginVersionName.Contains(pluginVersionName))
             {
@@ -186,12 +186,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             VerificationState state = context.GetOperationData<VerificationState>();
 
-            // Package the session project with BuildCookRun's build phase disabled because the authored cached-build
-            // sibling already copied the required receipts and binaries back into the session project.
             global::LocalAutomation.Runtime.OperationParameters packageParameters = CreateExampleProjectParams(state, outputPathOverride: state.PackageOutputPath);
-            packageParameters.GetOptions<PackageOptions>().Build = false;
             packageParameters.GetOptions<AdditionalArgumentsOptions>().Arguments = "-nocompileeditor";
-            await RunChildOperationAsync(new PackageProject(), packageParameters, context, required: true, failureMessage: "Failed to package example project", hideChildOperationRootInGraph: true);
+            // Use an explicit package-only BuildCookRun request because the sibling cached build already produced binaries.
+            BuildCookRunProjectRequest request = new(
+                BuildCookRunProjectPhases.Cook | BuildCookRunProjectPhases.Stage | BuildCookRunProjectPhases.Pak | BuildCookRunProjectPhases.Package,
+                configuration: BuildConfiguration.Development);
+            await RunChildOperationAsync(new ConfiguredBuildCookRunProjectOperation("Package Example Project", request), packageParameters, context, required: true, failureMessage: "Failed to package example project", hideChildOperationRootInGraph: true);
         }
 
         /// <summary>
