@@ -76,15 +76,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 .Children(packageScope =>
                                 {
                                     BuildProjectTarget buildProjectTarget = new();
-                                    CachedUnrealBuildTasks.AddProjectBuild<VerificationState>(
+                                    CachedUnrealBuildTasks.AddProjectBuild(
                                             packageScope,
                                             "Build Example Project Target",
                                             buildProjectTarget,
-                                            operationParameters,
-                                            state => state.Engine,
-                                            state => state.ExampleProject.ProjectPath,
-                                            BuildConfiguration.Development,
-                                            CreateCachedVerificationBuildParameters)
+                                            context => CreateCachedVerificationBuildParameters(context, operationParameters))
                                         .Describe("Build the example project target through a stable cached workspace before package-only BuildCookRun");
 
                                     packageScope.Task("Package Example Project")
@@ -202,11 +198,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// <summary>
         /// Creates direct Build.bat parameters for the cached example-project build used before package-only verification.
         /// </summary>
-        private global::LocalAutomation.Runtime.OperationParameters CreateCachedVerificationBuildParameters(global::LocalAutomation.Runtime.IOperationParameterContext context, Project cachedProject)
+        private global::LocalAutomation.Runtime.OperationParameters CreateCachedVerificationBuildParameters(
+            global::LocalAutomation.Runtime.IOperationParameterContext context,
+            global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             VerificationState state = context.GetData<VerificationState>();
-            global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
-            parameters.Target = cachedProject;
+            global::LocalAutomation.Runtime.OperationParameters parameters = operationParameters.CreateChild();
+            parameters.Target = state.ExampleProject;
             parameters.OutputPathOverride = Path.Combine(state.TempPath, "CachedExampleProjectBuild");
             parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
             parameters.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Development;
