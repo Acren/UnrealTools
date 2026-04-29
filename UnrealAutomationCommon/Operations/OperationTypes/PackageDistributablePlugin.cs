@@ -17,9 +17,9 @@ using UnrealAutomationCommon.Unreal;
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
     /// <summary>
-    /// Packages a plugin through a BuildPlugin-style host project while exposing each UBT compile command as its own task.
+    /// Builds and assembles a distributable plugin package while exposing each UBT compile command as its own task.
     /// </summary>
-    internal sealed class PackagePreparedPlugin : UnrealOperation<Plugin>
+    internal sealed class PackageDistributablePlugin : UnrealOperation<Plugin>
     {
         // BuildPlugin packages development binaries for all requested game target platforms.
         private const string DevelopmentConfigurationName = "Development";
@@ -38,7 +38,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         };
 
         /// <summary>
-        /// Prepared plugin packaging needs platform and strict-include options but intentionally ignores raw UAT arguments.
+        /// Distributable plugin packaging needs platform and strict-include options but intentionally ignores raw UAT arguments.
         /// </summary>
         protected override IEnumerable<Type> GetDeclaredOptionSetTypes(IOperationTarget target)
         {
@@ -105,7 +105,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Describe("No plugin modules require UBT compilation before packaging")
                         .Run(context =>
                         {
-                            context.Logger.LogInformation("Prepared plugin package has no module compile steps.");
+                            context.Logger.LogInformation("Distributable plugin package has no module compile steps.");
                             return Task.CompletedTask;
                         });
                 });
@@ -113,7 +113,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             root.Children(steps =>
             {
-                steps.Task("Package Prepared Plugin Payload")
+                steps.Task("Package Distributable Plugin Payload")
                     .Describe("Copy the distributable plugin payload out of the generated host project")
                     .Run(context => PackageAsync(context, buildSteps));
             });
@@ -170,7 +170,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 return result;
             }
 
-            context.Logger.LogError("Prepared plugin build step '{BuildStepTitle}' did not produce manifest '{ManifestPath}'.", buildStep.Title, manifestPath);
+            context.Logger.LogError("Distributable plugin build step '{BuildStepTitle}' did not produce manifest '{ManifestPath}'.", buildStep.Title, manifestPath);
             return OperationResult.Failed();
         }
 
@@ -249,7 +249,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             return new PluginBuildStep(
                 title,
-                $"Build the prepared plugin for {platform} {configuration} and write its product manifest",
+                $"Build the distributable plugin for {platform} {configuration} and write its product manifest",
                 targetKind,
                 platform,
                 configuration);
@@ -292,7 +292,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             FileUtils.DeleteDirectoryIfExists(packagePath, context.Logger);
             CopyPackageFiles(plugin.PluginPath, packagePath, relativeFiles, context.Logger);
             PatchPackagedDescriptor(packagePath, Path.GetFileName(plugin.UPluginPath), engine);
-            context.Logger.LogInformation("Packaged prepared plugin payload to '{PackagePath}' with {FileCount} file(s).", packagePath, relativeFiles.Count);
+            context.Logger.LogInformation("Packaged distributable plugin payload to '{PackagePath}' with {FileCount} file(s).", packagePath, relativeFiles.Count);
             return Task.CompletedTask;
         }
 
@@ -608,7 +608,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Identifies the live Unreal target family used by a prepared plugin compile step.
+        /// Identifies the live Unreal target family used by a distributable plugin compile step.
         /// </summary>
         private enum PluginBuildTargetKind
         {

@@ -362,7 +362,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder stagePlugin = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder pluginArtifactsFlow = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder distributablePluginPackageScope = default!;
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder packagePreparedPluginArtifact = default!;
+                global::LocalAutomation.Runtime.ExecutionTaskBuilder packageDistributablePluginArtifact = default!;
                 prepareWorkspace = steps.Task("Prepare Workspace")
                     .Describe("Create the isolated engine-specific workspace from the prepared source")
                     .Run(PrepareStepAsync);
@@ -377,7 +377,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .Run(StagingStepAsync);
 
                     distributablePluginPackageScope = pluginArtifactScope.Task("Distributable Plugin Package Scope")
-                        .Describe("Hidden lock scope that refreshes the persistent package input and runs the prepared-plugin package operation")
+                        .Describe("Hidden lock scope that refreshes the persistent package input and runs the distributable plugin package operation")
                         .WithExecutionLocks(context => context.GetData<DeploymentWorkspaceState>().Layout.DistributablePluginPackageWorkspace.MutationLocks)
                         .After(stagePlugin.Id)
                         .HideInGraph();
@@ -398,8 +398,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 return Task.CompletedTask;
                             });
 
-                        packagePreparedPluginArtifact = packageScope.AddChildOperation(
-                            new PackagePreparedPlugin(),
+                        packageDistributablePluginArtifact = packageScope.AddChildOperation(
+                            new PackageDistributablePlugin(),
                             () => CreatePluginPackageAuthoringParameters(operationParameters),
                             context =>
                             {
@@ -421,7 +421,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                     pluginArtifactScope.Task("Archive Distributable Plugin")
                         .Describe("Archive the packaged distributable plugin payload as soon as the built plugin output is ready")
-                        .After(packagePreparedPluginArtifact.Id)
+                        .After(packageDistributablePluginArtifact.Id)
                         .Run(ArchivePluginBuildAsync);
                 });
 
@@ -441,7 +441,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                             installProjectPluginBase = sharedBaseScope.Task("Install Distributable Plugin Into Project-Plugin Base")
                                     .Describe("Copy the built distributable plugin into the shared project-plugin base before downstream package variants clone it")
                                     .WithExecutionLocks(context => context.GetData<DeploymentWorkspaceState>().Layout.ExampleProjectBaseWorkspace.MutationLocks)
-                                    .After(materializeProjectPluginBase.Id, packagePreparedPluginArtifact.Id)
+                                    .After(materializeProjectPluginBase.Id, packageDistributablePluginArtifact.Id)
                                     .Run(InstallDistributablePluginIntoProjectPluginBaseAsync);
 
                             buildExampleBase = sharedBaseScope.AddChildOperation(
