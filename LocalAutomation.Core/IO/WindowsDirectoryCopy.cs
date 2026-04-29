@@ -13,7 +13,11 @@ namespace LocalAutomation.Core.IO;
 /// </summary>
 internal static class WindowsDirectoryCopy
 {
+    // Robocopy exit codes below this documented bitmask threshold are success or non-fatal copy status.
     private const int RoboCopySuccessThreshold = 8;
+
+    // Each robocopy process uses multiple file-copy workers for higher throughput on large directory trees.
+    private const int RoboCopyThreadCount = 32;
 
     /// <summary>
     /// Attempts to copy one directory tree with robocopy, returning false when unavailable.
@@ -143,7 +147,7 @@ internal static class WindowsDirectoryCopy
             "/DCOPY:DAT",
             "/R:1",
             "/W:1",
-            "/MT:16",
+            $"/MT:{RoboCopyThreadCount}",
             "/NFL",
             "/NDL",
             "/NJH",
