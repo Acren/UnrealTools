@@ -34,21 +34,5 @@ namespace UnrealAutomationCommon.Unreal
             return new LocalAutomation.Runtime.ExecutionLock($"unreal-automationtool:{normalizedEnginePath}");
         }
 
-        /// <summary>
-        /// Returns the exact cache-workspace lock for one concrete cached build root.
-        /// </summary>
-        public static LocalAutomation.Runtime.ExecutionLock GetBuildWorkspaceCacheLock(string cachePath)
-        {
-            if (string.IsNullOrWhiteSpace(cachePath))
-            {
-                throw new ArgumentException("Cache path is required for an Unreal build cache lock.", nameof(cachePath));
-            }
-
-            // Normalize the path because cache workspaces are filesystem identities and Windows paths are case-insensitive.
-            string normalizedCachePath = Path.GetFullPath(cachePath)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                .ToUpperInvariant();
-            return new LocalAutomation.Runtime.ExecutionLock($"unreal-build-cache:{normalizedCachePath}");
-        }
     }
 }

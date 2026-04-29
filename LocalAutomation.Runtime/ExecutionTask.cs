@@ -549,24 +549,23 @@ public class ExecutionTask : INotifyPropertyChanged
 
     /// <summary>
     /// Returns the locks that protect this task's execution scope. Explicit task-authored locks protect both body tasks
-    /// and bodyless containers, while operation-declared locks apply only to executable task bodies so operation defaults
-    /// do not accidentally serialize structural parent scopes.
+    /// and bodyless containers, while operation-declared locks are added only for executable task bodies so operation
+    /// defaults do not accidentally serialize structural parent scopes.
     /// </summary>
     internal IReadOnlyList<ExecutionLock> GetExecutionScopeLocks(IOperationParameterContext context)
     {
-        if (_spec.ResolveExecutionLocks != null)
+        // Task-authored locks use one resolver path whether they were declared statically or from live task data.
+        IReadOnlyList<ExecutionLock> taskLocks = _spec.ResolveExecutionLocks?.Invoke(context)
+            ?? Array.Empty<ExecutionLock>();
+        if (!HasAuthoredBody)
         {
-            // Task-authored locks use one resolver path whether they were declared statically or from live task data.
-            IReadOnlyList<ExecutionLock> taskLocks = _spec.ResolveExecutionLocks(context);
-            if (taskLocks.Count > 0)
-            {
-                return taskLocks;
-            }
+            return taskLocks;
         }
 
-        return HasAuthoredBody
-            ? Operation.GetDeclaredExecutionLocks(CreateValidatedOperationParameters(context))
-            : Array.Empty<ExecutionLock>();
+        /* Executable task bodies must satisfy both caller-authored scope locks and operation-declared locks. This lets a
+           task protect its caller-specific resource while the underlying operation enforces its own exclusivity rules. */
+        return NormalizeExecutionLocks(
+            taskLocks.Concat(Operation.GetDeclaredExecutionLocks(CreateValidatedOperationParameters(context))));
     }
 
     /// <summary>

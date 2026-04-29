@@ -210,43 +210,83 @@ public sealed class ExecutionPlanBuilder
     }
 
     /// <summary>
-    /// Expands one child operation immediately, attaches the imported root beneath the current parent, and advances the
-    /// parent's completion frontier to the imported subtree's leaf tasks.
+    /// Declares one sequential child operation inside an active child scope and advances that scope to the operation's
+    /// leaf tasks so following siblings wait for the full imported subtree.
     /// </summary>
-    internal ExecutionChildOperationBuilder AttachChildOperation(
-        ExecutionTask parentTask,
-        Type operationType,
-        Func<OperationParameters> createParameters,
-        string title,
-        string? description,
-        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters)
-    {
-        _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
-        Type resolvedOperationType = operationType ?? throw new ArgumentNullException(nameof(operationType));
-        Operation childOperation = Operation.CreateOperation(resolvedOperationType);
-        return AttachChildOperation(parentTask, childOperation, createParameters, title, description, createRuntimeParameters);
-    }
-
-    /// <summary>
-    /// Expands one specific child operation instance immediately, attaches the imported root beneath the current parent,
-    /// and advances the parent's completion frontier to the imported subtree's leaf tasks. When provided, the runtime
-    /// parameter factory replaces only the imported operation's execution parameters; the static authored shape still
-    /// comes from the authoring parameters.
-    /// </summary>
-    internal ExecutionChildOperationBuilder AttachChildOperation(
-        ExecutionTask parentTask,
+    internal ExecutionTaskBuilder DeclareScopedSequentialChildOperation(
+        ExecutionTaskId parentId,
         Operation childOperation,
         Func<OperationParameters> createParameters,
         string title,
         string? description,
-        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters)
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters,
+        IList<ExecutionTaskId> scopeFrontier)
     {
-        _ = parentTask ?? throw new ArgumentNullException(nameof(parentTask));
+        return CreateChildOperation(
+            parentId,
+            childOperation,
+            createParameters,
+            title,
+            description,
+            createRuntimeParameters,
+            scopeFrontier.ToList(),
+            leafTaskIds => ReplaceFrontier(scopeFrontier, leafTaskIds),
+            scopeFrontier);
+    }
+
+    /// <summary>
+    /// Declares one parallel child operation inside an active child scope, depending only on the incoming frontier while
+    /// contributing all imported leaf tasks to the scope's shared completion frontier.
+    /// </summary>
+    internal ExecutionTaskBuilder DeclareScopedParallelChildOperation(
+        ExecutionTaskId parentId,
+        Operation childOperation,
+        Func<OperationParameters> createParameters,
+        string title,
+        string? description,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters,
+        IReadOnlyList<ExecutionTaskId> incomingFrontier,
+        IList<ExecutionTaskId> scopeFrontier)
+    {
+        return CreateChildOperation(
+            parentId,
+            childOperation,
+            createParameters,
+            title,
+            description,
+            createRuntimeParameters,
+            incomingFrontier,
+            leafTaskIds =>
+            {
+                foreach (ExecutionTaskId leafTaskId in leafTaskIds)
+                {
+                    AddUnique(scopeFrontier, leafTaskId);
+                }
+            });
+    }
+
+    /// <summary>
+    /// Expands one child operation beneath the provided parent and wires the imported root to the supplied dependency
+    /// frontier. The caller owns how the imported leaf tasks advance its active scope frontier.
+    /// </summary>
+    private ExecutionTaskBuilder CreateChildOperation(
+        ExecutionTaskId parentId,
+        Operation childOperation,
+        Func<OperationParameters> createParameters,
+        string title,
+        string? description,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters,
+        IReadOnlyList<ExecutionTaskId> dependencyFrontier,
+        Action<IReadOnlyList<ExecutionTaskId>> updateCompletionFrontier,
+        IList<ExecutionTaskId>? lastTaskIds = null)
+    {
         Operation resolvedChildOperation = childOperation ?? throw new ArgumentNullException(nameof(childOperation));
         Func<OperationParameters> createChildParameters = createParameters ?? throw new ArgumentNullException(nameof(createParameters));
+        Action<IReadOnlyList<ExecutionTaskId>> updateFrontier = updateCompletionFrontier ?? throw new ArgumentNullException(nameof(updateCompletionFrontier));
+        ExecutionTask parentTask = GetDefinition(parentId);
 
-        /* Author-time child-operation expansion also creates a static child subtree, so it obeys the same mutual-
-           exclusion rule as plain Child(...) and Children(...). */
+        /* Child-operation expansion creates a static subtree, so operation roots follow the same body-vs-children rule as
+           normal authored child tasks. */
         ValidateTaskCanAcceptStaticChildren(parentTask);
 
         OperationParameters childParameters = createChildParameters();
@@ -262,16 +302,15 @@ public sealed class ExecutionPlanBuilder
             AddImportedDefinition(childTask);
         }
 
-        ParentBuildState parentState = GetParentState(parentTask.Id);
         ExecutionTask importedRootTask = GetDefinition(insertedTasks.RootTaskId);
         if (createRuntimeParameters != null)
         {
             importedRootTask.SetOperationParameterResolver(createRuntimeParameters);
         }
 
-        WireDependencies(importedRootTask, parentState.CompletionFrontier);
-        ReplaceFrontier(parentState.CompletionFrontier, GetLeafCompletionTaskIds(insertedTasks.Tasks));
-        return new ExecutionChildOperationBuilder(this, importedRootTask);
+        WireDependencies(importedRootTask, dependencyFrontier);
+        updateFrontier(GetLeafCompletionTaskIds(insertedTasks.Tasks));
+        return new ExecutionTaskBuilder(this, importedRootTask, parentId, lastTaskIds);
     }
 
     /// <summary>

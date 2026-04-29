@@ -350,18 +350,21 @@ public sealed class ExecutionLockWaitTests
                     .WithExecutionLocks(sharedLock)
                     .Run(RuntimeTestUtilities.RunUntilReleased(lockHolderStarted, releaseLockHolder), out lockHolderTaskId);
 
-                /* This host task has no body of its own. Its imported child operation stays lock-free, but it becomes
-                   ready from the same lock-holder completion that frees the waiting task's shared lock. */
+                /* This host task has no body of its own. Its scoped child operation stays lock-free, but it becomes ready
+                   from the same lock-holder completion that frees the waiting task's shared lock. */
                 scope.Task("Long Lock-Free Follow-up")
                     .After(lockHolderTaskId)
-                    .AddChildOperation(
-                        blockingFollowUpOperation,
-                        () =>
-                        {
-                            OperationParameters parameters = blockingFollowUpOperation.CreateParameters();
-                            parameters.Target = new ExecutionTestCommon.TestTarget();
-                            return parameters;
-                        });
+                    .Children(followUpScope =>
+                    {
+                        followUpScope.AddChildOperation(
+                            blockingFollowUpOperation,
+                            () =>
+                            {
+                                OperationParameters parameters = blockingFollowUpOperation.CreateParameters();
+                                parameters.Target = new ExecutionTestCommon.TestTarget();
+                                return parameters;
+                            });
+                    });
 
                 scope.Task("Waiting Task", out waitingVisibleTaskId).WithExecutionLocks(sharedLock).Run(async context =>
                 {

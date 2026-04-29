@@ -36,12 +36,7 @@ public sealed class ExecutionTaskScopeBuilder
     {
         if (_mode == ExecutionChildMode.Parallel)
         {
-            if (!_hasDeclaredTasks)
-            {
-                _completionFrontier.Clear();
-            }
-
-            _hasDeclaredTasks = true;
+            PrepareParallelDeclaration();
             return _owner.DeclareScopedParallelRelativeTask(_parentId, title, description, _incomingFrontier, _completionFrontier);
         }
 
@@ -58,5 +53,77 @@ public sealed class ExecutionTaskScopeBuilder
         ExecutionTaskBuilder builder = Task(title, description);
         taskId = builder.Id;
         return builder;
+    }
+
+    /// <summary>
+    /// Declares one child operation in this sibling scope using the operation's own default root title.
+    /// </summary>
+    public ExecutionTaskBuilder AddChildOperation<TOperation>(
+        Func<OperationParameters> createParameters,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
+        where TOperation : Operation, new()
+    {
+        Operation childOperation = Operation.CreateOperation(typeof(TOperation));
+        return AddChildOperation(childOperation, createParameters, createRuntimeParameters);
+    }
+
+    /// <summary>
+    /// Declares one child operation in this sibling scope using a parent-side title and description override.
+    /// </summary>
+    public ExecutionTaskBuilder AddChildOperation<TOperation>(
+        string title,
+        Func<OperationParameters> createParameters,
+        string? description = null,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
+        where TOperation : Operation, new()
+    {
+        Operation childOperation = Operation.CreateOperation(typeof(TOperation));
+        return AddChildOperation(title, childOperation, createParameters, description, createRuntimeParameters);
+    }
+
+    /// <summary>
+    /// Declares one specific child operation instance in this sibling scope using that operation's default root title.
+    /// </summary>
+    public ExecutionTaskBuilder AddChildOperation(
+        Operation childOperation,
+        Func<OperationParameters> createParameters,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
+    {
+        _ = childOperation ?? throw new ArgumentNullException(nameof(childOperation));
+        return AddChildOperation(childOperation.OperationName, childOperation, createParameters, createRuntimeParameters: createRuntimeParameters);
+    }
+
+    /// <summary>
+    /// Declares one specific child operation instance as a direct sibling of normal tasks in this scope.
+    /// </summary>
+    public ExecutionTaskBuilder AddChildOperation(
+        string title,
+        Operation childOperation,
+        Func<OperationParameters> createParameters,
+        string? description = null,
+        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
+    {
+        _ = childOperation ?? throw new ArgumentNullException(nameof(childOperation));
+        if (_mode == ExecutionChildMode.Parallel)
+        {
+            PrepareParallelDeclaration();
+            return _owner.DeclareScopedParallelChildOperation(_parentId, childOperation, createParameters, title, description, createRuntimeParameters, _incomingFrontier, _completionFrontier);
+        }
+
+        _hasDeclaredTasks = true;
+        return _owner.DeclareScopedSequentialChildOperation(_parentId, childOperation, createParameters, title, description, createRuntimeParameters, _completionFrontier);
+    }
+
+    /// <summary>
+    /// Switches a parallel scope from inherited incoming frontier to the union of explicitly declared sibling leaves.
+    /// </summary>
+    private void PrepareParallelDeclaration()
+    {
+        if (!_hasDeclaredTasks)
+        {
+            _completionFrontier.Clear();
+        }
+
+        _hasDeclaredTasks = true;
     }
 }

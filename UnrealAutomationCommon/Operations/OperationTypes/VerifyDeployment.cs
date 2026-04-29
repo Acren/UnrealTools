@@ -75,12 +75,26 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 .Describe("Package the example project with the installed plugin")
                                 .Children(packageScope =>
                                 {
-                                    CachedUnrealBuildTasks.AddProjectBuild(
-                                            packageScope,
-                                            "Build Example Project Target",
+                                    global::LocalAutomation.Runtime.ExecutionTaskBuilder buildExampleProject = packageScope.Task("Build Example Project Target")
+                                        .Describe("Build the example project target through a persistent workspace before package-only BuildCookRun");
+                                    buildExampleProject.WithExecutionLocks(context => CreatePersistentWorkspaceForVerificationBuild(context).MutationLocks);
+                                    buildExampleProject.Children(buildScope =>
+                                    {
+                                        buildScope.Task("Prepare Workspace")
+                                            .Describe("Refresh the persistent verification project workspace before the target build")
+                                            .Run(PreparePersistentWorkspaceForVerificationBuildAsync);
+
+                                        buildScope.AddChildOperation(
+                                            "Run Workspace Operation",
                                             new BuildProjectTarget(),
-                                            context => CreateCachedVerificationBuildParameters(context, operationParameters))
-                                        .Describe("Build the example project target through a stable cached workspace before package-only BuildCookRun");
+                                            () => CreateVerificationBuildAuthoringParameters(operationParameters, currentEngineVersion),
+                                            "Build the example project target inside the persistent workspace",
+                                            context => CreateVerificationBuildParametersForWorkspace(CreatePersistentWorkspaceForVerificationBuild(context), context, operationParameters));
+
+                                        buildScope.Task("Copy Workspace Outputs")
+                                            .Describe("Copy verification build outputs from the persistent workspace back to the example project")
+                                            .Run(CopyVerificationBuildOutputsFromPersistentWorkspaceAsync);
+                                    });
 
                                     packageScope.Task("Package Example Project")
                                         .Describe("Package the example project using the binaries copied back from the cached build workspace")
@@ -196,17 +210,114 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Creates direct Build.bat parameters for the cached example-project build used before package-only verification.
+        /// Resolves the persistent project-build workspace used by verification package target builds.
         /// </summary>
-        private global::LocalAutomation.Runtime.OperationParameters CreateCachedVerificationBuildParameters(
+        private static global::LocalAutomation.Runtime.Workspace CreatePersistentWorkspaceForVerificationBuild(
+            global::LocalAutomation.Runtime.IOperationParameterContext context)
+        {
+            VerificationState state = context.GetData<VerificationState>();
+            return global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectBuild(
+                state.Engine,
+                state.ExampleProject,
+                BuildConfiguration.Development,
+                UbtCompiler.Default,
+                UbtCppStandard.Default));
+        }
+
+        /// <summary>
+        /// Refreshes extracted example-project inputs into the persistent workspace before UBT runs there.
+        /// </summary>
+        private static async Task PreparePersistentWorkspaceForVerificationBuildAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            VerificationState state = context.GetData<VerificationState>();
+            global::LocalAutomation.Runtime.Workspace workspace = CreatePersistentWorkspaceForVerificationBuild(context);
+            FileMaterializationSpec projectInputs = MaterializationSpecs.CreateProject(state.ExampleProject, MaterializationSpecs.GetProjectPluginNames(state.ExampleProject));
+            Directory.CreateDirectory(workspace.RootPath);
+            context.Logger.LogInformation("Refreshing verification project workspace from '{ExampleProjectPath}' to '{WorkspacePath}'.", state.ExampleProject.ProjectPath, workspace.RootPath);
+            FileUtils.MaterializeDirectory(state.ExampleProject.ProjectPath, workspace.RootPath, projectInputs, context.Logger, context.CancellationToken, mirrorDirectories: true);
+
+            if (ProjectPaths.Instance.IsTargetDirectory(workspace.RootPath))
+            {
+                await Task.CompletedTask;
+                return;
+            }
+
+            context.Logger.LogWarning("Verification project workspace '{WorkspacePath}' was invalid after refresh; recreating it without preserved intermediates.", workspace.RootPath);
+            FileUtils.DeleteDirectoryIfExists(workspace.RootPath, context.Logger);
+            Directory.CreateDirectory(workspace.RootPath);
+            FileUtils.MaterializeDirectory(state.ExampleProject.ProjectPath, workspace.RootPath, projectInputs, context.Logger, context.CancellationToken, mirrorDirectories: true);
+            if (!ProjectPaths.Instance.IsTargetDirectory(workspace.RootPath))
+            {
+                throw new InvalidOperationException($"Verification project workspace is not a valid project after refresh: {workspace.RootPath}");
+            }
+
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Copies generated project build outputs from the persistent verification workspace back to the extracted project.
+        /// </summary>
+        private static async Task CopyVerificationBuildOutputsFromPersistentWorkspaceAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            VerificationState state = context.GetData<VerificationState>();
+            global::LocalAutomation.Runtime.Workspace workspace = CreatePersistentWorkspaceForVerificationBuild(context);
+            using Project cachedProject = CreateRequiredProject(workspace.RootPath, "Verification project workspace is not available for output copy");
+            context.Logger.LogInformation("Copying verification build outputs from workspace '{WorkspacePath}' to example project '{ExampleProjectPath}'.", cachedProject.ProjectPath, state.ExampleProject.ProjectPath);
+            FileUtils.MaterializeDirectory(cachedProject.ProjectPath, state.ExampleProject.ProjectPath, MaterializationSpecs.CreateProjectBuildOutputs(state.ExampleProject), context.Logger, context.CancellationToken);
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Creates runtime build parameters that target the cached example-project workspace.
+        /// </summary>
+        private static global::LocalAutomation.Runtime.OperationParameters CreateVerificationBuildParametersForWorkspace(
+            global::LocalAutomation.Runtime.Workspace workspace,
             global::LocalAutomation.Runtime.IOperationParameterContext context,
             global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
         {
             VerificationState state = context.GetData<VerificationState>();
+            Project cachedProject = CreateRequiredProject(workspace.RootPath, "Verification project workspace is not available");
+            try
+            {
+                global::LocalAutomation.Runtime.OperationParameters parameters = operationParameters.CreateChild();
+                parameters.Target = cachedProject;
+                parameters.OutputPathOverride = Path.Combine(state.TempPath, "CachedExampleProjectBuild");
+                parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
+                parameters.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Development;
+                parameters.GetOptions<AdditionalArgumentsOptions>().Arguments = "-nocompileeditor";
+                return parameters;
+            }
+            catch
+            {
+                cachedProject.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Creates one validated project target from a path that should contain a .uproject descriptor.
+        /// </summary>
+        private static Project CreateRequiredProject(string projectPath, string failureMessage)
+        {
+            if (!ProjectPaths.Instance.IsTargetDirectory(projectPath))
+            {
+                throw new InvalidOperationException($"{failureMessage}: {projectPath}");
+            }
+
+            return new Project(projectPath);
+        }
+
+        /// <summary>
+        /// Creates authoring-time build parameters so cached verification builds can import their static child operation.
+        /// </summary>
+        private global::LocalAutomation.Runtime.OperationParameters CreateVerificationBuildAuthoringParameters(
+            global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters,
+            EngineVersion engineVersion)
+        {
+            Plugin plugin = GetRequiredTarget(operationParameters);
             global::LocalAutomation.Runtime.OperationParameters parameters = operationParameters.CreateChild();
-            parameters.Target = state.ExampleProject;
-            parameters.OutputPathOverride = Path.Combine(state.TempPath, "CachedExampleProjectBuild");
-            parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
+            parameters.Target = plugin.HostProject;
+            parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { engineVersion };
             parameters.GetOptions<BuildConfigurationOptions>().Configuration = BuildConfiguration.Development;
             parameters.GetOptions<AdditionalArgumentsOptions>().Arguments = "-nocompileeditor";
             return parameters;

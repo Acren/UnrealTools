@@ -5,8 +5,7 @@ using System.Threading.Tasks;
 namespace LocalAutomation.Runtime;
 
 /// <summary>
-/// Shares presentation-oriented builder configuration for authored tasks and imported child-operation roots so graph-
-/// facing settings stay consistent without duplicating implementation.
+/// Shares presentation-oriented builder configuration for authored graph nodes so graph-facing settings stay consistent.
 /// </summary>
 public abstract class ExecutionNodeBuilderBase<TBuilder>
     where TBuilder : ExecutionNodeBuilderBase<TBuilder>
@@ -200,61 +199,6 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 
     /// <summary>
-    /// Declares one child operation using the child operation's own default root title.
-    /// </summary>
-    public ExecutionChildOperationBuilder AddChildOperation<TOperation>(
-        Func<OperationParameters> createParameters,
-        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
-        where TOperation : Operation, new()
-    {
-        Operation childOperation = Operation.CreateOperation(typeof(TOperation));
-        return AddChildOperation(childOperation, createParameters, createRuntimeParameters);
-    }
-
-    /// <summary>
-    /// Declares one child operation beneath the current task, expands its plan from authoring parameters, and optionally
-    /// supplies runtime parameters for execution-time targets that do not exist during plan authoring.
-    /// </summary>
-    public ExecutionChildOperationBuilder AddChildOperation<TOperation>(
-        string title,
-        Func<OperationParameters> createParameters,
-        string? description = null,
-        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
-        where TOperation : Operation, new()
-    {
-        Operation childOperation = Operation.CreateOperation(typeof(TOperation));
-        return AddChildOperation(title, childOperation, createParameters, description, createRuntimeParameters);
-    }
-
-    /// <summary>
-    /// Declares one specific child operation instance using that instance's own default root title. This allows callers
-    /// to author inline or stateful child operations without creating a one-off operation type only to satisfy the builder
-    /// API.
-    /// </summary>
-    public ExecutionChildOperationBuilder AddChildOperation(
-        Operation childOperation,
-        Func<OperationParameters> createParameters,
-        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
-    {
-        _ = childOperation ?? throw new ArgumentNullException(nameof(childOperation));
-        return AddChildOperation(childOperation.OperationName, childOperation, createParameters, createRuntimeParameters: createRuntimeParameters);
-    }
-
-    /// <summary>
-    /// Declares one specific child operation instance beneath the current task and returns a builder that configures the
-    /// imported child root directly after the child plan is expanded and inserted.
-    /// </summary>
-    public ExecutionChildOperationBuilder AddChildOperation(
-        string title,
-        Operation childOperation,
-        Func<OperationParameters> createParameters,
-        string? description = null,
-        Func<IOperationParameterContext, OperationParameters>? createRuntimeParameters = null)
-    {
-        return _owner.AttachChildOperation(_task, childOperation, createParameters, title, description, createRuntimeParameters);
-    }
-
-    /// <summary>
     /// Declares one sequential sibling task under the same parent by depending on this visible authored task directly.
     /// </summary>
     public ExecutionTaskBuilder Then(string title, string? description = null)
@@ -287,27 +231,3 @@ public sealed class ExecutionTaskBuilder : ExecutionNodeBuilderBase<ExecutionTas
     }
 }
 
-/// <summary>
-/// Configures one imported child-operation root directly after the child plan has been inserted beneath its parent task.
-/// </summary>
-public sealed class ExecutionChildOperationBuilder : ExecutionNodeBuilderBase<ExecutionChildOperationBuilder>
-{
-    private readonly ExecutionPlanBuilder _owner;
-    private readonly ExecutionTask _task;
-
-    internal ExecutionChildOperationBuilder(ExecutionPlanBuilder owner, ExecutionTask task)
-    {
-        _owner = owner;
-        _task = task;
-    }
-
-    protected override void SetDescription(string? description)
-    {
-        _owner.SetDescription(_task, description);
-    }
-
-    protected override void SetHiddenInGraph(bool hidden)
-    {
-        _owner.SetGraphVisibility(_task, hidden);
-    }
-}
