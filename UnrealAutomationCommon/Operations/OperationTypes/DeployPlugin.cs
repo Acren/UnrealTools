@@ -1020,7 +1020,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Creates one isolated Clang-validation variant from the prebuilt project-plugin base.
+        /// Creates one isolated Clang-validation variant from the prebuilt project-plugin base while preserving the
+        /// variant workspace's own root project build-output cache.
         /// </summary>
         private async Task PrepareClangVariantAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
@@ -1029,15 +1030,16 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string sourceProjectPath = state.Layout.ExampleProjectBasePath;
             string clangVariantPath = state.Layout.ClangVariantPath;
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Project-plugin base is not available for Clang variant materialization");
-            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, clangVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
+            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, clangVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
             using Project clangVariant = CreateRequiredProject(clangVariantPath, "Clang validation variant was not created successfully");
             context.Logger.LogInformation($"Prepared Clang validation variant: {clangVariant.ProjectPath}");
             await Task.CompletedTask;
         }
 
         /// <summary>
-        /// Creates one isolated engine-plugin packaging variant by cloning the prebuilt project-plugin base and removing the
-        /// project-level plugin copy before later packaging depends on the engine install.
+        /// Creates one isolated engine-plugin packaging variant by cloning the prebuilt project-plugin base, preserving the
+        /// variant workspace's own root project build-output cache, and removing the project-level plugin copy before later
+        /// packaging depends on the engine install.
         /// </summary>
         private async Task PrepareEnginePluginVariantAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
@@ -1046,7 +1048,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string sourceProjectPath = state.Layout.ExampleProjectBasePath;
             string engineVariantPath = state.Layout.EnginePluginVariantPath;
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Project-plugin base is not available for engine variant materialization");
-            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, engineVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
+            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, engineVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
 
             using Project engineVariant = CreateRequiredProject(engineVariantPath, "Engine-plugin variant was not created successfully");
             engineVariant.RemovePlugin(state.SourcePlugin.Name);
@@ -1055,8 +1057,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Creates one isolated blueprint/demo variant by cloning the prebuilt project-plugin base, removing the project-level
-        /// plugin copy, and converting the project to blueprint-only while preserving the selected sibling plugin set.
+        /// Creates one isolated blueprint/demo variant by cloning the prebuilt project-plugin base, preserving the variant
+        /// workspace's own root project build-output cache, removing the project-level plugin copy, and converting the
+        /// project to blueprint-only while preserving the selected sibling plugin set.
         /// </summary>
         private async Task PrepareBlueprintDemoVariantAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
         {
@@ -1065,7 +1068,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string sourceProjectPath = state.Layout.ExampleProjectBasePath;
             string blueprintVariantPath = state.Layout.BlueprintDemoVariantPath;
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Project-plugin base is not available for blueprint/demo variant materialization");
-            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, blueprintVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
+            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, blueprintVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
 
             using Project blueprintVariant = CreateRequiredProject(blueprintVariantPath, "Blueprint/demo variant was not created successfully");
             blueprintVariant.RemovePlugin(state.SourcePlugin.Name);

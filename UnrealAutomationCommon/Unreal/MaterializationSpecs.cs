@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LocalAutomation.Core.IO;
+using Newtonsoft.Json.Linq;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -14,9 +15,15 @@ namespace UnrealAutomationCommon.Unreal
     {
         /// <summary>
         /// Creates the explicit project subset copied into isolated workspaces, example projects, and prepared variants.
-        /// Plugin inclusion is name-driven so callers decide policy while this spec owns project-tree materialization.
+        /// Project and plugin build outputs are controlled separately so persistent project workspaces keep their own root
+        /// executable cache while still being able to inherit prebuilt plugin modules.
         /// </summary>
-        public static FileMaterializationSpec CreateProject(Project project, IReadOnlySet<string>? includedPluginNames = null, bool includeBuildOutputs = false)
+        public static FileMaterializationSpec CreateProject(
+            Project project,
+            IReadOnlySet<string>? includedPluginNames = null,
+            bool includeProjectBuildOutputs = false,
+            bool includeProjectEditorBuildOutputs = false,
+            bool includePluginBuildOutputs = false)
         {
             FileMaterializationSpec spec = new()
             {
@@ -29,13 +36,21 @@ namespace UnrealAutomationCommon.Unreal
 
             if (includedPluginNames != null)
             {
-                AddProjectPluginEntries(project, spec, includedPluginNames, includeBuildOutputs);
+                AddProjectPluginEntries(project, spec, includedPluginNames, includePluginBuildOutputs);
             }
 
-            if (includeBuildOutputs)
+            if (includeProjectBuildOutputs)
             {
+                // Root project build outputs belong to the destination project workspace cache, not necessarily to every
+                // project tree that needs prebuilt plugin modules.
                 spec.Add("Binaries");
                 spec.Add("Build");
+            }
+            else if (includeProjectEditorBuildOutputs)
+            {
+                // Editor receipts are required by BuildCookRun when editor compilation is disabled, but game executable
+                // outputs remain owned by each destination project workspace so persistent variant caches stay isolated.
+                AddProjectEditorBuildOutputEntries(project, spec);
             }
 
             return spec;
@@ -143,7 +158,7 @@ namespace UnrealAutomationCommon.Unreal
         /// Expands the project Plugins tree into explicit plugin-subset entries so variant materialization skips each
         /// plugin's generated Intermediate folders instead of copying and deleting them later.
         /// </summary>
-        private static void AddProjectPluginEntries(Project project, FileMaterializationSpec spec, IReadOnlySet<string> includedPluginNames, bool includeBuildOutputs)
+        private static void AddProjectPluginEntries(Project project, FileMaterializationSpec spec, IReadOnlySet<string> includedPluginNames, bool includePluginBuildOutputs)
         {
             if (!Directory.Exists(project.PluginsPath))
             {
@@ -174,8 +189,119 @@ namespace UnrealAutomationCommon.Unreal
                 }
 
                 string relativePluginDirectoryPath = Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath);
-                spec.AddSubtree(Path.Combine("Plugins", relativePluginDirectoryPath), CreatePlugin(pluginDirectoryPath, includeBuildOutputs));
+                spec.AddSubtree(Path.Combine("Plugins", relativePluginDirectoryPath), CreatePlugin(pluginDirectoryPath, includePluginBuildOutputs));
             }
+        }
+
+        /// <summary>
+        /// Adds only the root project binaries declared by editor target receipts so cook/package steps can find the
+        /// prebuilt editor target without importing another workspace's game executable outputs.
+        /// </summary>
+        private static void AddProjectEditorBuildOutputEntries(Project project, FileMaterializationSpec spec)
+        {
+            string projectBinariesPath = Path.Combine(project.ProjectPath, "Binaries");
+            if (!Directory.Exists(projectBinariesPath))
+            {
+                return;
+            }
+
+            // Collect entries first so multiple editor receipts cannot schedule the same file for concurrent copies.
+            HashSet<string> relativePaths = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string receiptPath in Directory.GetFiles(projectBinariesPath, "*.target", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                JObject receipt = JObject.Parse(File.ReadAllText(receiptPath));
+                if (!string.Equals(receipt.Value<string>("TargetType"), "Editor", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                relativePaths.Add(Path.GetRelativePath(project.ProjectPath, receiptPath));
+                foreach (string receiptProductPath in EnumerateReceiptProductPaths(receipt))
+                {
+                    if (TryResolveProjectBinariesPath(project.ProjectPath, projectBinariesPath, receiptProductPath, out string relativePath))
+                    {
+                        relativePaths.Add(relativePath);
+                    }
+                }
+            }
+
+            foreach (string relativePath in relativePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                spec.Add(relativePath);
+            }
+        }
+
+        /// <summary>
+        /// Reads file paths from the receipt sections that declare the products UBT created and runtime files UAT may need.
+        /// </summary>
+        private static IEnumerable<string> EnumerateReceiptProductPaths(JObject receipt)
+        {
+            foreach (string propertyName in new[] { "BuildProducts", "RuntimeDependencies" })
+            {
+                if (receipt[propertyName] is not JArray entries)
+                {
+                    continue;
+                }
+
+                foreach (JToken entry in entries)
+                {
+                    string? path = entry.Type == JTokenType.String
+                        ? entry.Value<string>()
+                        : entry.Value<string>("Path");
+                    if (!string.IsNullOrWhiteSpace(path))
+                    {
+                        yield return path;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Resolves one receipt path and accepts only files under the project's root Binaries directory.
+        /// </summary>
+        private static bool TryResolveProjectBinariesPath(string projectPath, string projectBinariesPath, string receiptPath, out string relativePath)
+        {
+            relativePath = string.Empty;
+            string? absolutePath = ResolveReceiptPath(projectPath, receiptPath);
+            if (absolutePath == null || !IsSameOrDescendantPath(projectBinariesPath, absolutePath))
+            {
+                return false;
+            }
+
+            relativePath = Path.GetRelativePath(projectPath, absolutePath);
+            return true;
+        }
+
+        /// <summary>
+        /// Expands the receipt variables needed for project-local build products and rejects engine or unknown locations.
+        /// </summary>
+        private static string? ResolveReceiptPath(string projectPath, string receiptPath)
+        {
+            const string projectDirToken = "$(ProjectDir)";
+            if (receiptPath.StartsWith(projectDirToken, StringComparison.OrdinalIgnoreCase))
+            {
+                string relativePath = receiptPath[projectDirToken.Length..].TrimStart('/', '\\');
+                return Path.GetFullPath(Path.Combine(projectPath, relativePath));
+            }
+
+            if (Path.IsPathRooted(receiptPath))
+            {
+                return Path.GetFullPath(receiptPath);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Returns whether a resolved receipt path is the requested root itself or a descendant of that root.
+        /// </summary>
+        private static bool IsSameOrDescendantPath(string rootPath, string candidatePath)
+        {
+            string normalizedRootPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath));
+            string normalizedCandidatePath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidatePath));
+            string rootWithSeparator = normalizedRootPath + Path.DirectorySeparatorChar;
+            return string.Equals(normalizedRootPath, normalizedCandidatePath, StringComparison.OrdinalIgnoreCase)
+                || normalizedCandidatePath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
