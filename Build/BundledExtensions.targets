@@ -1,67 +1,53 @@
 <Project>
 
   <!--
-    Keep bundled-extension copy logic shared so multiple launcher executables can emit the same compile-time extension
-    set without duplicating the target in every host project file.
+    Keep bundled-extension copy logic on the extension project itself so builds that compile the extension without
+    rebuilding the launcher still refresh the runtime payload consumed by AppContext.BaseDirectory-based discovery.
   -->
-  <PropertyGroup Condition="'$(HasBundledExtensionProjects)' == 'true'">
-    <!-- Keep the bundled extension payload under the launched app's output directory because the runtime loader uses
-         AppContext.BaseDirectory as the extension discovery root. -->
-    <BundledExtensionsRoot>$(OutputPath)Extensions\</BundledExtensionsRoot>
-    <BundledExtensionsStamp>$(BundledExtensionsRoot).bundled-extensions.stamp</BundledExtensionsStamp>
+  <PropertyGroup Condition="'$(HasBundledExtensionHost)' == 'true'">
+    <!-- The launcher and extension currently target the same framework, which keeps the runtime bundle path tied to the
+         extension build that produced the files being copied. -->
+    <BundledExtensionsRoot>$(BundledExtensionHostRoot)bin\$(Configuration)\$(TargetFramework)\Extensions\</BundledExtensionsRoot>
+    <BundledExtensionDestinationRoot>$(BundledExtensionsRoot)$(BundledExtensionFolderName)\</BundledExtensionDestinationRoot>
+    <BundledExtensionsStampPath>$(BundledExtensionsRoot).bundled-extensions.stamp</BundledExtensionsStampPath>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(HasBundledExtensionProjects)' == 'true'">
-    <BundledExtensionProject Update="@(BundledExtensionProject)">
-      <!-- Default bundled extensions to the consuming host's target framework so framework retargets do not require
-           a second hardcoded path update. Individual extensions can still provide ExtensionTargetFramework metadata
-           later if they intentionally diverge from the host. -->
-      <SourceRoot Condition="'%(BundledExtensionProject.ExtensionTargetFramework)' != ''">%(RootDir)%(Directory)bin\$(Configuration)\%(BundledExtensionProject.ExtensionTargetFramework)\</SourceRoot>
-      <SourceRoot Condition="'%(BundledExtensionProject.ExtensionTargetFramework)' == ''">%(RootDir)%(Directory)bin\$(Configuration)\$(TargetFramework)\</SourceRoot>
-      <ProjectRoot>%(RootDir)%(Directory)</ProjectRoot>
-    </BundledExtensionProject>
-
-    <!-- IDE fast-up-to-date checks need explicit bundled-extension inputs because the launcher output depends on files
-         copied by this custom target rather than on normal ReferenceOutputAssembly references. -->
-    <BundledExtensionSourceInput Include="%(BundledExtensionProject.ProjectRoot)**\*.cs;%(BundledExtensionProject.ProjectRoot)**\*.csproj;@(BundledExtensionUpToDateInputRoot->'%(Identity)**\*.cs');@(BundledExtensionUpToDateInputRoot->'%(Identity)**\*.csproj')"
-                                  Exclude="%(BundledExtensionProject.ProjectRoot)bin\**;%(BundledExtensionProject.ProjectRoot)obj\**;@(BundledExtensionUpToDateInputRoot->'%(Identity)bin\**');@(BundledExtensionUpToDateInputRoot->'%(Identity)obj\**')" />
-
-    <!-- The extension build output is also an input: referenced libraries copied into the extension output must make the
-         host's bundled payload stale even when no extension source file changed. -->
-    <BundledExtensionBuildInput Include="%(BundledExtensionProject.SourceRoot)**\*.*" />
-
-    <BundledExtensionCopyInput Include="$(MSBuildThisFileFullPath);$(MSBuildProjectFullPath);@(BundledExtensionSourceInput);@(BundledExtensionBuildInput)" />
-    <UpToDateCheckInput Include="@(BundledExtensionCopyInput)" />
-    <UpToDateCheckOutput Include="$(BundledExtensionsStamp)" />
+  <ItemGroup Condition="'$(HasBundledExtensionHost)' == 'true'">
+    <!-- These assemblies are provided by the launcher's default load context and must not be duplicated in the isolated
+         extension folder, otherwise extension modules can bind to different contract/runtime types than the host. -->
+    <BundledExtensionSharedAssembly Include="LocalAutomation.Application.dll;LocalAutomation.Application.pdb;LocalAutomation.Core.dll;LocalAutomation.Core.pdb;LocalAutomation.Extensions.Abstractions.dll;LocalAutomation.Extensions.Abstractions.pdb;LocalAutomation.Runtime.dll;LocalAutomation.Runtime.pdb" />
   </ItemGroup>
 
-  <Target Name="CopyBundledExtensions"
+  <Target Name="CopyBundledExtensionToHost"
           AfterTargets="Build"
-          Inputs="@(BundledExtensionCopyInput)"
-          Outputs="$(BundledExtensionsStamp)"
-          Condition="'$(HasBundledExtensionProjects)' == 'true'">
-
-    <RemoveDir Directories="$(BundledExtensionsRoot)" Condition="Exists('$(BundledExtensionsRoot)')" />
-    <MakeDir Directories="$(BundledExtensionsRoot)" />
-    <Message Importance="High" Text="Copying bundled extensions to '$(BundledExtensionsRoot)'." />
+          Condition="'$(HasBundledExtensionHost)' == 'true'">
 
     <ItemGroup>
-      <!-- Batch directly on each bundled extension project so wildcard expansion happens against a concrete source
-           root instead of being treated as a literal transformed path. -->
-      <BundledExtensionFiles Include="%(BundledExtensionProject.SourceRoot)**\*.*"
-                             Exclude="%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Application.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Core.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Extensions.Abstractions.pdb;%(BundledExtensionProject.SourceRoot)LocalAutomation.Runtime.dll;%(BundledExtensionProject.SourceRoot)LocalAutomation.Runtime.pdb">
-        <ExtensionFolderName>%(BundledExtensionProject.ExtensionFolderName)</ExtensionFolderName>
-      </BundledExtensionFiles>
-      <BundledExtensionDirectories Include="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(ExtensionFolderName)\%(RecursiveDir)')" />
+      <!-- Expand the extension build output inside the target so referenced package files copied during Build are part
+           of the mirrored payload. -->
+      <BundledExtensionFiles Include="$(TargetDir)**\*.*"
+                             Exclude="@(BundledExtensionSharedAssembly->'$(TargetDir)%(Identity)')" />
+      <!-- Pre-create nested destination folders so the Copy task can mirror satellite assemblies, runtimes, and
+           template folders without relying on stale directories from previous builds. -->
+      <BundledExtensionDirectories Include="@(BundledExtensionFiles->'$(BundledExtensionDestinationRoot)%(RecursiveDir)')" />
     </ItemGroup>
+
+    <!-- Remove a destination stamp if present because extension freshness is defined by this target copying the build
+         output, not by a separate host-side up-to-date file. -->
+    <Delete Files="$(BundledExtensionsStampPath)" Condition="Exists('$(BundledExtensionsStampPath)')" />
+    <!-- Remove only this extension's payload so stale files disappear without disturbing other bundled extensions. -->
+    <RemoveDir Directories="$(BundledExtensionDestinationRoot)" Condition="Exists('$(BundledExtensionDestinationRoot)')" />
+    <MakeDir Directories="$(BundledExtensionDestinationRoot)" />
+    <Message Importance="High" Text="Copying bundled extension '$(BundledExtensionFolderName)' to '$(BundledExtensionDestinationRoot)'." />
 
     <MakeDir Directories="@(BundledExtensionDirectories)" Condition="@(BundledExtensionDirectories) != ''" />
 
+    <!-- Copy the current extension output after clearing the destination so the launched app never observes an older
+         dependency set than the extension project just built. -->
     <Copy SourceFiles="@(BundledExtensionFiles)"
-          DestinationFiles="@(BundledExtensionFiles->'$(BundledExtensionsRoot)%(ExtensionFolderName)\%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(BundledExtensionFiles->'$(BundledExtensionDestinationRoot)%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
           Condition="@(BundledExtensionFiles) != ''" />
-    <Touch Files="$(BundledExtensionsStamp)" AlwaysCreate="true" />
   </Target>
 
 </Project>

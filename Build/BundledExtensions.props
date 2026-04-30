@@ -1,29 +1,23 @@
 <Project>
 
   <!--
-    Centralized bundled-extension declarations keep individual host projects generic. Hosts can consume the shared
-    BundledExtensionProject item list without naming specific extensions in their own project files.
+    Centralized bundled-extension declarations keep host and extension projects generic while still wiring the Unreal
+    extension into the Unreal Commander launcher output.
   -->
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'UnrealCommander.Avalonia'">
-    <BundledExtensionProject Include="$(MSBuildThisFileDirectory)..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj">
-      <ExtensionFolderName>Unreal</ExtensionFolderName>
-      <ExtensionTargetFramework></ExtensionTargetFramework>
-    </BundledExtensionProject>
-
-    <!-- The Unreal extension loads UnrealAutomationCommon from the bundled extension folder, so changes in that project
-         must make the launcher output stale even when an IDE pre-launch build only sees the common library change. -->
-    <BundledExtensionUpToDateInputRoot Include="$(MSBuildThisFileDirectory)..\UnrealAutomationCommon\" />
-
-    <!-- Keep bundled extensions in the normal project-reference build graph so runtime API changes rebuild the
-         extension assemblies before the launcher copies them into the Extensions folder. -->
+    <!-- The launcher depends on the Unreal extension build, but the extension's own build target owns the payload copy
+         so IDE builds that stop at the extension still refresh the runtime bundle. -->
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj"
-                      ReferenceOutputAssembly="false"
-                      PrivateAssets="all" />
+                       ReferenceOutputAssembly="false"
+                       PrivateAssets="all" />
   </ItemGroup>
 
-  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'UnrealCommander.Avalonia'">
-    <!-- Targets use this property because MSBuild does not allow item-list conditions in every top-level context. -->
-    <HasBundledExtensionProjects>true</HasBundledExtensionProjects>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'LocalAutomation.Extensions.Unreal'">
+    <!-- The Unreal extension is loaded from the launcher output's Extensions folder, so building the extension must
+         mirror its output there without requiring the launcher project to run a separate copy target. -->
+    <HasBundledExtensionHost>true</HasBundledExtensionHost>
+    <BundledExtensionHostRoot>$(MSBuildThisFileDirectory)..\UnrealCommander.Avalonia\</BundledExtensionHostRoot>
+    <BundledExtensionFolderName>Unreal</BundledExtensionFolderName>
   </PropertyGroup>
 
 </Project>
