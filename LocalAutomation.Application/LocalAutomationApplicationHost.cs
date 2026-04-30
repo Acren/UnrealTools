@@ -23,8 +23,10 @@ public sealed class LocalAutomationApplicationHost
         string resolvedTargetSettingsFileName = string.IsNullOrWhiteSpace(targetSettingsFileName)
             ? LocalAutomationHostStorage.DefaultTargetSettingsFileName
             : targetSettingsFileName;
+        // Store execution logs under the same host-owned app-data root as launch logs and persisted shell state.
+        string executionLogDirectory = Path.Combine(resolvedAppDataRootPath, "Logs", "Executions");
         ContextActions = new ContextActionService(catalog);
-        Execution = new ExecutionSessionService();
+        Execution = new ExecutionSessionService(executionLogDirectory);
         OptionEditors = new OptionEditorService(catalog);
         OptionValues = new LayeredSettingsPersistenceService(catalog, resolvedAppDataRootPath, resolvedTargetSettingsFileName);
         ApplicationSettings = new ApplicationSettings(defaultOutputRootPath, defaultTempRootPath);

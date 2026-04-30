@@ -758,8 +758,17 @@ public sealed class ExecutionWorkspaceViewModel : ViewModelBase
         }
 
         HashSet<RuntimeExecutionTaskId> selectedTaskIdSet = new(selectedTaskIds);
+        bool selectedScopeIncludesRoot = selectedTaskIdSet.Contains(runtimeTab.Session.RootTask.Id);
         List<LogEntryViewModel> filteredEntries = runtimeTab.Session.LogStream.Entries
-            .Where(entry => RuntimeExecutionTaskId.FromNullable(entry.TaskId) is RuntimeExecutionTaskId taskId && selectedTaskIdSet.Contains(taskId))
+            .Where(entry =>
+            {
+                RuntimeExecutionTaskId? taskId = RuntimeExecutionTaskId.FromNullable(entry.TaskId);
+                /* Session-level entries describe the whole run rather than one task. Show them only with the root scope so
+                   root selection behaves like the session overview without adding session noise to child-task logs. */
+                return taskId == null
+                    ? selectedScopeIncludesRoot
+                    : selectedTaskIdSet.Contains(taskId.Value);
+            })
             .Select(CreateLogEntryViewModel)
             .ToList();
         activity.SetTag("log.source", "selection")

@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LocalAutomation.Runtime;
 
@@ -120,8 +119,7 @@ public sealed class ExecutionSession
     public string TargetName => GetRootOperationParameters().Target?.DisplayName ?? string.Empty;
 
     /// <summary>
-    /// Gets the session-scoped logger that writes into this session's buffered log streams while still mirroring output
-    /// to the process-wide application logger.
+    /// Gets the session-scoped logger that writes into this session's buffered log streams.
     /// </summary>
     public ILogger Logger => _sessionLogger;
 
@@ -1107,13 +1105,11 @@ public sealed class ExecutionSession
     }
 
     /// <summary>
-    /// Routes session and task log output into the session's buffered streams while still mirroring the same messages to
-    /// the process-wide fallback logger.
+    /// Routes session and task log output into the session's buffered streams.
     /// </summary>
     private sealed class SessionLogger : ILogger, IExecutionTaskLoggerFactory, IExecutionTaskStateSink, IExecutionTaskScope
     {
         private readonly ExecutionSession _session;
-        private readonly ILogger _fallbackLogger;
         private readonly ExecutionTaskId? _taskId;
 
         /// <summary>
@@ -1122,7 +1118,6 @@ public sealed class ExecutionSession
         public SessionLogger(ExecutionSession session, ExecutionTaskId? taskId = null)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
-            _fallbackLogger = ResolveCurrentLogger();
             _taskId = taskId;
         }
 
@@ -1140,17 +1135,15 @@ public sealed class ExecutionSession
         }
 
         /// <summary>
-        /// Returns a fallback logger scope when available while keeping session log capture independent of structured
-        /// scope state.
+        /// Returns a no-op logger scope because session log capture does not model structured scope state.
         /// </summary>
         public IDisposable BeginScope<TState>(TState state) where TState : notnull
         {
-            return _fallbackLogger.BeginScope(state) ?? NullScope.Instance;
+            return NullScope.Instance;
         }
 
         /// <summary>
-        /// Writes one formatted log message into the session and task streams, then mirrors the same output to the
-        /// process-wide fallback logger.
+        /// Writes one formatted log message into the session and task streams.
         /// </summary>
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
@@ -1167,8 +1160,6 @@ public sealed class ExecutionSession
                 Message = message,
                 Verbosity = logLevel
             });
-
-            _fallbackLogger.Log(logLevel, eventId, state, exception, formatter);
         }
 
         /// <summary>
@@ -1180,22 +1171,6 @@ public sealed class ExecutionSession
         }
 
         /// <summary>
-        /// Resolves the active host logger at run time so session-specific forwarding loggers can be installed before the
-        /// framework-owned execution path begins.
-        /// </summary>
-        private static ILogger ResolveCurrentLogger()
-        {
-            try
-            {
-                return ApplicationLogger.Logger;
-            }
-            catch (InvalidOperationException)
-            {
-                return NullLogger.Instance;
-            }
-        }
-
-        /// <summary>
         /// Forwards explicit task-state transitions into the session so graph views can react without parsing log text.
         /// </summary>
         public void SetTaskState(ExecutionTaskId taskId, ExecutionTaskState state)
@@ -1204,7 +1179,7 @@ public sealed class ExecutionSession
         }
 
         /// <summary>
-        /// Provides a no-op scope object when the fallback logger does not create real scopes.
+        /// Provides a no-op scope object because session logging does not persist structured scope state.
         /// </summary>
         private sealed class NullScope : IDisposable
         {

@@ -15,7 +15,18 @@ namespace LocalAutomation.Application;
 /// </summary>
 public sealed class ExecutionSessionService
 {
+    // Tracks live and completed execution sessions in display order for application hosts.
     private readonly List<LocalAutomation.Runtime.ExecutionSession> _sessions = new();
+    // Holds the optional directory where each execution session writes its own durable log file.
+    private readonly string? _sessionLogDirectory;
+
+    /// <summary>
+    /// Creates the session service and optionally enables per-execution disk logging under the supplied directory.
+    /// </summary>
+    public ExecutionSessionService(string? sessionLogDirectory = null)
+    {
+        _sessionLogDirectory = string.IsNullOrWhiteSpace(sessionLogDirectory) ? null : sessionLogDirectory;
+    }
 
     /// <summary>
     /// Raised when the execution session collection changes.
@@ -42,14 +53,33 @@ public sealed class ExecutionSessionService
         LocalAutomation.Runtime.ExecutionPlan plan = ExecutionPlanFactory.BuildPlan(operation, parameters)
             ?? throw new InvalidOperationException($"Operation '{operation.OperationName}' did not produce an execution plan.");
         LocalAutomation.Runtime.ExecutionSession session = new(logStream, plan);
+        ExecutionSessionLogWriter? logWriter = ExecutionSessionLogWriter.TryAttach(session, _sessionLogDirectory);
 
-        /* Let UI consumers subscribe to task-status and task-log streams before execution begins so the first Running
-           transition for long-lived tasks is visible on the graph instead of being lost during startup. */
-        onSessionCreated?.Invoke(session);
-        _sessions.Add(session);
-        SessionsChanged?.Invoke();
-        _ = RunAsync(session);
-        return session;
+        // Transfer ownership of the file writer to the background run only after all synchronous startup hooks succeed.
+        bool runStarted = false;
+        try
+        {
+            if (logWriter != null)
+            {
+                session.Logger.LogInformation("Writing session log to {SessionLogFilePath}", logWriter.FilePath);
+            }
+
+            /* Let UI consumers subscribe to task-status and task-log streams before execution begins so the first Running
+               transition for long-lived tasks is visible on the graph instead of being lost during startup. */
+            onSessionCreated?.Invoke(session);
+            _sessions.Add(session);
+            SessionsChanged?.Invoke();
+            _ = RunAsync(session, logWriter);
+            runStarted = true;
+            return session;
+        }
+        finally
+        {
+            if (!runStarted)
+            {
+                logWriter?.Dispose();
+            }
+        }
     }
 
     /// <summary>
@@ -79,18 +109,20 @@ public sealed class ExecutionSessionService
     /// <summary>
     /// Runs one started session in the background so callers can receive the live session object immediately.
     /// </summary>
-    private static async Task RunAsync(LocalAutomation.Runtime.ExecutionSession session)
+    private static async Task RunAsync(LocalAutomation.Runtime.ExecutionSession session, ExecutionSessionLogWriter? logWriter)
     {
-        try
+        using (logWriter)
         {
-            await session.RunAsync();
-        }
-        catch (Exception ex)
-        {
-            /* Background execution failures must reach the process-wide application log because no caller is awaiting
-               this fire-and-forget task directly. The app log is the only durable surface that consistently exposes
-               unexpected runtime failures to the shell. */
-            ApplicationLogger.Logger.LogError(ex, "Execution session '{SessionId}' failed for '{OperationName}'.", session.Id.Value, session.OperationName);
+            try
+            {
+                await session.RunAsync();
+            }
+            catch (Exception ex)
+            {
+                /* Background execution failures belong to the session that produced them. Logging through the session
+                   logger keeps the execution tab and the per-session disk file as the durable diagnostic surfaces. */
+                session.Logger.LogError(ex, "Execution session '{SessionId}' failed for '{OperationName}'.", session.Id.Value, session.OperationName);
+            }
         }
     }
 }
