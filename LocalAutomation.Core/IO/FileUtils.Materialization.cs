@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalAutomation.Core;
@@ -14,6 +16,11 @@ public static partial class FileUtils
     /// Caps concurrent materialization entries so external copy tools cannot multiply without bound.
     /// </summary>
     private const int MaxConcurrentMaterializationEntries = 2;
+
+    /// <summary>
+    /// Caps explicit file-set copies so small package files can copy concurrently without unbounded I/O fan-out.
+    /// </summary>
+    private const int MaxConcurrentMaterializedFileCopies = 32;
 
     /// <summary>
     /// Materializes one explicit subset of files and directories from a source root into a destination root.
@@ -49,6 +56,47 @@ public static partial class FileUtils
                 MaxDegreeOfParallelism = MaxConcurrentMaterializationEntries
             },
             entry => MaterializeEntry(sourceRootPath, destinationRootPath, entry, logger, cancellationToken, mirrorDirectories));
+    }
+
+    /// <summary>
+    /// Materializes an explicit set of source-relative files from one root into another root in parallel.
+    /// </summary>
+    public static void MaterializeFiles(
+        string sourceRootPath,
+        string destinationRootPath,
+        IEnumerable<string> relativeFilePaths,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
+    {
+        if (relativeFilePaths == null)
+        {
+            throw new ArgumentNullException(nameof(relativeFilePaths));
+        }
+
+        if (logger == null)
+        {
+            throw new ArgumentNullException(nameof(logger));
+        }
+
+        sourceRootPath = Path.GetFullPath(sourceRootPath);
+        destinationRootPath = Path.GetFullPath(destinationRootPath);
+        IReadOnlyList<string> normalizedRelativeFilePaths = NormalizeMaterializedFilePaths(sourceRootPath, relativeFilePaths);
+        Directory.CreateDirectory(destinationRootPath);
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        logger.LogInformation("Copying {FileCount} file(s) from '{SourceRootPath}' to '{DestinationRootPath}'.", normalizedRelativeFilePaths.Count, sourceRootPath, destinationRootPath);
+
+        // Package payloads are often many small files; direct parallel file copies avoid serial per-file latency.
+        Parallel.ForEach(
+            normalizedRelativeFilePaths,
+            new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = MaxConcurrentMaterializedFileCopies
+            },
+            relativeFilePath => CopyMaterializedFile(Path.Combine(sourceRootPath, relativeFilePath), Path.Combine(destinationRootPath, relativeFilePath), cancellationToken));
+
+        stopwatch.Stop();
+        logger.LogInformation("Copied {FileCount} file(s) in {Elapsed}.", normalizedRelativeFilePaths.Count, DurationFormatting.FormatSeconds(stopwatch.Elapsed));
     }
 
     /// <summary>
@@ -108,6 +156,47 @@ public static partial class FileUtils
         {
             DeleteDestinationEntry(destinationPath, logger);
         }
+    }
+
+    /// <summary>
+    /// Normalizes explicit file entries and rejects paths that are empty, rooted, or escape the source root.
+    /// </summary>
+    private static IReadOnlyList<string> NormalizeMaterializedFilePaths(string sourceRootPath, IEnumerable<string> relativeFilePaths)
+    {
+        return relativeFilePaths
+            .Select(relativeFilePath => NormalizeMaterializedFilePath(sourceRootPath, relativeFilePath))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(relativeFilePath => relativeFilePath, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Normalizes one explicit source-relative file path while enforcing the source-root boundary.
+    /// </summary>
+    private static string NormalizeMaterializedFilePath(string sourceRootPath, string relativeFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativeFilePath))
+        {
+            throw new ArgumentException("Materialized file paths must be non-empty relative paths.", nameof(relativeFilePath));
+        }
+
+        if (Path.IsPathRooted(relativeFilePath))
+        {
+            throw new ArgumentException($"Materialized file path must be relative: {relativeFilePath}", nameof(relativeFilePath));
+        }
+
+        string absoluteFilePath = Path.GetFullPath(Path.Combine(sourceRootPath, relativeFilePath));
+        string normalizedRelativeFilePath = Path.GetRelativePath(sourceRootPath, absoluteFilePath);
+        if (normalizedRelativeFilePath == "."
+            || normalizedRelativeFilePath == ".."
+            || normalizedRelativeFilePath.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || normalizedRelativeFilePath.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal)
+            || Path.IsPathRooted(normalizedRelativeFilePath))
+        {
+            throw new ArgumentException($"Materialized file path must stay inside the source directory: {relativeFilePath}", nameof(relativeFilePath));
+        }
+
+        return normalizedRelativeFilePath;
     }
 
     /// <summary>

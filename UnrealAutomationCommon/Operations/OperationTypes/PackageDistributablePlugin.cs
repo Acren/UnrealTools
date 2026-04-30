@@ -290,7 +290,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             HashSet<string> relativeFiles = SelectFilteredPackageFiles(context, plugin, engine, buildSteps);
 
             FileUtils.DeleteDirectoryIfExists(packagePath, context.Logger);
-            CopyPackageFiles(plugin.PluginPath, packagePath, relativeFiles, context.Logger);
+            FileUtils.MaterializeFiles(plugin.PluginPath, packagePath, relativeFiles, context.Logger, context.CancellationToken);
             PatchPackagedDescriptor(packagePath, Path.GetFileName(plugin.UPluginPath), engine);
             context.Logger.LogInformation("Packaged distributable plugin payload to '{PackagePath}' with {FileCount} file(s).", packagePath, relativeFiles.Count);
             return Task.CompletedTask;
@@ -554,32 +554,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 .Select(element => element.Value.Trim())
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .ToList();
-        }
-
-        /// <summary>
-        /// Copies the selected plugin-relative files into the package directory while preserving timestamps.
-        /// </summary>
-        private static void CopyPackageFiles(string pluginPath, string packagePath, IEnumerable<string> relativeFiles, ILogger logger)
-        {
-            Directory.CreateDirectory(packagePath);
-            foreach (string relativeFile in relativeFiles.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-            {
-                string sourcePath = Path.Combine(pluginPath, relativeFile);
-                string destinationPath = Path.Combine(packagePath, relativeFile);
-                string? destinationDirectoryPath = Path.GetDirectoryName(destinationPath);
-                if (!string.IsNullOrWhiteSpace(destinationDirectoryPath))
-                {
-                    Directory.CreateDirectory(destinationDirectoryPath);
-                }
-
-                if (Directory.Exists(destinationPath))
-                {
-                    FileUtils.DeleteDirectoryIfExists(destinationPath, logger);
-                }
-
-                File.Copy(sourcePath, destinationPath, overwrite: true);
-                File.SetLastWriteTimeUtc(destinationPath, File.GetLastWriteTimeUtc(sourcePath));
-            }
         }
 
         /// <summary>
