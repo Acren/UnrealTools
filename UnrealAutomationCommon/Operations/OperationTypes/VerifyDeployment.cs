@@ -232,7 +232,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             VerificationState state = context.GetData<VerificationState>();
             global::LocalAutomation.Runtime.Workspace workspace = CreatePersistentWorkspaceForVerificationBuild(context);
             FileMaterializationSpec projectInputs = MaterializationSpecs.CreateProject(state.ExampleProject, MaterializationSpecs.GetProjectPluginNames(state.ExampleProject));
-            Directory.CreateDirectory(workspace.RootPath);
+            workspace.EnsureReady(context.Logger);
             context.Logger.LogInformation("Refreshing verification project workspace from '{ExampleProjectPath}' to '{WorkspacePath}'.", state.ExampleProject.ProjectPath, workspace.RootPath);
             FileUtils.MaterializeDirectory(state.ExampleProject.ProjectPath, workspace.RootPath, projectInputs, context.Logger, context.CancellationToken, mirrorDirectories: true);
 
@@ -244,7 +244,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
             context.Logger.LogWarning("Verification project workspace '{WorkspacePath}' was invalid after refresh; recreating it without preserved intermediates.", workspace.RootPath);
             FileUtils.DeleteDirectoryIfExists(workspace.RootPath, context.Logger);
-            Directory.CreateDirectory(workspace.RootPath);
+            workspace.EnsureReady(context.Logger);
             FileUtils.MaterializeDirectory(state.ExampleProject.ProjectPath, workspace.RootPath, projectInputs, context.Logger, context.CancellationToken, mirrorDirectories: true);
             if (!ProjectPaths.Instance.IsTargetDirectory(workspace.RootPath))
             {

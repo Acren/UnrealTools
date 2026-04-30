@@ -840,6 +840,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using Plugin stagingPlugin = CreateRequiredPlugin(stagingPluginPath, "Staged plugin was not created successfully");
             UpdatePluginDescriptorForArchive(state, stagingPlugin);
             using Project workspaceProject = CreateRequiredProject(state.Layout.WorkspaceProjectPath, "Workspace project is not available for plugin flattening");
+            state.Layout.DistributablePluginPackageWorkspace.EnsureReady(context.Logger);
             string packageInputPluginPath = state.Layout.DistributablePluginPackageWorkspace.GetPath("HostProject", "Plugins", stagingPlugin.Name);
             context.Logger.LogInformation("Refreshing BuildPlugin host plugin input from '{StagingPluginPath}' to '{PackageInputPluginPath}'.", stagingPlugin.PluginPath, packageInputPluginPath);
             IReadOnlySet<string> mergePluginNames = PluginDeploymentFlattening.StagePluginForDeployment(
@@ -949,6 +950,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string exampleProjectPath = state.Layout.ExampleProjectBasePath;
 
             using Project workspaceProject = CreateRequiredProject(state.Layout.WorkspaceProjectPath, "Workspace project is not available for project-plugin base materialization");
+            state.Layout.ExampleProjectBaseWorkspace.EnsureReady(context.Logger);
             DeploymentPluginStagingState stagingState = context.GetOperationData<DeploymentPluginStagingState>();
             IReadOnlySet<string> includedSiblingPluginNames = GetIncludedSiblingPluginNames(state.HostProject, state.SourcePlugin.Name, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>(), stagingState.MergePluginNames);
             FileUtils.MaterializeDirectory(workspaceProject.ProjectPath, exampleProjectPath, MaterializationSpecs.CreateProject(workspaceProject, includedSiblingPluginNames), context.Logger, context.CancellationToken, mirrorDirectories: true);
@@ -1025,6 +1027,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string sourceProjectPath = state.Layout.ExampleProjectBasePath;
             string clangVariantPath = state.Layout.ClangVariantPath;
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Project-plugin base is not available for Clang variant materialization");
+            state.Layout.ClangVariantWorkspace.EnsureReady(context.Logger);
             FileUtils.MaterializeDirectory(sourceProject.ProjectPath, clangVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
             using Project clangVariant = CreateRequiredProject(clangVariantPath, "Clang validation variant was not created successfully");
             context.Logger.LogInformation($"Prepared Clang validation variant: {clangVariant.ProjectPath}");
@@ -1043,6 +1046,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string sourceProjectPath = state.Layout.ExampleProjectBasePath;
             string engineVariantPath = state.Layout.EnginePluginVariantPath;
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Project-plugin base is not available for engine variant materialization");
+            state.Layout.EnginePluginVariantWorkspace.EnsureReady(context.Logger);
             FileUtils.MaterializeDirectory(sourceProject.ProjectPath, engineVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
 
             using Project engineVariant = CreateRequiredProject(engineVariantPath, "Engine-plugin variant was not created successfully");
@@ -1063,6 +1067,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string sourceProjectPath = state.Layout.ExampleProjectBasePath;
             string blueprintVariantPath = state.Layout.BlueprintDemoVariantPath;
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Project-plugin base is not available for blueprint/demo variant materialization");
+            state.Layout.BlueprintDemoVariantWorkspace.EnsureReady(context.Logger);
             FileUtils.MaterializeDirectory(sourceProject.ProjectPath, blueprintVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
 
             using Project blueprintVariant = CreateRequiredProject(blueprintVariantPath, "Blueprint/demo variant was not created successfully");
