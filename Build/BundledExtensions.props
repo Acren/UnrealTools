@@ -10,11 +10,20 @@
       <ExtensionTargetFramework></ExtensionTargetFramework>
     </BundledExtensionProject>
 
+    <!-- The Unreal extension loads UnrealAutomationCommon from the bundled extension folder, so changes in that project
+         must make the launcher output stale even when an IDE pre-launch build only sees the common library change. -->
+    <BundledExtensionUpToDateInputRoot Include="$(MSBuildThisFileDirectory)..\UnrealAutomationCommon\" />
+
     <!-- Keep bundled extensions in the normal project-reference build graph so runtime API changes rebuild the
          extension assemblies before the launcher copies them into the Extensions folder. -->
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
   </ItemGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'UnrealCommander.Avalonia'">
+    <!-- Targets use this property because MSBuild does not allow item-list conditions in every top-level context. -->
+    <HasBundledExtensionProjects>true</HasBundledExtensionProjects>
+  </PropertyGroup>
 
 </Project>
