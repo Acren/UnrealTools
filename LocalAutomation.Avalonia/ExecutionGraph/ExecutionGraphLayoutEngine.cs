@@ -432,7 +432,7 @@ internal sealed class ExecutionGraphLayoutEngine
     }
 
     /// <summary>
-    /// Builds the visible dependency edges between laid out graph nodes after layout has produced their coordinates.
+    /// Builds the effective visible dependency edges between laid out graph nodes after layout has produced their coordinates.
     /// </summary>
     private List<ExecutionGraphEdgeLayout> BuildDependencyEdges()
     {
@@ -440,23 +440,22 @@ internal sealed class ExecutionGraphLayoutEngine
         HashSet<(RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId)> seenEdges = new();
         foreach (RuntimeExecutionTaskId targetId in _projection.VisibleTaskIds)
         {
-            foreach (RuntimeExecutionTaskId dependencyId in _projection.GetRawTask(targetId).Dependencies)
+            foreach (RuntimeExecutionTaskId visibleDependencyId in _projection.GetVisibleDependencyIds(targetId))
             {
-                RuntimeExecutionTaskId? visibleDependencyId = _projection.ResolveVisibleTaskId(dependencyId);
-                if (visibleDependencyId == null || visibleDependencyId.Value == targetId)
+                if (visibleDependencyId == targetId)
                 {
                     continue;
                 }
 
                 /* Visible containment already communicates ancestor and descendant structure, so suppress dependency lines
                    inside the same visible branch after hidden-task collapsing remaps internal dependencies. */
-                if (_projection.IsVisibleAncestor(visibleDependencyId.Value, targetId) ||
-                    _projection.IsVisibleAncestor(targetId, visibleDependencyId.Value))
+                if (_projection.IsVisibleAncestor(visibleDependencyId, targetId) ||
+                    _projection.IsVisibleAncestor(targetId, visibleDependencyId))
                 {
                     continue;
                 }
 
-                (RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId) edgeKey = (visibleDependencyId.Value, targetId);
+                (RuntimeExecutionTaskId SourceId, RuntimeExecutionTaskId TargetId) edgeKey = (visibleDependencyId, targetId);
                 if (!seenEdges.Add(edgeKey))
                 {
                     continue;
