@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -19,6 +20,15 @@ namespace UnrealAutomationCommon.Operations
     {
         // Merge options accept several delimiters so values remain readable in a single property-grid text box.
         private static readonly char[] MergeEntryDelimiters = { ',', ';', '\r', '\n' };
+
+        // Stable generated-output sync compares files in bounded chunks so large payloads do not allocate whole files.
+        private const int FileComparisonBufferSize = 128 * 1024;
+
+        // Generated roots are synchronized with content checks because merge rewriting can create fresh timestamps for equal files.
+        private static readonly string[] StableGeneratedDirectoryNames = { "Source", "Config" };
+
+        // Authored payload roots keep the fast materialization path because flattening does not rewrite their contents.
+        private static readonly string[] FastMaterializedDirectoryNames = { "Content", "Resources", "Extras" };
 
         // Unreal module names and reflected type prefixes must remain valid C++ identifier fragments after rewriting.
         private static readonly Regex IdentifierRegex = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
@@ -54,19 +64,66 @@ namespace UnrealAutomationCommon.Operations
         };
 
         /// <summary>
-        /// Copies every configured merge plugin into the workspace project so engine-specific staging reads only isolated
-        /// workspace inputs.
+        /// Applies merge rules to one staged plugin and synchronizes the persistent BuildPlugin package input.
+        /// Merge-source plugins are refreshed into the isolated workspace before rewriting so every copied module comes
+        /// from the same workspace project shape used by downstream validation.
         /// </summary>
-        public static void MaterializeMergePlugins(Project sourceProject, Project workspaceProject, string targetPluginName, PluginDeployOptions deployOptions, ILogger logger, CancellationToken cancellationToken = default)
+        public static IReadOnlySet<string> StagePluginForDeployment(
+            Plugin stagingPlugin,
+            Project sourceProject,
+            Project workspaceProject,
+            string packageInputPluginPath,
+            PluginDeployOptions deployOptions,
+            ILogger logger,
+            CancellationToken cancellationToken = default)
         {
+            _ = stagingPlugin ?? throw new ArgumentNullException(nameof(stagingPlugin));
+            _ = sourceProject ?? throw new ArgumentNullException(nameof(sourceProject));
+            _ = workspaceProject ?? throw new ArgumentNullException(nameof(workspaceProject));
+            _ = deployOptions ?? throw new ArgumentNullException(nameof(deployOptions));
+            _ = logger ?? throw new ArgumentNullException(nameof(logger));
+
             IReadOnlyList<MergeRule> mergeRules = ParseMergeRules(deployOptions.MergePlugins);
-            if (mergeRules.Count == 0)
+            IReadOnlyList<ResolvedMergePlugin> mergePlugins = mergeRules.Count == 0
+                ? Array.Empty<ResolvedMergePlugin>()
+                : MaterializeMergePlugins(sourceProject, workspaceProject, stagingPlugin.Name, mergeRules, logger, cancellationToken);
+
+            if (mergePlugins.Count > 0)
             {
-                return;
+                // Build all generated names up front so collision validation sees the complete merge set.
+                IReadOnlyList<ModuleRename> moduleRenames = BuildModuleRenames(stagingPlugin, mergePlugins);
+                IReadOnlyList<ReflectedRename> reflectedRenames = moduleRenames.SelectMany(FindReflectedRenames).ToList();
+                IReadOnlyList<ReplacementRule> replacements = BuildReplacementRules(moduleRenames, reflectedRenames);
+
+                logger.LogInformation("Flattening {MergePluginCount} merge plugin(s) into staged plugin '{PluginName}'.", mergePlugins.Count, stagingPlugin.Name);
+                ValidateUnsupportedPayloads(mergePlugins);
+                CopyRenamedModules(stagingPlugin, moduleRenames, logger);
+                RewriteTextFiles(stagingPlugin, replacements, logger);
+                RenamePaths(stagingPlugin, replacements, logger);
+                UpdateStagedPluginDescriptor(stagingPlugin, mergePlugins, moduleRenames);
+                AppendMergedConfigFiles(stagingPlugin, mergePlugins, replacements, logger);
+                AppendCoreRedirects(stagingPlugin, reflectedRenames, logger);
+                ValidateFlattenedStaging(stagingPlugin, mergePlugins, moduleRenames);
             }
 
-            // Workspace plugins live beside the target plugin so later staging can resolve every merge input uniformly.
+            MaterializeFlattenedPackageInput(stagingPlugin, packageInputPluginPath, logger, cancellationToken);
+            return mergePlugins.Select(plugin => plugin.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Copies merge-source plugins into the isolated workspace and returns descriptor data from those workspace copies.
+        /// </summary>
+        private static IReadOnlyList<ResolvedMergePlugin> MaterializeMergePlugins(
+            Project sourceProject,
+            Project workspaceProject,
+            string targetPluginName,
+            IReadOnlyList<MergeRule> mergeRules,
+            ILogger logger,
+            CancellationToken cancellationToken)
+        {
+            // Workspace plugin copies give flattening one stable project-local source for both name and path specifiers.
             Directory.CreateDirectory(workspaceProject.PluginsPath);
+            List<ResolvedMergePlugin> mergePlugins = new();
             HashSet<string> materializedPluginNames = new(StringComparer.OrdinalIgnoreCase);
             foreach (MergeRule mergeRule in mergeRules)
             {
@@ -85,52 +142,217 @@ namespace UnrealAutomationCommon.Operations
                 logger.LogInformation("Materializing merge plugin '{PluginName}' into workspace: {WorkspacePluginPath}", sourcePlugin.Name, workspaceMergePluginPath);
                 FileUtils.DeleteDirectoryIfExists(workspaceMergePluginPath);
                 FileUtils.MaterializeDirectory(sourcePlugin.PluginPath, workspaceMergePluginPath, MaterializationSpecs.CreatePlugin(sourcePlugin), logger, cancellationToken);
+
+                using Plugin workspacePlugin = new(workspaceMergePluginPath);
+                JObject descriptor = JObject.Parse(File.ReadAllText(workspacePlugin.UPluginPath));
+                mergePlugins.Add(new ResolvedMergePlugin(workspacePlugin.Name, workspacePlugin.PluginPath, mergeRule.EmbeddedPrefixOverride, descriptor));
             }
+
+            return mergePlugins;
         }
 
         /// <summary>
-        /// Resolves the configured merge plugin names so deploy project materialization can avoid also carrying them as
-        /// separate sibling project plugins.
+        /// Materializes a flattened source-style plugin into a persistent package input while preserving build outputs.
         /// </summary>
-        public static IReadOnlySet<string> ResolveMergePluginNames(Project sourceProject, PluginDeployOptions deployOptions)
+        private static void MaterializeFlattenedPackageInput(Plugin flattenedPlugin, string destinationPluginPath, ILogger logger, CancellationToken cancellationToken = default)
         {
-            IReadOnlyList<MergeRule> mergeRules = ParseMergeRules(deployOptions.MergePlugins);
-            if (mergeRules.Count == 0)
+            _ = flattenedPlugin ?? throw new ArgumentNullException(nameof(flattenedPlugin));
+            _ = logger ?? throw new ArgumentNullException(nameof(logger));
+            if (string.IsNullOrWhiteSpace(destinationPluginPath))
             {
-                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                throw new ArgumentException("Destination plugin path is required for flattened package input materialization.", nameof(destinationPluginPath));
             }
 
-            return ResolveMergePlugins(sourceProject, mergeRules)
-                .Select(plugin => plugin.Name)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Directory.CreateDirectory(destinationPluginPath);
+
+            // The descriptor is generated by flattening and archive-version edits, so copy it only when content changes.
+            CopyFileIfChanged(flattenedPlugin.UPluginPath, Path.Combine(destinationPluginPath, Path.GetFileName(flattenedPlugin.UPluginPath)), cancellationToken);
+
+            // Source and Config contain generated merge rewrites; synchronize them without touching unchanged files.
+            foreach (string directoryName in StableGeneratedDirectoryNames)
+            {
+                SyncDirectoryIfChanged(Path.Combine(flattenedPlugin.PluginPath, directoryName), Path.Combine(destinationPluginPath, directoryName), cancellationToken);
+            }
+
+            // Non-generated plugin payload roots can still use the platform fast path and should mirror stale files normally.
+            FileMaterializationSpec fastPayloadSpec = new();
+            foreach (string directoryName in FastMaterializedDirectoryNames)
+            {
+                fastPayloadSpec.Add(directoryName);
+            }
+
+            FileUtils.MaterializeDirectory(flattenedPlugin.PluginPath, destinationPluginPath, fastPayloadSpec, logger, cancellationToken, mirrorDirectories: true);
         }
 
         /// <summary>
-        /// Applies the configured merge plugins to one staged plugin copy before RunUAT BuildPlugin consumes it.
+        /// Mirrors one generated directory while copying only files whose bytes differ.
         /// </summary>
-        public static void ApplyToStagedPlugin(Plugin stagingPlugin, Project workspaceProject, PluginDeployOptions deployOptions, ILogger logger)
+        private static void SyncDirectoryIfChanged(string sourceDirectoryPath, string destinationDirectoryPath, CancellationToken cancellationToken)
         {
-            IReadOnlyList<MergeRule> mergeRules = ParseMergeRules(deployOptions.MergePlugins);
-            if (mergeRules.Count == 0)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Directory.Exists(sourceDirectoryPath))
+            {
+                FileUtils.DeleteDirectoryIfExists(destinationDirectoryPath);
+                return;
+            }
+
+            Directory.CreateDirectory(destinationDirectoryPath);
+            HashSet<string> sourceFileRelativePaths = Directory.EnumerateFiles(sourceDirectoryPath, "*", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(sourceDirectoryPath, path))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> sourceDirectoryRelativePaths = Directory.EnumerateDirectories(sourceDirectoryPath, "*", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(sourceDirectoryPath, path))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (string relativePath in sourceDirectoryRelativePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string destinationChildDirectoryPath = Path.Combine(destinationDirectoryPath, relativePath);
+                if (File.Exists(destinationChildDirectoryPath))
+                {
+                    File.Delete(destinationChildDirectoryPath);
+                }
+
+                Directory.CreateDirectory(destinationChildDirectoryPath);
+            }
+
+            foreach (string relativePath in sourceFileRelativePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                CopyFileIfChanged(Path.Combine(sourceDirectoryPath, relativePath), Path.Combine(destinationDirectoryPath, relativePath), cancellationToken);
+            }
+
+            foreach (string destinationFilePath in Directory.EnumerateFiles(destinationDirectoryPath, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string relativePath = Path.GetRelativePath(destinationDirectoryPath, destinationFilePath);
+                if (!sourceFileRelativePaths.Contains(relativePath))
+                {
+                    File.Delete(destinationFilePath);
+                }
+            }
+
+            foreach (string destinationChildDirectoryPath in Directory.EnumerateDirectories(destinationDirectoryPath, "*", SearchOption.AllDirectories).OrderByDescending(path => path.Length))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string relativePath = Path.GetRelativePath(destinationDirectoryPath, destinationChildDirectoryPath);
+                if (!sourceDirectoryRelativePaths.Contains(relativePath))
+                {
+                    FileUtils.DeleteDirectoryIfExists(destinationChildDirectoryPath);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Copies one generated file only when its destination content differs from the desired content.
+        /// </summary>
+        private static void CopyFileIfChanged(string sourceFilePath, string destinationFilePath, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string? destinationDirectoryPath = Path.GetDirectoryName(destinationFilePath);
+            if (!string.IsNullOrWhiteSpace(destinationDirectoryPath))
+            {
+                Directory.CreateDirectory(destinationDirectoryPath);
+            }
+
+            if (Directory.Exists(destinationFilePath))
+            {
+                FileUtils.DeleteDirectoryIfExists(destinationFilePath);
+            }
+
+            DateTime? previousDestinationTimestamp = File.Exists(destinationFilePath)
+                ? File.GetLastWriteTimeUtc(destinationFilePath)
+                : null;
+            if (previousDestinationTimestamp.HasValue && FileContentsMatch(sourceFilePath, destinationFilePath, cancellationToken))
             {
                 return;
             }
 
-            // Resolve all merge inputs up front so naming and collision validation sees the complete merge set.
-            IReadOnlyList<ResolvedMergePlugin> mergePlugins = ResolveMergePlugins(workspaceProject, mergeRules);
-            IReadOnlyList<ModuleRename> moduleRenames = BuildModuleRenames(stagingPlugin, mergePlugins);
-            IReadOnlyList<ReflectedRename> reflectedRenames = moduleRenames.SelectMany(FindReflectedRenames).ToList();
-            IReadOnlyList<ReplacementRule> replacements = BuildReplacementRules(moduleRenames, reflectedRenames);
+            DateTime sourceTimestamp = File.GetLastWriteTimeUtc(sourceFilePath);
+            File.Copy(sourceFilePath, destinationFilePath, overwrite: true);
+            File.SetLastWriteTimeUtc(destinationFilePath, GetCopiedTimestamp(sourceTimestamp, previousDestinationTimestamp));
+        }
 
-            logger.LogInformation("Flattening {MergePluginCount} merge plugin(s) into staged plugin '{PluginName}'.", mergePlugins.Count, stagingPlugin.Name);
-            ValidateUnsupportedPayloads(mergePlugins);
-            CopyRenamedModules(stagingPlugin, moduleRenames, logger);
-            RewriteTextFiles(stagingPlugin, replacements, logger);
-            RenamePaths(stagingPlugin, replacements, logger);
-            UpdateStagedPluginDescriptor(stagingPlugin, mergePlugins, moduleRenames);
-            AppendMergedConfigFiles(stagingPlugin, mergePlugins, replacements, logger);
-            AppendCoreRedirects(stagingPlugin, reflectedRenames, logger);
-            ValidateFlattenedStaging(stagingPlugin, mergePlugins, moduleRenames);
+        /// <summary>
+        /// Returns a copied-file timestamp that makes changed generated content visible to timestamp-based build tools.
+        /// </summary>
+        private static DateTime GetCopiedTimestamp(DateTime sourceTimestamp, DateTime? previousDestinationTimestamp)
+        {
+            if (!previousDestinationTimestamp.HasValue || sourceTimestamp != previousDestinationTimestamp.Value)
+            {
+                return sourceTimestamp;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            return now <= previousDestinationTimestamp.Value
+                ? previousDestinationTimestamp.Value.AddTicks(TimeSpan.TicksPerSecond)
+                : now;
+        }
+
+        /// <summary>
+        /// Returns whether two files have identical bytes.
+        /// </summary>
+        private static bool FileContentsMatch(string leftFilePath, string rightFilePath, CancellationToken cancellationToken)
+        {
+            FileInfo leftFile = new(leftFilePath);
+            FileInfo rightFile = new(rightFilePath);
+            if (leftFile.Length != rightFile.Length)
+            {
+                return false;
+            }
+
+            byte[] leftBuffer = ArrayPool<byte>.Shared.Rent(FileComparisonBufferSize);
+            byte[] rightBuffer = ArrayPool<byte>.Shared.Rent(FileComparisonBufferSize);
+            try
+            {
+                using FileStream leftStream = File.OpenRead(leftFilePath);
+                using FileStream rightStream = File.OpenRead(rightFilePath);
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    int leftBytesRead = ReadComparisonChunk(leftStream, leftBuffer, cancellationToken);
+                    int rightBytesRead = ReadComparisonChunk(rightStream, rightBuffer, cancellationToken);
+                    if (leftBytesRead != rightBytesRead)
+                    {
+                        return false;
+                    }
+
+                    if (leftBytesRead == 0)
+                    {
+                        return true;
+                    }
+
+                    if (!leftBuffer.AsSpan(0, leftBytesRead).SequenceEqual(rightBuffer.AsSpan(0, rightBytesRead)))
+                    {
+                        return false;
+                    }
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(leftBuffer);
+                ArrayPool<byte>.Shared.Return(rightBuffer);
+            }
+        }
+
+        /// <summary>
+        /// Reads one complete comparison chunk unless the stream reaches the end first.
+        /// </summary>
+        private static int ReadComparisonChunk(FileStream stream, byte[] buffer, CancellationToken cancellationToken)
+        {
+            int totalBytesRead = 0;
+            while (totalBytesRead < buffer.Length)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int bytesRead = stream.Read(buffer, totalBytesRead, buffer.Length - totalBytesRead);
+                if (bytesRead == 0)
+                {
+                    return totalBytesRead;
+                }
+
+                totalBytesRead += bytesRead;
+            }
+
+            return totalBytesRead;
         }
 
         /// <summary>
@@ -164,28 +386,6 @@ namespace UnrealAutomationCommon.Operations
             }
 
             return rules;
-        }
-
-        /// <summary>
-        /// Resolves every parsed rule against the workspace project and captures descriptor data without retaining file watchers.
-        /// </summary>
-        private static IReadOnlyList<ResolvedMergePlugin> ResolveMergePlugins(Project workspaceProject, IReadOnlyList<MergeRule> mergeRules)
-        {
-            List<ResolvedMergePlugin> mergePlugins = new();
-            HashSet<string> mergePluginNames = new(StringComparer.OrdinalIgnoreCase);
-            foreach (MergeRule mergeRule in mergeRules)
-            {
-                using Plugin mergePlugin = ResolveMergePlugin(workspaceProject, mergeRule.SourcePluginSpecifier);
-                if (!mergePluginNames.Add(mergePlugin.Name))
-                {
-                    throw new InvalidOperationException($"Deploy plugin merge list contains duplicate plugin '{mergePlugin.Name}'.");
-                }
-
-                JObject descriptor = JObject.Parse(File.ReadAllText(mergePlugin.UPluginPath));
-                mergePlugins.Add(new ResolvedMergePlugin(mergePlugin.Name, mergePlugin.PluginPath, mergeRule.EmbeddedPrefixOverride, descriptor));
-            }
-
-            return mergePlugins;
         }
 
         /// <summary>

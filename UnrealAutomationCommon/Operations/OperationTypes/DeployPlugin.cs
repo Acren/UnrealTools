@@ -64,6 +64,22 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
+        /// Captures plugin staging decisions that later project materialization must respect.
+        /// </summary>
+        private sealed class DeploymentPluginStagingState
+        {
+            public DeploymentPluginStagingState(IReadOnlySet<string> mergePluginNames)
+            {
+                MergePluginNames = mergePluginNames ?? throw new ArgumentNullException(nameof(mergePluginNames));
+            }
+
+            /// <summary>
+            /// Gets sibling plugins embedded into the staged plugin rather than carried as separate project plugins.
+            /// </summary>
+            public IReadOnlySet<string> MergePluginNames { get; }
+        }
+
+        /// <summary>
         /// Calculates stable session-output paths and persistent project-input roots for one engine-specific deployment.
         /// </summary>
         private sealed class DeploymentWorkspaceLayout
@@ -277,11 +293,18 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// <summary>
         /// Resolves the sibling project plugins that should remain separate project plugins during deploy validation.
         /// </summary>
-        private static IReadOnlySet<string> GetIncludedSiblingPluginNames(Project referenceProject, string targetPluginName, PluginDeployOptions deployOptions)
+        private static IReadOnlySet<string> GetIncludedSiblingPluginNames(
+            Project referenceProject,
+            string targetPluginName,
+            PluginDeployOptions deployOptions,
+            IReadOnlySet<string>? additionallyExcludedPluginNames = null)
         {
-            IReadOnlySet<string> mergePluginNames = PluginDeploymentFlattening.ResolveMergePluginNames(referenceProject, deployOptions);
             HashSet<string> excludedPluginNames = GetExcludedPluginNames(deployOptions);
-            ValidateMergePluginExclusions(mergePluginNames, excludedPluginNames);
+            if (additionallyExcludedPluginNames != null)
+            {
+                excludedPluginNames.UnionWith(additionallyExcludedPluginNames);
+            }
+
             if (!deployOptions.IncludeOtherPlugins)
             {
                 return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -292,7 +315,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             {
                 return referencePlugins
                     .Where(plugin => !plugin.Name.Equals(targetPluginName, StringComparison.OrdinalIgnoreCase))
-                    .Where(plugin => !mergePluginNames.Contains(plugin.Name))
                     .Where(plugin => !excludedPluginNames.Contains(plugin.Name))
                     .Select(plugin => plugin.Name)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -315,20 +337,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             return deployOptions.ExcludePlugins
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        }
-
-        /// <summary>
-        /// Rejects contradictory merge/exclude configuration before any project workspace receives plugin files.
-        /// </summary>
-        private static void ValidateMergePluginExclusions(IReadOnlySet<string> mergePluginNames, HashSet<string> excludedPluginNames)
-        {
-            foreach (string mergePluginName in mergePluginNames)
-            {
-                if (excludedPluginNames.Contains(mergePluginName))
-                {
-                    throw new InvalidOperationException($"Deploy plugin cannot both merge and exclude sibling plugin '{mergePluginName}'.");
-                }
-            }
         }
 
         /// <summary>
@@ -361,7 +369,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareWorkspace = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder stagePlugin = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder pluginArtifactsFlow = default!;
-                global::LocalAutomation.Runtime.ExecutionTaskBuilder distributablePluginPackageScope = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder packageDistributablePluginArtifact = default!;
                 prepareWorkspace = steps.Task("Prepare Workspace")
                     .Describe("Create the isolated engine-specific workspace from the prepared source")
@@ -373,32 +380,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 pluginArtifactsFlow.Children(global::LocalAutomation.Runtime.ExecutionChildMode.Parallel, pluginArtifactScope =>
                 {
                     stagePlugin = pluginArtifactScope.Task("Stage Plugin")
-                        .Describe("Create the staged plugin copy used for packaging and archiving")
+                        .Describe("Create the staged plugin copy and persistent BuildPlugin package input used for packaging and archiving")
+                        .WithExecutionLocks(context => context.GetData<DeploymentWorkspaceState>().Layout.DistributablePluginPackageWorkspace.MutationLocks)
                         .Run(StagingStepAsync);
 
-                    distributablePluginPackageScope = pluginArtifactScope.Task("Distributable Plugin Package Scope")
-                        .Describe("Hidden lock scope that refreshes the persistent package input and runs the distributable plugin package operation")
-                        .WithExecutionLocks(context => context.GetData<DeploymentWorkspaceState>().Layout.DistributablePluginPackageWorkspace.MutationLocks)
-                        .After(stagePlugin.Id)
-                        .HideInGraph();
-
-                    distributablePluginPackageScope.Children(packageScope =>
-                    {
-                        packageScope.Task("Prepare Persistent Plugin Input")
-                            .Describe("Refresh the persistent BuildPlugin plugin input while preserving reusable intermediates")
-                            .Run(context =>
-                            {
-                                using IDisposable nodeScope = context.Logger.BeginSection("Preparing persistent plugin package workspace");
-                                DeploymentWorkspaceState state = context.GetData<DeploymentWorkspaceState>();
-                                using Plugin stagingPlugin = CreateRequiredPlugin(state.Layout.StagingPluginPath, "Staged plugin is not available for persistent packaging");
-                                string hostProjectPluginPath = state.Layout.DistributablePluginPackageWorkspace.GetPath("HostProject", "Plugins", stagingPlugin.Name);
-
-                                context.Logger.LogInformation("Refreshing BuildPlugin host plugin input from '{StagingPluginPath}' to '{HostProjectPluginPath}'.", stagingPlugin.PluginPath, hostProjectPluginPath);
-                                FileUtils.MaterializeDirectory(stagingPlugin.PluginPath, hostProjectPluginPath, MaterializationSpecs.CreatePlugin(stagingPlugin), context.Logger, context.CancellationToken, mirrorDirectories: true);
-                                return Task.CompletedTask;
-                            });
-
-                        packageDistributablePluginArtifact = packageScope.AddChildOperation(
+                    packageDistributablePluginArtifact = pluginArtifactScope.AddChildOperation(
                             new PackageDistributablePlugin(),
                             () => CreatePluginPackageAuthoringParameters(operationParameters),
                             context =>
@@ -411,8 +397,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 parameters.OutputPathOverride = state.Layout.BuiltPluginPath;
                                 parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
                                 return parameters;
-                            });
-                    });
+                            })
+                        .After(stagePlugin.Id)
+                        .WithExecutionLocks(context => context.GetData<DeploymentWorkspaceState>().Layout.DistributablePluginPackageWorkspace.MutationLocks);
 
                     pluginArtifactScope.Task("Archive Staged Plugin Source")
                         .Describe("Archive the staged source-style plugin payload as soon as the staging copy is ready")
@@ -427,7 +414,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder prepareSharedBase = steps.Task("Prepare Shared Project-Plugin Base")
                     .Describe("Materialize, populate, and prebuild the shared code example base that later package branches clone or package directly")
-                    .After(prepareWorkspace.Id);
+                    .After(prepareWorkspace.Id, stagePlugin.Id);
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder materializeProjectPluginBase = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder installProjectPluginBase = default!;
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder buildExampleBase = default!;
@@ -816,9 +803,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using Plugin workspacePlugin = CreateRequiredPlugin(workspacePluginPath, "Could not find the target plugin inside the workspace project");
             context.Logger.LogInformation($"Resolved workspace plugin: {workspacePlugin.PluginPath}");
 
-            // Merge plugins are copied into the isolated workspace so later staging never reads mutable source folders.
-            PluginDeploymentFlattening.MaterializeMergePlugins(hostProject, workspaceProject, plugin.Name, deployOptions, context.Logger, context.CancellationToken);
-
             DeploymentWorkspaceLayout layout = new(engine, plugin.Name, sessionWorkspace, workspaceProject, pluginBuildOptions);
             DeploymentWorkspaceState workspaceState = new(engine, plugin, hostProject, layout);
             string archivePrefix = await BuildArchivePrefixAsync(workspaceState);
@@ -856,7 +840,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using Plugin stagingPlugin = CreateRequiredPlugin(stagingPluginPath, "Staged plugin was not created successfully");
             UpdatePluginDescriptorForArchive(state, stagingPlugin);
             using Project workspaceProject = CreateRequiredProject(state.Layout.WorkspaceProjectPath, "Workspace project is not available for plugin flattening");
-            PluginDeploymentFlattening.ApplyToStagedPlugin(stagingPlugin, workspaceProject, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>(), context.Logger);
+            string packageInputPluginPath = state.Layout.DistributablePluginPackageWorkspace.GetPath("HostProject", "Plugins", stagingPlugin.Name);
+            context.Logger.LogInformation("Refreshing BuildPlugin host plugin input from '{StagingPluginPath}' to '{PackageInputPluginPath}'.", stagingPlugin.PluginPath, packageInputPluginPath);
+            IReadOnlySet<string> mergePluginNames = PluginDeploymentFlattening.StagePluginForDeployment(
+                stagingPlugin,
+                state.HostProject,
+                workspaceProject,
+                packageInputPluginPath,
+                context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>(),
+                context.Logger,
+                context.CancellationToken);
+            context.SetOperationData(new DeploymentPluginStagingState(mergePluginNames));
             context.Logger.LogInformation($"Updated plugin descriptor for staging: {stagingPlugin.PluginDescriptor.VersionName}");
             await Task.CompletedTask;
         }
@@ -955,7 +949,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string exampleProjectPath = state.Layout.ExampleProjectBasePath;
 
             using Project workspaceProject = CreateRequiredProject(state.Layout.WorkspaceProjectPath, "Workspace project is not available for project-plugin base materialization");
-            IReadOnlySet<string> includedSiblingPluginNames = GetIncludedSiblingPluginNames(state.HostProject, state.SourcePlugin.Name, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>());
+            DeploymentPluginStagingState stagingState = context.GetOperationData<DeploymentPluginStagingState>();
+            IReadOnlySet<string> includedSiblingPluginNames = GetIncludedSiblingPluginNames(state.HostProject, state.SourcePlugin.Name, context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>(), stagingState.MergePluginNames);
             FileUtils.MaterializeDirectory(workspaceProject.ProjectPath, exampleProjectPath, MaterializationSpecs.CreateProject(workspaceProject, includedSiblingPluginNames), context.Logger, context.CancellationToken, mirrorDirectories: true);
 
             using Project exampleProject = CreateRequiredProject(exampleProjectPath, "Project-plugin base was not materialized successfully");
