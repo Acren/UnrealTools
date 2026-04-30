@@ -1422,7 +1422,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Directory.CreateDirectory(archivePath);
             FileUtils.DeleteDirectoryIfExists(archiveProjectPath, context.Logger);
             using Project blueprintVariant = CreateRequiredProject(state.Layout.BlueprintDemoVariantPath, "Blueprint/demo variant is not available for archive materialization");
-            FileUtils.MaterializeDirectory(blueprintVariant.ProjectPath, archiveProjectPath, MaterializationSpecs.CreateProject(blueprintVariant, MaterializationSpecs.GetProjectPluginNames(blueprintVariant)), context.Logger, context.CancellationToken, mirrorDirectories: true);
+            // Source example archives omit root project binaries but must keep each code plugin's packaged module outputs.
+            FileMaterializationSpec archiveProjectSpec = MaterializationSpecs.CreateProject(blueprintVariant, MaterializationSpecs.GetProjectPluginNames(blueprintVariant), includePluginBuildOutputs: true);
+            FileUtils.MaterializeDirectory(blueprintVariant.ProjectPath, archiveProjectPath, archiveProjectSpec, context.Logger, context.CancellationToken, mirrorDirectories: true);
 
             using Project archiveProject = CreateRequiredProject(archiveProjectPath, "Example-project archive copy is not available");
             string[] allowedExampleProjectSubDirectoryNames = { "Content", "Config", "Plugins" };
