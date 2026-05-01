@@ -33,7 +33,9 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             bool noDebugInfo = false,
             string? archiveDirectory = null,
             string? unrealExePath = null,
-            string? additionalCookerOptions = null)
+            string? additionalCookerOptions = null,
+            string? stagingDirectory = null,
+            string? cookOutputDirectory = null)
         {
             Phases = phases;
             Configuration = configuration;
@@ -41,6 +43,8 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             ArchiveDirectory = archiveDirectory;
             UnrealExePath = unrealExePath;
             AdditionalCookerOptions = additionalCookerOptions;
+            StagingDirectory = stagingDirectory;
+            CookOutputDirectory = cookOutputDirectory;
         }
 
         /// <summary>
@@ -72,6 +76,16 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
         /// Supplies extra raw cooker arguments for flows that need one targeted cooker behavior toggle.
         /// </summary>
         public string? AdditionalCookerOptions { get; }
+
+        /// <summary>
+        /// Overrides the root directory that BuildCookRun uses for staged package output.
+        /// </summary>
+        public string? StagingDirectory { get; }
+
+        /// <summary>
+        /// Overrides the platform-specific directory that the cook commandlet writes cooked payloads into.
+        /// </summary>
+        public string? CookOutputDirectory { get; }
 
         /// <summary>
         /// Returns whether this invocation still enters the compile phase and therefore needs the shared Unreal build lock.
@@ -147,6 +161,17 @@ namespace UnrealAutomationCommon.Operations.BaseOperations
             {
                 arguments.SetFlag("archive");
                 arguments.SetKeyPath("archivedirectory", request.ArchiveDirectory!);
+            }
+
+            // Optional staging and cook roots let composed workflows keep run-specific package data out of source trees.
+            if (!string.IsNullOrWhiteSpace(request.StagingDirectory))
+            {
+                arguments.SetKeyPath("stagingdirectory", request.StagingDirectory!);
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.CookOutputDirectory))
+            {
+                arguments.SetKeyPath("CookOutputDir", request.CookOutputDirectory!);
             }
 
             if (!string.IsNullOrWhiteSpace(request.UnrealExePath))

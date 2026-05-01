@@ -229,12 +229,28 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Returns the packaged Windows build path from one prepared project's staged-build directory and validates that
-        /// the expected executable tree exists before later launch or archive steps proceed.
+        /// Returns the session-owned staging root that BuildCookRun should use for one prepared-project package pass.
         /// </summary>
-        private static string GetRequiredPackagePath(Project project, DeploymentWorkspaceState state, string failureMessage)
+        private static string GetSessionPackageStagingRootPath(string outputPath)
         {
-            string packagePath = project.GetStagedBuildWindowsPath(state.Engine);
+            return Path.Combine(outputPath, "StagedBuilds");
+        }
+
+        /// <summary>
+        /// Returns the platform-specific cooked-data directory for one prepared-project package pass.
+        /// </summary>
+        private static string GetSessionPackageCookOutputPath(string outputPath, DeploymentWorkspaceState state)
+        {
+            return Path.Combine(outputPath, "Cooked", state.Engine.GetWindowsPlatformName());
+        }
+
+        /// <summary>
+        /// Returns the packaged Windows build path from one session-scoped staging root and validates that the expected
+        /// executable tree exists before later launch or archive steps proceed.
+        /// </summary>
+        private static string GetRequiredSessionPackagePath(string outputPath, DeploymentWorkspaceState state, string failureMessage)
+        {
+            string packagePath = Path.Combine(GetSessionPackageStagingRootPath(outputPath), state.Engine.GetWindowsPlatformName());
             if (!PackagePaths.Instance.IsTargetDirectory(packagePath))
             {
                 throw new InvalidOperationException($"{failureMessage}: {packagePath}");
@@ -270,11 +286,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Creates one validated packaged-build target from one prepared project's staged-build output.
+        /// Creates one validated packaged-build target from one session-scoped prepared-project package output.
         /// </summary>
-        private static Package CreateRequiredPackage(Project project, DeploymentWorkspaceState state, string failureMessage)
+        private static Package CreateRequiredSessionPackage(string outputPath, DeploymentWorkspaceState state, string failureMessage)
         {
-            return new Package(GetRequiredPackagePath(project, state, failureMessage));
+            return new Package(GetRequiredSessionPackagePath(outputPath, state, failureMessage));
         }
 
         /// <summary>
@@ -1142,15 +1158,17 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
-        /// Creates the explicit package-only BuildCookRun request used by Deploy Plugin prepared-project branches. Deploy
-        /// Plugin always reads packaged outputs from staged builds now, so these requests never enable UAT archive mode.
+        /// Creates the explicit package-only BuildCookRun request used by Deploy Plugin prepared-project branches. Session
+        /// staging and cook roots keep package artifacts out of persistent project workspaces while preserving build caches.
         /// </summary>
-        private static BuildCookRunProjectRequest CreatePreparedProjectPackageRequest(BuildConfiguration configuration, bool noDebugInfo = false)
+        private static BuildCookRunProjectRequest CreatePreparedProjectPackageRequest(BuildConfiguration configuration, string stagingDirectory, string cookOutputDirectory, bool noDebugInfo = false)
         {
             return new BuildCookRunProjectRequest(
                 BuildCookRunProjectPhases.Cook | BuildCookRunProjectPhases.Stage | BuildCookRunProjectPhases.Pak | BuildCookRunProjectPhases.Package,
                 configuration: configuration,
-                noDebugInfo: noDebugInfo);
+                noDebugInfo: noDebugInfo,
+                stagingDirectory: stagingDirectory,
+                cookOutputDirectory: cookOutputDirectory);
         }
 
         /// <summary>
@@ -1160,9 +1178,13 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         /// </summary>
         private Task RunPreparedProjectPackageAsync(Project project, DeploymentWorkspaceState state, string outputPath, BuildConfiguration configuration, global::LocalAutomation.Runtime.ExecutionTaskContext context, string failureMessage, bool noDebugInfo = false)
         {
-            // Package output is session-scoped, while staged builds live beside the prepared project and must be reset before discovery.
+            // Package and cook output are run-scoped, so clear the whole session package root before UAT writes into it.
             FileUtils.DeleteDirectoryIfExists(outputPath);
-            FileUtils.DeleteDirectoryIfExists(project.GetStagedBuildWindowsPath(state.Engine));
+            DeletePersistentProjectPackageOutputs(project, context.Logger);
+
+            // UAT appends the platform under -stagingdirectory but consumes -CookOutputDir as the final platform path.
+            string stagingRootPath = GetSessionPackageStagingRootPath(outputPath);
+            string cookOutputPath = GetSessionPackageCookOutputPath(outputPath, state);
 
             // The prepared project already has editor binaries, so package-only BuildCookRun skips editor compilation explicitly.
             global::LocalAutomation.Runtime.OperationParameters parameters = CreateParameters();
@@ -1176,12 +1198,23 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string operationName = configuration == BuildConfiguration.Shipping ? "Package Demo Project" : "Package Prepared Project";
 
             return RunChildOperationAsync(
-                new ConfiguredBuildCookRunProjectOperation(operationName, CreatePreparedProjectPackageRequest(configuration, noDebugInfo: noDebugInfo)),
+                new ConfiguredBuildCookRunProjectOperation(operationName, CreatePreparedProjectPackageRequest(configuration, stagingRootPath, cookOutputPath, noDebugInfo: noDebugInfo)),
                 parameters,
                 context,
                 required: true,
                 failureMessage: failureMessage,
                 hideChildOperationRootInGraph: true);
+        }
+
+        /// <summary>
+        /// Removes package-only output roots from a persistent prepared project so warm build caches do not retain staged
+        /// payloads or cooked content after those outputs have moved into the session workspace.
+        /// </summary>
+        private static void DeletePersistentProjectPackageOutputs(Project project, ILogger logger)
+        {
+            string savedPath = Path.Combine(project.ProjectPath, "Saved");
+            FileUtils.DeleteDirectoryIfExists(Path.Combine(savedPath, "StagedBuilds"), logger);
+            FileUtils.DeleteDirectoryIfExists(Path.Combine(savedPath, "Cooked"), logger);
         }
 
         /// <summary>
@@ -1218,8 +1251,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing project-plugin example");
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
-            using Project exampleProjectBase = CreateRequiredProject(state.Layout.ExampleProjectBasePath, "Project-plugin base is not available for launch validation");
-            Package projectPluginPackage = CreateRequiredPackage(exampleProjectBase, state, "Project-plugin package output is not available for launch");
+            Package projectPluginPackage = CreateRequiredSessionPackage(state.Layout.ProjectPluginOperationOutputPath, state, "Project-plugin package output is not available for launch");
             await RunLaunchPackageAsync(projectPluginPackage, state.Engine, automationOptions, context, "Launch and test with project plugin failed", state.Layout.ProjectPluginLaunchOutputPath);
         }
 
@@ -1256,8 +1288,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Testing engine-plugin example");
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
-            using Project engineVariant = CreateRequiredProject(state.Layout.EnginePluginVariantPath, "Engine-plugin variant is not available for launch validation");
-            Package enginePluginPackage = CreateRequiredPackage(engineVariant, state, "Engine-plugin package output is not available for launch");
+            Package enginePluginPackage = CreateRequiredSessionPackage(state.Layout.EnginePluginOperationOutputPath, state, "Engine-plugin package output is not available for launch");
             await RunLaunchPackageAsync(enginePluginPackage, state.Engine, automationOptions, context, "Launch and test engine-plugin example failed", state.Layout.EnginePluginLaunchOutputPath);
         }
 
@@ -1292,8 +1323,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             using IDisposable nodeScope = context.Logger.BeginSection("Copying blueprint package for test");
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
-            using Project blueprintVariant = CreateRequiredProject(state.Layout.BlueprintDemoVariantPath, "Blueprint/demo variant is not available for package snapshot");
-            Package blueprintPackage = CreateRequiredPackage(blueprintVariant, state, "Blueprint package output is not available for snapshot copy");
+            Package blueprintPackage = CreateRequiredSessionPackage(state.Layout.BlueprintOperationOutputPath, state, "Blueprint package output is not available for snapshot copy");
             string snapshotPath = state.Layout.BlueprintTestPackageSnapshotPath;
 
             FileUtils.DeleteDirectoryIfExists(snapshotPath);
@@ -1450,8 +1480,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             }
 
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
-            using Project demoVariant = CreateRequiredProject(state.Layout.BlueprintDemoVariantPath, "Blueprint/demo variant is not available for demo archive validation");
-            Package demoPackage = CreateRequiredPackage(demoVariant, state, "Demo package output is not available for archiving");
+            Package demoPackage = CreateRequiredSessionPackage(state.Layout.DemoOperationOutputPath, state, "Demo package output is not available for archiving");
             string archivePrefix = await BuildArchivePrefixAsync(state);
             string archivePath = Path.Combine(GetOutputPath(context.ValidatedOperationParameters), "Archives");
             string demoPackageZipPath = GetArchiveZipPath(context.ValidatedOperationParameters, archivePrefix, "DemoPackage.zip");
