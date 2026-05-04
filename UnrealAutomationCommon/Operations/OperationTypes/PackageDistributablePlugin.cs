@@ -125,30 +125,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         private Task PrepareHostProjectAsync(ExecutionTaskContext context)
         {
             Plugin plugin = GetRequiredTarget(context.ValidatedOperationParameters);
-            Directory.CreateDirectory(plugin.HostProjectPath);
-            WriteHostProjectDescriptor(plugin.HostProjectPath, plugin.Name);
+            using Project hostProject = Project.CreateEmpty(plugin.HostProjectPath, "HostProject");
+            hostProject.SetPluginEnabled(plugin.Name, true);
             context.Logger.LogInformation("Prepared BuildPlugin host project '{HostProjectPath}' for plugin '{PluginPath}'.", plugin.HostProjectPath, plugin.PluginPath);
             return Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// Writes the minimal host project descriptor needed for Build.bat plugin compilation.
-        /// </summary>
-        private static void WriteHostProjectDescriptor(string hostProjectPath, string pluginName)
-        {
-            JObject descriptor = new()
-            {
-                ["FileVersion"] = 3,
-                ["Plugins"] = new JArray
-                {
-                    new JObject
-                    {
-                        ["Name"] = pluginName,
-                        ["Enabled"] = true
-                    }
-                }
-            };
-            File.WriteAllText(Path.Combine(hostProjectPath, "HostProject.uproject"), descriptor.ToString());
         }
 
         /// <summary>

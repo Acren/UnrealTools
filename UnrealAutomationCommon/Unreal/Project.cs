@@ -40,6 +40,20 @@ namespace UnrealAutomationCommon.Unreal
             OnPropertyChanged(nameof(Name));
         }
 
+        /// <summary>
+        /// Creates a descriptor-only Unreal project without modules, plugins, content, or source files.
+        /// </summary>
+        public static Project CreateEmpty(string projectPath, string projectName, EngineVersion? engineVersion = null)
+        {
+            // Generated projects start with only a descriptor so callers compose features such as plugin dependencies
+            // explicitly after the project shell exists.
+            string resolvedProjectPath = RequireText(projectPath, nameof(projectPath), "Project path is required.");
+            string resolvedProjectName = RequireText(projectName, nameof(projectName), "Project name is required.");
+            Directory.CreateDirectory(resolvedProjectPath);
+            ProjectDescriptor.CreateEmpty(engineVersion).Save(Path.Combine(resolvedProjectPath, resolvedProjectName + ".uproject"));
+            return new Project(resolvedProjectPath);
+        }
+
         public string UProjectPath
         {
             get
@@ -246,6 +260,16 @@ namespace UnrealAutomationCommon.Unreal
             }
         }
 
+        /// <summary>
+        /// Adds or updates one plugin dependency entry in the project descriptor.
+        /// </summary>
+        public void SetPluginEnabled(string pluginName, bool enabled)
+        {
+            // Plugin enablement is descriptor state; project plugin files are copied or removed by separate operations.
+            ProjectDescriptor.SetPluginEnabled(pluginName, enabled);
+            ProjectDescriptor.Save(UProjectPath);
+        }
+
         /**
          * Consider the project blueprint-only if it has zero modules
          * Alternatively it should also be possible to check the absence of a Source folder
@@ -279,6 +303,16 @@ namespace UnrealAutomationCommon.Unreal
             {
                 logger.LogWarning("Could not find GeneralProjectSettings section to update project version");
             }
+        }
+
+        /// <summary>
+        /// Returns non-empty text or throws with a caller-specific validation message.
+        /// </summary>
+        private static string RequireText(string value, string parameterName, string message)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? throw new ArgumentException(message, parameterName)
+                : value;
         }
 
     }

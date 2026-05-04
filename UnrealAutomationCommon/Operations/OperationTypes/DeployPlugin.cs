@@ -153,6 +153,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             public string EnginePluginVariantPath => EnginePluginVariantWorkspace.RootPath;
             public string ClangVariantPath => ClangVariantWorkspace.RootPath;
             public string BlueprintDemoVariantPath => BlueprintDemoVariantWorkspace.RootPath;
+            /// <summary>
+            /// Gets the run-scoped empty project root used to validate engine-installed plugin discovery without project plugin files.
+            /// </summary>
+            public string EmptyEnginePluginProjectPath => PathFor("EmptyEnginePluginProject");
             public string ProjectPluginOperationOutputPath => PathFor("ProjectPluginPackage");
             public string EnginePluginOperationOutputPath => PathFor("EnginePluginPackage");
             public string BlueprintOperationOutputPath => PathFor("BlueprintOnlyPackage");
@@ -167,6 +171,10 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             public string ProjectPluginBaseQueryTargetsOutputPath => PathFor("ProjectPluginBaseQueryTargetsOutput");
             public string ProjectPluginLaunchOutputPath => PathFor("ProjectPluginLaunchOutput");
             public string EnginePluginLaunchOutputPath => PathFor("EnginePluginLaunchOutput");
+            /// <summary>
+            /// Gets the run-scoped launch output root for the empty project that resolves the plugin from the engine install.
+            /// </summary>
+            public string EmptyEnginePluginProjectEditorLaunchOutputPath => PathFor("EmptyEnginePluginProjectEditorLaunchOutput");
             public string BlueprintLaunchOutputPath => PathFor("BlueprintLaunchOutput");
 
             private string PathFor(string label)
@@ -602,6 +610,14 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     .Describe("Install the built plugin into the engine marketplace folder once the project-plugin example package is sealed")
                     .After(packageProjectPlugin.Id)
                     .Run(InstallBuiltPluginToEngineAsync);
+
+                /* This lightweight launch validates the engine-installed plugin in a generated project with no project
+                   plugin files, so Unreal must discover the plugin from the engine marketplace install. */
+                steps.Task("Test Empty Engine-Plugin Project")
+                    .Describe("Launch and validate a generated empty project that enables the built plugin only from the engine install")
+                    .After(installEnginePlugin.Id)
+                    .When(automationOptions.RunTests && deployOptions.TestPackageWithEnginePlugin, automationOptions.RunTests ? "Test Package With Engine Plugin is off." : "Run Tests is off.")
+                    .Run(context => TestEmptyEnginePluginProjectAsync(context, automationOptions));
 
                 global::LocalAutomation.Runtime.ExecutionTaskBuilder enginePluginFlow = steps.Task("Engine-Plugin Package")
                     .Describe("Build, package, and validate the example that loads the built plugin from the engine install after its prepared variant is ready")
@@ -1268,6 +1284,33 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using Plugin builtPlugin = CreateRequiredPlugin(state.Layout.BuiltPluginPath, "Built plugin is not available for engine installation");
             FileUtils.CopyDirectory(builtPlugin.PluginPath, enginePluginsMarketplacePluginPath, cancellationToken: context.CancellationToken);
             await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Scheduler wrapper for launching an empty project whose descriptor enables the deployed engine-installed plugin.
+        /// </summary>
+        private async Task TestEmptyEnginePluginProjectAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context, AutomationOptions automationOptions)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Testing empty engine-plugin project");
+            using PerformanceActivityScope activity = PerformanceTelemetry.StartActivity("DeployPlugin.TestEmptyEnginePluginProject")
+                .SetTag("trigger", "StepTransition");
+            DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
+            using Plugin installedPlugin = CreateRequiredPlugin(state.Layout.InstalledEnginePluginPath, "Engine-installed plugin is not available for empty project launch");
+            string emptyProjectPath = state.Layout.EmptyEnginePluginProjectPath;
+
+            // The generated project is run-scoped so each deploy launch starts from a descriptor-only project shell.
+            FileUtils.DeleteDirectoryIfExists(emptyProjectPath, context.Logger);
+            using Project emptyProject = Project.CreateEmpty(emptyProjectPath, "EmptyEnginePluginProject", state.Engine.Version);
+            emptyProject.SetPluginEnabled(installedPlugin.Name, true);
+            global::LocalAutomation.Runtime.OperationParameters launchEditorParams = CreateParameters();
+            launchEditorParams.Target = emptyProject;
+            launchEditorParams.OutputPathOverride = state.Layout.EmptyEnginePluginProjectEditorLaunchOutputPath;
+            launchEditorParams.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
+            launchEditorParams.SetOptions(automationOptions);
+            ApplyValidationLaunchFlags(launchEditorParams);
+
+            await RunChildOperationAsync<LaunchProjectEditor>(launchEditorParams, context, required: true, failureMessage: "Failed to launch empty engine-plugin project in editor", hideChildOperationRootInGraph: true);
+            activity.SetTag("result", "Completed");
         }
 
         /// <summary>
