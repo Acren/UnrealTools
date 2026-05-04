@@ -44,6 +44,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private string _status = $"Add a target path to begin using the {App.ShellIdentity.ApplicationName} shell.";
     private SelectionTransitionState _selectionTransitionState;
     private bool _operationParametersRefreshQueued;
+    // Tracks non-saving persisted-settings reloads scheduled after the selected target changes on disk.
+    private bool _persistedSettingsReloadQueued;
     private bool _disposed;
 
     /// <summary>
@@ -344,6 +346,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        if (string.Equals(e.PropertyName, nameof(OperationParameters.Target), StringComparison.Ordinal))
+        {
+            QueuePersistedSettingsReload();
+            return;
+        }
+
         QueueOperationParametersRefresh();
     }
 
@@ -375,6 +383,37 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             RaiseDerivedStateChanged();
             RefreshVisibleExecutionPlan();
             SaveSessionState();
+        }, DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// Queues a persisted-settings reload without saving current option values after the target changes on disk.
+    /// </summary>
+    private void QueuePersistedSettingsReload()
+    {
+        if (_persistedSettingsReloadQueued || _disposed)
+        {
+            return;
+        }
+
+        // Descriptor watcher events mean the target's source files changed externally, so any delayed option save may
+        // contain stale values from the previous branch or file state and must not overwrite the refreshed files.
+        _targetOptionValuesSaver.CancelPending();
+        _persistedSettingsReloadQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _persistedSettingsReloadQueued = false;
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (IsSelectionTransitionActive(SelectionTransitionState.RestoringSession | SelectionTransitionState.ApplyingTargetState | SelectionTransitionState.ApplyingOperationState))
+            {
+                return;
+            }
+
+            ReloadPersistedSettingsForSelectedTarget();
         }, DispatcherPriority.Background);
     }
 

@@ -73,6 +73,29 @@ public sealed class DebouncedBackgroundSaver<TState> : IDisposable where TState 
     }
 
     /// <summary>
+    /// Drops queued state that has not started saving yet and cancels the active debounce timer.
+    /// </summary>
+    public void CancelPending()
+    {
+        CancellationTokenSource? delaySource;
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            // A save already handed to the background writer may still complete, but queued stale state should not run.
+            _pendingState = null;
+            _hasPendingState = false;
+            delaySource = DetachDelayCancellationSource();
+        }
+
+        delaySource?.Cancel();
+        delaySource?.Dispose();
+    }
+
+    /// <summary>
     /// Cancels any outstanding debounce timer so the saver stops accepting new delayed work.
     /// </summary>
     public void Dispose()
