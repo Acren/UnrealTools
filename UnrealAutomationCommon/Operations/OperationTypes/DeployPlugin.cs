@@ -408,6 +408,11 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                         .WithExecutionLocks(context => context.GetData<DeploymentWorkspaceState>().Layout.DistributablePluginPackageWorkspace.MutationLocks)
                         .Run(StagingStepAsync);
 
+                    global::LocalAutomation.Runtime.ExecutionTaskBuilder removeExistingEnginePluginInstall = pluginArtifactScope.Task("Remove Existing Engine Plugin Install")
+                        .Describe("Delete stale engine-installed plugin files before UBT scans plugin descriptors for distributable packaging")
+                        .WithExecutionLocks(UnrealExecutionLocks.GlobalBuild)
+                        .Run(RemoveExistingEnginePluginInstallAsync);
+
                     packageDistributablePluginArtifact = pluginArtifactScope.AddChildOperation(
                             new PackageDistributablePlugin(),
                             () => CreatePluginPackageAuthoringParameters(operationParameters),
@@ -422,7 +427,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                                 parameters.GetOptions<EngineVersionOptions>().EnabledVersions = new[] { state.Engine.Version };
                                 return parameters;
                             })
-                        .After(stagePlugin.Id)
+                        .After(stagePlugin.Id, removeExistingEnginePluginInstall.Id)
                         .WithExecutionLocks(context => context.GetData<DeploymentWorkspaceState>().Layout.DistributablePluginPackageWorkspace.MutationLocks);
 
                     pluginArtifactScope.Task("Archive Staged Plugin Source")
@@ -1269,6 +1274,27 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
             Package projectPluginPackage = CreateRequiredSessionPackage(state.Layout.ProjectPluginOperationOutputPath, state, "Project-plugin package output is not available for launch");
             await RunLaunchPackageAsync(projectPluginPackage, state.Engine, automationOptions, context, "Launch and test with project plugin failed", state.Layout.ProjectPluginLaunchOutputPath);
+        }
+
+        /// <summary>
+        /// Removes an existing engine-installed plugin with the deploy target's name before the package build scans plugins.
+        /// </summary>
+        private Task RemoveExistingEnginePluginInstallAsync(global::LocalAutomation.Runtime.ExecutionTaskContext context)
+        {
+            using IDisposable nodeScope = context.Logger.BeginSection("Removing existing engine plugin install");
+            DeploymentWorkspaceState state = context.GetOperationData<DeploymentWorkspaceState>();
+            string enginePluginsMarketplacePluginPath = state.Layout.InstalledEnginePluginPath;
+            if (!Directory.Exists(enginePluginsMarketplacePluginPath))
+            {
+                context.Logger.LogInformation("No existing engine plugin install found at {EnginePluginPath}.", enginePluginsMarketplacePluginPath);
+                return Task.CompletedTask;
+            }
+
+            // UBT chooses one descriptor for duplicate plugin names while compiling the command-line plugin, so a stale
+            // engine install with the same name must be hidden before the distributable package build begins.
+            context.Logger.LogInformation("Removing existing engine plugin install before distributable package build: {EnginePluginPath}", enginePluginsMarketplacePluginPath);
+            FileUtils.DeleteDirectoryIfExists(enginePluginsMarketplacePluginPath, context.Logger);
+            return Task.CompletedTask;
         }
 
         /// <summary>
