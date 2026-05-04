@@ -311,6 +311,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // Refresh target-local settings from disk before validating or starting the operation so branch changes to files
+        // such as .ucmdr.json cannot leave stale option values in the operation that is about to run.
+        ReloadPersistedSettingsForSelectedTarget();
+
         if (!CanExecute)
         {
             SetStatus(ExecuteDisabledReason);
@@ -375,6 +379,23 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// Recreates option instances and reapplies the selected target's persisted settings from disk.
+    /// </summary>
+    private void ReloadPersistedSettingsForSelectedTarget()
+    {
+        if (SelectedTarget?.Target == null)
+        {
+            return;
+        }
+
+        // Resetting option sets is required because removed persisted keys should fall back to option defaults rather
+        // than leaving older in-memory values behind after a branch switch or settings-file edit.
+        ResetOptionSetsAndApplyPersistedSettingsForSelectedTarget();
+        RaiseDerivedStateChanged();
+        RefreshVisibleExecutionPlan();
+    }
+
+    /// <summary>
     /// Captures the current target-scoped option values for one target into a detached batch that can be written later
     /// by the shared background saver.
     /// </summary>
@@ -430,9 +451,17 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Restores the selected target's persisted operation choice and layered settings into the live editing state.
+    /// Restores the selected target's layered option settings into the live editing state.
     /// </summary>
     private void RestoreSelectedTargetState()
+    {
+        ResetOptionSetsAndApplyPersistedSettingsForSelectedTarget();
+    }
+
+    /// <summary>
+    /// Rebuilds default option sets for the current operation and then overlays the selected target's persisted values.
+    /// </summary>
+    private void ResetOptionSetsAndApplyPersistedSettingsForSelectedTarget()
     {
         using (BeginSelectionTransition(SelectionTransitionState.ApplyingTargetState))
         {
