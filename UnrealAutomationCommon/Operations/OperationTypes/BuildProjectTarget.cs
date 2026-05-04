@@ -16,10 +16,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         protected override void ConfigureBuildArguments(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, Arguments args)
         {
             Project project = GetRequiredTarget(operationParameters);
+            ProjectTargetBuildSpec buildTarget = ProjectTargetBuildSpec.ForGameTarget(project, operationParameters.GetOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration);
 
-            args.SetArgument(project.Name);
-            args.SetArgument("Win64");
-            args.SetArgument(operationParameters.GetOptions<OperationOptionTypes.BuildConfigurationOptions>().Configuration.ToString());
+            // The shared build identity keeps the command-line target tuple aligned with later receipt selection.
+            args.SetArgument(buildTarget.TargetName);
+            args.SetArgument(buildTarget.Platform);
+            args.SetArgument(buildTarget.Configuration.ToString());
             args.SetPath(project.UProjectPath);
         }
 

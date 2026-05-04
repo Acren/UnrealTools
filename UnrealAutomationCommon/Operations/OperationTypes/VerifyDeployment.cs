@@ -216,12 +216,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             global::LocalAutomation.Runtime.IOperationParameterContext context)
         {
             VerificationState state = context.GetData<VerificationState>();
-            return global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectBuild(
+            return global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectWorkspace(
                 state.Engine,
                 state.ExampleProject,
-                BuildConfiguration.Development,
-                UbtCompiler.Default,
-                UbtCppStandard.Default));
+                configuration: BuildConfiguration.Development,
+                compiler: UbtCompiler.Default,
+                cppStandard: UbtCppStandard.Default));
         }
 
         /// <summary>
@@ -231,7 +231,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         {
             VerificationState state = context.GetData<VerificationState>();
             global::LocalAutomation.Runtime.Workspace workspace = CreatePersistentWorkspaceForVerificationBuild(context);
-            FileMaterializationSpec projectInputs = MaterializationSpecs.CreateProject(state.ExampleProject, MaterializationSpecs.GetProjectPluginNames(state.ExampleProject));
+            IReadOnlySet<string> includedPluginNames = MaterializationSpecs.GetProjectPluginNames(state.ExampleProject);
+            FileMaterializationSpec projectInputs = MaterializationSpecs.CreateProject(state.ExampleProject, includedPluginNames);
             workspace.EnsureReady(context.Logger);
             context.Logger.LogInformation("Refreshing verification project workspace from '{ExampleProjectPath}' to '{WorkspacePath}'.", state.ExampleProject.ProjectPath, workspace.RootPath);
             FileUtils.MaterializeDirectory(state.ExampleProject.ProjectPath, workspace.RootPath, projectInputs, context.Logger, context.CancellationToken, mirrorDirectories: true);
@@ -263,7 +264,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             global::LocalAutomation.Runtime.Workspace workspace = CreatePersistentWorkspaceForVerificationBuild(context);
             using Project cachedProject = CreateRequiredProject(workspace.RootPath, "Verification project workspace is not available for output copy");
             context.Logger.LogInformation("Copying verification build outputs from workspace '{WorkspacePath}' to example project '{ExampleProjectPath}'.", cachedProject.ProjectPath, state.ExampleProject.ProjectPath);
-            FileUtils.MaterializeDirectory(cachedProject.ProjectPath, state.ExampleProject.ProjectPath, MaterializationSpecs.CreateProjectBuildOutputs(state.ExampleProject), context.Logger, context.CancellationToken);
+            ProjectTargetBuildSpec buildTarget = ProjectTargetBuildSpec.ForGameTarget(cachedProject, BuildConfiguration.Development);
+            FileMaterializationSpec buildOutputs = MaterializationSpecs.CreateProjectBuildOutputs(cachedProject, buildTarget);
+            FileUtils.MaterializeDirectory(cachedProject.ProjectPath, state.ExampleProject.ProjectPath, buildOutputs, context.Logger, context.CancellationToken);
             await Task.CompletedTask;
         }
 

@@ -58,7 +58,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             public Project HostProject { get; }
 
             /// <summary>
-            /// Gets every stable path role used by tasks in this per-engine deployment workspace.
+            /// Gets every stable path namespace used by tasks in this per-engine deployment workspace.
             /// </summary>
             public DeploymentWorkspaceLayout Layout { get; }
         }
@@ -92,24 +92,22 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 Engine engine,
                 string pluginName,
                 global::LocalAutomation.Runtime.Workspace sessionWorkspace,
-                Project workspaceProject,
-                PluginBuildOptions pluginBuildOptions)
+                Project workspaceProject)
             {
                 Engine resolvedEngine = engine ?? throw new ArgumentNullException(nameof(engine));
                 _ = workspaceProject ?? throw new ArgumentNullException(nameof(workspaceProject));
-                _ = pluginBuildOptions ?? throw new ArgumentNullException(nameof(pluginBuildOptions));
                 _pluginName = string.IsNullOrWhiteSpace(pluginName)
                     ? throw new ArgumentException("Plugin name is required for deployment workspace paths.", nameof(pluginName))
                     : pluginName;
                 _engineTargetPath = resolvedEngine.TargetPath;
                 Workspace = sessionWorkspace ?? throw new ArgumentNullException(nameof(sessionWorkspace));
 
-                // Persistent role workspaces are actual project/plugin input roots, so their identity is derived here with the layout.
-                ExampleProjectBaseWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectRole(resolvedEngine, nameof(DeployPlugin), "ExampleProjectBase", workspaceProject));
-                ClangVariantWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectRole(resolvedEngine, nameof(DeployPlugin), "ClangValidationVariant", workspaceProject));
-                EnginePluginVariantWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectRole(resolvedEngine, nameof(DeployPlugin), "EnginePluginVariant", workspaceProject));
-                BlueprintDemoVariantWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectRole(resolvedEngine, nameof(DeployPlugin), "BlueprintDemoVariant", workspaceProject));
-                DistributablePluginPackageWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.PluginPackage(resolvedEngine, nameof(DeployPlugin), "DistributablePluginPackage", _pluginName, pluginBuildOptions));
+                // Persistent namespaced workspaces are actual project/plugin input roots, so their identity is derived here with the layout.
+                ExampleProjectBaseWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectWorkspace(resolvedEngine, workspaceProject, workspaceNamespace: "ExampleProjectBase"));
+                ClangVariantWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectWorkspace(resolvedEngine, workspaceProject, workspaceNamespace: "ClangValidationVariant"));
+                EnginePluginVariantWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectWorkspace(resolvedEngine, workspaceProject, workspaceNamespace: "EnginePluginVariant"));
+                BlueprintDemoVariantWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.ProjectWorkspace(resolvedEngine, workspaceProject, workspaceNamespace: "BlueprintDemoVariant"));
+                DistributablePluginPackageWorkspace = global::LocalAutomation.Runtime.Workspaces.Persistent(UnrealWorkspaceKeys.PluginPackage(resolvedEngine, "DistributablePluginPackage", _pluginName));
             }
 
             /// <summary>
@@ -818,7 +816,6 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             Directory.CreateDirectory(sessionRootPath);
 
             PluginDeployOptions deployOptions = context.ValidatedOperationParameters.GetOptions<PluginDeployOptions>();
-            PluginBuildOptions pluginBuildOptions = context.ValidatedOperationParameters.GetOptions<PluginBuildOptions>();
             IReadOnlySet<string> includedSiblingPluginNames = GetIncludedSiblingPluginNames(hostProject, plugin.Name, deployOptions);
             context.Logger.LogInformation($"Copying host project to workspace: {workspaceProjectPath}");
             FileUtils.MaterializeDirectory(hostProject.ProjectPath, workspaceProjectPath, MaterializationSpecs.CreateProject(hostProject, includedSiblingPluginNames), context.Logger, context.CancellationToken);
@@ -840,7 +837,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             using Plugin workspacePlugin = CreateRequiredPlugin(workspacePluginPath, "Could not find the target plugin inside the workspace project");
             context.Logger.LogInformation($"Resolved workspace plugin: {workspacePlugin.PluginPath}");
 
-            DeploymentWorkspaceLayout layout = new(engine, plugin.Name, sessionWorkspace, workspaceProject, pluginBuildOptions);
+            DeploymentWorkspaceLayout layout = new(engine, plugin.Name, sessionWorkspace, workspaceProject);
             DeploymentWorkspaceState workspaceState = new(engine, plugin, hostProject, layout);
             string archivePrefix = await BuildArchivePrefixAsync(workspaceState);
             context.Logger.LogInformation($"Archive name prefix is '{archivePrefix}'");
@@ -1065,7 +1062,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string clangVariantPath = state.Layout.ClangVariantPath;
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Project-plugin base is not available for Clang variant materialization");
             state.Layout.ClangVariantWorkspace.EnsureReady(context.Logger);
-            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, clangVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
+            IReadOnlySet<string> includedPluginNames = MaterializationSpecs.GetProjectPluginNames(sourceProject);
+            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, clangVariantPath, MaterializationSpecs.CreateProject(sourceProject, includedPluginNames, includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
             using Project clangVariant = CreateRequiredProject(clangVariantPath, "Clang validation variant was not created successfully");
             context.Logger.LogInformation($"Prepared Clang validation variant: {clangVariant.ProjectPath}");
             await Task.CompletedTask;
@@ -1084,7 +1082,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string engineVariantPath = state.Layout.EnginePluginVariantPath;
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Project-plugin base is not available for engine variant materialization");
             state.Layout.EnginePluginVariantWorkspace.EnsureReady(context.Logger);
-            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, engineVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
+            IReadOnlySet<string> includedPluginNames = MaterializationSpecs.GetProjectPluginNames(sourceProject);
+            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, engineVariantPath, MaterializationSpecs.CreateProject(sourceProject, includedPluginNames, includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
 
             using Project engineVariant = CreateRequiredProject(engineVariantPath, "Engine-plugin variant was not created successfully");
             engineVariant.RemovePlugin(state.SourcePlugin.Name);
@@ -1105,7 +1104,8 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string blueprintVariantPath = state.Layout.BlueprintDemoVariantPath;
             using Project sourceProject = CreateRequiredProject(sourceProjectPath, "Project-plugin base is not available for blueprint/demo variant materialization");
             state.Layout.BlueprintDemoVariantWorkspace.EnsureReady(context.Logger);
-            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, blueprintVariantPath, MaterializationSpecs.CreateProject(sourceProject, MaterializationSpecs.GetProjectPluginNames(sourceProject), includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
+            IReadOnlySet<string> includedPluginNames = MaterializationSpecs.GetProjectPluginNames(sourceProject);
+            FileUtils.MaterializeDirectory(sourceProject.ProjectPath, blueprintVariantPath, MaterializationSpecs.CreateProject(sourceProject, includedPluginNames, includeProjectEditorBuildOutputs: true, includePluginBuildOutputs: true), context.Logger, context.CancellationToken, mirrorDirectories: true);
 
             using Project blueprintVariant = CreateRequiredProject(blueprintVariantPath, "Blueprint/demo variant was not created successfully");
             blueprintVariant.RemovePlugin(state.SourcePlugin.Name);

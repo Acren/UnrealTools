@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using LocalAutomation.Runtime;
-using UnrealAutomationCommon.Operations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 
 namespace UnrealAutomationCommon.Unreal
@@ -14,86 +12,63 @@ namespace UnrealAutomationCommon.Unreal
     internal static class UnrealWorkspaceKeys
     {
         /// <summary>
-        /// Builds identity parts for a project-root workspace that runs direct UBT project or plugin builds.
+        /// Builds identity parts for a persistent project root from explicit purpose dimensions rather than copied source
+        /// layout. Source and plugin directory changes are refreshed by materialization before the workspace is used.
         /// </summary>
-        internal static PersistentWorkspaceKey ProjectBuild(
+        internal static PersistentWorkspaceKey ProjectWorkspace(
             Engine engine,
             Project sourceProject,
-            BuildConfiguration configuration,
-            UbtCompiler compiler,
-            UbtCppStandard cppStandard)
+            string? workspaceNamespace = null,
+            BuildConfiguration? configuration = null,
+            UbtCompiler? compiler = null,
+            UbtCppStandard? cppStandard = null)
         {
             _ = engine ?? throw new ArgumentNullException(nameof(engine));
             _ = sourceProject ?? throw new ArgumentNullException(nameof(sourceProject));
-            IReadOnlySet<string> projectPluginRelativePaths = MaterializationSpecs.GetProjectPluginRelativePaths(sourceProject);
-            IReadOnlySet<string> projectPluginModuleShape = MaterializationSpecs.GetProjectPluginModuleShape(sourceProject);
-            IReadOnlyList<string> projectShapeParts = GetOrderedShapeParts(GetProjectBuildShapeParts(sourceProject, projectPluginRelativePaths, projectPluginModuleShape));
             string normalizedEnginePath = NormalizeEnginePath(engine);
-            string[] keyParts =
-                {
-                    "Unreal",
-                    "ProjectBuild",
-                    normalizedEnginePath,
-                    engine.Version.ToString(),
-                    sourceProject.Name,
-                    configuration.ToString(),
-                    compiler.ToString(),
-                    cppStandard.ToString()
-                };
-            List<KeyValuePair<string, string>> components = new()
-            {
-                Component("Domain", "Unreal"),
-                Component("WorkspaceType", "ProjectBuild"),
-                Component("EnginePath", normalizedEnginePath),
-                Component("EngineVersion", engine.Version.ToString()),
-                Component("ProjectName", sourceProject.Name),
-                Component("Configuration", configuration.ToString()),
-                Component("Compiler", compiler.ToString()),
-                Component("CppStandard", cppStandard.ToString())
-            };
-            components.AddRange(projectShapeParts.Select(part => Component("ProjectShape", part)));
-            return new PersistentWorkspaceKey(keyParts.Concat(projectShapeParts), components);
-        }
+            string engineVersion = engine.Version.MajorMinorString;
 
-        /// <summary>
-        /// Builds identity parts for a role-owned project root whose generated outputs can be reused across builds.
-        /// </summary>
-        internal static PersistentWorkspaceKey ProjectRole(
-            Engine engine,
-            string operationName,
-            string role,
-            Project sourceProject)
-        {
-            _ = engine ?? throw new ArgumentNullException(nameof(engine));
-            _ = sourceProject ?? throw new ArgumentNullException(nameof(sourceProject));
-            string resolvedOperationName = RequireText(operationName, nameof(operationName), "Operation name is required for persistent project roles.");
-            string resolvedRole = RequireText(role, nameof(role), "Role is required for persistent project workspaces.");
-            IReadOnlySet<string> projectPluginRelativePaths = MaterializationSpecs.GetProjectPluginRelativePaths(sourceProject);
-            IReadOnlySet<string> projectPluginModuleShape = MaterializationSpecs.GetProjectPluginModuleShape(sourceProject);
-            IReadOnlyList<string> projectShapeParts = GetOrderedShapeParts(GetProjectBuildShapeParts(sourceProject, projectPluginRelativePaths, projectPluginModuleShape));
-            string normalizedEnginePath = NormalizeEnginePath(engine);
-            string[] keyParts =
-                {
-                    "Unreal",
-                    "ProjectRole",
-                    normalizedEnginePath,
-                    engine.Version.ToString(),
-                    resolvedOperationName,
-                    resolvedRole,
-                    sourceProject.Name
-                };
+            // All project workspaces are scoped by engine install and source project name; optional dimensions describe why
+            // the root exists without turning refreshed source layout into a cache-busting key input.
+            List<string> keyParts = new()
+            {
+                "Unreal",
+                "ProjectWorkspace",
+                normalizedEnginePath,
+                engineVersion,
+                sourceProject.Name
+            };
             List<KeyValuePair<string, string>> components = new()
             {
                 Component("Domain", "Unreal"),
-                Component("WorkspaceType", "ProjectRole"),
+                Component("WorkspaceType", "ProjectWorkspace"),
                 Component("EnginePath", normalizedEnginePath),
-                Component("EngineVersion", engine.Version.ToString()),
-                Component("Operation", resolvedOperationName),
-                Component("Role", resolvedRole),
+                Component("EngineVersion", engineVersion),
                 Component("ProjectName", sourceProject.Name)
             };
-            components.AddRange(projectShapeParts.Select(part => Component("ProjectShape", part)));
-            return new PersistentWorkspaceKey(keyParts.Concat(projectShapeParts), components);
+
+            if (workspaceNamespace != null)
+            {
+                // Namespace is the caller-owned string partition for persistent roots that share the same engine/project.
+                string resolvedWorkspaceNamespace = RequireText(workspaceNamespace, nameof(workspaceNamespace), "Workspace namespace is required when provided for a persistent project workspace.");
+                keyParts.Add(resolvedWorkspaceNamespace);
+                components.Add(Component("Namespace", resolvedWorkspaceNamespace));
+            }
+
+            if (configuration != null || compiler != null || cppStandard != null)
+            {
+                BuildConfiguration resolvedConfiguration = configuration ?? throw new ArgumentException("Build configuration is required when persistent project workspace compile settings are provided.", nameof(configuration));
+                UbtCompiler resolvedCompiler = compiler ?? throw new ArgumentException("Compiler is required when persistent project workspace compile settings are provided.", nameof(compiler));
+                UbtCppStandard resolvedCppStandard = cppStandard ?? throw new ArgumentException("C++ standard is required when persistent project workspace compile settings are provided.", nameof(cppStandard));
+                keyParts.Add(resolvedConfiguration.ToString());
+                keyParts.Add(resolvedCompiler.ToString());
+                keyParts.Add(resolvedCppStandard.ToString());
+                components.Add(Component("Configuration", resolvedConfiguration.ToString()));
+                components.Add(Component("Compiler", resolvedCompiler.ToString()));
+                components.Add(Component("CppStandard", resolvedCppStandard.ToString()));
+            }
+
+            return new PersistentWorkspaceKey(keyParts, components);
         }
 
         /// <summary>
@@ -101,32 +76,21 @@ namespace UnrealAutomationCommon.Unreal
         /// </summary>
         internal static PersistentWorkspaceKey PluginPackage(
             Engine engine,
-            string operationName,
-            string role,
-            string pluginName,
-            PluginBuildOptions pluginBuildOptions)
+            string workspaceNamespace,
+            string pluginName)
         {
             _ = engine ?? throw new ArgumentNullException(nameof(engine));
             string resolvedPluginName = RequireText(pluginName, nameof(pluginName), "Plugin name is required for persistent plugin packaging.");
-            string resolvedRole = RequireText(role, nameof(role), "Role is required for persistent plugin packaging.");
-            _ = pluginBuildOptions ?? throw new ArgumentNullException(nameof(pluginBuildOptions));
-            string resolvedOperationName = RequireText(operationName, nameof(operationName), "Operation name is required for persistent plugin packaging.");
-            IReadOnlyList<string> selectedTargetPlatforms = PluginBuildPlatformValidation.GetSelectedTargetPlatforms(pluginBuildOptions)
-                .Select(platform => platform.ToString())
-                .OrderBy(platform => platform, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            IReadOnlyList<string> pluginShapeParts = GetOrderedShapeParts(selectedTargetPlatforms
-                .Select(platform => $"TargetPlatform:{platform}")
-                .Concat(new[] { $"StrictIncludes:{pluginBuildOptions.StrictIncludes}" }));
+            string resolvedWorkspaceNamespace = RequireText(workspaceNamespace, nameof(workspaceNamespace), "Workspace namespace is required for persistent plugin packaging.");
             string normalizedEnginePath = NormalizeEnginePath(engine);
+            string engineVersion = engine.Version.MajorMinorString;
             string[] keyParts =
                 {
                     "Unreal",
                     "PluginPackage",
                     normalizedEnginePath,
-                    engine.Version.ToString(),
-                    resolvedOperationName,
-                    resolvedRole,
+                    engineVersion,
+                    resolvedWorkspaceNamespace,
                     resolvedPluginName
                 };
             List<KeyValuePair<string, string>> components = new()
@@ -134,14 +98,11 @@ namespace UnrealAutomationCommon.Unreal
                 Component("Domain", "Unreal"),
                 Component("WorkspaceType", "PluginPackage"),
                 Component("EnginePath", normalizedEnginePath),
-                Component("EngineVersion", engine.Version.ToString()),
-                Component("Operation", resolvedOperationName),
-                Component("Role", resolvedRole),
-                Component("PluginName", resolvedPluginName),
-                Component("StrictIncludes", pluginBuildOptions.StrictIncludes.ToString())
+                Component("EngineVersion", engineVersion),
+                Component("Namespace", resolvedWorkspaceNamespace),
+                Component("PluginName", resolvedPluginName)
             };
-            components.AddRange(selectedTargetPlatforms.Select(platform => Component("TargetPlatform", platform)));
-            return new PersistentWorkspaceKey(keyParts.Concat(pluginShapeParts), components);
+            return new PersistentWorkspaceKey(keyParts, components);
         }
 
         /// <summary>
@@ -153,26 +114,6 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         /// <summary>
-        /// Builds project-shape entries that separate incompatible workspaces without keying on ordinary source file edits.
-        /// </summary>
-        private static IEnumerable<string> GetProjectBuildShapeParts(Project sourceProject, IEnumerable<string> projectPluginRelativePaths, IEnumerable<string> projectPluginModuleShape)
-        {
-            // Project module and plugin declarations change Unreal's generated build rules, so they define cache shape.
-            IEnumerable<string> projectModules = sourceProject.ProjectDescriptor.Modules
-                .Select(module => $"ProjectModule:{module.Name}:{module.Type}");
-            IEnumerable<string> projectPluginDependencies = sourceProject.ProjectDescriptor.Plugins
-                .Select(plugin => $"ProjectPluginDependency:{plugin.Name}:{plugin.Enabled}");
-            IEnumerable<string> projectPlugins = projectPluginRelativePaths
-                .Select(relativePath => $"ProjectPlugin:{relativePath}");
-            IEnumerable<string> projectPluginModules = projectPluginModuleShape
-                .Select(shapePart => $"ProjectPlugin:{shapePart}");
-            return projectModules
-                .Concat(projectPluginDependencies)
-                .Concat(projectPlugins)
-                .Concat(projectPluginModules);
-        }
-
-        /// <summary>
         /// Returns non-empty configuration text or throws with a parameter-specific message.
         /// </summary>
         private static string RequireText(string value, string parameterName, string message)
@@ -180,17 +121,6 @@ namespace UnrealAutomationCommon.Unreal
             return string.IsNullOrWhiteSpace(value)
                 ? throw new ArgumentException(message, parameterName)
                 : value;
-        }
-
-        /// <summary>
-        /// Orders unordered shape entries before they become generic persistent-workspace key parts.
-        /// </summary>
-        private static IReadOnlyList<string> GetOrderedShapeParts(IEnumerable<string> shapeParts)
-        {
-            return (shapeParts ?? Array.Empty<string>())
-                .Where(part => !string.IsNullOrWhiteSpace(part))
-                .OrderBy(part => part, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
         }
 
         /// <summary>

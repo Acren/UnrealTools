@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -13,6 +14,7 @@ using Newtonsoft.Json.Linq;
 using UnrealAutomationCommon.Operations.BaseOperations;
 using UnrealAutomationCommon.Operations.OperationOptionTypes;
 using UnrealAutomationCommon.Unreal;
+using SystemJsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace UnrealAutomationCommon.Operations.OperationTypes
 {
@@ -26,6 +28,9 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
 
         // BuildPlugin packages shipping binaries for all requested game target platforms.
         private const string ShippingConfigurationName = "Shipping";
+
+        // UHT manifests use stable property names written by UnrealBuildTool, so one shared option object is sufficient.
+        private static readonly JsonSerializerOptions UhtManifestJsonOptions = new() { PropertyNameCaseInsensitive = true };
 
         // These are the built-in restricted folder names Unreal excludes from BuildPlugin package payloads.
         private static readonly IReadOnlySet<string> RestrictedFolderNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -288,12 +293,12 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             // BuildPlugin starts from an empty/default-exclude filter, then explicitly includes the descriptor and products.
             AddFilterRuleForFile(rules, Path.GetFileName(plugin.UPluginPath), include: true);
             AddBuildProductFilterRules(context, pluginPath, rules, buildSteps, context.Logger);
+            AddGeneratedCodeFilterRules(context, pluginPath, rules, buildSteps, context.Logger);
 
             // These default package rules intentionally match BuildPlugin; Config and Extras are opt-in via FilterPlugin.ini.
             AddFilterRule(rules, "/Binaries/ThirdParty/...", include: true);
             AddFilterRule(rules, "/Resources/...", include: true);
             AddFilterRule(rules, "/Content/...", include: true);
-            AddFilterRule(rules, "/Intermediate/Build/.../Inc/...", include: true);
             AddFilterRule(rules, "/Shaders/...", include: true);
             AddFilterRule(rules, "/Source/...", include: true);
             AddFilterRule(rules, "/Tests/...", include: false);
@@ -347,6 +352,105 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Adds exact include rules for generated-code files described by current UHT manifests under the plugin root.
+        /// </summary>
+        private void AddGeneratedCodeFilterRules(ExecutionTaskContext context, string pluginPath, ICollection<(Regex Pattern, bool Include)> rules, IReadOnlyList<PluginBuildStep> buildSteps, ILogger logger)
+        {
+            _ = context ?? throw new ArgumentNullException(nameof(context));
+            _ = logger ?? throw new ArgumentNullException(nameof(logger));
+
+            // UHT writes one manifest beside each target's intermediate data; collect paths once so repeated target builds
+            // cannot add duplicate exact filters for shared generated output directories.
+            HashSet<string> generatedRelativePaths = new(StringComparer.OrdinalIgnoreCase);
+            foreach (PluginBuildStep buildStep in buildSteps)
+            {
+                string uhtManifestPath = GetRequiredUhtManifestPath(context, buildStep);
+                foreach (UhtManifestModule module in ReadUhtManifestModules(uhtManifestPath))
+                {
+                    AddGeneratedCodeFilesFromModule(pluginPath, generatedRelativePaths, module, uhtManifestPath, logger);
+                }
+            }
+
+            foreach (string generatedRelativePath in generatedRelativePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                AddFilterRuleForFile(rules, generatedRelativePath, include: true);
+            }
+
+            logger.LogInformation("Included {GeneratedCodeFileCount} current generated-code file(s) from UHT manifests.", generatedRelativePaths.Count);
+        }
+
+        /// <summary>
+        /// Adds generated-code files for one UHT module when its output directory belongs to the packaged plugin.
+        /// </summary>
+        private static void AddGeneratedCodeFilesFromModule(string pluginPath, ISet<string> generatedRelativePaths, UhtManifestModule module, string uhtManifestPath, ILogger logger)
+        {
+            if (module == null)
+            {
+                throw new InvalidDataException($"UHT manifest contains a null module entry: {uhtManifestPath}");
+            }
+
+            if (string.IsNullOrWhiteSpace(module.OutputDirectory))
+            {
+                throw new InvalidDataException($"UHT manifest module '{module.Name}' is missing OutputDirectory: {uhtManifestPath}");
+            }
+
+            string outputDirectoryPath = Path.GetFullPath(module.OutputDirectory);
+            if (!IsSameOrDescendantPath(pluginPath, outputDirectoryPath))
+            {
+                logger.LogDebug("Ignoring generated-code module outside packaged plugin root: {ModuleName} -> {OutputDirectoryPath}", module.Name, outputDirectoryPath);
+                return;
+            }
+
+            if (!Directory.Exists(outputDirectoryPath))
+            {
+                throw new DirectoryNotFoundException($"UHT manifest module '{module.Name}' output directory does not exist: {outputDirectoryPath}");
+            }
+
+            // UHT owns the manifest output directory and culls obsolete generated files there; exact file rules keep stale
+            // generated directories elsewhere in a persistent workspace from becoming package payload.
+            foreach (string generatedFilePath in Directory.GetFiles(outputDirectoryPath, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                generatedRelativePaths.Add(Path.GetRelativePath(pluginPath, generatedFilePath));
+            }
+        }
+
+        /// <summary>
+        /// Resolves the required UHT manifest path that UBT writes for one direct plugin compile step.
+        /// </summary>
+        private string GetRequiredUhtManifestPath(ExecutionTaskContext context, PluginBuildStep buildStep)
+        {
+            string uhtManifestPath = GetUhtManifestPath(context, buildStep);
+            if (File.Exists(uhtManifestPath))
+            {
+                return uhtManifestPath;
+            }
+
+            throw new FileNotFoundException($"Required UHT manifest was not found for build step '{buildStep.Title}': {uhtManifestPath}", uhtManifestPath);
+        }
+
+        /// <summary>
+        /// Resolves the UHT manifest path that UBT writes for one direct plugin compile step.
+        /// </summary>
+        private string GetUhtManifestPath(ExecutionTaskContext context, PluginBuildStep buildStep)
+        {
+            Plugin plugin = GetRequiredTarget(context.ValidatedOperationParameters);
+            Engine engine = GetRequiredTargetEngineInstall(context.ValidatedOperationParameters);
+            string targetName = ResolveTargetName(engine, buildStep);
+            return Path.Combine(plugin.HostProject.ProjectPath, "Intermediate", "Build", buildStep.Platform, targetName, buildStep.Configuration, $"{targetName}.uhtmanifest");
+        }
+
+        /// <summary>
+        /// Reads the module list from one UBT-authored UHT manifest.
+        /// </summary>
+        private static IReadOnlyList<UhtManifestModule> ReadUhtManifestModules(string uhtManifestPath)
+        {
+            using FileStream stream = File.OpenRead(uhtManifestPath);
+            UhtManifest manifest = SystemJsonSerializer.Deserialize<UhtManifest>(stream, UhtManifestJsonOptions)
+                ?? throw new InvalidDataException($"UHT manifest could not be parsed: {uhtManifestPath}");
+            return manifest.Modules ?? new List<UhtManifestModule>();
         }
 
         /// <summary>
@@ -559,6 +663,33 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             string sourceWithSeparator = normalizedSourcePath + Path.DirectorySeparatorChar;
             return string.Equals(normalizedSourcePath, normalizedCandidatePath, StringComparison.OrdinalIgnoreCase)
                 || normalizedCandidatePath.StartsWith(sourceWithSeparator, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Represents the subset of Unreal's UHT manifest needed to locate current generated-code output directories.
+        /// </summary>
+        private sealed class UhtManifest
+        {
+            /// <summary>
+            /// Gets or sets the modules that UBT asked UHT to process for the target build.
+            /// </summary>
+            public List<UhtManifestModule>? Modules { get; set; }
+        }
+
+        /// <summary>
+        /// Represents one UHT manifest module entry with only the fields used by package filtering.
+        /// </summary>
+        private sealed class UhtManifestModule
+        {
+            /// <summary>
+            /// Gets or sets the Unreal module name for diagnostics.
+            /// </summary>
+            public string Name { get; set; } = string.Empty;
+
+            /// <summary>
+            /// Gets or sets the directory where UHT wrote this module's generated files for the current target.
+            /// </summary>
+            public string OutputDirectory { get; set; } = string.Empty;
         }
 
         /// <summary>

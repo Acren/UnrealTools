@@ -6,7 +6,7 @@ using System.IO;
 namespace LocalAutomation.Core.IO;
 
 /// <summary>
-/// Collects the explicit file and directory entries to materialize from one source root into one destination root.
+/// Collects the ordered include, sync, and preserve entries that materialize one source root into one destination root.
 /// </summary>
 public sealed class FileMaterializationSpec : IEnumerable<FileMaterializationEntry>
 {
@@ -20,7 +20,7 @@ public sealed class FileMaterializationSpec : IEnumerable<FileMaterializationEnt
     /// </summary>
     public void Add(string relativePath, bool required = false)
     {
-        AddEntry(relativePath, required, excludedRelativePaths: null);
+        AddEntry(FileMaterializationEntryKind.Include, relativePath, required, excludedRelativePaths: null);
     }
 
     /// <summary>
@@ -28,7 +28,7 @@ public sealed class FileMaterializationSpec : IEnumerable<FileMaterializationEnt
     /// </summary>
     public void AddDirectory(string relativePath, bool required = false, IEnumerable<string>? excludedRelativePaths = null)
     {
-        AddEntry(relativePath, required, excludedRelativePaths);
+        AddEntry(FileMaterializationEntryKind.Include, relativePath, required, excludedRelativePaths);
     }
 
     /// <summary>
@@ -37,6 +37,22 @@ public sealed class FileMaterializationSpec : IEnumerable<FileMaterializationEnt
     public void AddRootDirectory(bool required = false, IEnumerable<string>? excludedRelativePaths = null)
     {
         AddDirectory(".", required, excludedRelativePaths);
+    }
+
+    /// <summary>
+    /// Marks one destination-relative directory as synchronized, allowing materialization to delete unmentioned children.
+    /// </summary>
+    public void Sync(string relativePath)
+    {
+        AddEntry(FileMaterializationEntryKind.Sync, relativePath, required: false, excludedRelativePaths: null);
+    }
+
+    /// <summary>
+    /// Marks one destination-relative path as safe to keep inside synchronized roots without copying it from the source.
+    /// </summary>
+    public void Preserve(string relativePath)
+    {
+        AddEntry(FileMaterializationEntryKind.Preserve, relativePath, required: false, excludedRelativePaths: null);
     }
 
     /// <summary>
@@ -54,20 +70,28 @@ public sealed class FileMaterializationSpec : IEnumerable<FileMaterializationEnt
             throw new ArgumentNullException(nameof(subtreeSpec));
         }
 
-        /* Subtree expansion keeps the materialization model explicit: callers can compose nested subsets without
-           teaching the generic copy helper about higher-level content types such as Unreal plugins. */
+        /* Subtree expansion keeps every operation in one entry model so include, sync, and preserve semantics compose
+           without teaching the generic copy helper about higher-level content types such as Unreal plugins. */
         foreach (FileMaterializationEntry entry in subtreeSpec.Entries)
         {
-            AddEntry(Path.Combine(relativeRootPath, entry.RelativePath), entry.Required, entry.ExcludedRelativePaths);
+            AddEntry(entry.Kind, CombineSubtreePath(relativeRootPath, entry.RelativePath), entry.Required, entry.ExcludedRelativePaths);
         }
     }
 
     /// <summary>
-    /// Appends one entry after public methods have selected whether directory-only filtering is allowed.
+    /// Combines a subtree root with a nested spec path while preserving the subtree root for nested root entries.
     /// </summary>
-    private void AddEntry(string relativePath, bool required, IEnumerable<string>? excludedRelativePaths)
+    private static string CombineSubtreePath(string relativeRootPath, string relativePath)
     {
-        Entries.Add(new FileMaterializationEntry(relativePath, required, excludedRelativePaths));
+        return relativePath == "." ? relativeRootPath : Path.Combine(relativeRootPath, relativePath);
+    }
+
+    /// <summary>
+    /// Appends one entry after public methods have selected the entry kind and include-only options.
+    /// </summary>
+    private void AddEntry(FileMaterializationEntryKind kind, string relativePath, bool required, IEnumerable<string>? excludedRelativePaths)
+    {
+        Entries.Add(new FileMaterializationEntry(kind, relativePath, required, excludedRelativePaths));
     }
 
     /// <summary>

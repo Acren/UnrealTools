@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LocalAutomation.Core.IO;
-using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 
 namespace UnrealAutomationCommon.Unreal
 {
@@ -15,13 +15,12 @@ namespace UnrealAutomationCommon.Unreal
     {
         /// <summary>
         /// Creates the explicit project subset copied into isolated workspaces, example projects, and prepared variants.
-        /// Project and plugin build outputs are controlled separately so persistent project workspaces keep their own root
-        /// executable cache while still being able to inherit prebuilt plugin modules.
+        /// Editor and plugin build outputs are controlled separately so persistent project workspaces keep their own root
+        /// executable cache while prepared variants can still inherit the built artifacts they need.
         /// </summary>
         public static FileMaterializationSpec CreateProject(
             Project project,
             IReadOnlySet<string>? includedPluginNames = null,
-            bool includeProjectBuildOutputs = false,
             bool includeProjectEditorBuildOutputs = false,
             bool includePluginBuildOutputs = false)
         {
@@ -36,17 +35,13 @@ namespace UnrealAutomationCommon.Unreal
 
             if (includedPluginNames != null)
             {
+                // The project Plugins directory is an explicit materialization scope: selected plugins and preserved
+                // generated outputs may remain, while stale plugin roots from earlier workspace uses are pruned.
+                spec.Sync("Plugins");
                 AddProjectPluginEntries(project, spec, includedPluginNames, includePluginBuildOutputs);
             }
 
-            if (includeProjectBuildOutputs)
-            {
-                // Root project build outputs belong to the destination project workspace cache, not necessarily to every
-                // project tree that needs prebuilt plugin modules.
-                spec.Add("Binaries");
-                spec.Add("Build");
-            }
-            else if (includeProjectEditorBuildOutputs)
+            if (includeProjectEditorBuildOutputs)
             {
                 // Editor receipts are required by BuildCookRun when editor compilation is disabled, but game executable
                 // outputs remain owned by each destination project workspace so persistent variant caches stay isolated.
@@ -57,18 +52,33 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         /// <summary>
-        /// Creates the generated-output subset copied from a stable cached build workspace back into the session project
-        /// that package, launch, and archive steps continue to read from.
+        /// Creates the generated-output subset declared by one current target receipt in a cached project workspace.
         /// </summary>
-        public static FileMaterializationSpec CreateProjectBuildOutputs(Project project)
+        public static FileMaterializationSpec CreateProjectBuildOutputs(Project project, ProjectTargetBuildSpec buildTarget)
         {
-            FileMaterializationSpec spec = new()
-            {
-                { "Binaries" },
-                { "Build" }
-            };
+            _ = project ?? throw new ArgumentNullException(nameof(project));
+            string receiptPath = buildTarget.GetReceiptPath(project);
+            BuildReceipt receipt = ReadBuildReceipt(receiptPath);
+            ValidateBuildReceipt(receipt, receiptPath, buildTarget);
 
-            AddProjectPluginBuildOutputEntries(project, spec);
+            // The target receipt is itself required by package-only BuildCookRun, and every project-local receipt output is
+            // copied by exact path so stale products from a warm workspace cannot leak into the packaged project.
+            HashSet<string> relativePaths = new(StringComparer.OrdinalIgnoreCase);
+            AddRequiredProjectRelativePath(relativePaths, project.ProjectPath, Path.GetRelativePath(project.ProjectPath, receiptPath), receiptPath);
+            foreach (string receiptOutputPath in receipt.EnumerateOutputPaths())
+            {
+                if (TryResolveProjectRelativePath(project.ProjectPath, receiptOutputPath, out string relativePath))
+                {
+                    AddRequiredProjectRelativePath(relativePaths, project.ProjectPath, relativePath, receiptPath);
+                }
+            }
+
+            FileMaterializationSpec spec = new();
+            foreach (string relativePath in relativePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                spec.Add(relativePath, required: true);
+            }
+
             return spec;
         }
 
@@ -82,28 +92,6 @@ namespace UnrealAutomationCommon.Unreal
                 .Select(Path.GetFileName)
                 .Where(pluginName => !string.IsNullOrWhiteSpace(pluginName))
                 .Select(pluginName => pluginName!)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        }
-
-        /// <summary>
-        /// Reads plugin directory paths relative to the project Plugins root so cache identity and stale-plugin cleanup use
-        /// the filesystem location Unreal will scan, not only the plugin display name.
-        /// </summary>
-        public static IReadOnlySet<string> GetProjectPluginRelativePaths(Project project)
-        {
-            return GetProjectPluginDirectories(project)
-                .Select(pluginDirectoryPath => Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        }
-
-        /// <summary>
-        /// Reads project plugin module declarations as stable shape strings so structural plugin changes receive a fresh
-        /// build cache while ordinary source edits keep using the warm cache for the same module layout.
-        /// </summary>
-        public static IReadOnlySet<string> GetProjectPluginModuleShape(Project project)
-        {
-            return GetProjectPluginDirectories(project)
-                .SelectMany(pluginDirectoryPath => GetPluginModuleShape(project, pluginDirectoryPath))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
@@ -155,8 +143,8 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         /// <summary>
-        /// Expands the project Plugins tree into explicit plugin-subset entries so variant materialization skips each
-        /// plugin's generated Intermediate folders instead of copying and deleting them later.
+        /// Expands the project Plugins tree into explicit plugin-subset entries and preserve rules so synchronized plugin
+        /// materialization removes omitted plugins without discarding generated outputs for included plugins.
         /// </summary>
         private static void AddProjectPluginEntries(Project project, FileMaterializationSpec spec, IReadOnlySet<string> includedPluginNames, bool includePluginBuildOutputs)
         {
@@ -189,8 +177,27 @@ namespace UnrealAutomationCommon.Unreal
                 }
 
                 string relativePluginDirectoryPath = Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath);
-                spec.AddSubtree(Path.Combine("Plugins", relativePluginDirectoryPath), CreatePlugin(pluginDirectoryPath, includePluginBuildOutputs));
+                string relativeMaterializedPluginPath = Path.Combine("Plugins", relativePluginDirectoryPath);
+                spec.AddSubtree(relativeMaterializedPluginPath, CreatePlugin(pluginDirectoryPath, includePluginBuildOutputs));
+                PreservePluginGeneratedOutputs(spec, relativeMaterializedPluginPath, includePluginBuildOutputs);
             }
+        }
+
+        /// <summary>
+        /// Preserves generated plugin output folders that are owned by Unreal builds rather than source materialization.
+        /// </summary>
+        private static void PreservePluginGeneratedOutputs(FileMaterializationSpec spec, string relativePluginDirectoryPath, bool includePluginBuildOutputs)
+        {
+            // Intermediate stays workspace-local even when built plugin binaries are copied from another prepared project.
+            spec.Preserve(Path.Combine(relativePluginDirectoryPath, "Intermediate"));
+            if (includePluginBuildOutputs)
+            {
+                return;
+            }
+
+            // When build outputs are not part of the copied input set, preserve the destination workspace's warm cache.
+            spec.Preserve(Path.Combine(relativePluginDirectoryPath, "Binaries"));
+            spec.Preserve(Path.Combine(relativePluginDirectoryPath, "Build"));
         }
 
         /// <summary>
@@ -209,67 +216,99 @@ namespace UnrealAutomationCommon.Unreal
             HashSet<string> relativePaths = new(StringComparer.OrdinalIgnoreCase);
             foreach (string receiptPath in Directory.GetFiles(projectBinariesPath, "*.target", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
-                JObject receipt = JObject.Parse(File.ReadAllText(receiptPath));
-                if (!string.Equals(receipt.Value<string>("TargetType"), "Editor", StringComparison.OrdinalIgnoreCase))
+                BuildReceipt receipt = ReadBuildReceipt(receiptPath);
+                if (!string.Equals(receipt.TargetType, "Editor", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                relativePaths.Add(Path.GetRelativePath(project.ProjectPath, receiptPath));
-                foreach (string receiptProductPath in EnumerateReceiptProductPaths(receipt))
+                AddRequiredProjectRelativePath(relativePaths, project.ProjectPath, Path.GetRelativePath(project.ProjectPath, receiptPath), receiptPath);
+                foreach (string receiptOutputPath in receipt.EnumerateOutputPaths())
                 {
-                    if (TryResolveProjectBinariesPath(project.ProjectPath, projectBinariesPath, receiptProductPath, out string relativePath))
+                    if (TryResolveProjectRelativePath(project.ProjectPath, receiptOutputPath, out string relativePath)
+                        && IsSameOrDescendantPath(projectBinariesPath, Path.Combine(project.ProjectPath, relativePath)))
                     {
-                        relativePaths.Add(relativePath);
+                        AddRequiredProjectRelativePath(relativePaths, project.ProjectPath, relativePath, receiptPath);
                     }
                 }
             }
 
             foreach (string relativePath in relativePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
-                spec.Add(relativePath);
+                spec.Add(relativePath, required: true);
             }
         }
 
         /// <summary>
-        /// Reads file paths from the receipt sections that declare the products UBT created and runtime files UAT may need.
+        /// Reads and deserializes one UBT target receipt from disk.
         /// </summary>
-        private static IEnumerable<string> EnumerateReceiptProductPaths(JObject receipt)
+        private static BuildReceipt ReadBuildReceipt(string receiptPath)
         {
-            foreach (string propertyName in new[] { "BuildProducts", "RuntimeDependencies" })
+            if (!File.Exists(receiptPath))
             {
-                if (receipt[propertyName] is not JArray entries)
-                {
-                    continue;
-                }
+                throw new FileNotFoundException($"Required target receipt is missing: {receiptPath}", receiptPath);
+            }
 
-                foreach (JToken entry in entries)
-                {
-                    string? path = entry.Type == JTokenType.String
-                        ? entry.Value<string>()
-                        : entry.Value<string>("Path");
-                    if (!string.IsNullOrWhiteSpace(path))
-                    {
-                        yield return path;
-                    }
-                }
+            return JsonConvert.DeserializeObject<BuildReceipt>(File.ReadAllText(receiptPath))
+                ?? throw new InvalidDataException($"Could not deserialize target receipt: {receiptPath}");
+        }
+
+        /// <summary>
+        /// Ensures one target receipt describes the build output that the caller requested.
+        /// </summary>
+        private static void ValidateBuildReceipt(BuildReceipt receipt, string receiptPath, ProjectTargetBuildSpec buildTarget)
+        {
+            if (!string.Equals(receipt.TargetName, buildTarget.TargetName, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(receipt.Platform, buildTarget.Platform, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(receipt.Configuration, buildTarget.Configuration.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException($"Target receipt does not match requested output {buildTarget.TargetName} {buildTarget.Platform} {buildTarget.Configuration}: {receiptPath}");
             }
         }
 
         /// <summary>
-        /// Resolves one receipt path and accepts only files under the project's root Binaries directory.
+        /// Resolves one receipt path and accepts only paths that live under the project root.
         /// </summary>
-        private static bool TryResolveProjectBinariesPath(string projectPath, string projectBinariesPath, string receiptPath, out string relativePath)
+        private static bool TryResolveProjectRelativePath(string projectPath, string receiptOutputPath, out string relativePath)
         {
             relativePath = string.Empty;
-            string? absolutePath = ResolveReceiptPath(projectPath, receiptPath);
-            if (absolutePath == null || !IsSameOrDescendantPath(projectBinariesPath, absolutePath))
+            string? absolutePath = ResolveReceiptPath(projectPath, receiptOutputPath);
+            if (absolutePath == null || !IsSameOrDescendantPath(projectPath, absolutePath))
             {
                 return false;
             }
 
             relativePath = Path.GetRelativePath(projectPath, absolutePath);
+            if (relativePath == ".")
+            {
+                throw new InvalidDataException($"Target receipt output cannot refer to the project root: {receiptOutputPath}");
+            }
+
             return true;
+        }
+
+        /// <summary>
+        /// Adds one project-relative output path after confirming the current receipt still points at existing content.
+        /// </summary>
+        private static void AddRequiredProjectRelativePath(ISet<string> relativePaths, string projectPath, string relativePath, string receiptPath)
+        {
+            if (relativePath == ".")
+            {
+                throw new InvalidDataException($"Target receipt output cannot refer to the project root: {receiptPath}");
+            }
+
+            string absolutePath = Path.GetFullPath(Path.Combine(projectPath, relativePath));
+            if (!IsSameOrDescendantPath(projectPath, absolutePath))
+            {
+                throw new InvalidDataException($"Target receipt output must stay inside the project root: {relativePath}");
+            }
+
+            if (!File.Exists(absolutePath) && !Directory.Exists(absolutePath))
+            {
+                throw new FileNotFoundException($"Target receipt '{receiptPath}' lists a project-local output that does not exist: {absolutePath}", absolutePath);
+            }
+
+            relativePaths.Add(Path.GetRelativePath(projectPath, absolutePath));
         }
 
         /// <summary>
@@ -305,25 +344,66 @@ namespace UnrealAutomationCommon.Unreal
         }
 
         /// <summary>
-        /// Adds generated-output entries for every plugin currently present in a project workspace so cached build products
-        /// for project plugins are copied back alongside the project's own binaries.
+        /// Represents the subset of a UBT target receipt needed for exact generated-output materialization.
         /// </summary>
-        private static void AddProjectPluginBuildOutputEntries(Project project, FileMaterializationSpec spec)
+        private sealed class BuildReceipt
         {
-            if (!Directory.Exists(project.PluginsPath))
-            {
-                return;
-            }
+            /// <summary>
+            /// Gets or sets the target name that produced the receipt.
+            /// </summary>
+            public string TargetName { get; set; } = string.Empty;
 
-            /* Discover plugins recursively so grouped plugin folders copy their generated output from the matching nested
-               location without copying source, content, or Intermediate folders. */
-            foreach (string pluginDirectoryPath in GetProjectPluginDirectories(project)
-                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            /// <summary>
+            /// Gets or sets the Unreal target type, such as Editor or Game.
+            /// </summary>
+            public string TargetType { get; set; } = string.Empty;
+
+            /// <summary>
+            /// Gets or sets the platform that produced the receipt.
+            /// </summary>
+            public string Platform { get; set; } = string.Empty;
+
+            /// <summary>
+            /// Gets or sets the configuration that produced the receipt.
+            /// </summary>
+            public string Configuration { get; set; } = string.Empty;
+
+            /// <summary>
+            /// Gets or sets the files UBT declared as direct build products.
+            /// </summary>
+            public List<BuildReceiptPathEntry>? BuildProducts { get; set; }
+
+            /// <summary>
+            /// Gets or sets the files UAT may need at runtime when staging the target.
+            /// </summary>
+            public List<BuildReceiptPathEntry>? RuntimeDependencies { get; set; }
+
+            /// <summary>
+            /// Enumerates every non-empty output path declared by product and runtime-dependency sections.
+            /// </summary>
+            public IEnumerable<string> EnumerateOutputPaths()
             {
-                string relativePluginDirectoryPath = Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath);
-                spec.Add(Path.Combine("Plugins", relativePluginDirectoryPath, "Binaries"));
-                spec.Add(Path.Combine("Plugins", relativePluginDirectoryPath, "Build"));
+                IEnumerable<BuildReceiptPathEntry> buildProducts = BuildProducts ?? Enumerable.Empty<BuildReceiptPathEntry>();
+                IEnumerable<BuildReceiptPathEntry> runtimeDependencies = RuntimeDependencies ?? Enumerable.Empty<BuildReceiptPathEntry>();
+                foreach (BuildReceiptPathEntry entry in buildProducts.Concat(runtimeDependencies))
+                {
+                    if (!string.IsNullOrWhiteSpace(entry.Path))
+                    {
+                        yield return entry.Path;
+                    }
+                }
             }
+        }
+
+        /// <summary>
+        /// Represents one path-bearing entry inside a UBT target receipt.
+        /// </summary>
+        private sealed class BuildReceiptPathEntry
+        {
+            /// <summary>
+            /// Gets or sets the path string exactly as serialized by UBT.
+            /// </summary>
+            public string Path { get; set; } = string.Empty;
         }
 
         /// <summary>
@@ -331,25 +411,21 @@ namespace UnrealAutomationCommon.Unreal
         /// </summary>
         private static IEnumerable<string> GetProjectPluginDirectories(Project project)
         {
-            if (!Directory.Exists(project.PluginsPath))
+            return GetProjectPluginDirectories(project.PluginsPath);
+        }
+
+        /// <summary>
+        /// Enumerates valid plugin directories beneath a Plugins root path without requiring a live project target.
+        /// </summary>
+        private static IEnumerable<string> GetProjectPluginDirectories(string pluginsPath)
+        {
+            if (!Directory.Exists(pluginsPath))
             {
                 return Enumerable.Empty<string>();
             }
 
-            return Directory.GetDirectories(project.PluginsPath, "*", SearchOption.AllDirectories)
+            return Directory.GetDirectories(pluginsPath, "*", SearchOption.AllDirectories)
                 .Where(PluginPaths.Instance.IsTargetDirectory);
-        }
-
-        /// <summary>
-        /// Builds module-shape entries for one plugin without creating a watcher-backed Plugin target.
-        /// </summary>
-        private static IEnumerable<string> GetPluginModuleShape(Project project, string pluginDirectoryPath)
-        {
-            string relativePluginPath = Path.GetRelativePath(project.PluginsPath, pluginDirectoryPath);
-            string pluginDescriptorPath = PluginPaths.Instance.FindRequiredTargetFile(pluginDirectoryPath);
-            PluginDescriptor pluginDescriptor = PluginDescriptor.Load(pluginDescriptorPath);
-            return pluginDescriptor.Modules
-                .Select(module => $"{relativePluginPath}:Module:{module.Name}:{module.Type}");
         }
     }
 }

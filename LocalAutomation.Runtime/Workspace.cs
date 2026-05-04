@@ -56,7 +56,8 @@ public static class Workspaces
 
         IReadOnlyList<string> normalizedParts = NormalizeKeyParts(key.HashParts);
         IReadOnlyList<KeyValuePair<string, string>> normalizedComponents = NormalizeKeyComponents(key.Components, normalizedParts);
-        string cacheKey = ComputeHash(string.Join("|", normalizedParts), PersistentHashLength);
+        // Serialize the ordered part list so separators inside individual parts cannot collapse distinct identities.
+        string cacheKey = ComputeHash(JsonSerializer.Serialize(normalizedParts), PersistentHashLength);
         string workspacePath = Path.Combine(OutputPaths.TempRoot(), "PersistentWorkspaces", cacheKey);
         return new Workspace(workspacePath, new[] { new ExecutionLock($"persistent-workspace:{NormalizePathForLock(workspacePath)}") }, cacheKey, normalizedParts, normalizedComponents);
     }
