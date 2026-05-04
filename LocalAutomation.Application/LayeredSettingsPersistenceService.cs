@@ -10,6 +10,7 @@ using LocalAutomation.Core;
 using LocalAutomation.Extensions.Abstractions;
 using LocalAutomation.Persistence;
 using LocalAutomation.Runtime;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -433,6 +434,8 @@ public sealed class LayeredSettingsPersistenceService
             createSerializer: static () => new JsonSerializer());
 
         store.Save(state);
+        // Log after the write completes so settings diagnostics describe files that were actually saved successfully.
+        ApplicationLogger.Logger.LogInformation("Saved settings file '{SettingsFilePath}' with {SettingCount} value(s).", filePath, state.Values.Count);
     }
 
     /// <summary>
