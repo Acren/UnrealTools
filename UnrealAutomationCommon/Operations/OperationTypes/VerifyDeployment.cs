@@ -41,6 +41,26 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
         }
 
         /// <summary>
+        /// Validates that deployment verification has a concrete example-project archive root before any authored tasks are
+        /// allowed to run.
+        /// </summary>
+        protected override string? CheckRequirementsSatisfied(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        {
+            string exampleProjectsPath = GetNormalizedExampleProjectsPath(operationParameters);
+            if (string.IsNullOrWhiteSpace(exampleProjectsPath))
+            {
+                return "Example Projects Path is required.";
+            }
+
+            if (!Directory.Exists(exampleProjectsPath))
+            {
+                return $"Example Projects Path does not exist: {exampleProjectsPath}";
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Describes the deployment-verification subtree beneath the framework-owned root task.
         /// </summary>
         protected override void DescribeExecutionPlan(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters, global::LocalAutomation.Runtime.ExecutionTaskBuilder root)
@@ -149,7 +169,7 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
                 throw new Exception($"Installed plugin version {installedPluginVersionName} does not include reference version {pluginVersionName}");
             }
 
-            string exampleProjects = operationParameters.GetOptions<VerifyDeploymentOptions>().ExampleProjectsPath;
+            string exampleProjects = GetNormalizedExampleProjectsPath(operationParameters);
             string exampleProjectZip = FindExampleProjectZip(plugin, exampleProjects, engine);
             if (exampleProjectZip == null)
             {
@@ -354,6 +374,15 @@ namespace UnrealAutomationCommon.Operations.OperationTypes
             where TOperation : global::LocalAutomation.Runtime.Operation, new()
         {
             return RunChildOperationAsync<TOperation>(CreateExampleProjectParams(state, automationOptions), context, required: true, failureMessage: failureMessage, hideChildOperationRootInGraph: true);
+        }
+
+        /// <summary>
+        /// Returns the trimmed example-project archive root so requirement checks and task execution interpret the same
+        /// user-provided path.
+        /// </summary>
+        private static string GetNormalizedExampleProjectsPath(global::LocalAutomation.Runtime.ValidatedOperationParameters operationParameters)
+        {
+            return operationParameters.GetOptions<VerifyDeploymentOptions>().ExampleProjectsPath.Trim();
         }
 
         public readonly struct ExampleProjectZipInfo
