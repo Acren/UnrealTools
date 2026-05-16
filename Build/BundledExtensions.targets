@@ -32,6 +32,11 @@
       <BundledExtensionDirectories Include="@(BundledExtensionFiles->'$(BundledExtensionDestinationRoot)%(RecursiveDir)')" />
     </ItemGroup>
 
+    <!-- A bundled extension build without output is invalid because the launcher would otherwise keep running whatever
+         payload happened to be left in its Extensions directory. -->
+    <Error Condition="'@(BundledExtensionFiles)' == ''"
+           Text="Bundled extension '$(MSBuildProjectName)' produced no files in '$(TargetDir)', so the launcher runtime bundle cannot be refreshed." />
+
     <!-- Remove a destination stamp if present because extension freshness is defined by this target copying the build
          output, not by a separate host-side up-to-date file. -->
     <Delete Files="$(BundledExtensionsStampPath)" Condition="Exists('$(BundledExtensionsStampPath)')" />
@@ -48,6 +53,12 @@
           DestinationFiles="@(BundledExtensionFiles->'$(BundledExtensionDestinationRoot)%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
           Condition="@(BundledExtensionFiles) != ''" />
+
+    <!-- Write the stamp only after the payload copy succeeds so tooling and humans can distinguish a refreshed bundle
+         from an older bundle left behind by a failed copy. -->
+    <WriteLinesToFile File="$(BundledExtensionsStampPath)"
+                      Lines="$(MSBuildProjectFullPath);$(TargetPath);$(Configuration);$(TargetFramework)"
+                      Overwrite="true" />
   </Target>
 
 </Project>

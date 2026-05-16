@@ -5,12 +5,19 @@
     extension into the Unreal Commander launcher output.
   -->
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'UnrealCommander.Avalonia'">
-    <!-- The launcher depends on the Unreal extension build, but the extension's own build target owns the payload copy
-         so IDE builds that stop at the extension still refresh the runtime bundle. -->
+    <!-- The launcher runs the bundled extension payload from its own output folder, so app builds must request both the
+         extension build and the payload copy target before the launcher can start. -->
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\LocalAutomation.Extensions.Unreal\LocalAutomation.Extensions.Unreal.csproj"
+                       Targets="Build;CopyBundledExtensionToHost"
                        ReferenceOutputAssembly="false"
                        PrivateAssets="all" />
   </ItemGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'UnrealCommander.Avalonia'">
+    <!-- IDE fast-up-to-date checks do not model the dynamic bundled extension directory, so launcher builds must reach
+         MSBuild where the extension payload copy can fail loudly if the runtime bundle cannot be refreshed. -->
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+  </PropertyGroup>
 
   <PropertyGroup Condition="'$(MSBuildProjectName)' == 'LocalAutomation.Extensions.Unreal'">
     <!-- The Unreal extension is loaded from the launcher output's Extensions folder, so building the extension must
@@ -18,6 +25,9 @@
     <HasBundledExtensionHost>true</HasBundledExtensionHost>
     <BundledExtensionHostRoot>$(MSBuildThisFileDirectory)..\UnrealCommander.Avalonia\</BundledExtensionHostRoot>
     <BundledExtensionFolderName>Unreal</BundledExtensionFolderName>
+    <!-- Extension builds must also bypass IDE up-to-date shortcuts because the runtime bundle is a required side effect
+         of a successful extension build, not an assembly reference copied by the SDK. -->
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
   </PropertyGroup>
 
 </Project>
